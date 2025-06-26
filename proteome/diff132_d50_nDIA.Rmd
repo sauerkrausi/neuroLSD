@@ -743,7 +743,7 @@ combined_heatmap <- gridExtra::grid.arrange(
 
 
 # Define the output file path
-output_file_50 <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_d30_d50_combined_heatmap.pdf"
+output_file_50 <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/diff132_d30_d50_combined_heatmap.pdf"
 
 # Save the heatmap to a PDF file
 pdf(output_file_50, width = 40 / 2.54, height = 30 / 2.54)
@@ -839,12 +839,12 @@ process_day_data <- function(df, day_value, save_path) {
 # Step 4: Run for Day 30 and Day 50
 complete_data_annotated_day30 <- process_day_data(
   clean_d50_transformed_df, 30,
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day30/diff132_complete_annotated_day30.csv"
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day30/dataframes/diff132_complete_annotated_day30.csv"
 )
 
 complete_data_annotated_day50 <- process_day_data(
   clean_d50_transformed_df, 50,
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_complete_annotated_day50.csv"
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes/diff132_complete_annotated_day50.csv"
 )
 ```
 
@@ -922,14 +922,14 @@ LSDgene_Abundance
 
 # ---- Save Plot and Data ----
 ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_LSDgene_Abundance.pdf",
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC/diff132_LSDgene_Abundance.pdf",
   LSDgene_Abundance,
   width = 12, height = 12, device = cairo_pdf
 )
 
 write.csv(
   df_clean_heatmap,
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LSD_sorted.csv",
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC/LSD_sorted.csv",
   row.names = FALSE
 )
 ```
@@ -1427,6 +1427,8 @@ dev.off()
 
 ```
 
+
+
 ##### IVh2. --- Correlation analysis on selected annotations --- 
 ```{r}
 # --- Correlation analysis on selected annotations --- #
@@ -1543,7 +1545,7 @@ gridExtra::grid.arrange(
   ncol = 3
 )
 dev.off()
-
+dev.off()
 ```
 
 
@@ -1602,7 +1604,7 @@ process_day_data_combined <- function(df, binary_matrix) {
 }
 
 day3050_subset <- process_day_data_combined(clean_d50_transformed_df, binary_matrix)
-write.csv(day3050_subset, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_day3050_subset.csv",row.names = FALSE)
+write.csv(day3050_subset, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes/diff132_day3050_subset.csv",row.names = FALSE)
 
 
 
@@ -1664,7 +1666,7 @@ day3050_heatmap <- generate_day3050_heatmap(day3050_subset, title_label = "LSD D
 day3050_heatmap
 
 ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_selectKO_day3050_heatmap.pdf",
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/diff132_selectKO_day3050_heatmap.pdf",
   day3050_heatmap,
   width = 8, height = 10, device = cairo_pdf)
 
@@ -1746,7 +1748,7 @@ day3050_GRN <- ggplot() +
 day3050_GRN
 
 ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_day3050_GRN_DA_scattter.pdf",
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN/diff132_day3050_GRN_DA_scattter.pdf",
   day3050_GRN,
   width = 8, height = 8, device = cairo_pdf)
 
@@ -1801,7 +1803,7 @@ day3050_GRN_top <- ggplot(plot_df, aes(x = GRN_iDA_d30_log2_fold_change, y = GRN
 day3050_GRN_top
 
 ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_day3050_GRN_DA_topHits.pdf",
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN/diff132_day3050_GRN_DA_topHits.pdf",
   day3050_GRN_top,
   width = 8, height = 8, device = cairo_pdf)
 
