@@ -784,7 +784,7 @@ clean_d50_transformed_df <- clean_d50_df %>%
   filter(!Genes %in% contaminant_genes)
 
 # Step 2: Load and prepare annotation matrix (only once)
-cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28)
+cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29)
 subcell_df <- read.csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day30/SubCellAnnotation.csv", stringsAsFactors = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
@@ -1291,7 +1291,7 @@ plot_log2fc_violin <- function(data, annotations, genotypes) {
 LSD_d50_Violin_plot <- plot_log2fc_violin(
   data = complete_data_annotated_day50,
   #annotations = c("Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI"),
-  annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO","EarlyEndosome","RecyclingEndosome"),
+  annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO","SynapseSVs","EarlyEndosome","RecyclingEndosome"),
   genotypes = c("ASAH1", "SMPD1", "GBA1")
 )
 LSD_d50_Violin_plot
@@ -1433,9 +1433,9 @@ dev.off()
 ```{r}
 # --- Correlation analysis on selected annotations --- #
 selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
-                          "Lysosome.Genes", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome")
+                          "Lysosome.Genes", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs")
 
-# selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.MOM", "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes", "ER.genes","Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome")
+# selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.MOM", "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes", "ER.genes","Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome","SynapseSVs")
    
 
 log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
@@ -1527,7 +1527,7 @@ plot_sphmut_corr_matrix <- function(organelle_name, df = SphMut_annotated_df) {
 }
 
 # --- Run for all selected organelles ---
-selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.MOM", "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes", "ER.genes","Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome")
+selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.MOM", "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes", "ER.genes","Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome", "SynapseSVs")
   
 
 
@@ -1542,10 +1542,10 @@ SphMut_ko_corr_hms <- Filter(Negate(is.null), SphMut_ko_corr_hms)
 pdf(file.path(out_corr_dir, "SphMut_KOxKO_Corr_Heatmaps.pdf"), width = 30, height = 30, useDingbats = FALSE)
 gridExtra::grid.arrange(
   grobs = lapply(SphMut_ko_corr_hms, `[[`, "gtable"),
-  ncol = 3
+  ncol = 4
 )
 dev.off()
-dev.off()
+#dev.off()
 ```
 
 
@@ -1918,13 +1918,13 @@ dev.off()
 
 correlate_log2fc_annotations(
   data = log2FC_d50_annotated,
-  annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO"),
+  annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO", "SynapseSVs"),
   basedir = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
 )
 
 
 # Annotations:
-# "Mito.IMS","Mito.Matrix","Mito.MIM", "Mito.MOM","OXPHOS","mtComplexI","Golgi.Genes","Lysosome.Genes","ER.genes","Cytoplasm","Nucleus","Autophagy","Autophagy..Detailed.","SynGO",                "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoDetailed","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome"    
+# "Mito.IMS","Mito.Matrix","Mito.MIM", "Mito.MOM","OXPHOS","mtComplexI","Golgi.Genes","Lysosome.Genes","ER.genes","Cytoplasm","Nucleus","Autophagy","Autophagy..Detailed.","SynGO",                "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoDetailed","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome", "SynapseSVs"
 
 
 
@@ -1972,7 +1972,7 @@ org_corr_df <- run_all_organelle_corr(
                   "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes",
                   "ER.genes", "Endosome.Genes", "Cytoplasm", "Nucleus",
                   "Autophagy", "SynGO", "Endo_iN_curated_Hundley",
-                  "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome")
+                  "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome", "SynapseSVs")
 )
 
 # Convert to wide matrix: KO × Organelle
@@ -2064,7 +2064,7 @@ all_ann <- c(
   "ER.genes","Endosome.Genes","Cytoplasm","Nucleus",
   "Autophagy","SynGO","Endo_iN_curated_Hundley",
   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso",
-  "EarlyEndosome","RecyclingEndosome"
+  "EarlyEndosome","RecyclingEndosome", "SynapseSVs"
 )
 
 # ---- per-organelle KO×KO heatmaps ------------------------------------------
@@ -2145,7 +2145,7 @@ plot_avg_corr_per_genotype <- function(corr_mat, annotations, out_path = NULL) {
 ## Call plotting function and input annotation of interest to plot 
 avg_corr_plot <- plot_avg_corr_per_genotype(
   corr_mat = org_corr_mat,
-  annotations = c("EarlyEndosome"),
+  annotations = c("SynapseSVs"),
   out_path = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/bar_avg"
 )
 
@@ -2156,7 +2156,7 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 #   "ER.genes","Endosome.Genes","Cytoplasm","Nucleus",
 #   "Autophagy","SynGO","Endo_iN_curated_Hundley",
 #   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso",
-#   "EarlyEndosome","RecyclingEndosome"
+#   "EarlyEndosome","RecyclingEndosome", "SynapseSVs"
 # )
 
 ```
@@ -2870,7 +2870,7 @@ annotations <- c("Mito", "Mito.IMS", "Mito.Matrix", "Mito.MIM", "Mito.MOM",
                  "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes",
                  "ER.genes", "Cytoplasm", "Nucleus",
                  "Autophagy", "SynGO", "Endo_iN_curated_Hundley",
-                 "Presynaptic", "Postsynaptic", "NeuroDev","EndoLyso","EarlyEndosome", "RecyclingEndosome")
+                 "Presynaptic", "Postsynaptic", "NeuroDev","EndoLyso","EarlyEndosome", "RecyclingEndosome", "SynapseSVs")
 
 binary_matrix <- complete_data_annotated_day50 %>%
   select(Genes, all_of(annotations)) %>%
