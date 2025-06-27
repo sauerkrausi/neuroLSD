@@ -150,7 +150,7 @@ dev.off()
 Samples are in triplicates whole-cell samples from 12-well plates.
 day 50 of in vitro differentiation of iN and iDA
 Genotypes: Ctrl, ASAH1, CLN1.PPT1, CLN10.CTSD, CLN11.GRN, CLN12.ATP13A2, CLN12.ATP13A2, CLN13.CTSF,CLN2.TPP1, CLN3, CLN4.DNAJC5, CLN5, CLN6, CLN7.MFSD8, CLN8, CTNS, GAA, GBA, GLB1, HEXA, HEXB,LIPA, MCOLN1.TRPML1, NPC1, NPC2, PSAP, SMPD1
-        
+run on Thermo Orbitrap Astral, nDIA, hrMS2 
         
 ### IIIa. PCA plots of data
 plot PCA plots to check data landscape on top level 
