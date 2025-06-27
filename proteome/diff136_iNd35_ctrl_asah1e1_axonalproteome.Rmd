@@ -122,13 +122,31 @@ diff136_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Prote
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2.  Transform p/q-values to -log10
+# 2.  Transform p/q-values to -log10, and filter non-finite log2FCs
 # ─────────────────────────────────────────────────────────────────────────────
+
+log2fc_cols <- c(
+  "log2FC_Ctrl_Soma.Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl",
+  "log2FC_ASAH1.Ctrl",
+  "log2FC_ASAH1_Soma.Ctrl",
+  "log2FC_ASAH1_Axon.Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl_Soma",
+  "log2FC_ASAH1.Ctrl_Soma",
+  "log2FC_ASAH1_Soma.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Soma",
+  "log2FC_ASAH1.Ctrl_Axon",
+  "log2FC_ASAH1_Soma.Ctrl_Axon",
+  "log2FC_ASAH1_Axon.Ctrl_Axon",
+  "log2FC_ASAH1_Soma.ASAH1",
+  "log2FC_ASAH1_Axon.ASAH1",
+  "log2FC_ASAH1_Axon.ASAH1_Soma"
+)
 
 diff136_df <- diff136_df %>%
   mutate(across(contains("p.val"), ~ ifelse(. > 0, -log10(.), NA), .names = "neg_log10_{.col}"),
-         across(contains("q.val"), ~ ifelse(. > 0, -log10(.), NA), .names = "neg_log10_{.col}"))
-
+         across(contains("q.val"), ~ ifelse(. > 0, -log10(.), NA), .names = "neg_log10_{.col}")) %>%
+  filter(if_all(all_of(log2fc_cols), ~ is.finite(.)))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3.  Add Subcellular Annotation
@@ -171,10 +189,13 @@ diff136_df_annotated <- diff136_df_annotated %>%
 # --- Step 4. save as csv file 
 write.csv(diff136_df_annotated, 
           file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes/diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_annotated.csv", row.names = FALSE)
+```
 
 
+### IIa. Heatmap (z-norm rows, cluster by cluster)
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. Heatmap (z-norm rows, cluster by cluster)
+# Heatmap (z-norm rows, cluster by cluster)
 # ─────────────────────────────────────────────────────────────────────────────
 out_dir  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
 pdf_file <- file.path(out_dir, "diff136_heatmap_axonalProt_ctrl_asah1.pdf")
@@ -274,59 +295,354 @@ mat_with_cluster <- cbind(cluster = row_annotation$cluster, mat)
 write.csv(mat_with_cluster,
           file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes/diff136_iNd35_heatmap.csv",
           row.names = TRUE)
+```
 
 
+
+### IIb.  Violin Plot of Cluster Abundance
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. Violin Plot of Cluster Abundance
+# Violin Plot of Cluster Abundance
 # ─────────────────────────────────────────────────────────────────────────────
 
+# --- 1. define & select sample labels for plotting  
+sample_cols <- c(
+  "log2FC_Ctrl_Soma.Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl",
+  "log2FC_ASAH1_Soma.ASAH1",
+  "log2FC_ASAH1_Axon.ASAH1"
+)
+
+
+# --- 2. Drop cluster 0 and NA
 violin_df <- diff136_df_annotated %>%
-  pivot_longer(cols = all_of(sample_cols), names_to = "Sample", values_to = "Abundance")
+  filter(!is.na(cluster) & cluster != 0) %>%
+  pivot_longer(cols = all_of(sample_cols), names_to = "Sample", values_to = "log2FC") %>%
+  filter(!is.na(log2FC))
 
-ggplot(violin_df, aes(x = cluster, y = Abundance, fill = Sample)) +
+# --- 3. Consistent y-axis scale
+y_limits <- range(violin_df$log2FC, na.rm = TRUE)
+
+# --- 4. plot facet wrap
+diff136_clusterPlot <- ggplot(violin_df, aes(x = Sample, y = log2FC, fill = Sample)) +
+  geom_jitter(
+    aes(color = "red"), size = 0.5, alpha = 0.2, width = 0.2, height = 0
+  ) +
   geom_violin(scale = "width", trim = FALSE) +
-  theme_bw() + facet_wrap(~ Sample)
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  #facet_wrap(~ cluster, scales = "fixed") +
+  facet_wrap(~ cluster, scales = "free_y") +
+  #coord_cartesian(ylim = y_limits) +
+  scale_fill_manual(values = c(
+    "log2FC_Ctrl_Soma.Ctrl" = "#f1eef6",
+    "log2FC_Ctrl_Axon.Ctrl" = "#bdc9e1",
+    "log2FC_ASAH1_Soma.ASAH1" = "#74a9cf",
+    "log2FC_ASAH1_Axon.ASAH1" = "dodgerblue3"
+  )) +
+  theme_bw(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "none", 
+        #panel.grid = element_blank()
+        ) +
+  labs(title = "log2FC by Sample per Cluster", x = NULL, y = "log2FC")
+
+diff136_clusterPlot
+
+# --- 5. save plot as PDF
+ggsave(
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps/diff136_clusterPlot.pdf", 
+  diff136_clusterPlot, width = 6, height = 6, device = cairo_pdf)
+```
 
 
-
-
-
-
+### IIc. Correlation of Selected Annotations
+calculate annotated-based correlation across all and also facet wrap them
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. Correlation of Selected Annotations
+# Correlation of Selected Annotations
 # ─────────────────────────────────────────────────────────────────────────────
-annotations <- c("EndoLyso", "Presynaptic", "Postsynaptic", "SynGO", "SynapseSVs")
+library(pheatmap)
+library(gridExtra)
+library(RColorBrewer)
+library(tibble)
+library(dplyr)
+library(purrr)
 
-correlate_log2fc_annotations <- function(data, annotations) {
-  out <- lapply(annotations, function(a) {
-    subset <- data[data[[a]] == TRUE, ]
-    cor_val <- cor(subset$log2FC_ASAH1_Axon.ASAH1, subset$log2FC_Ctrl_Axon.Ctrl, use = "complete.obs")
-    data.frame(annotation = a, correlation = cor_val)
+
+# --- 1. Copy out log2FC & annotated columns for wrangling
+# Define log2FC columns (all that start with log2FC_)
+log2fc_cols <- grep("^log2FC_", colnames(diff136_df_annotated), value = TRUE)
+
+# Define annotation columns (binary organelle terms)
+# assumes binary 0/1 format and not part of log2FC set
+annotation_cols <- setdiff(colnames(diff136_df_annotated), log2fc_cols)
+annotation_cols <- annotation_cols[sapply(diff136_df_annotated[, annotation_cols], function(x) all(x %in% c(0, 1, NA)))]
+
+# Drop unwanted ones
+annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetailLoac"))
+
+length(log2fc_cols)  # sanity check
+length(annotation_cols)
+
+# Extract rownames from org_corr_mat (log2FC columns)
+annotation_row <- tibble(Sample = rownames(org_corr_mat)) %>%
+  mutate(
+    Genotype = if_else(str_detect(Sample, "^log2FC_Ctrl"), "Ctrl", "ASAH1"),
+    Fraction = case_when(
+      str_detect(Sample, "_Soma")  ~ "Soma",
+      str_detect(Sample, "_Axon")  ~ "Axon",
+      TRUE                         ~ "Whole-cell"
+    )
+  ) %>%
+  column_to_rownames("Sample")
+
+
+# --- 2. Compute Spearman correlation between log2FC and annotations
+org_corr_df <- map_dfr(annotation_cols, function(ann) {
+  map_dfr(log2fc_cols, function(fc_col) {
+    x <- diff136_df_annotated[[fc_col]]
+    y <- as.numeric(diff136_df_annotated[[ann]])
+    keep <- is.finite(x) & is.finite(y)
+    if (sum(keep) < 5) return(NULL)
+
+    cor_test <- suppressWarnings(cor.test(x[keep], y[keep], method = "spearman"))
+    tibble(
+      log2FC_Column = fc_col,
+      Organelle     = ann,
+      r             = unname(cor_test$estimate),
+      p             = cor_test$p.value
+    )
   })
-  do.call(rbind, out)
+})
+
+
+# --- 3. Summary heatmap (log2FC × Organelle)
+library(pheatmap)
+
+org_corr_mat <- org_corr_df %>%
+  select(log2FC_Column, Organelle, r) %>%
+  pivot_wider(names_from = Organelle, values_from = r) %>%
+  column_to_rownames("log2FC_Column") %>%
+  as.matrix()
+
+# Replace NA with 0 (or leave NA if you prefer gaps)
+org_corr_mat[is.na(org_corr_mat)] <- 0
+
+axonprotCorr <- pheatmap(org_corr_mat,
+         color = rev(RColorBrewer::brewer.pal(11, "RdYlBu")),
+         annotation_row = annotation_row,                
+         annotation_colors = ann_colors,                
+         na_col = "grey90",
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         fontsize = 8,
+         cellheight = 10,
+         cellwidth = 10,
+         border_color = NA, 
+         main = "log2FC × Organelle Correlation")
+
+axonprotCorr
+
+# --- 4. Save heatmap as PDF and csv file 
+pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/axonprotCorr.pdf",
+    width = 12, height = 16, useDingbats = FALSE)
+print(axonprotCorr)
+dev.off()
+
+write.csv(org_corr_mat,
+          file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/axonprotCorr.csv",
+          row.names = TRUE)
+
+
+
+
+
+# --- 5. Faceted correlation plots (per-organelle, KO×KO)
+# Function to plot KO×KO correlation for a given annotation
+plot_ko_corr_matrix <- function(organelle_name, df = diff136_df_annotated) {
+  gene_filter <- df[[organelle_name]] == 1
+  mat <- df[gene_filter, log2fc_cols, drop = FALSE]
+
+  if (nrow(mat) < 5) return(NULL)
+
+  corr_mat <- cor(mat, use = "pairwise.complete.obs", method = "spearman")
+
+  pheatmap(
+    corr_mat,
+    main = organelle_name,
+    color = rev(brewer.pal(11, "RdYlBu")),
+    silent = TRUE,
+    cellheight = 10,
+    cellwidth  = 10,
+    na_col = "grey90",
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    border_color = NA,
+    fontsize = 6
+  )
 }
 
-cor_results <- correlate_log2fc_annotations(diff136_df_annotated, annotations)
+# --- 6. Apply to all annotations
+heatmap_list <- lapply(annotation_cols, function(org) {
+  if (!org %in% colnames(diff136_df_annotated)) return(NULL)
+  plot_ko_corr_matrix(org)
+})
+heatmap_list <- Filter(Negate(is.null), heatmap_list)
+
+# 5. Save all in a faceted PDF
+pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/diff136_log2FC_annotation_corr_facet.pdf",
+    width = 40, height = 40, useDingbats = FALSE)
+
+grid.arrange(grobs = lapply(heatmap_list, `[[`, "gtable"), ncol = 4)
+
+dev.off()
+
+```
 
 
-
+### IId. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# 7. Scatterplot of vATPase Members
+# barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. Define relevant log2FC and annotation columns
+log2fc_cols <- grep("^log2FC_", colnames(diff136_df_annotated), value = TRUE)
+
+# Filter binary annotation columns (0/1 or NA only)
+annotation_cols <- setdiff(colnames(diff136_df_annotated), log2fc_cols)
+annotation_cols <- annotation_cols[
+  sapply(diff136_df_annotated[, annotation_cols], function(x) all(x %in% c(0, 1, NA)))
+]
+
+# Drop unwanted annotations
+annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetailLoac"))
+
+
+# 2. Reshape to long format for annotation × log2FC mapping
+long_df <- diff136_df_annotated %>%
+  select(all_of(c("Gene.Symbol", log2fc_cols, annotation_cols))) %>%
+  pivot_longer(cols = all_of(log2fc_cols), names_to = "Log2FC", values_to = "value") %>%
+  pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1 & is.finite(value))
+
+
+# 3. Compute mean log2FC per organelle annotation
+mean_log2fc_df <- long_df %>%
+  group_by(Log2FC, Annotation) %>%
+  summarise(mean_log2FC = mean(value, na.rm = TRUE), .groups = "drop")
+
+
+# 4. Plot mean log2FC per annotation, faceted by log2FC column
+loc_dist_overview <- ggplot(mean_log2fc_df, aes(x = reorder(Annotation, mean_log2FC), y = mean_log2FC)) +
+  geom_col(fill = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip() +
+  facet_wrap(~ Log2FC, scales = "free_x") +
+  labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation") +
+  theme_bw(base_size = 8)
+
+
+
+# 5. Save to PDF
+ggsave(
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_loc_dist_overview.pdf",
+  loc_dist_overview,
+  width = 16, height = 16, device = cairo_pdf
+)
+  
+```
+
+
+
+### IIe. Scatterplot of Lysosome & vATPase Members vs nuclear markers 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Scatterplot of Lysosome & vATPase Members vs nuclear markers 
 # ─────────────────────────────────────────────────────────────────────────────
 vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
                    "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
                    "SYP", "DMXL1", "DMXL2", "PODXL", "PODXL2")
 
+
+# Step 1: Prepare scatter_df with categorical y-axis
 scatter_df <- diff136_df_annotated %>%
-  filter(Gene.Symbol %in% vatpase_genes)
+  filter(Gene.Symbol %in% vatpase_genes | Nucleus == 1 | `Lysosome Genes` == 1) %>%
+  mutate(
+    y_group = case_when(
+      Gene.Symbol %in% vatpase_genes      ~ "vATPase",
+      `Lysosome Genes` == 1               ~ "Lysosome",
+      Nucleus == 1                        ~ "Nucleus",
+      TRUE                                ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(y_group))
 
-ggplot(scatter_df, aes(x = log2FC_ASAH1_Axon.ASAH1, y = log2FC_Ctrl_Axon.Ctrl)) +
-  geom_point() +
-  geom_text(aes(label = Gene.Symbol), hjust = 0, vjust = 1, size = 2.5) +
-  theme_minimal()
+# put nucleus at bottom 
+scatter_df <- scatter_df %>%
+  mutate(
+    y_group = factor(y_group, levels = c("Nucleus", "Lysosome", "vATPase"))
+  )
+library(ggplot2)
+library(ggdist)
+install.packages("gghalves")
+library(gghalves)
+
+ASAH1_axonXsoma_loc_rainbowplot <- ggplot(scatter_df, aes(y = log2FC_ASAH1_Axon.ASAH1_Soma, x = y_group, fill = y_group)) + 
+  # 1. Aligned half-point jitter
+  gghalves::geom_half_point(
+    side = "b",            # bottom side (now works because axis is flipped)
+    range_scale = 0.2,
+    alpha = 0.2,
+    size = 1,
+    shape = 16
+  ) +
+  
+  # 2. Add dashed zero line (horizontal now)
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+
+  # 3. Half-eye distribution
+  ggdist::stat_halfeye(
+    adjust = 2, 
+    width = 0.6, 
+    .width = 0, 
+    justification = -0.2, 
+    point_colour = NA
+  ) +
+
+  # 4. Boxplot
+  geom_boxplot(
+    width = 0.15, 
+    outlier.shape = NA
+  ) +
+
+  # 5. Coloring & theming
+  scale_fill_manual(values = c(
+    "Nucleus"   = "grey30",
+    "Lysosome"  = "#bdc9e1",
+    "vATPase"   = "dodgerblue3"
+  )) +
+  coord_flip() + ## flip graph so it looks still like landscape mode 
+  theme_bw(base_size = 6) +
+  labs(y = "log2FC ASAH1 Axon vs Soma", x = NULL, title = "Localization Organelle Distribution in Axon vs Soma") +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none"
+  )
+
+ggsave(
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_lysosome_vATPase_nucleus_scatter.pdf", ASAH1_axonXsoma_loc_rainbowplot, 
+  width = 4, height = 4, device = cairo_pdf
+)
+
+```
 
 
 
+
+
+Think about this code 
+```{r}
 # ── 0  USER‑TUNEABLE CUT‑OFFS ──────────────────────────────────────────────
 cutoff_pos <- 1.5      # minimum +log2FC on the x‑axis
 cutoff_neg <- -1.5     # maximum –log2FC on the y‑axis
@@ -378,195 +694,6 @@ ggsave(
 )
 ```
 
-## --- heatmap of data and violin plots of clusters ---
-```{r}
-##############################################################################
-##  Axonal-proteome heat-map (Ctrl vs ASAH1) – using pheatmap
-##  --------------------------------------------------------------------------
-##  • Rows   : proteins (Gene.Symbol) – ordered by the “cluster” column
-##  • Columns: 18 samples  (whole-cell / soma / axon ; Ctrl / ASAH1 ; n = 3)
-##  • Colour : RdYlBu (reversed) on a z-score (row-scaled) matrix
-##  • Output : on-screen plot  +  PDF copy in ‘out_dir’
-##############################################################################
-
-library(tidyverse)    # dplyr / readr / tibble  …  
-library(pheatmap)     # heat-map
-library(RColorBrewer) # palette helper
-library(Cairo)        # high-quality (anti-aliased) PDF
-
-## ---------------------------------------------------------------------------
-## 1. user settings
-## ---------------------------------------------------------------------------
-out_dir  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv"
-pdf_file <- file.path(out_dir, "diff136_heatmap_ctrl_asah1.pdf")
-
-
-## -- keep only the numeric expression columns --------------------------------
-expr_cols <- c(
-  "Ctrl_1","Ctrl_2","Ctrl_3",
-  "Ctrl_Soma_1","Ctrl_Soma_2","Ctrl_Soma_3",
-  "Ctrl_Axon_1","Ctrl_Axon_2","Ctrl_Axon_3",
-  "ASAH1_1","ASAH1_2","ASAH1_3",
-  "ASAH1_Soma_1","ASAH1_Soma_2","ASAH1_Soma_3",
-  "ASAH1_Axon_1","ASAH1_Axon_2","ASAH1_Axon_3"
-)
-
-mat <- diff136_df %>%                                   # numeric matrix (genes × 18)
-  select(all_of(expr_cols)) %>%
-  as.matrix()
-rownames(mat) <- make.unique(diff136_df$Gene.Symbol)                # gene names as row-names
-
-## -- order rows by the ‘cluster’ column --------------------------------------
-##    (pheatmap will use this fixed order – no hierarchical row clustering)
-row_order <- order(diff136_df$cluster)
-mat        <- mat[row_order, , drop = FALSE]
-
-## ---------------------------------------------------------------------------
-## 3. column annotations
-## ---------------------------------------------------------------------------
-annotation_col <- tibble(Sample = expr_cols) %>%
-  mutate(
-    Genotype = if_else(str_detect(Sample, "^Ctrl"), "Ctrl", "ASAH1"),
-    Fraction = case_when(
-      str_detect(Sample, "_Soma")  ~ "Soma",
-      str_detect(Sample, "_Axon")  ~ "Axon",
-      TRUE                         ~ "Whole-cell"
-    )
-  ) %>%
-  column_to_rownames("Sample")
-
-## -- matching list of colours for each annotation level ----------------------
-ann_colors <- list(
-  Genotype = c(Ctrl = "grey40", ASAH1 = "dodgerblue3"),
-  Fraction = c(`Whole-cell` = "#f1eef6",
-               Soma        = "#bdc9e1",
-               Axon        = "#74a9cf")
-)
-
-## ---------------------------------------------------------------------------
-## 4. draw + save  (CairoPDF = anti-aliased) 
-## ---------------------------------------------------------------------------
-cairo_pdf(pdf_file, width = 9, height = 10)         # open device
-pheatmap(
-  mat,
-  scale            = "row",                         # z-score per gene
-  color            = colorRampPalette(
-                       rev(brewer.pal(11, "RdYlBu")))(100),
-  annotation_col   = annotation_col,
-  annotation_colors= ann_colors,
-  breaks           = seq(-4,  4, length.out = 101),
-  cluster_rows     = TRUE,                         # keep supplied order
-  cluster_cols     = TRUE,                          # cluster samples
-  show_rownames    = FALSE,
-  show_colnames    = TRUE,
-  angle_col        = 90,
-  main             = "diff136 axonal proteome: Ctrl vs ASAH1",
-  fontsize         = 9,
-  border_color     = NA
-)
-dev.off()                                            # close / write PDF
-
-
-
-
-## --- Violin plots of normalized clusters --- ###
-# ─────────────────────────────────────────────────────────────────────────────
-# 0.  Packages
-# ─────────────────────────────────────────────────────────────────────────────
-library(tidyverse)   # dplyr, tidyr, ggplot2
-library(Cairo)       # high-quality PDF device
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1.  Define the expression columns exactly as used before
-# ─────────────────────────────────────────────────────────────────────────────
-expr_cols <- c(
-  "Ctrl_1", "Ctrl_2", "Ctrl_3",
-  "Ctrl_Soma_1", "Ctrl_Soma_2", "Ctrl_Soma_3",
-  "Ctrl_Axon_1", "Ctrl_Axon_2", "Ctrl_Axon_3",
-  "ASAH1_1", "ASAH1_2", "ASAH1_3",
-  "ASAH1_Soma_1", "ASAH1_Soma_2", "ASAH1_Soma_3",
-  "ASAH1_Axon_1", "ASAH1_Axon_2", "ASAH1_Axon_3"
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2.  Keep only clusters 1-6 and compute gene-wise z-scores
-#     • scale() on rows  → z-score per protein across the 18 samples
-# ─────────────────────────────────────────────────────────────────────────────
-# Create z-score versions
-z_df <- diff136_df %>%
-  select(Gene.Symbol, cluster, all_of(expr_cols)) %>%
-  mutate(across(all_of(expr_cols), ~ as.numeric(scale(.x)), .names = "z_{.col}"))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3.  Pivot to long format  (one row = one protein × one sample)
-# ─────────────────────────────────────────────────────────────────────────────
-# Then pivot
-long_df <- z_df %>%
-  select(Gene.Symbol, cluster, starts_with("z_")) %>%
-  pivot_longer(
-    cols = starts_with("z_"),
-    names_to = "Sample",
-    names_pattern = "z_(.*)",  # strip "z_"
-    values_to = "z_score"
-  )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4.  Nice colours for six sample groups
-# ─────────────────────────────────────────────────────────────────────────────
-group_colors <- setNames(
-  RColorBrewer::brewer.pal(6, "Blues"),
-  c("Ctrl", "Ctrl_Soma", "Ctrl_Axon",
-    "ASAH1", "ASAH1_Soma", "ASAH1_Axon")
-)
-# ────────────────────────────────────────────────────────────────
-# 5.  annotate each sample with its group (Whole/Soma/Axon)
-# ────────────────────────────────────────────────────────────────
-long_df <- long_df %>%
-  mutate(Group = case_when(
-    str_starts(Sample, "Ctrl_\\d")         ~ "Ctrl",
-    str_starts(Sample, "Ctrl_Soma")        ~ "Ctrl_Soma",
-    str_starts(Sample, "Ctrl_Axon")        ~ "Ctrl_Axon",
-    str_starts(Sample, "ASAH1_\\d")        ~ "ASAH1",
-    str_starts(Sample, "ASAH1_Soma")       ~ "ASAH1_Soma",
-    str_starts(Sample, "ASAH1_Axon")       ~ "ASAH1_Axon",
-    TRUE                                   ~ NA_character_
-  ),
-  Group = factor(Group, levels = names(group_colors)))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 6.  Loop over clusters 1-6: violin + box overlay, save each to PDF
-# ─────────────────────────────────────────────────────────────────────────────
-out_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv"
-
-for (cl in 1:6) {
-  p <- ggplot(
-    long_df %>% filter(cluster == cl), aes(x = Sample, y = z_score, fill = Group)) +
-    geom_violin(trim = FALSE, scale = "width", colour = NA, alpha = 0.8) +
-      geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white", size = 0.15) +
-      scale_fill_manual(values = group_colors) +
-      labs(
-          title = sprintf("Cluster %d : Z-scored Protein Abundance", cl),
-          y = "z-score (per protein)", x = NULL
-          ) +
-        theme_bw(base_size = 6) +
-        theme(
-          legend.position = "none",
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          axis.text.x = element_text(angle = 90, hjust = 0)
-        )
-
-  # ---- save PDF (cairo for vector, no font headaches) ----------------------
-  pdf_file <- file.path(out_dir, sprintf("diff136_cluster%02d_violin.pdf", cl))
-  Cairo::CairoPDF(pdf_file, width = 2, height = 2)
-  print(p)
-  dev.off()
-}
-
-
-```
 
 
 # Ctrl vs ASAH1 ratio-of-ratios scatterplots (RoR)
