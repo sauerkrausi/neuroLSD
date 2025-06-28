@@ -242,6 +242,13 @@ cluster_palette <- setNames(
 )
 
 # Add to annotation color list
+ann_colors <- list(
+  Genotype = c(Ctrl = "grey40", ASAH1 = "dodgerblue3"),
+  Fraction = c(`Whole-cell` = "#f1eef6",
+               Soma         = "#bdc9e1",
+               Axon         = "#74a9cf")
+)
+
 ann_colors$cluster <- cluster_palette
 
 
@@ -257,12 +264,6 @@ annotation_col <- tibble(Sample = expr_cols) %>%
   ) %>%
   column_to_rownames("Sample")
 
-ann_colors <- list(
-  Genotype = c(Ctrl = "grey40", ASAH1 = "dodgerblue3"),
-  Fraction = c(`Whole-cell` = "#f1eef6",
-               Soma         = "#bdc9e1",
-               Axon         = "#74a9cf")
-)
 
 
 # --- 4. plot heatmap, save as pdf and store underlying dataframe as csv 
@@ -384,19 +385,6 @@ annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetai
 length(log2fc_cols)  # sanity check
 length(annotation_cols)
 
-# Extract rownames from org_corr_mat (log2FC columns)
-annotation_row <- tibble(Sample = rownames(org_corr_mat)) %>%
-  mutate(
-    Genotype = if_else(str_detect(Sample, "^log2FC_Ctrl"), "Ctrl", "ASAH1"),
-    Fraction = case_when(
-      str_detect(Sample, "_Soma")  ~ "Soma",
-      str_detect(Sample, "_Axon")  ~ "Axon",
-      TRUE                         ~ "Whole-cell"
-    )
-  ) %>%
-  column_to_rownames("Sample")
-
-
 # --- 2. Compute Spearman correlation between log2FC and annotations
 org_corr_df <- map_dfr(annotation_cols, function(ann) {
   map_dfr(log2fc_cols, function(fc_col) {
@@ -417,13 +405,24 @@ org_corr_df <- map_dfr(annotation_cols, function(ann) {
 
 
 # --- 3. Summary heatmap (log2FC × Organelle)
-library(pheatmap)
-
 org_corr_mat <- org_corr_df %>%
   select(log2FC_Column, Organelle, r) %>%
   pivot_wider(names_from = Organelle, values_from = r) %>%
   column_to_rownames("log2FC_Column") %>%
   as.matrix()
+
+# Extract rownames from org_corr_mat (log2FC columns)
+annotation_row <- tibble(Sample = rownames(org_corr_mat)) %>%
+  mutate(
+    Genotype = if_else(str_detect(Sample, "^log2FC_Ctrl"), "Ctrl", "ASAH1"),
+    Fraction = case_when(
+      str_detect(Sample, "_Soma")  ~ "Soma",
+      str_detect(Sample, "_Axon")  ~ "Axon",
+      TRUE                         ~ "Whole-cell"
+    )
+  ) %>%
+  column_to_rownames("Sample")
+
 
 # Replace NA with 0 (or leave NA if you prefer gaps)
 org_corr_mat[is.na(org_corr_mat)] <- 0
@@ -533,33 +532,71 @@ mean_log2fc_df <- long_df %>%
   summarise(mean_log2FC = mean(value, na.rm = TRUE), .groups = "drop")
 
 
-# 4. Plot mean log2FC per annotation, faceted by log2FC column
-loc_dist_overview <- ggplot(mean_log2fc_df, aes(x = reorder(Annotation, mean_log2FC), y = mean_log2FC)) +
+# --- 4. Shared x-axis range calculation
+xlims <- range(mean_log2fc_df$mean_log2FC, na.rm = TRUE)
+
+# --- 4a. Facet plot across all log2FCs with fixed x-axis
+loc_dist_overview_all <- ggplot(mean_log2fc_df, aes(x = reorder(Annotation, mean_log2FC), y = mean_log2FC)) +
   geom_col(fill = "steelblue") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  coord_flip() +
-  facet_wrap(~ Log2FC, scales = "free_x") +
-  labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation") +
+  coord_flip(ylim = xlims) +
+  facet_wrap(~ Log2FC, ncol = 3) +
+  labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation (All)") +
+  theme_bw(base_size = 8)
+
+ggsave(
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_loc_dist_overview_all.pdf",
+  loc_dist_overview_all,
+  width = 14, height = 12, device = cairo_pdf
+)
+
+# --- 4b. Filter for user-specified subset
+subset_log2fc <- c(
+  "log2FC_ASAH1_Axon.ASAH1_Soma",
+  "log2FC_ASAH1_Axon.ASAH1",
+  "log2FC_ASAH1_Soma.ASAH1",
+  "log2FC_ASAH1_Soma.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon",
+  "log2FC_ASAH1.Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl_Soma",
+  "log2FC_Ctrl_Axon.Ctrl",
+  "log2FC_Ctrl_Soma.Ctrl"
+)
+
+mean_log2fc_subset_df <- mean_log2fc_df %>% filter(Log2FC %in% subset_log2fc)
+
+loc_dist_overview_subset <- ggplot(mean_log2fc_subset_df, aes(x = reorder(Annotation, mean_log2FC), y = mean_log2FC)) +
+  geom_col(fill = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip(ylim = xlims) +
+  facet_wrap(~ Log2FC, ncol = 3) +
+  labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation (Selected)") +
   theme_bw(base_size = 8)
 
 
-
-# 5. Save to PDF
+# --- 5. Save to PDF
 ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_loc_dist_overview.pdf",
-  loc_dist_overview,
-  width = 16, height = 16, device = cairo_pdf
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_loc_dist_overview_selected.pdf",
+  loc_dist_overview_subset,
+  width = 14, height = 12, device = cairo_pdf
 )
+
+
   
 ```
 
 
 
-### IIe. Scatterplot of Lysosome & vATPase Members vs nuclear markers 
+### IIe. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Scatterplot of Lysosome & vATPase Members vs nuclear markers 
 # ─────────────────────────────────────────────────────────────────────────────
+library(ggplot2)
+library(ggdist)
+#install.packages("gghalves")
+library(gghalves)
+
 vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
                    "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
                    "SYP", "DMXL1", "DMXL2", "PODXL", "PODXL2")
@@ -583,11 +620,8 @@ scatter_df <- scatter_df %>%
   mutate(
     y_group = factor(y_group, levels = c("Nucleus", "Lysosome", "vATPase"))
   )
-library(ggplot2)
-library(ggdist)
-install.packages("gghalves")
-library(gghalves)
 
+# create plot 
 ASAH1_axonXsoma_loc_rainbowplot <- ggplot(scatter_df, aes(y = log2FC_ASAH1_Axon.ASAH1_Soma, x = y_group, fill = y_group)) + 
   # 1. Aligned half-point jitter
   gghalves::geom_half_point(
@@ -639,6 +673,112 @@ ggsave(
 
 
 
+### IIf. Rainbowplot of User-select Annotations for axon--soma localization distribution
+```{r}
+# 1. Function for plotting user-defined gene sets for axon-soma localization distribution
+#    saves single plots and faceted version of the three subcell comparisons
+plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_dir) {
+  if (is.character(gene_sets) && is.null(names(gene_sets))) {
+    gene_sets <- setNames(gene_sets, gene_sets)
+    gene_df <- purrr::imap_dfr(gene_sets, function(col, label) {
+      genes <- df$Gene.Symbol[df[[col]] == 1]
+      tibble(Gene.Symbol = genes, y_group = label)
+    })
+  } else {
+    gene_df <- purrr::imap_dfr(gene_sets, ~ tibble(Gene.Symbol = .x, y_group = .y))
+  }
+
+  # Helper
+  clean_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
+  default_colors <- c("grey30", "#bdc9e1", "dodgerblue3", "#74a9cf", "#045a8d", "#7fcdbb", "#e34a33", "#fdcc8a")
+  fill_colors <- setNames(rep_len(default_colors, length(gene_sets)), names(gene_sets))
+
+  # Collect all for faceting
+  full_plot_df <- purrr::map_dfr(log2fc_cols, function(fc) {
+    df %>%
+      right_join(gene_df, by = "Gene.Symbol") %>%
+      filter(!is.na(y_group), is.finite(.data[[fc]])) %>%
+      mutate(
+        y_group = factor(y_group, levels = names(gene_sets)),
+        Log2FC = fc
+      )
+  })
+
+  # Get shared x-axis limits
+  x_limits <- range(full_plot_df[[log2fc_cols[1]]], na.rm = TRUE)
+  for (fc in log2fc_cols[-1]) {
+    x_limits <- range(c(x_limits, full_plot_df[[fc]]), na.rm = TRUE)
+  }
+
+  # --- Save individual plots
+  for (fc in log2fc_cols) {
+    plot_df <- full_plot_df %>% filter(Log2FC == fc)
+
+    p <- ggplot(plot_df, aes(y = .data[[fc]], x = y_group, fill = y_group)) +
+      gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
+      geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+      ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
+      geom_boxplot(width = 0.15, outlier.shape = NA) +
+      scale_fill_manual(values = fill_colors) +
+      coord_flip(ylim = x_limits, clip = "off") +
+      theme_bw(base_size = 6) +
+      labs(y = fc, x = NULL, title = paste("Localization Distribution:", fc)) +
+      theme(panel.grid = element_blank(), legend.position = "none")
+
+    fname <- paste0("locdist_", clean_name(fc), "_", paste(clean_name(names(gene_sets)), collapse = "_"), ".pdf")
+    ggsave(file.path(out_dir, fname), p, width = 4, height = 4, device = cairo_pdf)
+  }
+
+  # --- Faceted version
+  facet_df <- full_plot_df %>%
+    pivot_longer(cols = all_of(log2fc_cols), names_to = "log2fc_col", values_to = "value") %>%
+    filter(!is.na(value))
+
+  p_all <- ggplot(facet_df, aes(y = value, x = y_group, fill = y_group)) +
+    gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+    ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
+    geom_boxplot(width = 0.15, outlier.shape = NA) +
+    scale_fill_manual(values = fill_colors) +
+    coord_flip(ylim = x_limits, clip = "off") +
+    facet_wrap(~ log2fc_col, ncol = 1) +
+    theme_bw(base_size = 6) +
+    labs(y = "log2FC", x = NULL, title = "Localization Distribution Across Comparisons") +
+    theme(panel.grid = element_blank(), legend.position = "none")
+
+  fname_all <- paste0("facet_locdist_", paste(clean_name(log2fc_cols), collapse = "_"), "_", paste(clean_name(names(gene_sets)), collapse = "_"), ".pdf")
+  ggsave(file.path(out_dir, fname_all), p_all, width = 4, height = 10, device = cairo_pdf)
+}
+
+
+
+# 2. Define annotations to be plotted 
+#gene_sets <- c("SynGO", "Presynaptic", "Postsynaptic")
+gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
+
+
+# 3. Define log2FC datasets to be plotted 
+log2fc_cols <- c(
+  "log2FC_ASAH1_Axon.ASAH1_Soma",
+  "log2FC_Ctrl_Axon.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon"
+)
+
+# 4. Call function and define output directory
+plot_annotation_distribution_batch(
+  df          = diff136_df_annotated,
+  gene_sets   = gene_sets,
+  log2fc_cols = log2fc_cols,
+  out_dir     = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
+)
+
+
+
+# Annotations:
+#"Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI","Plasma Membrane","Golgi.Genes","Lysosome.Genes","ER.genes","	Endosome.Genes","EndoType","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoLyso" "EarlyEndosome","RecyclingEndosome")
+
+
+```
 
 
 Think about this code 
