@@ -4,7 +4,7 @@ The folder contains scripts and evaluations realated to the neuroLSD project.\
 🚧 work in progress 🚧
 
 
-## 🧪 proteome
+## 🧪 proteomics
 Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons at day 50 of in-vitro differentiation.
 
 - `diff132_d50_nDIA.Rmd`: R Markdown pipeline for nDIA proteome analysis of whole cell iNeurons and iDA
