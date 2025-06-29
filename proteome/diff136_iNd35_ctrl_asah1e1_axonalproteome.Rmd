@@ -12,66 +12,33 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # load packackes & set project directory
 ```{r}
-out_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv"
+# --- Load Required Libraries ---
+# --- Core Tidyverse ---
+library(tidyverse)     # includes dplyr, ggplot2, tidyr, purrr, tibble, readr, stringr, etc.
 
-#install.packages("GWalkR")
-library(GWalkR)
-#install.packages("gptstudio")
-library(gptstudio)
-library(plyr)
-library(grid)
-library(stringr)
-library(tidyverse)
-library(dplyr)
-library(ggplot2)
-library(tibble)
-library(purrr)
-library(rlang)
-library(devtools)
-#install_github("vqv/ggbiplot")
-library(ggbiplot)
-library(ggrepel)
-library(scales)
-library(cowplot)
+# --- Plotting Enhancements ---
+library(ggdist)        # stat_halfeye
+library(gghalves)      # geom_half_point
+library(ggrepel)       # text labels (if used)
+library(pheatmap)      # for heatmaps
+library(RColorBrewer)  # custom color scales
+library(viridis)       # color scales (optional)
 library(NatParksPalettes)
-library(viridis)
-library(RColorBrewer)
-library(gridExtra)
-library(ggplot2)
-##install("gplots")
-library(gplots)
-library(ggVennDiagram)
-#library(dendextend)
-#install.packages("magick")
-#library(magick)
-library(png)
-#devtools::install_github("rlbarter/superheat")
-library(superheat)
-install.packages("fmsb")
-library(fmsb)
-#devtools::install_github("krassowski/complex-upset")
-library(ComplexUpset)
-#install.packages("UpSetR")
-library(UpSetR)
-library(data.table)
-library(plotly)
-library(gghighlight)
-#devtools::install_github("jbengler/tidyplots")
-library(tidyplots)
-library(tidyverse)
-library(tidyr)
-#install.packages("pheatmap")
-library(pheatmap)
-#install.packages("RColorBrewer")
-library(patchwork)
+library(scales) 
 
-# For the CRAN version
-#install.packages("bigstatsr")
-# For the latest version
-#remotes::install_github("privefl/bigstatsr")
-library(bigstatsr)
-library(irlba)
+# --- Plot Layouts ---
+library(gridExtra)     # arranging plots
+library(cowplot)       # aligning and combining plots
+library(patchwork)     # alternate plot composition syntax
+
+
+# --- Data Reshaping and Manipulation ---
+library(reshape2)      # melt, dcast (legacy but used in some places)
+library(forcats)       # factor reordering
+library(data.table)    # fast table handling (if used)
+
 library(lintr)
+library(devtools)
 
 ```
 
@@ -97,22 +64,9 @@ TO DO:
 # II. read in data & add protein organelle annotations
 - facet wrap by annotations & save 
 ```{r}
-library(tidyverse)      # dplyr ‑ tidyr ‑ ggplot2
-library(ggpmisc)        # stat_cor (optional)
-library(Cairo)          # cairo_pdf device (if you want PDF output)
-library(plotly)
-library(dplyr)
-library(stringr)
-library(pheatmap)
-library(scales)
-library(tidyr)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(readr)
-library(tibble)
-library(dplyr)
-
+# --- 0. create output directory 
+out_dir_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  read the data  
@@ -188,7 +142,7 @@ diff136_df_annotated <- diff136_df_annotated %>%
 
 # --- Step 4. save as csv file 
 write.csv(diff136_df_annotated, 
-          file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes/diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_annotated.csv", row.names = FALSE)
+          file = file.path(out_dir_dataframes,"diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_annotated.csv"), row.names = FALSE)
 ```
 
 
@@ -197,8 +151,8 @@ write.csv(diff136_df_annotated,
 # ─────────────────────────────────────────────────────────────────────────────
 # Heatmap (z-norm rows, cluster by cluster)
 # ─────────────────────────────────────────────────────────────────────────────
-out_dir  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
-pdf_file <- file.path(out_dir, "diff136_heatmap_axonalProt_ctrl_asah1.pdf")
+out_dir_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
+pdf_file <- file.path(out_dir_heatmap, "diff136_heatmap_axonalProt_ctrl_asah1.pdf")
 
 # --- 1. set annotations and sample names 
 expr_cols <- c(
@@ -294,7 +248,7 @@ mat_with_cluster <- cbind(cluster = row_annotation$cluster, mat)
 
 # Write to CSV with cluster
 write.csv(mat_with_cluster,
-          file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes/diff136_iNd35_heatmap.csv",
+          file = file.path(out_dir_heatmap,"diff136_iNd35_heatmap.csv"),
           row.names = TRUE)
 ```
 
@@ -350,8 +304,8 @@ diff136_clusterPlot <- ggplot(violin_df, aes(x = Sample, y = log2FC, fill = Samp
 diff136_clusterPlot
 
 # --- 5. save plot as PDF
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps/diff136_clusterPlot.pdf", 
+ggsave(file.path(out_dir_heatmap, 
+  "diff136_clusterPlot.pdf"), 
   diff136_clusterPlot, width = 6, height = 6, device = cairo_pdf)
 ```
 
@@ -362,12 +316,11 @@ calculate annotated-based correlation across all and also facet wrap them
 # ─────────────────────────────────────────────────────────────────────────────
 # Correlation of Selected Annotations
 # ─────────────────────────────────────────────────────────────────────────────
-library(pheatmap)
-library(gridExtra)
-library(RColorBrewer)
-library(tibble)
-library(dplyr)
-library(purrr)
+
+# --- 0. create output directory 
+out_dir_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
 
 
 # --- 1. Copy out log2FC & annotated columns for wrangling
@@ -384,6 +337,8 @@ annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetai
 
 length(log2fc_cols)  # sanity check
 length(annotation_cols)
+
+
 
 # --- 2. Compute Spearman correlation between log2FC and annotations
 org_corr_df <- map_dfr(annotation_cols, function(ann) {
@@ -402,6 +357,7 @@ org_corr_df <- map_dfr(annotation_cols, function(ann) {
     )
   })
 })
+
 
 
 # --- 3. Summary heatmap (log2FC × Organelle)
@@ -442,15 +398,18 @@ axonprotCorr <- pheatmap(org_corr_mat,
 
 axonprotCorr
 
+
+
 # --- 4. Save heatmap as PDF and csv file 
-pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/axonprotCorr.pdf",
+pdf(file.path(out_dir_corrplots, "axonprotCorr.pdf"),
     width = 12, height = 16, useDingbats = FALSE)
 print(axonprotCorr)
 dev.off()
 
 write.csv(org_corr_mat,
-          file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/axonprotCorr.csv",
+          file = file.path(out_dir_corrplots, "axonprotCorr.csv"),
           row.names = TRUE)
+
 
 
 # --- 5. Faceted correlation plots (per-organelle, KO×KO)
@@ -487,12 +446,12 @@ heatmap_list <- lapply(annotation_cols, function(org) {
 })
 heatmap_list <- Filter(Negate(is.null), heatmap_list)
 
+
+
 # --- 7. Save all in a faceted PDF
-pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/diff136_log2FC_annotation_corr_facet.pdf",
-    width = 35, height = 35, useDingbats = FALSE)
-
-grid.arrange(grobs = lapply(heatmap_list, `[[`, "gtable"), ncol = 4)
-
+pdf(file.path(out_dir_corrplots, "diff136_log2FC_annotation_corr_facet.pdf"),
+    width = 12, height = 16, useDingbats = FALSE)
+print(axonprotCorr)
 dev.off()
 
 
@@ -530,7 +489,7 @@ axonprotCorr_subset <- pheatmap(org_corr_subset,
 )
 
 # Save to PDF
-pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/axonprotCorr_subset.pdf",
+pdf(file.path(out_dir_corrplots, "axonprotCorr_subset.pdf"),
     width = 10, height = 12, useDingbats = FALSE)
 print(axonprotCorr_subset)
 dev.off()
@@ -569,7 +528,7 @@ heatmap_list_selected <- lapply(annotation_cols, function(org) {
 heatmap_list_selected <- Filter(Negate(is.null), heatmap_list_selected)
 
 # Save to PDF
-pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/diff136_selected_log2FC_annotation_corr_facet.pdf", width = 35, height = 35, useDingbats = FALSE)
+pdf(file.path(out_dir_corrplots, "diff136_selected_log2FC_annotation_corr_facet.pdf"), width = 35, height = 35, useDingbats = FALSE)
 grid.arrange(grobs = lapply(heatmap_list_selected, `[[`, "gtable"), ncol = 4)
 dev.off()
 
@@ -582,6 +541,10 @@ dev.off()
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
 # ─────────────────────────────────────────────────────────────────────────────
+# --- 0. create output directory 
+out_dir_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
 
 # 1. Define relevant log2FC and annotation columns
 log2fc_cols <- grep("^log2FC_", colnames(diff136_df_annotated), value = TRUE)
@@ -622,8 +585,7 @@ loc_dist_overview_all <- ggplot(mean_log2fc_df, aes(x = reorder(Annotation, mean
   labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation (All)") +
   theme_bw(base_size = 8)
 
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_loc_dist_overview_all.pdf",
+ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_all.pdf"),
   loc_dist_overview_all,
   width = 14, height = 12, device = cairo_pdf
 )
@@ -653,8 +615,7 @@ loc_dist_overview_subset <- ggplot(mean_log2fc_subset_df, aes(x = reorder(Annota
 
 
 # --- 5. Save to PDF
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_loc_dist_overview_selected.pdf",
+ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected.pdf"),
   loc_dist_overview_subset,
   width = 14, height = 12, device = cairo_pdf
 )
@@ -670,6 +631,12 @@ ggsave(
 
 ## IIe.  Absolute & RoR comparison of Axonal Proteome 
 ```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Analysis of axonal proteome in Ctrl & ASAH1-/- neurons 
+# do both absolute (in genotype comparison to soma fraction) and ratio of ratio (RoR),
+# norm. to WC in genotype 
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Calculate RoR and call significance:
 # 1. Calculate RoR
 diff136_df_annotated <- diff136_df_annotated %>%
@@ -738,8 +705,7 @@ sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
   theme_bw(base_size = 8) +
   theme(panel.grid = element_blank())
 
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_sig_hits_annotation_absolute_barplot.pdf",
+ggsave(file.path(out_dir_organelle_dist,"diff136_sig_hits_annotation_absolute_barplot.pdf"),
   sig_plot_abs,
   width = 10, height = 8, device = cairo_pdf
 )
@@ -756,8 +722,7 @@ sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
   theme_bw(base_size = 8) +
   theme(panel.grid = element_blank())
 
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_sig_hits_annotation_ror_barplot.pdf",
+ggsave(file.path(out_dir_organelle_dist, "diff136_sig_hits_annotation_ror_barplot.pdf"),
   sig_plot_ror,
   width = 10, height = 8, device = cairo_pdf
 )
@@ -773,7 +738,7 @@ sig_gene_summary <- sig_long_df %>%
 
 write.csv(
   sig_gene_summary,
-  file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes/diff136_sig_hits_annotation_geneList_abs_vs_ror.csv",
+  file = file.path(out_dir, "diff136_sig_hits_annotation_geneList.csv"),
   row.names = FALSE
 )
 ```
@@ -789,6 +754,11 @@ library(ggplot2)
 library(ggdist)
 #install.packages("gghalves")
 library(gghalves)
+
+# --- 0. create output directory 
+out_dir_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
 
 vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
                    "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
@@ -857,16 +827,17 @@ ASAH1_axonXsoma_loc_rainbowplot <- ggplot(scatter_df, aes(y = log2FC_ASAH1_Axon.
     legend.position = "none"
   )
 
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/diff136_lysosome_vATPase_nucleus_scatter.pdf", ASAH1_axonXsoma_loc_rainbowplot, 
-  width = 4, height = 4, device = cairo_pdf
+
+ggsave(file.path(out_dir_rainbow, "diff136_lysosome_vATPase_nucleus_scatter.pdf"),
+  ASAH1_axonXsoma_loc_rainbowplot,
+  width = 10, height = 8, device = cairo_pdf
 )
 
 ```
 
 
 
-### IIe. Rainbowplot of User-select Annotations for axon--soma localization distribution
+### IIf2. Rainbowplot of User-select Annotations for axon--soma localization distribution
 ```{r}
 # 1. Function for plotting user-defined gene sets for axon-soma localization distribution
 #    saves single plots and faceted version of the three subcell comparisons
@@ -962,9 +933,8 @@ plot_annotation_distribution_batch(
   df          = diff136_df_annotated,
   gene_sets   = gene_sets,
   log2fc_cols = log2fc_cols,
-  out_dir     = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
+  out_dir     = out_dir_rainbow
 )
-
 
 
 # Annotations:
@@ -972,6 +942,12 @@ plot_annotation_distribution_batch(
 
 
 ```
+
+
+
+
+
+
 
 
 Think about this code 
