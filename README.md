@@ -1,7 +1,7 @@
 ![ProjectLogo](/logoNeuroLSD.jpg)
 # neuroLSD
-The folder contains scripts and evaluations realated to the neuroLSD project.
-
+The folder contains scripts and evaluations realated to the neuroLSD project.\
+🚧 work in progress 🚧
 ## proteome
 Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons at day 50 of in-vitro differentiation.
 
