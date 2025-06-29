@@ -1,0 +1,1414 @@
+---
+title: "cellposeSAM_CNER_Calcium-liveCell"
+output: html_document
+date: "2025-05-20"
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# I. Load packackes
+```{r}
+library(devtools)
+devtools::install_github("simo-91/CalNetExploreR")
+library(CalNetExploreR)
+
+library(plyr)
+library(stringr)
+library(tidyverse)
+library(dplyr)
+library(tibble)
+library(purrr)
+
+library(RColorBrewer)
+library(gridExtra)
+library(ggplot2)
+library(cowplot)
+library(NatParksPalettes)
+library(viridis)
+library(tidyplots)
+library(cowplot)
+
+library(reshape2) #For data reshaping and melting data frames.
+library(ggdendro) #For creating dendrogram plots.
+library(ggpubr) #For publication-ready plots with additional theme options.
+library(grid) #For viewport manipulation and custom plot arrangements.
+library(igraph) # For creating and analyzing networks and graphs.
+library(ggraph) #For plotting networks and graphs with ggplot2.
+library(factoextra) #For visualizing PCA results and extracting eigenvalues.
+library(readr) # to import data from .csv files
+
+```
+
+# II. Soma Calcium evaluation 
+=> cellposeSAM based evaluation %>% into batch dF/F processing script 
+=> used cellposeSAM for image segementation and measurement of ROIs
+=> cellposeSAM output:
+- each row is one soma followed by mean intensities saved across columns 
+- each new timepoint is new column 
+
+### IIa. ∆F/F processing, correlation-based network calculation & activity statistics 
+```{r}
+# ==========================================================
+# CellposeSAM-based Calcium Imaging Batch Analysis Pipeline
+# ==========================================================
+# This script integrates output from CellposeSAM, processes dF/F traces, 
+# binarizes events, computes correlation-based networks (CNER), and 
+# extracts per-cell statistics.
+
+# -----------------------------
+# 1. Load Required Libraries
+# -----------------------------
+library(tidyverse)
+library(CalNetExploreR)  # For CNER network building
+library(zoo)             # Rolling operations
+library(ggplot2)
+library(patchwork)       # Multi-plot layout
+library(pheatmap)        # Correlation matrix plotting
+library(plyr)
+library(dplyr)
+library(igraph)          # Network analysis
+library(signal)
+library(readr)
+library(tidyr)
+library(purrr)
+
+# -----------------------------
+# 2. User Settings
+# -----------------------------
+
+base_path <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Microscopy/20241127_diff129_iN-iDA_Ctrl-ASAH1_Calcium-liveCell/cpsamWF/nd2_labels/"  # Path to CellposeSAM output
+
+# CHANGE HERE: Rolling window size for baseline (frames)
+baseline_window <- 150
+
+# CHANGE HERE: framerate per second 
+frame_rate     <- 10     
+
+# CHANGE HERE: Optional smoothing over raw intensity traces (frames)
+smoothing_k <- 1  # Set to NULL to disable smoothing
+
+# CHANGE HERE: Window for rolling baseline calculation in second pass
+window <- 250
+
+# CHANGE HERE: Threshold for binarization (fraction of SD)
+threshold_factor <- 0.2
+
+# CHANGE HERE: Correlation threshold for network (used in make_network())
+correlation_threshold <- 0.2
+
+# -----------------------------
+# 3. Helper Function - ΔF/F
+# -----------------------------
+# Approach: Rolling Percentile + Edge-Safe
+calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, percentile = 0.2) {
+  if (!is.null(smoothing_k)) {
+    trace <- zoo::rollmean(trace, k = smoothing_k, fill = NA)
+  }
+
+  # Handle short or NA-filled traces
+  if (length(trace) < window || all(is.na(trace))) {
+    return(rep(NA, length(trace)))
+  }
+
+  baseline <- zoo::rollapply(trace, width = window,
+    FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
+    align = "center", fill = NA, partial = TRUE)  # <- partial allows shorter edges
+
+  baseline <- pmax(baseline, 1e-3)  # Avoid division by zero
+  dff <- (trace - baseline) / baseline
+  pmax(dff, 0)  # Clip negatives
+}
+
+# -----------------------------
+# 4. File Loader + Merger
+# -----------------------------
+process_pair <- function(centroid_file) {
+  intensity_file <- sub("_centroids_valid.csv$", "_intensity.csv", centroid_file)
+  if (!file.exists(intensity_file)) return(NULL)
+
+  centroids <- read_csv(centroid_file, show_col_types = FALSE) %>%
+               mutate(ObjectNumber = label)
+
+  intensity <- read_csv(intensity_file, show_col_types = FALSE) %>%
+               select(-file)
+
+  traces_dff <- intensity %>%
+                mutate(across(-time, ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
+
+  traces_long <- traces_dff %>%
+    mutate(ImageNumber = row_number()) %>%
+    pivot_longer(cols = -c(time, ImageNumber), names_to = "ObjectNumber", values_to = "Intensity_IntegratedIntensity_Fura", values_drop_na = TRUE) %>%
+    mutate(ObjectNumber = as.integer(ObjectNumber))
+
+  traces_long %>%
+    inner_join(centroids, by = "ObjectNumber") %>%
+    mutate(file = basename(centroid_file)) %>%
+    select(ImageNumber, ObjectNumber, Intensity_IntegratedIntensity_Fura, centroid_x, centroid_y, file)
+}
+
+# -----------------------------
+# 5. Load and Combine All Data
+# -----------------------------
+combined_df <- list.files(base_path, pattern = "_centroids_valid.csv$", full.names = TRUE) |>
+               map_dfr(process_pair)
+
+
+# -----------------------------
+# 6. Initialize Result Lists
+# -----------------------------
+cor_list <- list()
+comm_list <- list()
+events_list <- list()
+
+summary_list <- list()   ## <‑‑‑  needed for step 9 norm.data
+
+# -----------------------------
+# 7. Per-Sample Processing
+# -----------------------------
+all_sample_ids <- unique(combined_df$file)
+
+for (sample_id in all_sample_ids) {
+  clean_sample_id <- gsub("_centroids_valid.csv$", "", basename(sample_id))
+  output_dir <- file.path(base_path, clean_sample_id)
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+  df_sample <- dplyr::filter(combined_df, file == sample_id)
+
+  # --- dF/F processing ---
+  # df_processed <- df_sample %>%
+  #   group_by(ObjectNumber) %>%
+  #   arrange(ImageNumber) %>%
+  #   mutate(
+  #     baseline = rollapply(Intensity_IntegratedIntensity_Fura, width = window, FUN = mean, align = "center", fill = NA),
+  #     dF_F = (Intensity_IntegratedIntensity_Fura - baseline) / baseline,
+  #     dF_F = ifelse(dF_F < 0 | is.na(dF_F), 0, dF_F),
+  #     dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
+  #     dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
+  #     spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
+  #   ) %>%
+  #   ungroup()
+
+    df_processed <- df_sample %>%
+      group_by(ObjectNumber) %>%
+      arrange(ImageNumber) %>%
+      mutate(
+        dF_F = calculate_dff(Intensity_IntegratedIntensity_Fura,
+                             window = baseline_window,
+                             smoothing_k = smoothing_k,
+                             percentile = 0.2),
+        dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
+        dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
+        spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
+      ) %>%
+      ungroup()
+    
+  # --- Plot a representative trace ---
+  example_cell <- unique(df_processed$ObjectNumber)[1]
+  df_trace <- dplyr::filter(df_processed, ObjectNumber == example_cell)
+
+  p_raw    <- ggplot(df_trace, aes(x = ImageNumber, y = Intensity_IntegratedIntensity_Fura)) + geom_line(color = "black") + theme_minimal()
+  p_scaled <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_scaled)) + geom_line(color = "dodgerblue") + theme_minimal()
+  p_binary <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_binary)) + geom_step(color = "firebrick2") + theme_minimal()
+
+  ggsave(file.path(output_dir, paste0(clean_sample_id, "_Traces.pdf")), p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
+
+  # --- Correlation matrix ---
+  binary_matrix <- df_processed %>%
+    select(ObjectNumber, ImageNumber, dF_F_binary) %>%
+    pivot_wider(names_from = ImageNumber, values_from = dF_F_binary) %>%
+    arrange(ObjectNumber)
+
+  mat <- as.matrix(binary_matrix %>% select(-ObjectNumber))
+  rownames(mat) <- binary_matrix$ObjectNumber
+  corr <- cor(t(mat), use = "pairwise.complete.obs")
+  corr[!is.finite(corr)] <- 0
+
+  pdf(file.path(output_dir, paste0(clean_sample_id, "_CorrelationMatrix.pdf")), width = 6, height = 6)
+  pheatmap(corr, clustering_method = "complete", main = "Correlation Matrix", border_color = NA, fontsize = 6)
+  dev.off()
+
+  # --- Firing statistics ---
+firing_stats <- df_processed %>%
+  arrange(ObjectNumber, ImageNumber) %>%
+  group_by(ObjectNumber) %>%
+  mutate(rising_edge = dF_F_binary == 1 & lag(dF_F_binary, default = 0) == 0) %>%
+  summarise(
+    firing_events   = sum(rising_edge, na.rm = TRUE),
+    total_frames    = length(dF_F_binary),
+    active_frames   = sum(dF_F_binary, na.rm = TRUE),
+    percent_active  = 100 * active_frames / total_frames,
+    spike_amplitude = mean(dF_F_scaled[dF_F_binary == 1], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Sample = sample_id,
+    Group = ifelse(grepl("Ctrl", sample_id, ignore.case = TRUE), "Control", "ASAH1")
+  )
+
+  events_list[[clean_sample_id]] <- firing_stats
+
+  
+  
+  ## -------- A.  constants for this movie --------------------------------
+  frame_rate     <- 10                     # change if needed
+  n_cells        <- n_distinct(df_processed$ObjectNumber)
+  n_frames_total <- max(df_processed$ImageNumber)          # assumes no gaps
+  duration_min   <- n_frames_total / (frame_rate*60)       # movie length (min)
+  
+  ## -------- B.  add *per‑cell* firing‑rate‑per‑min ----------------------
+  firing_stats <- firing_stats %>%
+    mutate(firing_rate_per_min =
+             firing_events / duration_min)   # already normalised for time
+  
+  ## -------- C.  *sample‑level* aggregates, normalised for # labels ------
+  sample_summary <- firing_stats %>%
+    summarise(
+      Sample                       = clean_sample_id,
+      Total_cells                  = n_cells,
+      ## --- firing events -----------------------------------------------
+      Total_firing_events          = sum(firing_events, na.rm = TRUE),
+      Firing_events_per_min        = Total_firing_events / duration_min,
+      ##   …and now      ÷ number of ROIs
+      Firing_events_per_min_norm   = Firing_events_per_min / n_cells,
+      ## --- activity -----------------------------------------------------
+      Cells_active                 = sum(firing_events > 0, na.rm = TRUE),
+      Percent_cells_active         = 100 * Cells_active / n_cells,
+      ##   per‑ROI normalisation of “% active frames” metric
+      Mean_percent_active_frames   = mean(percent_active, na.rm = TRUE),
+      Mean_percent_active_frames_norm = Mean_percent_active_frames      # already
+    )
+  
+  ## -------- D.  stash for later -----------------------------------------
+  summary_list[[clean_sample_id]] <- sample_summary
+    
+  
+  # --- Correlation Network Extraction ---
+  binarized_matrix <- mat
+  coordinates <- df_processed %>%
+    group_by(ObjectNumber) %>%
+    slice(1) %>%
+    ungroup() %>%
+    transmute(Cell = ObjectNumber, X = centroid_x, Y = centroid_y, Label = paste0("Cell_", ObjectNumber)) %>%
+    arrange(Cell)
+
+  binarized_matrix <- binarized_matrix[as.character(coordinates$Cell), , drop = FALSE]
+
+  g <- make_network(binarized_matrix, lag.max = 1, correlation_threshold = correlation_threshold)
+
+  if (vcount(g) > 0 && ecount(g) > 0) {
+    edge_df <- as_data_frame(g, what = "edges")
+    colnames(edge_df) <- c("Cell1", "Cell2", "F.Corr")
+
+    comms <- cluster_louvain(g)
+    membership_df <- data.frame(
+      CellIndex = seq_len(vcount(g)),
+      Community = membership(comms),
+      Label = rownames(binarized_matrix)
+    )
+    community_sizes <- sizes(comms)
+    membership_df$CommunitySize <- community_sizes[as.character(membership_df$Community)]
+
+    # # --- Plot and save network ---
+    # pdf(file.path(output_dir, paste0(clean_sample_id, "_CNER_network.pdf")), width = 6, height = 6)
+    # plot(g,
+    #      vertex.label = NA,
+    #      vertex.color = membership(comms),
+    #      vertex.size = 3,
+    #      layout = layout_with_fr(g),
+    #      edge.color = "gray70",
+    #      main = paste("CNER Network -", clean_sample_id))
+    # dev.off()
+    # 
+    # Generate community colors
+    comms <- cluster_louvain(g)
+    comm_colors <- rainbow(length(unique(membership(comms))))
+    names(comm_colors) <- as.character(sort(unique(membership(comms))))
+    
+    # Plot with legend
+    pdf(file.path(output_dir, paste0(clean_sample_id, "_CNER_network.pdf")), width = 7, height = 6)
+    layout(matrix(c(1, 2), nrow = 1), widths = c(4.5, 2))  # network + legend
+    
+    # --- 1. Plot the network
+    par(mar = c(1, 1, 3, 1))
+    plot(g,
+         vertex.label = NA,
+         vertex.color = comm_colors[as.character(membership(comms))],
+         vertex.size = 3,
+         layout = layout_with_fr(g),
+         edge.color = "gray80",
+         main = paste("CNER Network -", clean_sample_id))
+    
+    # --- 2. Legend
+    par(mar = c(1, 0, 3, 1))
+    plot.new()
+    legend("center",
+           legend = paste("Community", sort(unique(membership(comms)))),
+           col = comm_colors,
+           pch = 16, pt.cex = 1.5,
+           bty = "n", cex = 0.9)
+    dev.off()
+
+    # Save sample ID
+    edge_df$Sample <- clean_sample_id
+    membership_df$Sample <- clean_sample_id
+
+    cor_list[[clean_sample_id]]  <- edge_df
+    comm_list[[clean_sample_id]] <- membership_df
+  }
+
+  # --- Save per-sample outputs ---
+  write.csv(firing_stats, file.path(output_dir, paste0(clean_sample_id, "_firing_stats.csv")), row.names = FALSE)
+  write.csv(df_processed,  file.path(output_dir, paste0(clean_sample_id, "_df_processed.csv")), row.names = FALSE)
+}
+
+# -----------------------------
+# 8. Save Combined Outputs
+# -----------------------------
+write.csv(bind_rows(cor_list),    file.path(base_path, "combined_cell_pairwise_correlations.csv"), row.names = FALSE)
+write.csv(bind_rows(comm_list),   file.path(base_path, "combined_cell_community_membership.csv"),  row.names = FALSE)
+write.csv(bind_rows(events_list), file.path(base_path, "combined_events_per_min_results.csv"),     row.names = FALSE)
+
+
+# ----------------------------------------------------------------------
+# 9.  Save sample‑level, normalised metrics
+# ----------------------------------------------------------------------
+normalised_metrics <- bind_rows(summary_list)
+
+write.csv(normalised_metrics,
+          file.path(base_path,
+                    "combined_sample_level_normalised_metrics.csv"),
+          row.names = FALSE)
+
+
+```
+
+### IIb.  plot cellposeSAM / CNER results 
+```{r}
+## ---------------------------------------------------------------------------
+##  Plot cellposeSAM / CNER results  –  incl. events · min⁻¹ (± SEM)
+## ---------------------------------------------------------------------------
+library(dplyr)  
+library(tidyverse)          # ggplot2, dplyr, …
+library(Cairo)              # cairo_pdf device
+library(patchwork)          # plot layout
+library(rlang)
+library(purrr)        # for imap_dfr()
+library(tidyverse)
+library(ggsignif)
+library(ggpubr)
+
+## helper: bind & be sure a “Sample” column exists ---------------------------
+bind_with_sample <- function(lst) {
+  ## imap_dfr() gives you each element (.x) *and* its list name (.y)
+  imap_dfr(lst, ~ {
+    if (!"Sample" %in% names(.x))
+      .x <- mutate(.x, Sample = .y)  # add from list‑element name
+    .x
+  })
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. collapse lists  →  data‑frames   (guaranteed to have ‘Sample’)
+# ─────────────────────────────────────────────────────────────────────────────
+events_df <- bind_with_sample(events_list)
+comm_df   <- bind_with_sample(comm_list)
+
+# sanity‑check ― now TRUE
+stopifnot("Sample" %in% names(events_df),
+          "Sample" %in% names(comm_df))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. add genotype label
+# ─────────────────────────────────────────────────────────────────────────────
+add_genotype <- function(df) {
+  df %>%
+    mutate(Genotype = case_when(
+      str_detect(Sample, "Ctrl")  & str_detect(Sample, "KCL") ~ "ControlKCL",
+      str_detect(Sample, "Ctrl")  & !str_detect(Sample, "KCL") ~ "Control",
+      str_detect(Sample, "ASAH1") & str_detect(Sample, "KCL") ~ "ASAH1KCL",
+      str_detect(Sample, "ASAH1") & !str_detect(Sample, "KCL") ~ "ASAH1",
+      TRUE ~ NA_character_
+    )) %>%
+    drop_na(Genotype)
+}
+events_df <- add_genotype(events_df)
+comm_df   <- add_genotype(comm_df)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. ROI count  +  (un)normalised firing–rate
+#    assume recordings were taken at 1 frame · s⁻¹
+# ─────────────────────────────────────────────────────────────────────────────
+frame_rate <- 1                              # frame ⋅ s⁻¹
+events_df <- events_df %>% 
+  group_by(Sample) %>% 
+  mutate(
+    n_labels          = n(),                             # ROI count
+    events_per_min    = firing_events /
+                        (total_frames / (frame_rate * 60)),
+    events_per_min_norm = events_per_min / n_labels
+  ) %>% 
+  ungroup()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. palette
+# ─────────────────────────────────────────────────────────────────────────────
+geno_cols <- c("Control"     = "grey76",
+               "ControlKCL"  = "grey40",
+               "ASAH1"       = "dodgerblue",
+               "ASAH1KCL"    = "navy")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. helper  – bar + scatter + SEM error‑bars
+# ─────────────────────────────────────────────────────────────────────────────
+plot_metric <- function(dat, metric, ylab, outfile, base_dir) {
+  require(ggpubr)
+
+  # check that metric exists
+  if (!metric %in% names(dat)) {
+    stop(paste("Metric", metric, "not found in data"))
+  }
+
+  metric_sym <- rlang::sym(metric)
+
+  # Ensure factor order
+  dat <- dat %>%
+    mutate(Genotype = factor(Genotype,
+                             levels = c("Control", "ControlKCL", "ASAH1", "ASAH1KCL")))
+
+  # Group stats
+  mean_dat <- dat %>%
+    group_by(Genotype) %>%
+    summarise(
+      mean_val = mean(!!metric_sym, na.rm = TRUE),
+      sem      = sd(!!metric_sym, na.rm = TRUE) / sqrt(n()),
+      .groups  = "drop"
+    )
+
+  # ANOVA
+  aov_model <- aov(as.formula(paste0(metric, " ~ Genotype")), data = dat)
+  aov_pval  <- summary(aov_model)[[1]][["Pr(>F)"]][1]
+
+  # Pairwise comparisons
+  filtered_dat <- dplyr::filter(dat, !is.na(!!metric_sym))
+  pw <- pairwise.t.test(filtered_dat[[metric]], filtered_dat$Genotype, p.adjust.method = "holm")
+
+  if (!is.null(pw$p.value)) {
+    pairwise_df <- as.data.frame(as.table(pw$p.value), stringsAsFactors = FALSE) %>%
+      dplyr::filter(!is.na(Freq) & Freq < 0.05) %>%
+      dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq)
+
+    if (nrow(pairwise_df) > 0) {
+      pairwise_df <- pairwise_df %>%
+        mutate(
+          y.position = seq(from = max(dat[[metric]], na.rm = TRUE) * 1.05,
+                           by   = max(dat[[metric]], na.rm = TRUE) * 0.05,
+                           length.out = n()),
+          p.adj = signif(p.value, 2),
+          group1 = factor(group1, levels = levels(dat$Genotype)),
+          group2 = factor(group2, levels = levels(dat$Genotype))
+        )
+    }
+  } else {
+    pairwise_df <- tibble(group1 = character(), group2 = character(), p.value = numeric())
+  }
+
+  # Plot violin plot 
+p <- ggplot(dat, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
+  geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
+  geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85, adjust = 1.5) +
+  geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = geno_cols) +
+  labs(y = ylab, x = NULL) +
+  theme_bw(base_size = 6) +
+  theme(legend.position = "none",
+        aspect.ratio = 2,
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+  # Add pairwise significance bars
+  if (nrow(pairwise_df) > 0) {
+    p <- p + stat_pvalue_manual(pairwise_df,
+                                label = "p.adj",
+                                y.position = "y.position",
+                                xmin = "group1",
+                                xmax = "group2",
+                                tip.length = 0.01,
+                                size = 2,
+                                inherit.aes = FALSE)
+  }
+
+  # Save plot
+  ggsave(file.path(base_dir, paste0(outfile, ".pdf")),
+         p, width = 2, height = 5, device = cairo_pdf)
+
+  # Return plot + pvals
+  list(
+    plot = p,
+    pval = bind_rows(
+      tibble(Metric = metric, group1 = "ANOVA", group2 = "", p.value = aov_pval),
+      pairwise_df %>% mutate(Metric = metric) %>%
+        select(Metric, group1, group2, p.value)
+    )
+  )
+}
+# ---------------------------------------------------------------------------
+# 6.  output directory
+# ---------------------------------------------------------------------------
+base_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Microscopy/20241127_diff129_iN-iDA_Ctrl-ASAH1_Calcium-liveCell/cpsamWF/nd2_labels/"
+
+# ---------------------------------------------------------------------------
+# 7.  ORIGINAL (per‑cell) metrics  – still use events_df
+# ---------------------------------------------------------------------------
+# Capture p-values for Export
+p_fire_orig_result   <- plot_metric(events_df, "firing_events", "Firing Events", "fire_events", base_dir)
+p_active_orig_result <- plot_metric(events_df, "percent_active", "% Active Frames", "percent_active", base_dir)
+p_amp_orig_result    <- plot_metric(events_df, "spike_amplitude", "Spike Amplitude", "spike_amplitude", base_dir)
+
+# extract plots
+p_fire_orig   <- p_fire_orig_result$plot
+p_active_orig <- p_active_orig_result$plot
+p_amp_orig    <- p_amp_orig_result$plot
+
+
+
+
+
+
+# ╭──────────────────────────────────────────────────────────────────────────╮
+# │  NEW :  sample‑level normalised metrics from `normalised_metrics`       │
+# ╰──────────────────────────────────────────────────────────────────────────╯
+#   A) load the file that the analysis block produced
+norm_file <- file.path(base_dir,
+                       "combined_sample_level_normalised_metrics.csv")
+normalised_metrics <- read.csv(norm_file, check.names = FALSE)
+
+#   B) add genotype label (re‑use helper)
+normalised_metrics <- add_genotype(normalised_metrics)
+
+#   C) make bar‑plots
+p_fire_norm_result <- plot_metric(normalised_metrics,
+                                  "Firing_events_per_min_norm",
+                                  "Events · min⁻¹ / ROI",
+                                  "fire_events_norm", base_dir)
+
+p_active_norm_result <- plot_metric(normalised_metrics,
+                                    "Mean_percent_active_frames_norm",
+                                    "% Active / ROI",
+                                    "percent_active_norm", base_dir)
+
+p_fire_norm   <- p_fire_norm_result$plot
+p_active_norm <- p_active_norm_result$plot
+
+# ---------------------------------------------------------------------------
+# 8.  Community‑size plot with ANOVA + pairwise stats
+# ---------------------------------------------------------------------------
+comm_df <- add_genotype(comm_df) %>%
+  mutate(Genotype = factor(Genotype,
+           levels = c("Control", "ControlKCL", "ASAH1", "ASAH1KCL")))
+
+comm_df <- comm_df %>%
+  mutate(CommunitySize = as.numeric(CommunitySize))
+
+comm_dat <- comm_df %>%
+  group_by(Genotype) %>%
+  summarise(mean_size = mean(CommunitySize, na.rm = TRUE),
+            sem       = sd(CommunitySize, na.rm = TRUE) / sqrt(n()),
+            .groups   = "drop")
+
+# --- Global ANOVA
+comm_aov <- aov(CommunitySize ~ Genotype, data = comm_df)
+comm_aov_pval <- summary(comm_aov)[[1]][["Pr(>F)"]][1]
+
+# --- Pairwise comparisons
+comm_pw <- pairwise.t.test(comm_df$CommunitySize, comm_df$Genotype, p.adjust.method = "holm")
+
+if (is.null(comm_pw$p.value)) {
+  comm_pw_df <- tibble(group1 = character(0),
+                       group2 = character(0),
+                       p.value = numeric(0))
+} else {
+  comm_pw_df <- as.data.frame(as.table(comm_pw$p.value), stringsAsFactors = FALSE) %>%
+    dplyr::filter(!is.na(Freq) & Freq < 0.05) %>%
+    dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq)
+}
+
+# Add y positions and format annotations
+if (nrow(comm_pw_df) > 0) {
+  comm_pw_df <- comm_pw_df %>%
+    mutate(
+      y_position = seq(from = max(comm_df$CommunitySize, na.rm = TRUE) * 1.05,
+                       by = max(comm_df$CommunitySize, na.rm = TRUE) * 0.05,
+                       length.out = n()),
+      annotations = signif(p.value, 2)
+    )
+}
+
+# --- Plot
+p_comm <- ggplot(comm_df, aes(x = Genotype, y = CommunitySize, fill = Genotype)) +
+  geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
+  geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85, adjust = 1.5) +
+  geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = geno_cols) +
+  labs(y = "Community Size", x = NULL) +
+  theme_bw(base_size = 6) +
+  theme(legend.position = "none",
+        aspect.ratio    = 2,
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+# Add significance brackets manually
+if (nrow(comm_pw_df) > 0) {
+  comm_pw_df <- comm_pw_df %>%
+    mutate(
+      y.position = seq(from = max(comm_df$CommunitySize, na.rm = TRUE) * 1.05,
+                       by = max(comm_df$CommunitySize, na.rm = TRUE) * 0.05,
+                       length.out = n()),
+      p.adj = signif(p.value, 2),
+      group1 = factor(group1, levels = levels(comm_df$Genotype)),
+      group2 = factor(group2, levels = levels(comm_df$Genotype))
+    )
+
+  p_comm <- p_comm +
+    stat_pvalue_manual(comm_pw_df,
+                       label = "p.adj",
+                       y.position = "y.position",
+                       xmin = "group1",
+                       xmax = "group2",
+                       tip.length = 0.01,
+                       size = 2,
+                       inherit.aes = FALSE)
+}
+
+# Save
+ggsave(file.path(base_dir, "plot_community_size.pdf"),
+       p_comm, width = 2, height = 3, device = cairo_pdf)
+
+# ---------------------------------------------------------------------------
+# 9.  combined six‑panel figure
+# ---------------------------------------------------------------------------
+neuro_combinedplot <-
+  ((p_fire_orig | p_active_orig | p_amp_orig) /
+   (p_fire_norm | p_active_norm | p_comm    )) +
+  plot_layout(heights = c(1, 1)) &
+  theme(plot.margin = margin(.01, 10, .01, 10))
+
+ggsave(file.path(base_dir, "neuro_combinedplot.pdf"),
+       neuro_combinedplot, width = 6, height = 4, device = cairo_pdf)
+
+# ---------------------------------------------------------------------------
+# 10. combine and save all stat. values 
+# ---------------------------------------------------------------------------
+
+# Save All P-values in csv file in prev. defined outdir 
+all_pvals <- bind_rows(
+  p_fire_orig_result$pval,
+  p_active_orig_result$pval,
+  p_amp_orig_result$pval,
+  p_fire_norm_result$pval,
+  p_active_norm_result$pval,
+  bind_rows(
+  tibble(Metric = "CommunitySize", group1 = "ANOVA", group2 = "", p.value = comm_aov_pval),
+  comm_pw_df %>% mutate(Metric = "CommunitySize") %>%
+    select(Metric, group1, group2, p.value)
+  )
+)
+
+
+all_pvals <- all_pvals %>%
+  select(Metric, group1, group2, p.value)
+
+
+write.csv(all_pvals,
+          file = file.path(base_dir, "calcium_metrics_pvals.csv"),
+          row.names = FALSE)
+```
+
+
+
+# flexible implementation 
+### IIIa. ∆F/F processing, correlation-based network calculation & activity statistics 
+```{r}
+# ==========================================================
+# CellposeSAM-based Calcium Imaging Batch Analysis Pipeline
+# ==========================================================
+# This script integrates output from CellposeSAM, processes dF/F traces, 
+# binarizes events, computes correlation-based networks (CNER), and 
+# extracts per-cell statistics.
+
+# -----------------------------
+# 1. Load Required Libraries
+# -----------------------------
+library(tidyverse)
+library(CalNetExploreR)  # For CNER network building
+library(zoo)             # Rolling operations
+library(ggplot2)
+library(patchwork)       # Multi-plot layout
+library(pheatmap)        # Correlation matrix plotting
+library(plyr)
+library(dplyr)
+library(igraph)          # Network analysis
+library(signal)
+library(readr)
+library(tidyr)
+library(purrr)
+
+# -----------------------------
+# 2. User Settings
+# -----------------------------
+# Path to CellposeSAM output
+base_path <- "/Users/felix/Desktop/nd2_labels/" 
+
+# Sample → Genotype mapping
+genotype_map <- list(
+  "iDA_Ctrl_d33_Flou4_100ms"        = "Control",
+  "iDA_Ctrl_d33_Flou4_90mM-KCL"     = "ControlKCL",
+  "iDA_ASAH1_d33_Flou4_100ms"       = "ASAH1",
+  "iDA_ASAH1_d33_Flou4_90mM-KCL"    = "ASAH1KCL"
+)
+
+# # Color gradient for genotypes
+# base_colors <- c("grey20", "grey60", "skyblue", "navy")  # auto-expandable
+
+# Create named vector of colors based on genotypes in use
+geno_levels <- unique(unname(genotype_map))
+geno_cols <- setNames(
+  colorRampPalette(c("grey30", "grey70", "dodgerblue", "navy"))(length(geno_levels)),
+  geno_levels
+)
+
+
+
+# CHANGE HERE: Rolling window size for baseline (frames)
+baseline_window <- 150
+
+# CHANGE HERE: framerate per second 
+frame_rate     <- 10     
+
+# CHANGE HERE: Optional smoothing over raw intensity traces (frames)
+smoothing_k <- 1  # Set to NULL to disable smoothing
+
+# CHANGE HERE: Window for rolling baseline calculation in second pass
+window <- 250
+
+# CHANGE HERE: Threshold for binarization (fraction of SD)
+threshold_factor <- 0.2
+
+# CHANGE HERE: Correlation threshold for network (used in make_network())
+correlation_threshold <- 0.2
+
+# -----------------------------
+# 3. Helper Function - ΔF/F
+# -----------------------------
+# Approach: Rolling Percentile + Edge-Safe
+calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, percentile = 0.2) {
+  if (!is.null(smoothing_k)) {
+    trace <- zoo::rollmean(trace, k = smoothing_k, fill = NA)
+  }
+
+  # Handle short or NA-filled traces
+  if (length(trace) < window || all(is.na(trace))) {
+    return(rep(NA, length(trace)))
+  }
+
+  baseline <- zoo::rollapply(trace, width = window,
+    FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
+    align = "center", fill = NA, partial = TRUE)  # <- partial allows shorter edges
+
+  baseline <- pmax(baseline, 1e-3)  # Avoid division by zero
+  dff <- (trace - baseline) / baseline
+  pmax(dff, 0)  # Clip negatives
+}
+
+# -----------------------------
+# 4. File Loader + Merger
+# -----------------------------
+process_pair <- function(centroid_file) {
+  intensity_file <- sub("_centroids_valid.csv$", "_intensity.csv", centroid_file)
+  if (!file.exists(intensity_file)) return(NULL)
+
+  centroids <- read_csv(centroid_file, show_col_types = FALSE) %>%
+               mutate(ObjectNumber = label)
+
+  intensity <- read_csv(intensity_file, show_col_types = FALSE) %>%
+               select(-file)
+
+  traces_dff <- intensity %>%
+                mutate(across(-time, ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
+
+  traces_long <- traces_dff %>%
+    mutate(ImageNumber = row_number()) %>%
+    pivot_longer(cols = -c(time, ImageNumber), names_to = "ObjectNumber", values_to = "Intensity_IntegratedIntensity_Fura", values_drop_na = TRUE) %>%
+    mutate(ObjectNumber = as.integer(ObjectNumber))
+
+  traces_long %>%
+    inner_join(centroids, by = "ObjectNumber") %>%
+    mutate(file = basename(centroid_file)) %>%
+    select(ImageNumber, ObjectNumber, Intensity_IntegratedIntensity_Fura, centroid_x, centroid_y, file)
+}
+
+# -----------------------------
+# 5. Load and Combine All Data
+# -----------------------------
+combined_df <- list.files(base_path, pattern = "_centroids_valid.csv$", full.names = TRUE) |>
+               map_dfr(process_pair)
+
+
+# -----------------------------
+# 6. Initialize Result Lists
+# -----------------------------
+cor_list <- list()
+comm_list <- list()
+events_list <- list()
+
+summary_list <- list()   ## <‑‑‑  needed for step 9 norm.data
+
+# -----------------------------
+# 7. Per-Sample Processing
+# -----------------------------
+all_sample_ids <- unique(combined_df$file)
+
+for (sample_id in all_sample_ids) {
+  clean_sample_id <- gsub("_centroids_valid.csv$", "", basename(sample_id))
+  output_dir <- file.path(base_path, clean_sample_id)
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+  df_sample <- dplyr::filter(combined_df, file == sample_id)
+
+  # --- dF/F processing ---
+  # df_processed <- df_sample %>%
+  #   group_by(ObjectNumber) %>%
+  #   arrange(ImageNumber) %>%
+  #   mutate(
+  #     baseline = rollapply(Intensity_IntegratedIntensity_Fura, width = window, FUN = mean, align = "center", fill = NA),
+  #     dF_F = (Intensity_IntegratedIntensity_Fura - baseline) / baseline,
+  #     dF_F = ifelse(dF_F < 0 | is.na(dF_F), 0, dF_F),
+  #     dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
+  #     dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
+  #     spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
+  #   ) %>%
+  #   ungroup()
+
+    df_processed <- df_sample %>%
+      group_by(ObjectNumber) %>%
+      arrange(ImageNumber) %>%
+      mutate(
+        dF_F = calculate_dff(Intensity_IntegratedIntensity_Fura,
+                             window = baseline_window,
+                             smoothing_k = smoothing_k,
+                             percentile = 0.2),
+        dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
+        dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
+        spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
+      ) %>%
+      ungroup()
+    
+  # --- Plot a representative trace ---
+  example_cell <- unique(df_processed$ObjectNumber)[1]
+  df_trace <- dplyr::filter(df_processed, ObjectNumber == example_cell)
+
+  p_raw    <- ggplot(df_trace, aes(x = ImageNumber, y = Intensity_IntegratedIntensity_Fura)) + geom_line(color = "black") + theme_minimal()
+  p_scaled <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_scaled)) + geom_line(color = "dodgerblue") + theme_minimal()
+  p_binary <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_binary)) + geom_step(color = "firebrick2") + theme_minimal()
+
+  ggsave(file.path(output_dir, paste0(clean_sample_id, "_Traces.pdf")), p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
+
+  # --- Correlation matrix ---
+  binary_matrix <- df_processed %>%
+    select(ObjectNumber, ImageNumber, dF_F_binary) %>%
+    pivot_wider(names_from = ImageNumber, values_from = dF_F_binary) %>%
+    arrange(ObjectNumber)
+
+  mat <- as.matrix(binary_matrix %>% select(-ObjectNumber))
+  rownames(mat) <- binary_matrix$ObjectNumber
+  corr <- cor(t(mat), use = "pairwise.complete.obs")
+  corr[!is.finite(corr)] <- 0
+
+  pdf(file.path(output_dir, paste0(clean_sample_id, "_CorrelationMatrix.pdf")), width = 6, height = 6)
+  pheatmap(corr, clustering_method = "complete", main = "Correlation Matrix", border_color = NA, fontsize = 6)
+  dev.off()
+
+  # --- Firing statistics ---
+firing_stats <- df_processed %>%
+  arrange(ObjectNumber, ImageNumber) %>%
+  group_by(ObjectNumber) %>%
+  mutate(rising_edge = dF_F_binary == 1 & lag(dF_F_binary, default = 0) == 0) %>%
+  summarise(
+    firing_events   = sum(rising_edge, na.rm = TRUE),
+    total_frames    = length(dF_F_binary),
+    active_frames   = sum(dF_F_binary, na.rm = TRUE),
+    percent_active  = 100 * active_frames / total_frames,
+    spike_amplitude = mean(dF_F_scaled[dF_F_binary == 1], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Sample = sample_id,
+    Group = ifelse(grepl("Ctrl", sample_id, ignore.case = TRUE), "Control", "ASAH1")
+  )
+
+  events_list[[clean_sample_id]] <- firing_stats
+
+  
+  
+  ## -------- A.  constants for this movie --------------------------------
+  frame_rate     <- 10                     # change if needed
+  n_cells        <- n_distinct(df_processed$ObjectNumber)
+  n_frames_total <- max(df_processed$ImageNumber)          # assumes no gaps
+  duration_min   <- n_frames_total / (frame_rate*60)       # movie length (min)
+  
+  ## -------- B.  add *per‑cell* firing‑rate‑per‑min ----------------------
+  firing_stats <- firing_stats %>%
+    mutate(firing_rate_per_min =
+             firing_events / duration_min)   # already normalised for time
+  
+  ## -------- C.  *sample‑level* aggregates, normalised for # labels ------
+  sample_summary <- firing_stats %>%
+    summarise(
+      Sample                       = clean_sample_id,
+      Total_cells                  = n_cells,
+      ## --- firing events -----------------------------------------------
+      Total_firing_events          = sum(firing_events, na.rm = TRUE),
+      Firing_events_per_min        = Total_firing_events / duration_min,
+      ##   …and now      ÷ number of ROIs
+      Firing_events_per_min_norm   = Firing_events_per_min / n_cells,
+      ## --- activity -----------------------------------------------------
+      Cells_active                 = sum(firing_events > 0, na.rm = TRUE),
+      Percent_cells_active         = 100 * Cells_active / n_cells,
+      ##   per‑ROI normalisation of “% active frames” metric
+      Mean_percent_active_frames   = mean(percent_active, na.rm = TRUE),
+      Mean_percent_active_frames_norm = Mean_percent_active_frames      # already
+    )
+  
+  ## -------- D.  stash for later -----------------------------------------
+  summary_list[[clean_sample_id]] <- sample_summary
+    
+  
+  # --- Correlation Network Extraction ---
+  binarized_matrix <- mat
+  coordinates <- df_processed %>%
+    group_by(ObjectNumber) %>%
+    slice(1) %>%
+    ungroup() %>%
+    transmute(Cell = ObjectNumber, X = centroid_x, Y = centroid_y, Label = paste0("Cell_", ObjectNumber)) %>%
+    arrange(Cell)
+
+  binarized_matrix <- binarized_matrix[as.character(coordinates$Cell), , drop = FALSE]
+
+  g <- make_network(binarized_matrix, lag.max = 1, correlation_threshold = correlation_threshold)
+
+  if (vcount(g) > 0 && ecount(g) > 0) {
+    edge_df <- as_data_frame(g, what = "edges")
+    colnames(edge_df) <- c("Cell1", "Cell2", "F.Corr")
+
+    comms <- cluster_louvain(g)
+    membership_df <- data.frame(
+      CellIndex = seq_len(vcount(g)),
+      Community = membership(comms),
+      Label = rownames(binarized_matrix)
+    )
+    community_sizes <- sizes(comms)
+    membership_df$CommunitySize <- community_sizes[as.character(membership_df$Community)]
+
+    # # --- Plot and save network ---
+    # pdf(file.path(output_dir, paste0(clean_sample_id, "_CNER_network.pdf")), width = 6, height = 6)
+    # plot(g,
+    #      vertex.label = NA,
+    #      vertex.color = membership(comms),
+    #      vertex.size = 3,
+    #      layout = layout_with_fr(g),
+    #      edge.color = "gray70",
+    #      main = paste("CNER Network -", clean_sample_id))
+    # dev.off()
+    # 
+    # Generate community colors
+    comms <- cluster_louvain(g)
+    comm_colors <- rainbow(length(unique(membership(comms))))
+    names(comm_colors) <- as.character(sort(unique(membership(comms))))
+    
+    # Plot with legend
+    pdf(file.path(output_dir, paste0(clean_sample_id, "_CNER_network.pdf")), width = 7, height = 6)
+    layout(matrix(c(1, 2), nrow = 1), widths = c(4.5, 2))  # network + legend
+    
+    # --- 1. Plot the network
+    par(mar = c(1, 1, 3, 1))
+    plot(g,
+         vertex.label = NA,
+         vertex.color = comm_colors[as.character(membership(comms))],
+         vertex.size = 3,
+         layout = layout_with_fr(g),
+         edge.color = "gray80",
+         main = paste("CNER Network -", clean_sample_id))
+    
+    # --- 2. Legend
+    par(mar = c(1, 0, 3, 1))
+    plot.new()
+    legend("center",
+           legend = paste("Community", sort(unique(membership(comms)))),
+           col = comm_colors,
+           pch = 16, pt.cex = 1.5,
+           bty = "n", cex = 0.9)
+    dev.off()
+
+    # Save sample ID
+    edge_df$Sample <- clean_sample_id
+    membership_df$Sample <- clean_sample_id
+
+    cor_list[[clean_sample_id]]  <- edge_df
+    comm_list[[clean_sample_id]] <- membership_df
+  }
+
+  # --- Save per-sample outputs ---
+  write.csv(firing_stats, file.path(output_dir, paste0(clean_sample_id, "_firing_stats.csv")), row.names = FALSE)
+  write.csv(df_processed,  file.path(output_dir, paste0(clean_sample_id, "_df_processed.csv")), row.names = FALSE)
+}
+
+# -----------------------------
+# 8. Save Combined Outputs
+# -----------------------------
+write.csv(bind_rows(cor_list),    file.path(base_path, "combined_cell_pairwise_correlations.csv"), row.names = FALSE)
+write.csv(bind_rows(comm_list),   file.path(base_path, "combined_cell_community_membership.csv"),  row.names = FALSE)
+write.csv(bind_rows(events_list), file.path(base_path, "combined_events_per_min_results.csv"),     row.names = FALSE)
+
+
+# ----------------------------------------------------------------------
+# 9.  Save sample‑level, normalised metrics
+# ----------------------------------------------------------------------
+normalised_metrics <- bind_rows(summary_list)
+
+write.csv(normalised_metrics,
+          file.path(base_path,
+                    "combined_sample_level_normalised_metrics.csv"),
+          row.names = FALSE)
+
+
+```
+
+### IIIb.  plot cellposeSAM / CNER results 
+```{r}
+## ---------------------------------------------------------------------------
+##  Plot cellposeSAM / CNER results  –  incl. events · min⁻¹ (± SEM)
+## ---------------------------------------------------------------------------
+library(dplyr)  
+library(tidyverse)          # ggplot2, dplyr, …
+library(Cairo)              # cairo_pdf device
+library(patchwork)          # plot layout
+library(rlang)
+library(purrr)        # for imap_dfr()
+library(tidyverse)
+library(ggsignif)
+library(ggpubr)
+
+## helper: bind & be sure a “Sample” column exists ---------------------------
+bind_with_sample <- function(lst) {
+  ## imap_dfr() gives you each element (.x) *and* its list name (.y)
+  imap_dfr(lst, ~ {
+    if (!"Sample" %in% names(.x))
+      .x <- mutate(.x, Sample = .y)  # add from list‑element name
+    .x
+  })
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. collapse lists  →  data‑frames   (guaranteed to have ‘Sample’)
+# ─────────────────────────────────────────────────────────────────────────────
+events_df <- bind_with_sample(events_list)
+comm_df   <- bind_with_sample(comm_list)
+
+# sanity‑check ― now TRUE
+stopifnot("Sample" %in% names(events_df),
+          "Sample" %in% names(comm_df))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. add genotype label
+# ─────────────────────────────────────────────────────────────────────────────
+add_genotype <- function(df, mapping) {
+  df %>%
+    mutate(Genotype = map_chr(Sample, function(s) {
+      matched <- names(mapping)[str_detect(s, fixed(names(mapping)))]
+      if (length(matched) > 0) mapping[[matched[1]]] else NA_character_
+    })) %>%
+    drop_na(Genotype)
+}
+events_df <- add_genotype(events_df, genotype_map)
+comm_df   <- add_genotype(comm_df, genotype_map)
+normalised_metrics <- add_genotype(normalised_metrics, genotype_map)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. ROI count  +  (un)normalised firing–rate
+# ─────────────────────────────────────────────────────────────────────────────
+
+events_df <- events_df %>% 
+  group_by(Sample) %>% 
+  mutate(
+    n_labels          = n(),                             # ROI count
+    events_per_min    = firing_events /
+                        (total_frames / (frame_rate * 60)),
+    events_per_min_norm = events_per_min / n_labels
+  ) %>% 
+  ungroup()
+
+unique_genos <- unique(c(events_df$Genotype, comm_df$Genotype))
+geno_cols <- setNames(colorRampPalette(base_colors)(length(unique_genos)), unique_genos)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. helper  – bar + scatter + SEM error‑bars
+# ─────────────────────────────────────────────────────────────────────────────
+plot_metric <- function(dat, metric, ylab, outfile, base_dir) {
+  require(ggpubr)
+
+  # check that metric exists
+  if (!metric %in% names(dat)) {
+    stop(paste("Metric", metric, "not found in data"))
+  }
+
+  metric_sym <- rlang::sym(metric)
+
+  # Ensure factor order
+  dat <- dat %>%
+    mutate(Genotype = factor(Genotype,
+                             levels = c("Control", "ControlKCL", "ASAH1", "ASAH1KCL")))
+
+  # Group stats
+  mean_dat <- dat %>%
+    group_by(Genotype) %>%
+    summarise(
+      mean_val = mean(!!metric_sym, na.rm = TRUE),
+      sem      = sd(!!metric_sym, na.rm = TRUE) / sqrt(n()),
+      .groups  = "drop"
+    )
+
+  # ANOVA
+  aov_model <- aov(as.formula(paste0(metric, " ~ Genotype")), data = dat)
+  aov_pval  <- summary(aov_model)[[1]][["Pr(>F)"]][1]
+
+  # Pairwise comparisons
+  filtered_dat <- dplyr::filter(dat, !is.na(!!metric_sym))
+  pw <- pairwise.t.test(filtered_dat[[metric]], filtered_dat$Genotype, p.adjust.method = "holm")
+
+  if (!is.null(pw$p.value)) {
+    pairwise_df <- as.data.frame(as.table(pw$p.value), stringsAsFactors = FALSE) %>%
+      dplyr::filter(!is.na(Freq) & Freq < 0.05) %>%
+      dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq)
+
+    if (nrow(pairwise_df) > 0) {
+      pairwise_df <- pairwise_df %>%
+        mutate(
+          y.position = seq(from = max(dat[[metric]], na.rm = TRUE) * 1.05,
+                           by   = max(dat[[metric]], na.rm = TRUE) * 0.05,
+                           length.out = n()),
+          p.adj = signif(p.value, 2),
+          group1 = factor(group1, levels = levels(dat$Genotype)),
+          group2 = factor(group2, levels = levels(dat$Genotype))
+        )
+    }
+  } else {
+    pairwise_df <- tibble(group1 = character(), group2 = character(), p.value = numeric())
+  }
+
+  # Plot violin plot 
+p <- ggplot(dat, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
+  geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
+  geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85, adjust = 1.5) +
+  geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = geno_cols) +
+  labs(y = ylab, x = NULL) +
+  theme_bw(base_size = 6) +
+  theme(legend.position = "none",
+        aspect.ratio = 2,
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+  # Add pairwise significance bars
+  if (nrow(pairwise_df) > 0) {
+    p <- p + stat_pvalue_manual(pairwise_df,
+                                label = "p.adj",
+                                y.position = "y.position",
+                                xmin = "group1",
+                                xmax = "group2",
+                                tip.length = 0.01,
+                                size = 2,
+                                inherit.aes = FALSE)
+  }
+
+  # Save plot
+  ggsave(file.path(base_path, paste0(outfile, ".pdf")),
+         p, width = 2, height = 5, device = cairo_pdf)
+
+  # Return plot + pvals
+  list(
+    plot = p,
+    pval = bind_rows(
+      tibble(Metric = metric, group1 = "ANOVA", group2 = "", p.value = aov_pval),
+      pairwise_df %>% mutate(Metric = metric) %>%
+        select(Metric, group1, group2, p.value)
+    )
+  )
+}
+
+# ---------------------------------------------------------------------------
+# 7.  ORIGINAL (per‑cell) metrics  – still use events_df
+# ---------------------------------------------------------------------------
+# Capture p-values for Export
+p_fire_orig_result   <- plot_metric(events_df, "firing_events", "Firing Events", "fire_events", base_path)
+p_active_orig_result <- plot_metric(events_df, "percent_active", "% Active Frames", "percent_active", base_path)
+p_amp_orig_result    <- plot_metric(events_df, "spike_amplitude", "Spike Amplitude", "spike_amplitude", base_path)
+
+# extract plots
+p_fire_orig   <- p_fire_orig_result$plot
+p_active_orig <- p_active_orig_result$plot
+p_amp_orig    <- p_amp_orig_result$plot
+
+
+
+
+
+
+# ╭──────────────────────────────────────────────────────────────────────────╮
+# │  NEW :  sample‑level normalised metrics from `normalised_metrics`       │
+# ╰──────────────────────────────────────────────────────────────────────────╯
+
+#   B) add genotype label (re‑use helper)
+#normalised_metrics <- add_genotype(normalised_metrics)
+
+#   C) make bar‑plots
+p_fire_norm_result <- plot_metric(normalised_metrics,
+                                  "Firing_events_per_min_norm",
+                                  "Events · min⁻¹ / ROI",
+                                  "fire_events_norm", base_path)
+
+p_active_norm_result <- plot_metric(normalised_metrics,
+                                    "Mean_percent_active_frames_norm",
+                                    "% Active / ROI",
+                                    "percent_active_norm", base_path)
+
+p_fire_norm   <- p_fire_norm_result$plot
+p_active_norm <- p_active_norm_result$plot
+
+# ---------------------------------------------------------------------------
+# 8.  Community‑size plot with ANOVA + pairwise stats
+# ---------------------------------------------------------------------------
+comm_df <- add_genotype(comm_df, genotype_map) %>%
+  mutate(Genotype = factor(Genotype, levels = names(geno_cols)))
+
+comm_df <- comm_df %>%
+  mutate(CommunitySize = as.numeric(CommunitySize))
+
+comm_dat <- comm_df %>%
+  group_by(Genotype) %>%
+  summarise(mean_size = mean(CommunitySize, na.rm = TRUE),
+            sem       = sd(CommunitySize, na.rm = TRUE) / sqrt(n()),
+            .groups   = "drop")
+
+# --- Global ANOVA
+comm_aov <- aov(CommunitySize ~ Genotype, data = comm_df)
+comm_aov_pval <- summary(comm_aov)[[1]][["Pr(>F)"]][1]
+
+# --- Pairwise comparisons
+comm_pw <- pairwise.t.test(comm_df$CommunitySize, comm_df$Genotype, p.adjust.method = "holm")
+
+if (is.null(comm_pw$p.value)) {
+  comm_pw_df <- tibble(group1 = character(0),
+                       group2 = character(0),
+                       p.value = numeric(0))
+} else {
+  comm_pw_df <- as.data.frame(as.table(comm_pw$p.value), stringsAsFactors = FALSE) %>%
+    dplyr::filter(!is.na(Freq) & Freq < 0.05) %>%
+    dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq)
+}
+
+# Add y positions and format annotations
+if (nrow(comm_pw_df) > 0) {
+  comm_pw_df <- comm_pw_df %>%
+    mutate(
+      y_position = seq(from = max(comm_df$CommunitySize, na.rm = TRUE) * 1.05,
+                       by = max(comm_df$CommunitySize, na.rm = TRUE) * 0.05,
+                       length.out = n()),
+      annotations = signif(p.value, 2)
+    )
+}
+
+# --- Plot
+p_comm <- ggplot(comm_df, aes(x = Genotype, y = CommunitySize, fill = Genotype)) +
+  geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
+  geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85, adjust = 1.5) +
+  geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = geno_cols) +
+  labs(y = "Community Size", x = NULL) +
+  theme_bw(base_size = 6) +
+  theme(legend.position = "none",
+        aspect.ratio    = 2,
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+# Add significance brackets manually
+if (nrow(comm_pw_df) > 0) {
+  comm_pw_df <- comm_pw_df %>%
+    mutate(
+      y.position = seq(from = max(comm_df$CommunitySize, na.rm = TRUE) * 1.05,
+                       by = max(comm_df$CommunitySize, na.rm = TRUE) * 0.05,
+                       length.out = n()),
+      p.adj = signif(p.value, 2),
+      group1 = factor(group1, levels = levels(comm_df$Genotype)),
+      group2 = factor(group2, levels = levels(comm_df$Genotype))
+    )
+
+  p_comm <- p_comm +
+    stat_pvalue_manual(comm_pw_df,
+                       label = "p.adj",
+                       y.position = "y.position",
+                       xmin = "group1",
+                       xmax = "group2",
+                       tip.length = 0.01,
+                       size = 2,
+                       inherit.aes = FALSE)
+}
+
+# Save
+ggsave(file.path(base_path, "plot_community_size.pdf"),
+       p_comm, width = 2, height = 3, device = cairo_pdf)
+
+# ---------------------------------------------------------------------------
+# 9.  combined six‑panel figure
+# ---------------------------------------------------------------------------
+neuro_combinedplot <-
+  ((p_fire_orig | p_active_orig | p_amp_orig) /
+   (p_fire_norm | p_active_norm | p_comm    )) +
+  plot_layout(heights = c(1, 1)) &
+  theme(plot.margin = margin(.01, 10, .01, 10))
+
+ggsave(file.path(base_path, "neuro_combinedplot.pdf"),
+       neuro_combinedplot, width = 6, height = 4, device = cairo_pdf)
+
+# ---------------------------------------------------------------------------
+# 10. combine and save all stat. values 
+# ---------------------------------------------------------------------------
+
+# Save All P-values in csv file in prev. defined outdir 
+all_pvals <- bind_rows(
+  p_fire_orig_result$pval,
+  p_active_orig_result$pval,
+  p_amp_orig_result$pval,
+  p_fire_norm_result$pval,
+  p_active_norm_result$pval,
+  bind_rows(
+  tibble(Metric = "CommunitySize", group1 = "ANOVA", group2 = "", p.value = comm_aov_pval),
+  comm_pw_df %>% mutate(Metric = "CommunitySize") %>%
+    select(Metric, group1, group2, p.value)
+  )
+)
+
+
+all_pvals <- all_pvals %>%
+  select(Metric, group1, group2, p.value)
+
+
+write.csv(all_pvals,
+          file = file.path(base_path, "calcium_metrics_pvals.csv"),
+          row.names = FALSE)
+```
+
+
+
+
