@@ -453,9 +453,6 @@ write.csv(org_corr_mat,
           row.names = TRUE)
 
 
-
-
-
 # --- 5. Faceted correlation plots (per-organelle, KO×KO)
 # Function to plot KO×KO correlation for a given annotation
 plot_ko_corr_matrix <- function(organelle_name, df = diff136_df_annotated) {
@@ -471,8 +468,8 @@ plot_ko_corr_matrix <- function(organelle_name, df = diff136_df_annotated) {
     main = organelle_name,
     color = rev(brewer.pal(11, "RdYlBu")),
     silent = TRUE,
-    cellheight = 10,
-    cellwidth  = 10,
+    cellheight = 15,
+    cellwidth  = 15,
     na_col = "grey90",
     cluster_rows = TRUE,
     cluster_cols = TRUE,
@@ -481,6 +478,8 @@ plot_ko_corr_matrix <- function(organelle_name, df = diff136_df_annotated) {
   )
 }
 
+
+
 # --- 6. Apply to all annotations
 heatmap_list <- lapply(annotation_cols, function(org) {
   if (!org %in% colnames(diff136_df_annotated)) return(NULL)
@@ -488,13 +487,92 @@ heatmap_list <- lapply(annotation_cols, function(org) {
 })
 heatmap_list <- Filter(Negate(is.null), heatmap_list)
 
-# 5. Save all in a faceted PDF
+# --- 7. Save all in a faceted PDF
 pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/diff136_log2FC_annotation_corr_facet.pdf",
-    width = 40, height = 40, useDingbats = FALSE)
+    width = 35, height = 35, useDingbats = FALSE)
 
 grid.arrange(grobs = lapply(heatmap_list, `[[`, "gtable"), ncol = 4)
 
 dev.off()
+
+
+
+# --- 8. make subset of comparisons, plot heatmap and save pdf 
+selected_samples <- c(
+  "log2FC_ASAH1_Axon.ASAH1_Soma",
+  "log2FC_ASAH1_Axon.ASAH1",
+  "log2FC_ASAH1_Soma.ASAH1",
+  "log2FC_ASAH1_Soma.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon",
+  "log2FC_ASAH1.Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl_Soma",
+  "log2FC_Ctrl_Axon.Ctrl",
+  "log2FC_Ctrl_Soma.Ctrl"
+)
+
+# Subset matrix and annotations
+org_corr_subset <- org_corr_mat[rownames(org_corr_mat) %in% selected_samples, , drop = FALSE]
+annotation_row_subset <- annotation_row[rownames(org_corr_subset), , drop = FALSE]
+
+# Create heatmap
+axonprotCorr_subset <- pheatmap(org_corr_subset,
+  color = rev(RColorBrewer::brewer.pal(11, "RdYlBu")),
+  annotation_row = annotation_row_subset,
+  annotation_colors = ann_colors,
+  na_col = "grey90",
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  fontsize = 8,
+  cellheight = 10,
+  cellwidth = 10,
+  border_color = NA,
+  main = "log2FC × Organelle Correlation (Selected Samples)"
+)
+
+# Save to PDF
+pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/axonprotCorr_subset.pdf",
+    width = 10, height = 12, useDingbats = FALSE)
+print(axonprotCorr_subset)
+dev.off()
+
+
+
+# --- 9. Apply to all annotations
+plot_ko_corr_matrix_select <- function(organelle_name, df = diff136_df_annotated, log2fc_subset = selected_samples) {
+  gene_filter <- df[[organelle_name]] == 1
+  mat <- df[gene_filter, log2fc_subset, drop = FALSE]
+
+  if (nrow(mat) < 5) return(NULL)
+
+  corr_mat <- cor(mat, use = "pairwise.complete.obs", method = "spearman")
+
+  pheatmap(
+    corr_mat,
+    main = organelle_name,
+    color = rev(brewer.pal(11, "RdYlBu")),
+    silent = TRUE,
+    cellheight = 15,
+    cellwidth  = 15,
+    na_col = "grey90",
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    border_color = NA,
+    fontsize = 6
+  )
+}
+
+# Build corr matrices for all annotations and save for later faceting 
+heatmap_list_selected <- lapply(annotation_cols, function(org) {
+  if (!org %in% colnames(diff136_df_annotated)) return(NULL)
+  plot_ko_corr_matrix_select(org, log2fc_subset = selected_samples)
+})
+heatmap_list_selected <- Filter(Negate(is.null), heatmap_list_selected)
+
+# Save to PDF
+pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr/diff136_selected_log2FC_annotation_corr_facet.pdf", width = 35, height = 35, useDingbats = FALSE)
+grid.arrange(grobs = lapply(heatmap_list_selected, `[[`, "gtable"), ncol = 4)
+dev.off()
+
 
 ```
 
