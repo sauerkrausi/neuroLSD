@@ -660,12 +660,127 @@ ggsave(
 )
 
 
-  
 ```
 
 
 
-### IIe. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
+
+
+
+
+## IIe.  Absolute & RoR comparison of Axonal Proteome 
+```{r}
+# Calculate RoR and call significance:
+# 1. Calculate RoR
+diff136_df_annotated <- diff136_df_annotated %>%
+  mutate(RoR_ASAH1_Axon = `log2FC_ASAH1_Axon.ASAH1` - `log2FC_Ctrl_Axon.Ctrl`)
+
+# 2. Define threshold for up/down calls (adjust as needed)
+fc_thresh <- 0.585  # ~1.5-fold
+
+# 3. Call significance
+diff136_df_annotated <- diff136_df_annotated %>%
+  mutate(sig_RoR_ASAH1_Axon = case_when(
+    is.na(RoR_ASAH1_Axon)        ~ NA_character_,
+    RoR_ASAH1_Axon > fc_thresh   ~ "up",
+    RoR_ASAH1_Axon < -fc_thresh  ~ "down",
+    TRUE                         ~ "n.s."
+  ))
+
+
+# --- 1. Define relevant sig columns and annotations
+sig_cols_abs <- c("sig_ASAH1_Axon.ASAH1_Soma", "sig_Ctrl_Axon.Ctrl_Soma", "sig_ASAH1_Axon.Ctrl_Axon")
+sig_cols_ror <- c("sig_RoR_ASAH1_Axon")
+
+# Binary annotations (0/1 or NA)
+annotation_cols <- setdiff(colnames(diff136_df_annotated), c(sig_cols_abs, sig_cols_ror))
+annotation_cols <- annotation_cols[
+  sapply(diff136_df_annotated[, annotation_cols], function(x) all(x %in% c(0, 1, NA)))
+]
+annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetailLoac"))
+
+# --- 2a. Long-format: ABS comparisons
+sig_long_abs <- diff136_df_annotated %>%
+  select(Gene.Symbol, all_of(sig_cols_abs), all_of(annotation_cols)) %>%
+  pivot_longer(cols = all_of(sig_cols_abs), names_to = "Comparison", values_to = "SigStatus") %>%
+  pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
+  mutate(Type = "Absolute")
+
+# --- 2b. Long-format: RoR comparisons
+sig_long_ror <- diff136_df_annotated %>%
+  select(Gene.Symbol, all_of(sig_cols_ror), all_of(annotation_cols)) %>%
+  pivot_longer(cols = all_of(sig_cols_ror), names_to = "Comparison", values_to = "SigStatus") %>%
+  pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
+  mutate(Type = "RatioOfRatio")
+
+# --- Combine
+sig_long_df <- bind_rows(sig_long_abs, sig_long_ror)
+
+# --- 3. Count per Annotation × Comparison × Direction
+sig_summary <- sig_long_df %>%
+  group_by(Type, Comparison, Annotation, SigStatus) %>%
+  summarise(n = n(), .groups = "drop")
+
+sig_summary <- sig_summary %>% filter(Annotation != "Nucleus")
+sig_gene_summary <- sig_gene_summary %>% filter(Annotation != "Nucleus")
+
+# --- 4. Plot
+# --- Absolute plot
+sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
+                       aes(x = reorder(Annotation, n), y = n, fill = SigStatus)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  facet_wrap(~ Comparison, ncol = 1) +
+  scale_fill_manual(values = c(up = "grey70", down = "dodgerblue")) +
+  labs(x = NULL, y = "# Significant Hits", title = "Significant Hits – Absolute Comparisons") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank())
+
+ggsave(
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_sig_hits_annotation_absolute_barplot.pdf",
+  sig_plot_abs,
+  width = 10, height = 8, device = cairo_pdf
+)
+
+
+# --- RoR plot
+sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
+                       aes(x = reorder(Annotation, n), y = n, fill = SigStatus)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  facet_wrap(~ Comparison, ncol = 1) +
+  scale_fill_manual(values = c(up = "grey70", down = "dodgerblue")) +
+  labs(x = NULL, y = "# Significant Hits", title = "Significant Hits – Ratio of Ratio Comparisons") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank())
+
+ggsave(
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_sig_hits_annotation_ror_barplot.pdf",
+  sig_plot_ror,
+  width = 10, height = 8, device = cairo_pdf
+)
+
+# --- 5. Save gene-level summary
+sig_gene_summary <- sig_long_df %>%
+  group_by(Type, Comparison, Annotation, SigStatus) %>%
+  summarise(
+    n = n(),
+    GeneList = paste(unique(Gene.Symbol), collapse = ";"),
+    .groups = "drop"
+  )
+
+write.csv(
+  sig_gene_summary,
+  file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes/diff136_sig_hits_annotation_geneList_abs_vs_ror.csv",
+  row.names = FALSE
+)
+```
+
+
+
+### IIf. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Scatterplot of Lysosome & vATPase Members vs nuclear markers 
@@ -743,7 +858,7 @@ ASAH1_axonXsoma_loc_rainbowplot <- ggplot(scatter_df, aes(y = log2FC_ASAH1_Axon.
   )
 
 ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/diff136_lysosome_vATPase_nucleus_scatter.pdf", ASAH1_axonXsoma_loc_rainbowplot, 
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/diff136_lysosome_vATPase_nucleus_scatter.pdf", ASAH1_axonXsoma_loc_rainbowplot, 
   width = 4, height = 4, device = cairo_pdf
 )
 
@@ -751,7 +866,7 @@ ggsave(
 
 
 
-### IIf. Rainbowplot of User-select Annotations for axon--soma localization distribution
+### IIe. Rainbowplot of User-select Annotations for axon--soma localization distribution
 ```{r}
 # 1. Function for plotting user-defined gene sets for axon-soma localization distribution
 #    saves single plots and faceted version of the three subcell comparisons
@@ -833,7 +948,7 @@ plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_d
 # 2. Define annotations to be plotted 
 #gene_sets <- c("SynGO", "Presynaptic", "Postsynaptic")
 gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
-
+#gene_sets <- c("OXPHOS","Golgi Genes","ER genes")
 
 # 3. Define log2FC datasets to be plotted 
 log2fc_cols <- c(
@@ -847,13 +962,13 @@ plot_annotation_distribution_batch(
   df          = diff136_df_annotated,
   gene_sets   = gene_sets,
   log2fc_cols = log2fc_cols,
-  out_dir     = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
+  out_dir     = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
 )
 
 
 
 # Annotations:
-#"Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI","Plasma Membrane","Golgi.Genes","Lysosome.Genes","ER.genes","	Endosome.Genes","EndoType","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoLyso" "EarlyEndosome","RecyclingEndosome")
+#"Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI","Plasma Membrane","Golgi Genes","Lysosome.Genes","ER genes","	Endosome.Genes","EndoType","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoLyso" "EarlyEndosome","RecyclingEndosome")
 
 
 ```
