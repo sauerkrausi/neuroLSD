@@ -123,8 +123,8 @@ contaminant_genes <- c(
 )
 
 # --- Step 2: Load and process subcellular annotation
-cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29)
-subcell_df <- read_csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
+cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32)
+subcell_df <- read_csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
 long_subcell_df <- subcell_df %>%
@@ -726,7 +726,7 @@ sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
 
 ggsave(file.path(out_dir_organelle_dist,"diff136_sig_hits_annotation_absolute_barplot.pdf"),
   sig_plot_abs,
-  width = 10, height = 8, device = cairo_pdf
+  width = 5, height = 8, device = cairo_pdf
 )
 
 
@@ -940,7 +940,8 @@ plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_d
 #gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
 #gene_sets <- c("OXPHOS","Lysosome Genes","Endo_iN_curated_Hundley", "EarlyEndosome","RecyclingEndosome")
 #gene_sets <- c("OXPHOS","Golgi Genes","ER genes")
-#gene_sets <- c("Nucleus","Lysosome Genes","NeuroDev","SynapseSVs")
+#gene_sets <- c("Nucleus","Lysosome Genes","NeuroDev","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
+gene_sets <- c("Lysosome Genes","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 gene_sets <- c("Nucleus","Lysosome Genes","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
 
 # 3. Define log2FC datasets to be plotted 
@@ -960,7 +961,7 @@ plot_annotation_distribution_batch(
 
 
 # Annotations:
-#"Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI","Plasma Membrane","Golgi Genes","Lysosome.Genes","ER genes","	Endosome.Genes","EndoType","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoLyso" "EarlyEndosome","RecyclingEndosome")
+#"Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI","Plasma Membrane","Golgi Genes","Lysosome.Genes","ER genes","	Endosome.Genes","EndoType","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoLyso" "EarlyEndosome","RecyclingEndosome", "SVfusion"         , "Svendocytosis","Svexocytosis")
 
 
 ```
