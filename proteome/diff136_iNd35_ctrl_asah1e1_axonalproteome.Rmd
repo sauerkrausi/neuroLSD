@@ -61,15 +61,6 @@ data was created with MSstats, has p/q.values and log2FC for samples
 k-means clustering was performed on data, is in column "cluster"
 
 
-TO DO:
-- add annottaion from subcell.csv to dataframe
-- plot facets based on that 
-- plot PCA of data and save as PDF
-- plot heatmap of data, rows z-scoare using pheatmap & clustering. plot violins plot of abuncance of each sample per genotype of each cluster 
-- have cluster information already in csv file, so can use that for clustering?
-- correlation of RoR of axon-soma & axon-WC for ctrl vs asah1 
-
-
 # II. read in data & add protein organelle annotations
 - facet wrap by annotations & save 
 ```{r}
