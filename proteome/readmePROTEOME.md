@@ -12,8 +12,8 @@ Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons a
 
 ## change log
 - [ ] 2025-06-30: `diff132_d50_nDIA.Rmd`: cleaned up R package library & harmonization of outdirs
-- [ ] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: harmonization of outdirs
-- [ ] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: cleaned up R package library
-- [ ] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: harmonization of outdirs
-- [ ] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: distribution function for select input organelles
-- [ ] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: Analysis of proteins enriched in ctrl vs ko and vice versa axon / soma 
+- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: harmonization of outdirs
+- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: cleaned up R package library
+- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: harmonization of outdirs
+- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: distribution function for select input organelles
+- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: Analysis of proteins enriched in ctrl vs ko and vice versa axon & soma 
