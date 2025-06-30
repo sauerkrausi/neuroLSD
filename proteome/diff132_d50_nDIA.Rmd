@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # I. load packackes & set project directory
-```{r}
+```{r setup, include=FALSE}
 # Core Data Manipulation & Tidyverse
 library(tidyverse)     # Includes ggplot2, dplyr, tidyr, readr, tibble, purrr, stringr, forcats
 library(plyr)
@@ -36,7 +36,6 @@ library(ComplexUpset)
 # Heatmaps & Clustering
 library(pheatmap)
 library(RColorBrewer)
-library(ComplexHeatmap)
 library(circlize)
 #install.packages("magick")
 library(magick)
@@ -70,8 +69,10 @@ library(gptstudio)
 # output dirs overview:
 out_dir_d50_QC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC"
 out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/"
-out_dir_d50_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes"
-
+out_dir_d50_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes”
+out_dir_d50_violins <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_Violin"
+out_dir_d50_SphMut <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
+out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
 
 
 # II. Circos plot for neuroLSD 
@@ -1668,7 +1669,7 @@ dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
 
 
 
-# --- 1. use modified function to loop through clean_50_transformed_df to get genotypes and days and annotations in new dataframe 
+# --- Step 1. use modified function to loop through clean_50_transformed_df to get genotypes and days and annotations in new dataframe 
 process_day_data_combined <- function(df, binary_matrix) {
   selected_samples <- c("Ctrl_iN", "Ctrl_iDA", "GRN_iN", "GRN_iDA", 
                         "GBA1_iN", "GBA1_iDA", "ASAH1_iN", "ASAH1_iDA", 
@@ -1709,7 +1710,7 @@ process_day_data_combined <- function(df, binary_matrix) {
   return(complete_data_annotated)
 }
 
-# --- 2. Save day 30 and day50 data as csv file 
+# --- Step 2. Save day 30 and day50 data as csv file 
 day3050_subset <- process_day_data_combined(clean_d50_transformed_df, binary_matrix)
 write.csv(day3050_subset, file=file.path(out_dir_d50_GRN, "diff132_day3050_subset.csv"),row.names = FALSE)
 write.csv(day3050_subset, file=file.path(out_dir_d50_dataframes, "diff132_day3050_subset.csv"),row.names = FALSE)
@@ -1721,7 +1722,7 @@ write.csv(day3050_subset, file=file.path(out_dir_d50_dataframes, "diff132_day305
 # heatmap of day30/50 dataset
 # --------------------------------------------------- #
 
-# --- 3. Function for Heatmap plotting
+# --- Step 3. Function for Heatmap plotting
 generate_day3050_heatmap <- function(df, title_label = "Combined Heatmap") {
   # Extract log2FC columns
   log2fc_cols <- grep("_log2_fold_change$", names(df), value = TRUE)
@@ -1772,12 +1773,12 @@ generate_day3050_heatmap <- function(df, title_label = "Combined Heatmap") {
   )
 }
 
-# --- 4. call function
+# --- Step 4. call function
 day3050_heatmap <- generate_day3050_heatmap(day3050_subset, title_label = "LSD DA Neuron Log2FC – Day30 & Day50")
 #day3050_heatmap
 
 
-# --- 5. save heatmap as pdf in both dirs
+# --- Step 5. save heatmap as pdf in both dirs
 pdf(file.path(out_dir_d50_heatmaps, "diff132_selectKO_day3050_heatmap.pdf"), width = 8, height = 10, useDingbats = FALSE)
 generate_day3050_heatmap(day3050_subset, title_label = "LSD DA Neuron Log2FC – Day30 & Day50")
 dev.off()
@@ -1794,18 +1795,19 @@ dev.off()
 # Correlation scatterplot of day30 / day 50 DA GRN neurons
 # --------------------------------------------------- #
 
-# -- color & facet~wrap by annotation of compartment 
+# --- Step 6. Color & facet~wrap by annotation of compartment 
 # Create a copy to avoid modifying original
 annot_subset <- day3050_subset
 
-## --- STEP1: define protein sub cellular localizations --- 
-# Step 1a: Identify annotation columns (logical columns at the end of the dataframe)
+
+# --- Step 7. define protein sub cellular localizations --- 
+# Step 7a: Identify annotation columns (logical columns at the end of the dataframe)
 annotation_columns <- names(annot_subset)[sapply(annot_subset, is.logical)]
 
-# Step 1b: Remove overly specific or problematic annotations
+# Step 7b: Remove overly specific or problematic annotations
 usable_annotations <- setdiff(annotation_columns, c("Autophagy..Detailed.", "EndoDetailed"))
 
-# Step 1c: Reshape to long format: Gene - Localization pairs
+# Step 7c: Reshape to long format: Gene - Localization pairs
 annotation_long <- annot_subset %>%
   select(Genes, all_of(usable_annotations)) %>%
   pivot_longer(cols = -Genes, names_to = "Localization", values_to = "Present") %>%
@@ -1814,30 +1816,33 @@ annotation_long <- annot_subset %>%
   distinct()
 
 
-## --- STEP2: define protein sub cellular localizations --- 
-# Step 2a: Create full combination of genes and facet localizations
+# --- Step 8. define protein sub cellular localizations --- 
+# Step 8a: Create full combination of genes and facet localizations
 facet_levels <- unique(annotation_long$Localization)
 
-# Step 2c: Expand gene-localization combinations
+# Step 8c: Expand gene-localization combinations
 facet_expanded <- expand.grid(
   Genes = unique(annotation_long$Genes),
   FacetLocalization = facet_levels,
   stringsAsFactors = FALSE
 )
 
-## --- STEP3: differentiate between highlights / background for facet~wrap --- 
-# Step 3a: Join annotation and expression data
+
+# --- Step 9. differentiate between highlights / background for facet~wrap --- 
+# Step 9a: Join annotation and expression data
 plot_data <- facet_expanded %>%
   left_join(annotation_long, by = "Genes") %>%
   left_join(day3050_subset, by = "Genes") %>%
   mutate(point_color = ifelse(Localization == FacetLocalization, "dodgerblue", "grey80"))
 
-# Step 3b: Separate highlight vs background
+# Step 9b: Separate highlight vs background
 highlight_points <- plot_data %>% filter(point_color == "dodgerblue")
 background_points <- plot_data %>% filter(point_color == "grey80")
 
-## --- STEP4: plot scatterplot with different highlights, based on annoations ---
-# Step 4a: Plot with background and highlight
+
+
+# --- Step 10. plot scatterplot with different highlights, based on annoations ---
+# Step 10a: Plot with background and highlight
 day3050_GRN <- ggplot() +
   # Background points
   geom_point(data = background_points,
@@ -1863,25 +1868,25 @@ day3050_GRN <- ggplot() +
 
 day3050_GRN
 
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN/diff132_day3050_GRN_DA_scattter.pdf",
-  day3050_GRN,
-  width = 8, height = 8, device = cairo_pdf)
+
+# --- Step 11. save as pdf 
+ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_scattter.pdf"),  day3050_GRN,  width = 8, height = 8, device = cairo_pdf)
 
 
 
 
 
+# --------------------------------------------------- #
+# GRN d30/50 DA neuron investigation  
+# plot DA 30 vs 50, and highlight top 10 enriched proteins in both data frames
+# --------------------------------------------------- #
 
-
-# -- plot DA 30 vs 50, and highlight top 10 enriched proteins in both data frames
-
-
-# ---- STEP 1: Base data ----
+# --- Step 12. Base data
 plot_df <- day3050_subset %>%
   select(Genes, GRN_iDA_d30_log2_fold_change, GRN_iDA_d50_log2_fold_change)
 
-# ---- STEP 2: Define enrichment ranking ----
+
+# --- Step 13. Define enrichment ranking
 # Rank by absolute log2FC sum across both timepoints
 top10_genes <- plot_df %>%
   mutate(total_abs = abs(GRN_iDA_d30_log2_fold_change) + abs(GRN_iDA_d50_log2_fold_change)) %>%
@@ -1889,7 +1894,8 @@ top10_genes <- plot_df %>%
   slice_head(n = 50) %>%
   pull(Genes)
 
-# ---- STEP 3: Annotate color and label ----
+
+# --- Step 14. Annotate color and label
 plot_df <- plot_df %>%
   mutate(
     highlight = Genes %in% top10_genes,
@@ -1897,7 +1903,8 @@ plot_df <- plot_df %>%
     label = ifelse(highlight, Genes, NA)
   )
 
-# ---- STEP 4: Plot ----
+
+# --- Step 15. Plot
 day3050_GRN_top <- ggplot(plot_df, aes(x = GRN_iDA_d30_log2_fold_change, y = GRN_iDA_d50_log2_fold_change)) +
   geom_point(aes(color = point_color), size = 1.2, alpha = 0.8, show.legend = FALSE) +
   geom_text_repel(aes(label = label), size = 2.5, max.overlaps = 100) +
@@ -1918,10 +1925,9 @@ day3050_GRN_top <- ggplot(plot_df, aes(x = GRN_iDA_d30_log2_fold_change, y = GRN
 
 day3050_GRN_top
 
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN/diff132_day3050_GRN_DA_topHits.pdf",
-  day3050_GRN_top,
-  width = 8, height = 8, device = cairo_pdf)
+# --- Step 16. save as pdf 
+ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_topHits.pdf"),  day3050_GRN_top,  width = 8, height = 8, device = cairo_pdf)
+
 
 ```
 
@@ -1938,28 +1944,45 @@ maybe get a heatmap for each organelle? Strategy is to get a function that asks 
 
 #### Va. --- User-Select Organelle-annotation correlation  
 ```{r}
+# Load required libraries
+library(dplyr)
+library(pheatmap)
+library(RColorBrewer)
+library(dplyr)
+library(stringr)
 
+# --------------------------------------------------- #
+# Organelle Cross-DF correlations 
+# Generate  log2FC_d50_annotated dataframe
+# --------------------------------------------------- #
+# --- 0. create output directory 
+out_dir_d50_CrossCorr <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
+dir.create(out_dir_d50_CrossCorr, recursive = TRUE, showWarnings = FALSE)
 
-
-# ---------------- Generate  log2FC_d50_annotated dataframe --------------- #
-# Step 1: Extract log2FC columns (columns 1–47)
+# --- Step 1: Extract log2FC columns (columns 1–47)
 log2fc_d50 <- complete_data_annotated_day50[, 1:48]
 
-# Step 2: Extract annotation columns (last 19 columns)
+# --- Step 2: Extract annotation columns (last 19 columns)
 annotation_d50 <- complete_data_annotated_day50[, (ncol(complete_data_annotated_day50) - 21):ncol(complete_data_annotated_day50)]
 
-# Step 3: Clean column names: remove "_log2_fold_change" suffix
+# --- Step 3: Clean column names: remove "_log2_fold_change" suffix
 colnames(log2fc_d50) <- str_replace(colnames(log2fc_d50), "_log2_fold_change$", "")
 
-# Step 4: Combine cleaned log2FC values with annotations
+# --- Step 4: Combine cleaned log2FC values with annotations
 log2FC_d50_annotated <- bind_cols(log2fc_d50, annotation_d50)
 
 
-# ---------------- Function for user selected correlation of annotation ---------------- #
+
+# --------------------------------------------------- #
+# Organelle Cross-DF correlations 
+# Function for user selected correlation of annotation
+# --------------------------------------------------- #
+
 # This function computes and visualizes the correlation of log2 fold changes (log2FC)
 # across multiple genotypes for genes annotated to selected organelles.
 # It generates both a correlation matrix (as CSV) and a heatmap (as PDF).
 
+# --- Step 5. Define function: 
 correlate_log2fc_annotations <- function(data, annotations, basedir, prefix = "diff132_d50_neuroLSD_correlation") {
 
   # Step 1: Filter genes belonging to any of the selected annotations
@@ -1999,6 +2022,9 @@ correlate_log2fc_annotations <- function(data, annotations, basedir, prefix = "d
   # Step 7: Save correlation matrix as CSV
   write.csv(correlation_matrix, file = csv_path, row.names = TRUE)
 
+  print(dim(correlation_matrix))
+  print(head(annotation_df))
+
   # Step 8: Plot heatmap and save as PDF
   pdf(pdf_path, width = 8, height = 7)  # adjust to square if needed
   pheatmap(
@@ -2021,15 +2047,15 @@ correlate_log2fc_annotations <- function(data, annotations, basedir, prefix = "d
   return(correlation_matrix)
 }
 
-# ---------------- Run the Function ---------------- #
+
+# --- Step 6. Run the Function
 # This example correlates log2FC across genotypes for SynGO and Lysosomal genes
 # run dev.off to clear plotting space
 dev.off()
-
 correlate_log2fc_annotations(
   data = log2FC_d50_annotated,
   annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO", "SynapseSVs"),
-  basedir = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
+  basedir = out_dir_d50_CrossCorr
 )
 
 
@@ -2043,13 +2069,16 @@ correlate_log2fc_annotations(
 
 #### Vb. --- All Organelle-annotation correlation  ---
 ```{r}
+# --------------------------------------------------- #
+# Organelle Cross-DF correlations 
+# All Organelle-annotation correlation of all genotypes
+# --------------------------------------------------- #
 
-
-## --- Cross-correlation matrix of genotypes --- ##
 # idea is that to calculate correlation of annotated organelles across all genotypes
 # the organelles that have high corr do not change much between the genotypes
 # the organelles that do anti-correlate change more between them ==> more interesting biology? 
 
+# --- Step 1. define function 
 run_all_organelle_corr <- function(df, annotations) {
   # KO‐effect columns = everything that ends with “_iDA” or “_iN”
   ko_cols <- grep("_(iDA|iN)$", names(df), value = TRUE)
@@ -2072,6 +2101,8 @@ run_all_organelle_corr <- function(df, annotations) {
   })
 }
 
+
+# --- Step 2. define annotations to correlate  
 org_corr_df <- run_all_organelle_corr(
   log2FC_d50_annotated,
   annotations = c("Mito", "Mito.IMS", "Mito.Matrix", "Mito.MIM", "Mito.MOM",
@@ -2081,6 +2112,8 @@ org_corr_df <- run_all_organelle_corr(
                   "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome", "SynapseSVs")
 )
 
+
+# --- Step 3. convert into martix and define color schmes + plotting  
 # Convert to wide matrix: KO × Organelle
 org_corr_mat <- org_corr_df %>%
   select(KO, Organelle, r) %>%
@@ -2117,23 +2150,27 @@ annotCorrLSD <- pheatmap::pheatmap(
 
 
 annotCorrLSD
-pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/diff132_annotCorrLSD.pdf",
+
+
+# --- Step 4. Save pdf and csv 
+pdf(file.path(out_dir_d50_CrossCorr,"diff132_annotCorrLSD.pdf"),
     width = 12, height = 16, useDingbats = FALSE)
 print(annotCorrLSD)
 dev.off()
 
 ## save org_corr_mat as csv file in the same directory
-write.csv(org_corr_mat, 
-          file = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/diff132_organelle_corr_matrix.csv",
-          row.names = TRUE)
+write.csv(org_corr_mat, file = file.path(out_dir_d50_CrossCorr, "diff132_organelle_corr_matrix.csv"),row.names = TRUE)
 
 
 
 
-## --- Cross-correlation matrix of genotypes for each organelle --- ##
 
+# --------------------------------------------------- #
+# Organelle Cross-DF correlations 
+# Cross-correlation matrix of genotypes for each organelle
+# --------------------------------------------------- #
 
-# Function: compute KO × KO correlation matrix for a given organelle
+# --- Step 5. Function: compute KO × KO correlation matrix for a given organelle
 plot_ko_corr_matrix <- function(organelle_name, df = log2FC_d50_annotated) {
   ko_cols <- grep("_(iDA|iN)$", names(df), value = TRUE)
   gene_filter <- df[[organelle_name]] == 1
@@ -2163,7 +2200,8 @@ plot_ko_corr_matrix <- function(organelle_name, df = log2FC_d50_annotated) {
   )
 }
 
-## abbotations for plotting
+
+# --- Step 6. Annotations for plotting
 all_ann <- c(
   "Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM",
   "OXPHOS","mtComplexI","Golgi.Genes","Lysosome.Genes",
@@ -2173,7 +2211,8 @@ all_ann <- c(
   "EarlyEndosome","RecyclingEndosome", "SynapseSVs"
 )
 
-# ---- per-organelle KO×KO heatmaps ------------------------------------------
+
+# --- Step 7. per-organelle KO×KO heatmaps
 heatmap_list <- lapply(all_ann, function(org) {
   if (!org %in% names(log2FC_d50_annotated)) return(NULL)   # skip if column absent
   plot_ko_corr_matrix(org, df = log2FC_d50_annotated)
@@ -2181,8 +2220,8 @@ heatmap_list <- lapply(all_ann, function(org) {
 heatmap_list <- Filter(Negate(is.null), heatmap_list)       # drop NULLs
 
 
-# Arrange into a multi-panel figure (adjust ncol as needed) & save as pdf
-pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/diff132_annotCorrLSD_facet.pdf",
+# --- Step 8.  Arrange into a multi-panel figure (adjust ncol as needed) & save as pdf
+pdf(file.path(out_dir_d50_CrossCorr,"diff132_annotCorrLSD_facet.pdf"),
     width = 30, height = 30, useDingbats = FALSE)
 
 gridExtra::grid.arrange(
@@ -2197,6 +2236,11 @@ dev.off()
 
 #### Vc. --- Plot average correlation per annotation across genotypes
 ```{r}
+# --------------------------------------------------- #
+# Organelle Cross-DF correlations 
+# Plot average correlation per annotation across genotypes
+# --------------------------------------------------- #
+
 # function for plotting the average correlation per annotation
 # dataframe is org_corr_mat
 # on x axis should be the different genotypes 
