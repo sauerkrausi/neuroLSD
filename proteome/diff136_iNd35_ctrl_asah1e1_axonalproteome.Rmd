@@ -75,7 +75,7 @@ TO DO:
 ```{r}
 # --- 0. create output directory 
 out_dir_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes"
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_dataframes, recursive = TRUE, showWarnings = FALSE)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  read the data  
@@ -328,7 +328,7 @@ calculate annotated-based correlation across all and also facet wrap them
 
 # --- 0. create output directory 
 out_dir_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_corrplots, recursive = TRUE, showWarnings = FALSE)
 
 
 
@@ -545,6 +545,7 @@ dev.off()
 ```
 
 
+
 ### IId. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -552,7 +553,7 @@ dev.off()
 # ─────────────────────────────────────────────────────────────────────────────
 # --- 0. create output directory 
 out_dir_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_organelle_dist, recursive = TRUE, showWarnings = FALSE)
 
 
 # 1. Define relevant log2FC and annotation columns
@@ -635,9 +636,6 @@ ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected.pdf
 
 
 
-
-
-
 ## IIe.  Absolute & RoR comparison of Axonal Proteome 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -699,10 +697,22 @@ sig_summary <- sig_long_df %>%
   group_by(Type, Comparison, Annotation, SigStatus) %>%
   summarise(n = n(), .groups = "drop")
 
+# --- 4. Save gene-level summary
+sig_gene_summary <- sig_long_df %>%
+  group_by(Type, Comparison, Annotation, SigStatus) %>%
+  summarise(
+    n = n(),
+    GeneList = paste(unique(Gene.Symbol), collapse = ";"),
+    .groups = "drop"
+  ) %>%
+  filter(Annotation != "Nucleus")
+
 sig_summary <- sig_summary %>% filter(Annotation != "Nucleus")
 sig_gene_summary <- sig_gene_summary %>% filter(Annotation != "Nucleus")
 
-# --- 4. Plot
+
+
+# --- 5. Plot
 # --- Absolute plot
 sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
                        aes(x = reorder(Annotation, n), y = n, fill = SigStatus)) +
@@ -747,7 +757,7 @@ sig_gene_summary <- sig_long_df %>%
 
 write.csv(
   sig_gene_summary,
-  file = file.path(out_dir, "diff136_sig_hits_annotation_geneList.csv"),
+  file = file.path(out_dir_organelle_dist, "diff136_sig_hits_annotation_geneList.csv"),
   row.names = FALSE
 )
 ```
