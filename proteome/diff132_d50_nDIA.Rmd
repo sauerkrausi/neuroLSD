@@ -53,6 +53,7 @@ library(ggbiplot)
 
 # Interactive & Advanced Plotting
 library(plotly)
+library(circlize)
 
 # Utilities / Dev / Misc
 library(grid)
@@ -72,7 +73,14 @@ out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Prot
 out_dir_d50_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes”
 out_dir_d50_violins <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_Violin"
 out_dir_d50_SphMut <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
-out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
+out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN
+out_dir_d50_CrossCorr <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
+out_dir_d50_LinReg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg"
+out_dir_d50_LinReg_limma <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_all_coef"
+out_dir_d50_LinReg_limma_select <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_select"
+out_dir_d50_nMOST_nDIAcorrelation <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation"
+out_dir_d50_nMOST_nDIAcorrelationS_single <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/SingleGeno"
+out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/HeLa_Neuron_SelectAnnotation_comparisons"
 
 
 # II. Circos plot for neuroLSD 
@@ -616,18 +624,18 @@ probably makes sense to have it in tibble for easy data manipulation
 # --------------------------------------------------- #
 # iN/iDA: Day 50 Proteomics Heatmap Pipeline
 # --------------------------------------------------- #
-# # --- 0. create output directory 
+library(ComplexHeatmap)
+detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
+library(pheatmap)
+library(RColorBrewer) # For color palettes
+
+# --- 0. create output directory 
 out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/"
 dir.create(out_dir_d50_heatmaps, recursive = TRUE, showWarnings = FALSE)
 
 
-### iN/iDA: Day 50 Proteomics Heatmap Pipeline ###
-# Load necessary libraries
-library(tidyverse)    # For data manipulation
-library(pheatmap)     # For heatmap generation
-library(RColorBrewer) # For color palettes
 
-## 1. Load and Inspect Data
+# --- Step 1. Load and Inspect Data
 # Define the path to the input CSV file
 input_LSD_file <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/lsd_fc_pv.csv"
 
@@ -638,7 +646,7 @@ diff132_d50_df <- read.csv(input_LSD_file, header = TRUE, sep = ",", stringsAsFa
 str(diff132_d50_df)
 
 
-## 2. Data Cleaning
+# --- Step 2. Data Cleaning
 # Remove unnecessary columns: Protein.Group (1), Protein.Name (2), First.Protein.Description (4)
 diff132_d50_df <- diff132_d50_df[, -c(1, 2, 4,14,15,16,17,18,19,21)]
 
@@ -647,7 +655,7 @@ clean_d50_df <- diff132_d50_df %>%
   filter(!is.na(Genes) & Genes != "")
 
 
-##  3. Prepare Data for Heatmap
+# --- Step 3. Prepare Data for Heatmap
 # Create a unique identifier for each sample by combining genotype and neuron
 clean_d50_df<- clean_d50_df %>%
   mutate(sample_id = paste(genotype, neuron, sep = "_"))
@@ -672,7 +680,9 @@ heatmap_matrix_d50[is.na(heatmap_matrix_d50)] <- 0
 heatmap_matrix_d50 <- heatmap_matrix_d50[apply(heatmap_matrix_d50, 1, var) != 0, ]
 heatmap_matrix_d50 <- heatmap_matrix_d50[, apply(heatmap_matrix_d50, 2, var) != 0]
 
-## 4.Create Annotations for Heatmap
+
+
+# --- Step 4. Create Annotations for Heatmap
 # Extract sample information for annotations
 sample_d50_info <- clean_d50_df %>%
   select(sample_id, genotype, neuron) %>%
@@ -683,7 +693,9 @@ sample_d50_info <- clean_d50_df %>%
 df_day30 <- clean_d50_df %>% filter(day == 30)
 df_day50 <- clean_d50_df %>% filter(day == 50)
 
-## Define a function to generate heatmaps
+
+
+# --- Step 5. Define a function to generate heatmaps
 generate_heatmap <- function(df, day_label) {
   heatmap_data <- df %>%
     mutate(sample_id = paste(genotype, neuron, sep = "_")) %>%
@@ -748,28 +760,27 @@ generate_heatmap <- function(df, day_label) {
 heatmap_d30 <- generate_heatmap(df_day30, 30)
 heatmap_d50 <- generate_heatmap(df_day50, 50)
 
-## this did work for other heatmaps 
-pdf(file.path(out_dir_d50_heatmaps, "diff132_selectKO_day3050_heatmap.pdf"), width = 8, height = 10, useDingbats = FALSE)
-generate_day3050_heatmap(day3050_subset, title_label = "LSD DA Neuron Log2FC – Day30 & Day50")
+
+
+# --- Step 6. save single heatmaps 
+# Save Day 30 heatmap
+pdf(file.path(out_dir_d50_heatmaps, "heatmap_day30.pdf"), width = 3, height = 6)
+grid::grid.draw(heatmap_d30$gtable)
+dev.off()
+
+# Save Day 50 heatmap
+pdf(file.path(out_dir_d50_heatmaps, "heatmap_day50.pdf"), width = 6, height = 6)
+grid::grid.draw(heatmap_d50$gtable)
 dev.off()
 
 
 
-# ------------ Combine Plots & save as PDF ----------- #
+# --- Step 7. Combine Plots & save as PDF
 # have to use gridExtra, since do not use ggplot objects, but pheatmap() returns a grid object, not a ggplot. To arrange multiple pheatmap() plots, use gridExtra::grid.arrange() instead:
 library(gridExtra)
 
-# save three main plots for QC under each other 
-combined_heatmap <- gridExtra::grid.arrange(
-  heatmap_d30$gtable,
-  heatmap_d50$gtable,
-  ncol = 2,
-  widths = c(1, 3)  # 1 part for d30, 3 parts for d50 = 25%/75%
-)
-
-
 # Define the output file path
-output_file_50 <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/diff132_d30_d50_combined_heatmap.pdf"
+output_file_50 <- file.path(out_dir_d50_heatmaps, "diff132_d30_d50_combined_heatmap.pdf")
 
 # Save the heatmap to a PDF file
 pdf(output_file_50, width = 40 / 2.54, height = 30 / 2.54)
@@ -810,7 +821,7 @@ contaminant_genes <- c(
   )
 
 
-# --- Step 1: Transform columns
+# --- Step 1. Transform columns
 clean_d50_transformed_df <- clean_d50_df %>%
   mutate(
     log2_fold_change = ifelse(fold_change > 0, log2(fold_change), NA),
@@ -2247,6 +2258,8 @@ dev.off()
 # use barplot in theme_bw()
 # plot in ascending manner  
 # What to plot is based on user-input by annotations
+
+# --- Step 1. Define function for correlation caclculation based on user input annotations 
 plot_avg_corr_per_genotype <- function(corr_mat, annotations, out_path = NULL) {
   # Ensure annotations are present in the matrix
   valid_annotations <- annotations[annotations %in% colnames(corr_mat)]
@@ -2292,7 +2305,7 @@ plot_avg_corr_per_genotype <- function(corr_mat, annotations, out_path = NULL) {
   return(p)
 }
 
-## Call plotting function and input annotation of interest to plot 
+# --- Step 2. Call plotting function and input annotation of interest to plot 
 avg_corr_plot <- plot_avg_corr_per_genotype(
   corr_mat = org_corr_mat,
   annotations = c("SynapseSVs"),
@@ -2311,14 +2324,25 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 
 ```
 
-### Vd. --- Linear regression on neuro nDIA dataset
-#### Vd1. --- Linear regression on gene level across neurontypes
+
+# VI. Linear regression on neuro nDIA dataset
+#### VIa. --- Linear regression on gene level across neurontypes
 ```{r}
+# --------------------------------------------------- #
+# Linear regression on neuro nDIA dataset
+# Plot average correlation per annotation across genotypes
+# --------------------------------------------------- #
+# --- 0. create output directory 
+out_dir_d50_LinReg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg"
+dir.create(out_dir_d50_LinReg, recursive = TRUE, showWarnings = FALSE)
+
+
+
 ### ---- Per-Gene Linear Modeling ----
 # This script performs gene-specific linear regression to identify differential
 # expression based on genotype and neuron type, accounting for experimental day.
 
-## Step 1: Prepare and Factorize Data
+# --- 1. Prepare and Factorize Data
 # Filter out missing values and convert 'neuron' and 'genotype' to factors.
 # 'iN' is set as the reference level for 'neuron'.
 lm_results_gx2 <- clean_d50_df %>%
@@ -2329,7 +2353,7 @@ lm_results_gx2 <- clean_d50_df %>%
   )
 
 
-## Step 2: Fit Per-Gene Linear Models
+# --- Step 2. Fit Per-Gene Linear Models
 # Group data by gene, nest, and fit a linear model for 'fold_change' explained by
 # 'genotype', 'neuron', their interaction, and 'day'.
 lm_results <- lm_results_gx2 %>%
@@ -2346,7 +2370,7 @@ lm_results <- lm_results_gx2 %>%
   filter(!is.na(p.value))
 
 
-## Step 3: Add Q-values (FDR Corrected P-values)
+# --- Step 3. Add Q-values (FDR Corrected P-values)
 # Apply Benjamini-Hochberg (BH) False Discovery Rate (FDR) correction to p-values
 # within each 'term' category to control for multiple comparisons.
 lm_results_df <- lm_results %>%
@@ -2355,13 +2379,13 @@ lm_results_df <- lm_results %>%
   ungroup()
 
 
-## Step 4: Filter for Significant Terms
+# --- Step 4: Filter for Significant Terms
 # Filter for terms with a q-value (FDR-adjusted p-value) less than 0.05.
 sig_genes_df <- lm_results_df %>%
   filter(q.value < 0.05)
 
 
-## Step 5: Filter and Extract Interaction Terms
+# --- Step 5. Filter and Extract Interaction Terms
 # Isolate significant **genotype:neuron interaction terms** and extract the
 # genotype and neuron types for easier interpretation.
 sig_hits <- sig_genes_df %>%
@@ -2372,7 +2396,7 @@ sig_hits <- sig_genes_df %>%
   )
 
 
-## Step 6: Identify Top Genes by Absolute Effect Size
+# --- Step 6. Identify Top Genes by Absolute Effect Size
 # For each genotype, select the top 5 genes with the largest absolute interaction
 # effect size (estimate).
 top_hits <- sig_hits %>%
@@ -2381,7 +2405,7 @@ top_hits <- sig_hits %>%
   ungroup()
 
 
-## Step 7: Plot Results
+# --- Step 7. Plot Results
 # Generate a scatter plot showing interaction effect sizes. Point size indicates
 # significance (-log10(q-value)), and `ggrepel` labels the top genes.
 d50_LinReg_plot <- ggplot(sig_hits, aes(x = interaction(genotype, neuron), y = estimate)) +
@@ -2395,17 +2419,22 @@ d50_LinReg_plot <- ggplot(sig_hits, aes(x = interaction(genotype, neuron), y = e
   coord_flip()
 
 
-## Step 8: Save Results
+# --- Step 8. Save Results
 # Save the generated plot and the data frame of all significant terms.
-ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/diff132_d50_LinReg.pdf", d50_LinReg_plot, width = 8, height = 8, device = cairo_pdf)
-write_csv(sig_genes_df, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/diff132_d50_LinReg_significant_genotype_hits.csv")
+ggsave(file.path(out_dir_d50_LinReg,"diff132_d50_LinReg.pdf"), d50_LinReg_plot, width = 8, height = 8, device = cairo_pdf)
+write_csv(sig_genes_df, file=file.path(out_dir_d50_LinReg, "diff132_d50_LinReg_significant_genotype_hits.csv"))
 
 ```
 
-#### Vd2. --- Stratified linear modeling of genotype effects by neuron type ---
-```{r}
 
-# --- Prepare input data -----------------------------------------------------
+#### VIb. --- Stratified linear modeling of genotype effects by neuron type ---
+```{r}
+# --------------------------------------------------- #
+# Linear regression on neuro nDIA dataset
+# Stratified linear modeling of genotype effects by neuron type
+# --------------------------------------------------- #
+
+# --- Step 1. Prepare input data
 # Filter out incomplete rows and ensure proper factor encoding
 lm_input_df <- clean_d50_df %>%
   filter(!is.na(fold_change), !is.na(genotype), !is.na(neuron)) %>%
@@ -2415,7 +2444,7 @@ lm_input_df <- clean_d50_df %>%
   )
 
 
-# --- Stratified linear regression function ----------------------------------
+# --- Step 2. Stratified linear regression function
 # This function fits a linear model (fold_change ~ genotype + day)
 # for each gene within a specified neuron type (iN or iDA)
 fit_stratified_model <- function(df, neuron_label) {
@@ -2444,7 +2473,7 @@ fit_stratified_model <- function(df, neuron_label) {
 }
 
 
-# --- Run model for each neuron type ----------------------------------------
+# --- Step 3. Run model for each neuron type
 lm_in_df  <- fit_stratified_model(lm_input_df, "iN")
 lm_ida_df <- fit_stratified_model(lm_input_df, "iDA")
 
@@ -2452,7 +2481,7 @@ lm_ida_df <- fit_stratified_model(lm_input_df, "iDA")
 lm_neuronwise_df <- bind_rows(lm_in_df, lm_ida_df)
 
 
-# --- Adjust p-values for multiple testing ----------------------------------
+# --- Step 4. Adjust p-values for multiple testing
 # Apply Benjamini-Hochberg correction within each term × neuron group
 lm_neuronwise_df <- lm_neuronwise_df %>%
   group_by(term, neuron) %>%
@@ -2460,7 +2489,7 @@ lm_neuronwise_df <- lm_neuronwise_df %>%
   ungroup()
 
 
-# --- Extract and summarize significant results -----------------------------
+# --- Step 5. Extract and summarize significant results
 # Keep only genotype-related terms (omit intercept), FDR < 0.05
 ko_terms_sig <- lm_neuronwise_df %>%
   filter(str_detect(term, "^genotype"), term != "(Intercept)", q.value < 0.05)
@@ -2472,7 +2501,7 @@ top_ko_hits <- ko_terms_sig %>%
   ungroup()
 
 
-# --- Visualization: Effect sizes for significant genotype terms -----------
+# --- Step 6. Visualization: Effect sizes for significant genotype terms
 d50_LinRegNeuron_plot <- ggplot(ko_terms_sig, aes(x = term, y = estimate, fill = neuron)) +
   geom_boxplot(outlier.shape = NA, alpha = 0.6) +
   geom_jitter(width = 0.2, alpha = 0.2, size = 0.3) +
@@ -2491,24 +2520,17 @@ d50_LinRegNeuron_plot <- ggplot(ko_terms_sig, aes(x = term, y = estimate, fill =
   coord_flip()
 
 
-# --- Save output ----------------------------------------------------------
+# --- Step 7. Save output
 # Save plot as PDF
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/diff132_d50_LinReg_byNeuron.pdf",
-  d50_LinRegNeuron_plot, width = 8, height = 8, device = cairo_pdf
-)
+ggsave(file.path(out_dir_d50_LinReg,"diff132_d50_LinReg_byNeuron.pdf"), d50_LinRegNeuron_plot, width = 8, height = 8, device = cairo_pdf)
 
 # Export top hits to CSV
-write_csv(
-  top_ko_hits,
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/diff132_d50_LinReg_significant_genotype_hits_neuron.csv"
-)
-
+write_csv(top_ko_hits, file=file.path(out_dir_d50_LinReg, "diff132_d50_LinReg_significant_genotype_hits_neuron.csv"))
 
 ```
 
 
-#### Vd3. --- Limma linear modeling ---
+#### VIc. --- Limma linear modeling ---
 Use-Case for limma (Linear Models for Microarray/omics Data)
 
 limma is highly optimized for large-scale omics data where:
@@ -2531,7 +2553,6 @@ Best suited if:
 	•	Interaction (is KO effect different in iDA vs iN)
 	
 	
-	
 	Design Matrix: 
 	design <- model.matrix(~ genotype * neuron, data = sample_meta)
 	
@@ -2548,7 +2569,15 @@ Best suited if:
   	•	This tells you if there’s a non-additive (context-specific) effect of the mutation in iN.
 
 ```{r}
-# Load necessary package
+# --------------------------------------------------- #
+# Linear regression on neuro nDIA dataset
+# Limma linear modeling
+# --------------------------------------------------- #
+# --- 0. create output directory 
+out_dir_d50_LinReg_limma <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_all_coef"
+dir.create(out_dir_d50_LinReg_limma, recursive = TRUE, showWarnings = FALSE)
+out_dir_d50_LinReg_limma_select <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_select"
+dir.create(out_dir_d50_LinReg_limma_select, recursive = TRUE, showWarnings = FALSE)
 
 # ─────────────────────────────────────────────────────────────
 # Linear model: ~ genotype * neuron
@@ -2565,10 +2594,9 @@ Best suited if:
 diff132_long_reps <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/lsd_pro_long.csv', 
                                     header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
-## ─────────────────────────────────────────────────────────────
-## Step 1.  Filter out QC samples (NA genotype)
+
+# --- Step 1.Filter out QC samples (NA genotype)
 ##          Filter out contaminant proteins
-## ─────────────────────────────────────────────────────────────
 contaminant_genes <- c(
   "KRT8", "KRT19", "KRT9", "KRT10", "KRT2", "KRT18", "KRT1", "KRT5",
   "COL10A1", "COL13A1", "COL14A1", "COL18A1", "COL1A1", "COL1A2",
@@ -2580,16 +2608,13 @@ df_day50_filtered <- diff132_long_reps %>%
   filter(!Genes %in% contaminant_genes)
 
 
-## ─────────────────────────────────────────────────────────────
-## Step 2.  Create unique sample IDs from experimental metadata
-## ─────────────────────────────────────────────────────────────
+
+# --- Step 2. Create unique sample IDs from experimental metadata
 df_day50_filtered <- df_day50_filtered %>%
   mutate(sample_id = paste(day, genotype, neuron, replicate, sep = "_"))
 
 
-## ─────────────────────────────────────────────────────────────
-## Step 3.  Pivot to wide format using unique sample IDs
-## ─────────────────────────────────────────────────────────────
+# --- Step 3. Pivot to wide format using unique sample IDs
 expr_df <- df_day50_filtered %>%
   group_by(Genes, sample_id) %>%
   summarise(quan_0 = mean(quan_0, na.rm = TRUE), .groups = "drop") %>%
@@ -2605,10 +2630,9 @@ expr_mat <- expr_df %>%
 expr_mat <- log2(expr_mat + 1)  # add pseudocount to avoid log(0)
 
 
-## ─────────────────────────────────────────────────────────────
-## Step 4.  clean df from NA, prepare metadata, and align samples
+
+# --- Step 4.  clean df from NA, prepare metadata, and align samples
 ##          run limma 
-## ─────────────────────────────────────────────────────────────
 # Impute NAs with row means
 expr_mat[is.na(expr_mat)] <- rowMeans(expr_mat, na.rm = TRUE)[row(expr_mat)[is.na(expr_mat)]]
 
@@ -2673,14 +2697,8 @@ fit_contrasts <- contrasts.fit(fit, contrast_matrix)
 fit_contrasts <- eBayes(fit_contrasts)
 
 
-## ─────────────────────────────────────────────────────────────
-## Step 5.  save limma results in output dir
-##          save MA plot for each coefficient 
-## ─────────────────────────────────────────────────────────────
-# Create output directory
-output_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_all_coef"
-dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
+# --- Step 5. save limma results in output dir & save MA plot for each coefficient 
 # Initialize list for saving variables 
 results_all <- list()
 
@@ -2722,7 +2740,7 @@ for (i in seq_along(all_coef_names)) {
   # Save per-contrast CSV
   write.csv(
     res,
-    file = file.path(output_dir, paste0("limma_results_", prefix, make.names(coef_name), ".csv")),
+    file = file.path(out_dir_d50_LinReg_limma, paste0("limma_results_", prefix, make.names(coef_name), ".csv")),
     row.names = FALSE
   )
 
@@ -2752,7 +2770,7 @@ for (i in seq_along(all_coef_names)) {
     theme(panel.grid = element_blank(), legend.position = "bottom")
 
   ggsave(
-    filename = file.path(output_dir, paste0("MAplot_", prefix, make.names(coef_name), ".pdf")),
+    filename = file.path(out_dir_d50_LinReg_limma, paste0("MAplot_", prefix, make.names(coef_name), ".pdf")),
     plot = p, width = 8, height = 8, device = cairo_pdf
   )
 
@@ -2761,7 +2779,7 @@ for (i in seq_along(all_coef_names)) {
 
 # Combine and save all results
 results_all_df <- bind_rows(results_all, .id = "coef")
-write.csv(results_all_df, file.path(output_dir, "limma_results_all.csv"), row.names = FALSE)
+write.csv(results_all_df, file.path(out_dir_d50_LinReg_limma, "limma_results_all.csv"), row.names = FALSE)
 
 
 # check results ==> how many are significant etc 
@@ -2771,33 +2789,52 @@ sum(results_all_df$P.Value < 0.01)
 
  
 
-## ─────────────────────────────────────────────────────────────
-## Step 6. Select limma results => if interested in spec. geno / celltype & save 
-## ─────────────────────────────────────────────────────────────
+
+# --- Step 6. Select limma results => if interested in spec. geno / celltype & save 
 # List available coefficient names:
 colnames(fit$coefficients)
 
 # list of plottable coefficients
-# "genotypeATP13A2","genotypeCLN3","genotypeCLN5","genotypeCLN6","genotypeCLN8","genotypectrl","genotypeCTSD","genotypeCTSF","genotypeDNAJC5","genotypeGAA","genotypeGBA1","genotypeGRN","genotypeHEXA","genotypeHEXB","genotypeLIPA","genotypeMCOLN1","genotypeMFSD8","genotypeNPC1","genotypeNPC2","genotypePPT1","genotypePSAP","genotypeSMPD1","genotypeTPP1"
-# "neuroniN"
-# "genotypeATP13A2:neuroniN","genotypeCLN3:neuroniN","genotypeCLN5:neuroniN","genotypeCLN6:neuroniN","genotypeCLN8:neuroniN","genotypectrl:neuroniN","genotypeCTSD:neuroniN","genotypeCTSF:neuroniN","genotypeDNAJC5:neuroniN","genotypeGAA:neuroniN","genotypeGBA1:neuroniN","genotypeGRN:neuroniN","genotypeHEXA:neuroniN","genotypeHEXB:neuroniN","genotypeLIPA:neuroniN","genotypeMCOLN1:neuroniN","genotypeMFSD8:neuroniN","genotypeNPC1:neuroniN","genotypeNPC2:neuroniN","genotypePPT1:neuroniN","genotypePSAP:neuroniN","genotypeSMPD1:neuroniN","genotypeTPP1:neuroniN"
+# # Intercept
+# intercept <- c("X.Intercept.")
+# 
+# # Main effects: Genotype (in reference cell type iN)
+# main_effect <- c(
+#   "genotypeATP13A2", "genotypeCLN3", "genotypeCLN5", "genotypeCLN6",
+#   "genotypeCLN8", "genotypectrl", "genotypeCTSD", "genotypeCTSF",
+#   "genotypeDNAJC5", "genotypeGAA", "genotypeGBA1", "genotypeGRN",
+#   "genotypeHEXA", "genotypeHEXB", "genotypeLIPA", "genotypeMCOLN1",
+#   "genotypeMFSD8", "genotypeNPC1", "genotypeNPC2", "genotypePPT1",
+#   "genotypePSAP", "genotypeSMPD1", "genotypeTPP1"
+# )
+# 
+# # Main effect: Neuron type (iDA vs iN)
+# neuron_effect <- c("neuroniDA")
+# 
+# # Interaction effects: Genotype × Neuron (difference in KO effect between iDA and iN)
+# interaction_effect <- c(
+#   "genotypeATP13A2.neuroniDA", "genotypeCLN3.neuroniDA", "genotypeCLN5.neuroniDA",
+#   "genotypeCLN6.neuroniDA", "genotypeCLN8.neuroniDA", "genotypectrl.neuroniDA",
+#   "genotypeCTSD.neuroniDA", "genotypeCTSF.neuroniDA", "genotypeDNAJC5.neuroniDA",
+#   "genotypeGAA.neuroniDA", "genotypeGBA1.neuroniDA", "genotypeGRN.neuroniDA",
+#   "genotypeHEXA.neuroniDA", "genotypeHEXB.neuroniDA", "genotypeLIPA.neuroniDA",
+#   "genotypeMCOLN1.neuroniDA", "genotypeMFSD8.neuroniDA", "genotypeNPC1.neuroniDA",
+#   "genotypeNPC2.neuroniDA", "genotypePPT1.neuroniDA", "genotypePSAP.neuroniDA",
+#   "genotypeSMPD1.neuroniDA", "genotypeTPP1.neuroniDA"
+# )   
 
 # View results for interaction term (e.g., ATP13A2 genotype x iNeuron cell type)
-resultsSelect <- topTable(fit, coef = "genotypeMCOLN1:neuroniN", number = Inf)
+resultsSelect <- topTable(fit, coef = "genotypeMFSD8.neuroniDA", number = Inf)
 
 # Save results
-write.csv(resultsSelect, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_select/limma_results_genotypeATP13A2-X-neuroniN.csv", row.names = TRUE)
+write.csv(resultsSelect, file=file.path(out_dir_d50_LinReg_limma_select, "limma_results_genotypeMFSD8.neuroniDA.csv"), row.names = TRUE)
 
+          
+          
 
-
-## ─────────────────────────────────────────────────────────────
-## 7. MA plot using ggplot for select input coefficient 
-## ─────────────────────────────────────────────────────────────
-
-
-
+# --- Step 7. MA plot using ggplot for select input coefficient 
 # Example: coefficient of interest
-coef_name <- "genotypeNPC1:neuroniN"
+coef_name <- "genotypeMFSD8.neuroniDA"
 
 resultsSelect <- results_all_df %>% filter(coef == coef_name)
 
@@ -2846,8 +2883,7 @@ neuroMAplot <- ggplot() +
 
 
 
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_all_coef/MAplot_SelectGenotype.pdf",
+ggsave(file.path(out_dir_d50_LinReg_limma,"MAplot_SelectGenotype.pdf"),
   neuroMAplot, width = 8, height = 8, device = cairo_pdf
 )
 
@@ -3387,7 +3423,7 @@ ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff13
 
 
 
-# VI. nMOST whole cell plot correlcation matrix per genotype cluster
+# VII. nMOST whole cell plot correlcation matrix per genotype cluster
 use tidyplots for that 
 https://jbengler.github.io/tidyplots/
 
@@ -3398,11 +3434,17 @@ each variable must have its own column
 each observation must have its own row and
 each value must have its own cell
 
-#### VIa. --- nMOST LSD GO signatures of select Clusters for all genotypes ---
+#### VIIa. --- nMOST LSD GO signatures of select Clusters for all genotypes ---
 ```{r}
+# --------------------------------------------------- #
+# HeLa nMOST whole cell correlations
+# GO cluster ranking
+# --------------------------------------------------- #
+# --- 0. create output directory 
+out_dir_d50_nMOST_nDIAcorrelation <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation"
+dir.create(out_dir_d50_nMOST_nDIAcorrelation, recursive = TRUE, showWarnings = FALSE)
 
-
-# Color palette for gene groups
+# --- Step 1. Color palette for gene groups
 col <- c(
   AGA= "grey76", ARSA= "grey76", ARSB= "grey76", ASAH1="#D53E4F", PPT1= "#FEE08B", CTSD="#FEE08B", 
   GRN="#FEE08B", CLN12.ATP13A2="#FEE08B", CTSF="#FEE08B", KCTD7="grey76", TPP1="#FEE08B", CLN3="#FEE08B", 
@@ -3415,20 +3457,22 @@ col <- c(
   SCARB2="grey76", SGSH="grey76", SLC17A5="grey76", SMPD1="#D53E4F", SUMF1="grey76"
 )
 
-# Load and reshape the correlation data
+# --- Step 2. Load and reshape the correlation data
 HeLaCrossOmeCorrProt_df <- read.csv(
   '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/MSstats/HeLaCrossOmeCorr/LSD-nMOST_Protein-LipidCorr_tidyplots.csv',
   header = TRUE, sep = ',', stringsAsFactors = FALSE
 )
 
-# Convert wide to long format and clean cluster names
+
+# --- Step 3. Convert wide to long format and clean cluster names
 HeLaCrossOmeCorrProt_df_long <- HeLaCrossOmeCorrProt_df %>%
   pivot_longer(cols = starts_with("Protein.Cluster"), names_to = "Cluster", values_to = "Score") %>%
   mutate(Cluster = Cluster %>%
            str_replace("Protein\\.Cluster\\.", "Cluster ") %>%
            str_replace("\\.Signature", ""))
 
-# Order clusters by median for optional use
+
+# --- Step 4.  Order clusters by median for optional use
 cluster_order <- HeLaCrossOmeCorrProt_df_long %>%
   group_by(Cluster) %>%
   summarise(med = median(Score, na.rm = TRUE)) %>%
@@ -3438,7 +3482,8 @@ cluster_order <- HeLaCrossOmeCorrProt_df_long %>%
 HeLaCrossOmeCorrProt_df_long <- HeLaCrossOmeCorrProt_df_long %>%
   mutate(Cluster = factor(Cluster, levels = cluster_order))
 
-# Main plotting function
+
+# --- Step 5. Main plotting function
 HeLaClusterCorr <- function(df_long, cluster_name = "Cluster 7", plot_type = "mean") {
   df_filtered <- df_long %>%
     filter(Cluster == cluster_name) %>%
@@ -3507,19 +3552,24 @@ HeLaClusterCorr <- function(df_long, cluster_name = "Cluster 7", plot_type = "me
 # Cluster17: Transcription complex 
 # Cluster18:  Membrane, golgi, late endosome, PM
   
-# Call function to plot cluster # of interest 
+# --- Step 6. Call function to plot cluster # of interest 
 HeLaClusterCorrplot <- HeLaClusterCorr(HeLaCrossOmeCorrProt_df_long, "Cluster 2", plot_type = "box")
 HeLaClusterCorrplot
 
 
-# Save as PDF
-ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/nMOST_LSD_Corr_GOCluster2.pdf", HeLaClusterCorrplot, width = 4, height = 4, device = cairo_pdf)
+# --- Step 7. Save as PDF
+ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation,"nMOST_LSD_Corr_GOCluster2.pdf"), HeLaClusterCorrplot, width = 4, height = 4, device = cairo_pdf)
 
 ```
 
-#### VIb.  --- nMOST GO Signatures from select genotype over all GO classes ---
+#### VIIb.  --- nMOST GO Signatures from select genotype over all GO classes ---
 ``` {r}
-# Function to plot all cluster signatures for a specific genotype
+# --------------------------------------------------- #
+# HeLa nMOST whole cell correlations
+# nMOST GO Signatures from select genotype over all GO classes 
+# --------------------------------------------------- #
+
+# --- Step 1. Function to plot all cluster signatures for a specific genotype
 HeLaGenotypeSignature <- function(HeLaCrossOmeCorrProt_df_long, gene_name = "CLN3") {
   HeLaCrossOmeCorrProt_df_long_filtered <- HeLaCrossOmeCorrProt_df_long %>%
     filter(Group == gene_name) %>%
@@ -3549,14 +3599,14 @@ HeLaGenotypeSignature <- function(HeLaCrossOmeCorrProt_df_long, gene_name = "CLN
 HeLaGenotypeSignaturePlot <- HeLaGenotypeSignature(HeLaCrossOmeCorrProt_df_long, "GBA")
 HeLaGenotypeSignaturePlot
 
-# Save as PDF
-ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/nMOST_LSD_CorrGenotype_GBA.pdf", HeLaGenotypeSignaturePlot, width = 4, height = 8, device = cairo_pdf)
+# --- Step 2. Save as PDF
+ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation, "nMOST_LSD_CorrGenotype_GBA.pdf"), HeLaGenotypeSignaturePlot, width = 4, height = 8, device = cairo_pdf)
 
 ```
 
 
 
-# VII. iNeuron - Hela Proteome Correlations 
+# VIII. iNeuron - Hela Proteome Correlations 
 we do have nDIA data from iN and iDA neurons
 we have nMOST data from HeLa 
 can we calculate the cross correlation on the proteome wide bases across these three samples?
@@ -3570,10 +3620,13 @@ read in HeLa nMOST file
 - plot corr across genotypes in crircos plot (color based on R corr)
 - also plot heatmaps of pairwise comparisons 
 
-#### VIIa. --- Neuron–HeLa Proteome Correlation Analysis ---
+#### VIIIa. --- Neuron–HeLa Proteome Correlation Analysis ---
 ```{r}
-
-
+# --------------------------------------------------- #
+# iNeuron - Hela Proteome Correlations 
+# Neuron–HeLa Proteome Correlation Analysis
+# --------------------------------------------------- #
+library(ComplexHeatmap)
 # -----------------------------
 # I. Disease Class Definitions
 # -----------------------------
@@ -3773,7 +3826,7 @@ pairwise_links_inter <- pairwise_links %>%
 plot_dual_layer_circos(
   link_df = pairwise_links %>% filter(abs(correlation) > 0.05),
   title_text = "Neuron–HeLa Proteome Cross-Correlation",
-  output_path = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/neuron_hela_circos_plot.pdf"
+  output_path = file.path(out_dir_d50_nMOST_nDIAcorrelation,"neuron_hela_circos_plot.pdf")
 )
 
 
@@ -3789,12 +3842,23 @@ dev.off()
 
 
 
-#### VIIb. --- nMOST-nDIA correlation of select genotype 
+#### VIIIb. --- nMOST-nDIA correlation of select genotype 
 ```{r}
+# --------------------------------------------------- #
+# iNeuron - Hela Proteome Correlations 
+# nMOST-nDIA correlation of select genotype
+# --------------------------------------------------- #
+
 # Functions to plot circos plot of select genotype. Splits by pos / neg correlation 
 ## change inter_only from FALSE to TRUE to only plot inter-group links
 ## inter_only = TRUE: Filters only inter-group links (e.g. iN–HeLa, iDA–HeLa, iN–iDA)
 
+# --- 0. create output directory 
+out_dir_d50_nMOST_nDIAcorrelationS_single <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/SingleGeno"
+dir.create(out_dir_d50_nMOST_nDIAcorrelationS_single, recursive = TRUE, showWarnings = FALSE)
+
+
+# --- Step 1. Plotting function for user-def input 
 circos_by_genotype <- function(ko,
                                pos_cut = 0.25,
                                neg_cut = -0.25,
@@ -3873,9 +3937,9 @@ circos_by_genotype <- function(ko,
 
 
 
-##### Call function block 
+# --- Step 2. Call function block 
 ## Set output dir for plots / evaluations 
-base_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/SingleGeno"
+base_dir <- out_dir_d50_nMOST_nDIAcorrelationS_single
 
 # Default thresholds (pos ≥ 0.25, neg ≤ –0.25)
 circos_by_genotype("ASAH1")
@@ -3885,10 +3949,20 @@ circos_by_genotype("ASAH1", pos_cut = 0.05, neg_cut = -0.05)
 ```
 
 
-#### VIIc. --- HeLa-nMOST - neuron-nDIA organelle correlation ---
-
-##### VIIc1. --- Select organelle level ---
+#### VIIIc. --- HeLa-nMOST - neuron-nDIA organelle correlation ---
+##### VIIIc1. --- Select organelle level ---
 ```{r}
+# --------------------------------------------------- #
+# iNeuron - Hela Proteome Correlations 
+# HeLa-nMOST - neuron-nDIA organelle correlation
+# --------------------------------------------------- #
+
+#call pheatmap again, since compelxheatmap did mask it in call chunk before 
+library(pheatmap)
+
+# --- 0. create output directory 
+out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/HeLa_Neuron_SelectAnnotation_comparisons"
+dir.create(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp , showWarnings = FALSE, recursive = TRUE)
 
 ## ─────────────────────────────────────────────────────────────
 ## 1.   Add annotations to HeLa-nMOST dataframe & save
@@ -3901,13 +3975,11 @@ HeLaWCnMOST_df_annotated <- HeLaWCnMOST_df %>%
   mutate(across(all_of(colnames(binary_matrix)[-1]), ~ ifelse(. == TRUE, TRUE, FALSE))) %>%
   replace(is.na(.), FALSE)
 
-write.csv(HeLaWCnMOST_df_annotated,
-          "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/HeLaWCnMOST_annotated.csv",
-          row.names = FALSE)
+write.csv(HeLaWCnMOST_df_annotated,file = file.path(out_dir_d50_nMOST_nDIAcorrelation,"HeLaWCnMOST_annotated.csv"),row.names = FALSE)
 
 
 ## ─────────────────────────────────────────────────────────────
-## 2.   Define annotations to be calculated in the function below & define out_dir
+## 2.   Define annotations to be calculated in the function below
 ## ─────────────────────────────────────────────────────────────
 
 selected_annotations <- c(
@@ -3915,9 +3987,6 @@ selected_annotations <- c(
   "Lysosome.Genes", "Presynaptic", "Postsynaptic",
   "EarlyEndosome", "RecyclingEndosome"
 )
-
-out_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/HeLa_Neuron_SelectAnnotation_comparisons"
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 
 ## ─────────────────────────────────────────────────────────────
@@ -3958,7 +4027,7 @@ calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_
   cor_mat <- cor(neuron_mat, hela_mat, method = "pearson", use = "pairwise.complete.obs")
   
   # Save CSV
-  write.csv(cor_mat, file = file.path(out_dir, paste0("cor_", annot_name, ".csv")), quote = FALSE)
+  write.csv(cor_mat, file = file.path(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, paste0("cor_", annot_name, ".csv")), quote = FALSE)
   
   ### Annotation for neuron columns
   celltype_vec <- ifelse(grepl("iN", rownames(cor_mat)), "iN",
@@ -3981,7 +4050,7 @@ calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_
     border_color = NA,
     cellheight = 8,
     cellwidth  = 8,
-    filename = file.path(out_dir, paste0("cor_", annot_name, ".pdf")),
+    filename = file.path(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, paste0("cor_", annot_name, ".pdf")),
     width = 8, height = 8
   )
   
@@ -4001,8 +4070,14 @@ names(all_corrs) <- selected_annotations
 ```
 
 
-##### VIIc2. --- Combined select organelle level ---
+##### VIIIc2. --- Combined select organelle level ---
 ```{r}
+# --------------------------------------------------- #
+# iNeuron - Hela Proteome Correlations 
+# HeLa-nMOST - neuron-nDIA organelle correlation
+# Combined select organelle level
+# --------------------------------------------------- #
+
 ## ─────────────────────────────────────────────────────────────
 ## 1.   Combine all genes from selected annotations
 ## ─────────────────────────────────────────────────────────────
@@ -4072,7 +4147,7 @@ pheatmap::pheatmap(
   cellwidth = 8,
   annotation_row = annotation_row,
   annotation_colors = annotation_colors,
-  filename = file.path(out_dir, "cor_combined_annotations.pdf"),
+  filename = file.path(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, "cor_combined_annotations.pdf"),
   width = 8, height = 8
 )
 ```
