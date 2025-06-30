@@ -776,7 +776,7 @@ library(gghalves)
 
 # --- 0. create output directory 
 out_dir_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_rainbow, recursive = TRUE, showWarnings = FALSE)
 
 
 vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
@@ -937,8 +937,11 @@ plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_d
 
 # 2. Define annotations to be plotted 
 #gene_sets <- c("SynGO", "Presynaptic", "Postsynaptic")
-gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
+#gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
+#gene_sets <- c("OXPHOS","Lysosome Genes","Endo_iN_curated_Hundley", "EarlyEndosome","RecyclingEndosome")
 #gene_sets <- c("OXPHOS","Golgi Genes","ER genes")
+#gene_sets <- c("Nucleus","Lysosome Genes","NeuroDev","SynapseSVs")
+gene_sets <- c("Nucleus","Lysosome Genes","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
 
 # 3. Define log2FC datasets to be plotted 
 log2fc_cols <- c(
