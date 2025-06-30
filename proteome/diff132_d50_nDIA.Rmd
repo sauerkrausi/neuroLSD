@@ -11,69 +11,55 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # I. load packackes & set project directory
 ```{r}
-setwd("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132")
-
-#install.packages("GWalkR")
-#library(GWalkR)
-#install.packages("gptstudio")
-library(gptstudio)
-library(plyr)
-library(grid)
-library(stringr)
-library(tidyverse)
-library(dplyr)
-library(tibble)
-library(purrr)
-library(rlang)
-library(devtools)
-#install_github("vqv/ggbiplot")
-library(ggbiplot)
-library(ggrepel)
-library(scales)
-library(cowplot)
-library(NatParksPalettes)
-library(viridis)
-library(RColorBrewer)
-library(gridExtra)
-library(ggplot2)
-##install("gplots")
-library(gplots)
-library(ggVennDiagram)
-install_github("jokergoo/ComplexHeatmap")
-library(ComplexHeatmap)
-#library(dendextend)
-#install.packages("magick")
-#library(magick)
-library(png)
-#devtools::install_github("rlbarter/superheat")
-library(superheat)
-install.packages("fmsb")
-library(fmsb)
-#devtools::install_github("krassowski/complex-upset")
-library(ComplexUpset)
-#install.packages("UpSetR")
-library(UpSetR)
+# Core Data Manipulation & Tidyverse
+library(tidyverse)     # Includes ggplot2, dplyr, tidyr, readr, tibble, purrr, stringr, forcats
 library(data.table)
-library(plotly)
-library(gghighlight)
-#devtools::install_github("jbengler/tidyplots")
-library(tidyplots)
-library(tidyverse)
-library(tidyr)
-#install.packages("pheatmap")
-library(pheatmap)
-#install.packages("RColorBrewer")
-library(patchwork)
+library(broom)
+library(rlang)
 
-# For the CRAN version
-#install.packages("bigstatsr")
-# For the latest version
-#remotes::install_github("privefl/bigstatsr")
+# Visualization: ggplot2 Extensions & Plots
+library(ggplot2)
+library(ggrepel)
+library(ggpubr)
+library(ggpmisc)
+library(cowplot)
+library(patchwork)
+library(scales)
+library(gghighlight)
+library(superheat)
+library(ggVennDiagram)
+library(UpSetR)
+library(ComplexUpset)
+
+# Heatmaps & Clustering
+library(pheatmap)
+library(RColorBrewer)
+library(ComplexHeatmap)
+library(circlize)
+
+
+# Color Palettes
+library(viridis)
+library(NatParksPalettes)
+
+
+# Dimension Reduction / Statistics
+library(limma)
 library(bigstatsr)
 library(irlba)
-library(lintr)
-library(ggrepel)
+library(ggbiplot)
 
+# Interactive & Advanced Plotting
+library(plotly)
+
+# Utilities / Dev / Misc
+library(grid)
+library(gridExtra)
+library(Cairo)
+library(png)
+library(devtools)
+library(lintr)
+library(gptstudio)
 
 ```
 
@@ -159,8 +145,7 @@ iN, DA, pool (== QC mmaker)
 3 replicates for genotypes 
 
 ```{r}
-#install.packages("irlba")
-library(irlba)
+
 ## Step 1: Read in the data from the CSV file
 # The CSV file has been pre-processed in Excel to replace all NA values with 0.
 diff132_d50_PCA_df_full <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/lsd_pro_long.csv', 
@@ -604,10 +589,7 @@ each measured protein has mean ctrl, mean ko and fold-change and p/q value assoc
 probably makes sense to have it in tibble for easy data manipulation 
 ```{r}
 ### iN/iDA: Day 50 Proteomics Heatmap Pipeline ###
-# Load necessary libraries
-library(tidyverse)    # For data manipulation
-library(pheatmap)     # For heatmap generation
-library(RColorBrewer) # For color palettes
+
 
 ## 1. Load and Inspect Data
 # Define the path to the input CSV file
@@ -731,7 +713,7 @@ heatmap_d50 <- generate_heatmap(df_day50, 50)
 
 # ------------ Combine Plots & save as PDF ----------- #
 # have to use gridExtra, since do not use ggplot objects, but pheatmap() returns a grid object, not a ggplot. To arrange multiple pheatmap() plots, use gridExtra::grid.arrange() instead:
-library(gridExtra)
+
 
 # save three main plots for QC under each other 
 combined_heatmap <- gridExtra::grid.arrange(
@@ -766,7 +748,7 @@ export heatmap as csv file
 add all colums of interest: FC, mean intensity, q-value
 ```{r}
 # ------- add annotations do df and split by day and save as .csv files  -------- #
-library(dplyr)
+
 # Step 0: Define contaminant list
 contaminant_genes <- c(
   "KRT8", "KRT19", "KRT9", "KRT10", "KRT2", "KRT18", "KRT1", "KRT5",
@@ -851,11 +833,7 @@ complete_data_annotated_day50 <- process_day_data(
 #### IVb. -- LSD KO protein abundnace across genotypes --
 plan is to plot a heatmap of all LSD proteins of interest across the dataset -> check that these are KOs
 ```{r}
-# Load required libraries
-library(dplyr)
-library(ggplot2)
-library(stringr)
-library(tidyr)
+
 
 # ---- Define LSD Gene List ----
 LSDgenes <- c("ASAH1", "PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "TPP1", "CLN3", 
@@ -989,10 +967,7 @@ ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff13
 #### IVd. -- Abundance of neuromarkers in Ctrl day 30 & day 50 ---- 
 ```{r}
 # ------------ Abundance of neuromarkers in Ctrl day 30 & day 50 -------------- #
-# Load required libraries
-library(dplyr)
-library(ggplot2)
-library(tidyr)
+
 
 # ---- Define Developmental Marker Gene List ----
 dev_genes <- c("BDNF", "CAMK2B", "CRTC1", "DCX", "JUN", "MAP2", "NCAM1",
@@ -1324,14 +1299,7 @@ use unique variables, so I can calculate the correlation between neurons and nMO
 
 ##### IVh1. --- Add annotations & heatmap & save csv ---
 ```{r}
-library(dplyr)
-library(tidyr)
-library(pheatmap)
-library(RColorBrewer)
-library(tibble)
-library(readr)
-library(stringr)
-library(readr)
+
 
 # Directory for saving files
 out_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
@@ -1488,8 +1456,7 @@ dev.off()
 ##### IVh3. --- Correlation analysis on all organelles --- 
 ```{r}
 ## --- Cross-correlation matrix of Sph-genotypes for each organelle --- ##
-library(gridExtra)
-library(pheatmap)
+
 
 # --- Setup ---
 out_corr_dir <- file.path(out_dir, "Organelle_CrossCorr")
@@ -1610,9 +1577,6 @@ write.csv(day3050_subset, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Pr
 
 
 # ---- heatmap of day30/50 dataset ---- #
-# load libraries 
-library(pheatmap)
-library(RColorBrewer)
 
 generate_day3050_heatmap <- function(df, title_label = "Combined Heatmap") {
   # Extract log2FC columns
@@ -1673,9 +1637,7 @@ ggsave(
 
 
 # ---- Correlation scatterplot of day30 / day 50 DA GRN neurons---- #
-library(ggplot2)
-library(ggpmisc)  # for stat_cor
-library(ggpubr)
+
 
 
 # -- color & facet~wrap by annotation of compartment 
@@ -1759,7 +1721,7 @@ ggsave(
 
 
 # -- plot DA 30 vs 50, and highlight top 10 enriched proteins in both data frames
-library(ggrepel)
+
 
 # ---- STEP 1: Base data ----
 plot_df <- day3050_subset %>%
@@ -1822,13 +1784,7 @@ maybe get a heatmap for each organelle? Strategy is to get a function that asks 
 
 #### Va. --- User-Select Organelle-annotation correlation  
 ```{r}
-# Load required libraries
-library(dplyr)
-library(stringr)
-library(pheatmap)
-library(RColorBrewer)
-library(dplyr)
-library(stringr)
+
 
 
 # ---------------- Generate  log2FC_d50_annotated dataframe --------------- #
@@ -1933,11 +1889,7 @@ correlate_log2fc_annotations(
 
 #### Vb. --- All Organelle-annotation correlation  ---
 ```{r}
-library(dplyr)
-library(tidyr)
-library(pheatmap)
-library(RColorBrewer)
-library(tibble)
+
 
 ## --- Cross-correlation matrix of genotypes --- ##
 # idea is that to calculate correlation of annotated organelles across all genotypes
@@ -2025,7 +1977,7 @@ write.csv(org_corr_mat,
 
 
 ## --- Cross-correlation matrix of genotypes for each organelle --- ##
-library(gridExtra)
+
 
 # Function: compute KO × KO correlation matrix for a given organelle
 plot_ko_corr_matrix <- function(organelle_name, df = log2FC_d50_annotated) {
@@ -2167,13 +2119,6 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 ### ---- Per-Gene Linear Modeling ----
 # This script performs gene-specific linear regression to identify differential
 # expression based on genotype and neuron type, accounting for experimental day.
-library(tidyverse)
-library(dplyr)
-library(broom)
-library(tidyr)
-library(ggplot2)
-library(ggrepel)
-library(purrr)
 
 ## Step 1: Prepare and Factorize Data
 # Filter out missing values and convert 'neuron' and 'genotype' to factors.
@@ -2261,13 +2206,7 @@ write_csv(sig_genes_df, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Prot
 
 #### Vd2. --- Stratified linear modeling of genotype effects by neuron type ---
 ```{r}
-library(tidyverse)
-library(dplyr)
-library(broom)
-library(tidyr)
-library(ggplot2)
-library(ggrepel)
-library(purrr)
+
 # --- Prepare input data -----------------------------------------------------
 # Filter out incomplete rows and ensure proper factor encoding
 lm_input_df <- clean_d50_df %>%
@@ -2412,8 +2351,7 @@ Best suited if:
 
 ```{r}
 # Load necessary package
-library(limma)
-library(tidyverse)
+
 # ─────────────────────────────────────────────────────────────
 # Linear model: ~ genotype * neuron
 # - Main effect of genotype: difference of KO vs control in reference neuron (here -> iN)
@@ -2657,9 +2595,7 @@ write.csv(resultsSelect, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Pro
 ## ─────────────────────────────────────────────────────────────
 ## 7. MA plot using ggplot for select input coefficient 
 ## ─────────────────────────────────────────────────────────────
-#install.packages("ggpubr")  # if not already installed
-library(ggpubr)
-library(dplyr)
+
 
 
 # Example: coefficient of interest
@@ -3266,13 +3202,7 @@ each value must have its own cell
 
 #### VIa. --- nMOST LSD GO signatures of select Clusters for all genotypes ---
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(forcats)
-library(tidyverse)
-# Load required libraries
-library(tidyverse)
+
 
 # Color palette for gene groups
 col <- c(
@@ -3444,13 +3374,7 @@ read in HeLa nMOST file
 
 #### VIIa. --- Neuron–HeLa Proteome Correlation Analysis ---
 ```{r}
-# Load libraries
-library(tidyverse)
-library(data.table)
-library(pheatmap)
-library(circlize)
-library(RColorBrewer)
-library(Cairo)
+
 
 # -----------------------------
 # I. Disease Class Definitions
@@ -3767,12 +3691,6 @@ circos_by_genotype("ASAH1", pos_cut = 0.05, neg_cut = -0.05)
 
 ##### VIIc1. --- Select organelle level ---
 ```{r}
-# load libraries
-library(dplyr)
-library(tidyr)
-library(pheatmap)
-library(readr)
-library(gridExtra)
 
 ## ─────────────────────────────────────────────────────────────
 ## 1.   Add annotations to HeLa-nMOST dataframe & save
