@@ -59,7 +59,7 @@ library(plotly)
 library(grid)
 library(gridExtra)
 library(Cairo)
-library(png)
+#library(png)
 library(devtools)
 library(lintr)
 library(gptstudio)
@@ -616,8 +616,8 @@ probably makes sense to have it in tibble for easy data manipulation
 # iN/iDA: Day 50 Proteomics Heatmap Pipeline
 # --------------------------------------------------- #
 # # --- 0. create output directory 
-# out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/"
-# dir.create(out_dir_d50_heatmaps, recursive = TRUE, showWarnings = FALSE)
+out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/"
+dir.create(out_dir_d50_heatmaps, recursive = TRUE, showWarnings = FALSE)
 
 
 ### iN/iDA: Day 50 Proteomics Heatmap Pipeline ###
@@ -735,6 +735,7 @@ generate_heatmap <- function(df, day_label) {
     cluster_cols = TRUE,
     show_rownames = FALSE,
     show_colnames = TRUE,
+    use_raster = FALSE,
     angle_col = "90",
     main = paste("Day", day_label, "iN / iDA Data"),
     fontsize = 10,
@@ -745,6 +746,13 @@ generate_heatmap <- function(df, day_label) {
 
 heatmap_d30 <- generate_heatmap(df_day30, 30)
 heatmap_d50 <- generate_heatmap(df_day50, 50)
+
+## this did work for other heatmaps 
+pdf(file.path(out_dir_d50_heatmaps, "diff132_selectKO_day3050_heatmap.pdf"), width = 8, height = 10, useDingbats = FALSE)
+generate_day3050_heatmap(day3050_subset, title_label = "LSD DA Neuron Log2FC – Day30 & Day50")
+dev.off()
+
+
 
 # ------------ Combine Plots & save as PDF ----------- #
 # have to use gridExtra, since do not use ggplot objects, but pheatmap() returns a grid object, not a ggplot. To arrange multiple pheatmap() plots, use gridExtra::grid.arrange() instead:
@@ -1295,7 +1303,7 @@ ggsave(file.path(out_dir_d50_QC,
 out_dir_d50_violins <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_Violin"
 dir.create(out_dir_d50_violins, recursive = TRUE, showWarnings = FALSE)
 
-
+# --- Step 1. create plotting function violins 
 plot_log2fc_violin <- function(data, annotations, genotypes) {
 
   # 1. Gather gene identifiers for each annotation
@@ -1353,7 +1361,7 @@ plot_log2fc_violin <- function(data, annotations, genotypes) {
     )
 }
 
-# ------------ Run and Save Plot of select Genotypes ------------- #
+# --- Step 2. Run and Save Plot of select Genotypes 
 LSD_d50_Violin_plot <- plot_log2fc_violin(
   data = complete_data_annotated_day50,
   #annotations = c("Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI"),
@@ -1370,9 +1378,10 @@ LSD_d50_Violin_plot
 #annotations = c("Mito","Golgi.Genes","Lysosome.Genes","ER.genes","Autophagy","Endo_iN_curated_Hundley","SynGO")
 #annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO")
 
-# Save as square-format PDF
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_Violin/diff132_d50_LSD_Violin_plot_ASAH1-SMPD1-GBA1_detailedEndoLysoSynGO.pdf",
+
+# --- Step 3. Save as square-format PDF
+ggsave(file.path(out_dir_d50_violins, 
+  "diff132_d50_LSD_Violin_plot_ASAH1-SMPD1-GBA1_detailedEndoLysoSynGO.pdf"),
   LSD_d50_Violin_plot,
   width = 12, height = 9, device = cairo_pdf)
 ```
@@ -1390,18 +1399,24 @@ use unique variables, so I can calculate the correlation between neurons and nMO
 
 ##### IVh1. --- Add annotations & heatmap & save csv ---
 ```{r}
+# --------------------------------------------------- #
+# Sph mutant investigation  
+# plot heatmap of Sph_mut Subset
+# Add annotations & heatmap & save csv
+# --------------------------------------------------- #
+
+# --- 0. create output directory 
+out_dir_d50_SphMut <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
+dir.create(out_dir_d50_SphMut, recursive = TRUE, showWarnings = FALSE)
 
 
-# Directory for saving files
-out_dir <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-
-# Define SphMut sample IDs
+# --- Step 1.Define SphMut sample IDs
 SphMut_samples <- c("Ctrl_iN", "Ctrl_iDA", "GLB1_iN", "GLB1_iDA", "GBA1_iN", "GBA1_iDA", 
                     "ASAH1_iN", "ASAH1_iDA", "SMPD1_iN", "SMPD1_iDA", "PSAP_iN", "PSAP_iDA", 
                     "HEXA_iN", "HEXA_iDA", "HEXB_iN", "HEXB_iDA")
 
-# Subset and pivot
+
+# --- Step 2. Subset and pivot
 SphMut_df <- clean_d50_transformed_df %>%
   filter(sample_id %in% SphMut_samples, day == 50)
 
@@ -1427,15 +1442,18 @@ SphMut_wide_df <- SphMut_df %>%
     )
   )
 
-# Add annotations
+
+# --- Step 3. Add annotations
 SphMut_annotated_df <- SphMut_wide_df %>%
   left_join(binary_matrix, by = "Genes") %>%
   replace(is.na(.), 0)
 
-# Save as CSV
-write_csv(SphMut_annotated_df, file.path(out_dir, "SphMut_log2FC_day50_annotated.csv"))
+
+# --- Step 4. Save as CSV
+write_csv(SphMut_annotated_df, file.path(out_dir_d50_SphMut, "SphMut_log2FC_day50_annotated.csv"))
 
 
+# --- Step 5. Prepare variables for plotting  
 log2fc_cols <- grep("_d50_log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
 
 SphMut_mat <- SphMut_annotated_df %>%
@@ -1461,7 +1479,8 @@ ann_colors <- list(
 row_var <- apply(SphMut_mat, 1, var)
 SphMut_mat_filtered <- SphMut_mat[row_var > 0, ]
 
-# Heatmap with internal z-score
+
+# --- Step 6. Heatmap with internal z-score
 Sphmut_hm <- pheatmap(
   SphMut_mat_filtered,
   annotation_col = SphMut_sample_info,
@@ -1472,6 +1491,7 @@ Sphmut_hm <- pheatmap(
   scale = "row",
   show_rownames = FALSE,
   show_colnames = TRUE,
+  use_raster = FALSE,
   fontsize = 6,
   #cellheight = 5,
   #cellwidth  = 5,
@@ -1480,8 +1500,10 @@ Sphmut_hm <- pheatmap(
   main = "SphMut Z-Score Log2FC (Day 50)"
 )
 
-pdf(file.path(out_dir, "SphMut_log2FC_heatmap.pdf"), width = 3, height = 10, useDingbats = FALSE)
-print(Sphmut_hm)
+
+# --- Step 7. Save Heatmap 
+pdf(file.path(out_dir_d50_SphMut, "SphMut_log2FC_heatmap.pdf"), width = 3, height = 10, useDingbats = FALSE)
+#print(Sphmut_hm)
 dev.off()
 
 ```
@@ -1490,7 +1512,12 @@ dev.off()
 
 ##### IVh2. --- Correlation analysis on selected annotations --- 
 ```{r}
-# --- Correlation analysis on selected annotations --- #
+# --------------------------------------------------- #
+# Sph mutant investigation  
+# plot correlation heatmaps and facet wrap
+# --------------------------------------------------- #
+
+# --- Step 1. Correlation analysis on selected annotations
 selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
                           "Lysosome.Genes", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs")
 
@@ -1499,6 +1526,8 @@ selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
 
 log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
 
+
+# --- Step 2. Plotting function 
 SphMut_corr_df <- purrr::map_dfr(selected_annotations, function(ann) {
   x <- as.numeric(SphMut_annotated_df[[ann]])
   purrr::map_dfr(log2fc_cols, function(ko) {
@@ -1510,10 +1539,13 @@ SphMut_corr_df <- purrr::map_dfr(selected_annotations, function(ann) {
   })
 })
 
-# Save correlation results
-write_csv(SphMut_corr_df, file.path(out_dir, "SphMut_annotation_correlation.csv"))
 
-# --- Plot correlation matrix --- #
+# --- Step 3. Save Corr results as csv
+# Save correlation results
+write_csv(SphMut_corr_df, file.path(out_dir_d50_SphMut, "SphMut_annotation_correlation.csv"))
+
+
+# --- Step 4. Create Corr matrix with KO annotations
 SphMut_corr_mat <- SphMut_corr_df %>%
   select(KO, Organelle, r) %>%
   pivot_wider(names_from = Organelle, values_from = r) %>%
@@ -1525,8 +1557,9 @@ SphMut_corr_mat[!is.finite(SphMut_corr_mat)] <- 0
 SphMut_ko_type <- data.frame(CellType = ifelse(grepl("iDA", rownames(SphMut_corr_mat)), "iDA", "iN"))
 rownames(SphMut_ko_type) <- rownames(SphMut_corr_mat)
 
-# Final correlation heatmap
-pdf(file.path(out_dir, "SphMut_annotation_corr_heatmap.pdf"), width = 10, height = 14, useDingbats = FALSE)
+
+# --- Step 5. Plot correlation matrix
+pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap.pdf"), width = 10, height = 14, useDingbats = FALSE)
 pheatmap(
   SphMut_corr_mat,
   color = rev(brewer.pal(11, "RdYlBu")),
@@ -1546,11 +1579,13 @@ dev.off()
 
 ##### IVh3. --- Correlation analysis on all organelles --- 
 ```{r}
-## --- Cross-correlation matrix of Sph-genotypes for each organelle --- ##
+# --------------------------------------------------- #
+# Sph mutant investigation  
+# Cross-correlation matrix of Sph-genotypes for each organelle
+# --------------------------------------------------- #
 
-
-# --- Setup ---
-out_corr_dir <- file.path(out_dir, "Organelle_CrossCorr")
+# --- Step 1. Setup 
+out_corr_dir <- file.path(out_dir_d50_SphMut, "Organelle_CrossCorr")
 dir.create(out_corr_dir, showWarnings = FALSE, recursive = TRUE)
 
 SphMut_sample_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
@@ -1558,7 +1593,8 @@ SphMut_ko_type <- data.frame(CellType = ifelse(grepl("iDA", SphMut_sample_cols),
 rownames(SphMut_ko_type) <- SphMut_sample_cols
 celltype_colors <- c(iDA = "grey80", iN = "grey40")
 
-# --- Function: Compute KO×KO correlation matrix for a given organelle ---
+
+# --- Step 2. Function: Compute KO×KO correlation matrix for a given organelle ---
 plot_sphmut_corr_matrix <- function(organelle_name, df = SphMut_annotated_df) {
   gene_filter <- df[[organelle_name]] == 1
   mat <- df[gene_filter, SphMut_sample_cols, drop = FALSE]
@@ -1584,7 +1620,8 @@ plot_sphmut_corr_matrix <- function(organelle_name, df = SphMut_annotated_df) {
   )
 }
 
-# --- Run for all selected organelles ---
+
+# --- Step 3. Run for all selected organelles 
 selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.MOM", "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes", "ER.genes","Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome", "SynapseSVs")
   
 
@@ -1596,14 +1633,15 @@ selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.M
 SphMut_ko_corr_hms <- lapply(selected_annotations, plot_sphmut_corr_matrix)
 SphMut_ko_corr_hms <- Filter(Negate(is.null), SphMut_ko_corr_hms)
 
-# --- Save multi-panel heatmap PDF ---
+
+# --- Step 4. Save multi-panel heatmap PDF 
 pdf(file.path(out_corr_dir, "SphMut_KOxKO_Corr_Heatmaps.pdf"), width = 30, height = 30, useDingbats = FALSE)
 gridExtra::grid.arrange(
   grobs = lapply(SphMut_ko_corr_hms, `[[`, "gtable"),
   ncol = 4
 )
 dev.off()
-#dev.off()
+
 ```
 
 
@@ -1620,7 +1658,17 @@ use complete_data_annotated_day30 & complete_data_annotated_day50 for evaluation
 - plot corr of GRN/Ctrl day30 (x) and GRN/Ctrl day50 (y)
 - plot outliers of this corr and see what is different? 
 ```{r}
-# use modified function to loop through clean_50_transformed_df to get genotypes and days and annotations in new dataframe 
+# --------------------------------------------------- #
+# GRN d30/50 DA neuron investigation  
+# Cross-correlation matrix of Sph-genotypes for each organelle
+# --------------------------------------------------- #
+# --- 0. create output directory 
+out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
+dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
+
+
+
+# --- 1. use modified function to loop through clean_50_transformed_df to get genotypes and days and annotations in new dataframe 
 process_day_data_combined <- function(df, binary_matrix) {
   selected_samples <- c("Ctrl_iN", "Ctrl_iDA", "GRN_iN", "GRN_iDA", 
                         "GBA1_iN", "GBA1_iDA", "ASAH1_iN", "ASAH1_iDA", 
@@ -1661,14 +1709,19 @@ process_day_data_combined <- function(df, binary_matrix) {
   return(complete_data_annotated)
 }
 
+# --- 2. Save day 30 and day50 data as csv file 
 day3050_subset <- process_day_data_combined(clean_d50_transformed_df, binary_matrix)
-write.csv(day3050_subset, "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes/diff132_day3050_subset.csv",row.names = FALSE)
+write.csv(day3050_subset, file=file.path(out_dir_d50_GRN, "diff132_day3050_subset.csv"),row.names = FALSE)
+write.csv(day3050_subset, file=file.path(out_dir_d50_dataframes, "diff132_day3050_subset.csv"),row.names = FALSE)
 
 
 
+# --------------------------------------------------- #
+# GRN d30/50 DA neuron investigation  
+# heatmap of day30/50 dataset
+# --------------------------------------------------- #
 
-# ---- heatmap of day30/50 dataset ---- #
-
+# --- 3. Function for Heatmap plotting
 generate_day3050_heatmap <- function(df, title_label = "Combined Heatmap") {
   # Extract log2FC columns
   log2fc_cols <- grep("_log2_fold_change$", names(df), value = TRUE)
@@ -1711,25 +1764,35 @@ generate_day3050_heatmap <- function(df, title_label = "Combined Heatmap") {
     cluster_cols = TRUE,
     show_rownames = FALSE,
     show_colnames = TRUE,
-    angle_col = 90,
+    use_raster = FALSE,
+    #angle_col = 90,
     main = title_label,
     fontsize = 10,
     border_color = NA
   )
 }
+
+# --- 4. call function
 day3050_heatmap <- generate_day3050_heatmap(day3050_subset, title_label = "LSD DA Neuron Log2FC – Day30 & Day50")
-day3050_heatmap
-
-ggsave(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/diff132_selectKO_day3050_heatmap.pdf",
-  day3050_heatmap,
-  width = 8, height = 10, device = cairo_pdf)
+#day3050_heatmap
 
 
+# --- 5. save heatmap as pdf in both dirs
+pdf(file.path(out_dir_d50_heatmaps, "diff132_selectKO_day3050_heatmap.pdf"), width = 8, height = 10, useDingbats = FALSE)
+generate_day3050_heatmap(day3050_subset, title_label = "LSD DA Neuron Log2FC – Day30 & Day50")
+dev.off()
 
-# ---- Correlation scatterplot of day30 / day 50 DA GRN neurons---- #
+pdf(file.path(out_dir_d50_GRN, "diff132_selectKO_day3050_heatmap.pdf"), width = 8, height = 10, useDingbats = FALSE)
+generate_day3050_heatmap(day3050_subset, title_label = "LSD DA Neuron Log2FC – Day30 & Day50")
+dev.off()
 
 
+
+
+# --------------------------------------------------- #
+# GRN d30/50 DA neuron investigation  
+# Correlation scatterplot of day30 / day 50 DA GRN neurons
+# --------------------------------------------------- #
 
 # -- color & facet~wrap by annotation of compartment 
 # Create a copy to avoid modifying original
