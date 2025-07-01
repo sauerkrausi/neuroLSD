@@ -1384,10 +1384,10 @@ LSD_d50_Violin_plot
 
 
 # Annotations:
-#"Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI","Plasma Membrane","Golgi.Genes","Lysosome.Genes","ER.genes","	Endosome.Genes","EndoType","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoLyso" "EarlyEndosome","RecyclingEndosome")
+# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome","ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"     
 
 #annotations = c("Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI"),
-#annotations = c("Mito","Golgi.Genes","Lysosome.Genes","ER.genes","Autophagy","Endo_iN_curated_Hundley","SynGO")
+#annotations = c("Mito","Golgi","Lysosome","ER","Autophagy","Endo_iN_curated_Hundley","SynGO")
 #annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO")
 
 
@@ -1531,9 +1531,9 @@ dev.off()
 
 # --- Step 1. Correlation analysis on selected annotations
 selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
-                          "Lysosome.Genes", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis")
+                          "Lysosome", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis")
 
-# selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.MOM", "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes", "ER.genes","Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis")
+# selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")     
    
 
 log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
@@ -1634,12 +1634,12 @@ plot_sphmut_corr_matrix <- function(organelle_name, df = SphMut_annotated_df) {
 
 
 # --- Step 3. Run for all selected organelles 
-selected_annotations <- c("Mito", "Mito.IMS",  "Mito.Matrix", "Mito.MIM","Mito.MOM", "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes", "ER.genes","Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis")
+# selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")   
   
 
 
-# selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
-#                           "Lysosome.Genes", "Presynaptic", "Postsynaptic","SVfusion","Svendocytosis", "Svexocytosis")
+selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
+                          "Lysosome", "Presynaptic", "Postsynaptic","SVfusion","Svendocytosis", "Svexocytosis")
 
 
 SphMut_ko_corr_hms <- lapply(selected_annotations, plot_sphmut_corr_matrix)
@@ -1816,7 +1816,7 @@ annot_subset <- day3050_subset
 annotation_columns <- names(annot_subset)[sapply(annot_subset, is.logical)]
 
 # Step 7b: Remove overly specific or problematic annotations
-usable_annotations <- setdiff(annotation_columns, c("Autophagy..Detailed.", "EndoDetailed"))
+usable_annotations <- setdiff(annotation_columns, c("Autophagy_det", "EndoDetailLoac"))
 
 # Step 7c: Reshape to long format: Gene - Localization pairs
 annotation_long <- annot_subset %>%
@@ -2071,7 +2071,7 @@ correlate_log2fc_annotations(
 
 
 # Annotations:
-# "Mito.IMS","Mito.Matrix","Mito.MIM", "Mito.MOM","OXPHOS","mtComplexI","Golgi.Genes","Lysosome.Genes","ER.genes","Cytoplasm","Nucleus","Autophagy","Autophagy..Detailed.","SynGO",                "Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoDetailed","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome", "SynapseSVs"
+# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"
 
 
 
@@ -2116,12 +2116,11 @@ run_all_organelle_corr <- function(df, annotations) {
 # --- Step 2. define annotations to correlate  
 org_corr_df <- run_all_organelle_corr(
   log2FC_d50_annotated,
-  annotations = c("Mito", "Mito.IMS", "Mito.Matrix", "Mito.MIM", "Mito.MOM",
-                  "OXPHOS", "mtComplexI", "Golgi.Genes", "Lysosome.Genes",
-                  "ER.genes", "Endosome.Genes", "Cytoplasm", "Nucleus",
-                  "Autophagy", "SynGO", "Endo_iN_curated_Hundley",
-                  "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome", 
-                  "SynapseSVs", "SVfusion","Svendocytosis", "Svexocytosis")
+  annotations = c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
+                  "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
+                  "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
+                  "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
+                  "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
 )
 
 
@@ -2215,13 +2214,11 @@ plot_ko_corr_matrix <- function(organelle_name, df = log2FC_d50_annotated) {
 
 # --- Step 6. Annotations for plotting
 all_ann <- c(
-  "Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM",
-  "OXPHOS","mtComplexI","Golgi.Genes","Lysosome.Genes",
-  "ER.genes","Endosome.Genes","Cytoplasm","Nucleus",
-  "Autophagy","SynGO","Endo_iN_curated_Hundley",
-  "Presynaptic","Postsynaptic","NeuroDev","EndoLyso",
-  "EarlyEndosome","RecyclingEndosome", "SynapseSVs",
-  "SVfusion","Svendocytosis", "Svexocytosis"
+  "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
+  "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
+  "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
+  "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
+  "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"
 )
 
 
@@ -2315,15 +2312,11 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 )
 
 
-# all_ann <- c(
-#   "Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM",
-#   "OXPHOS","mtComplexI","Golgi.Genes","Lysosome.Genes",
-#   "ER.genes","Endosome.Genes","Cytoplasm","Nucleus",
-#   "Autophagy","SynGO","Endo_iN_curated_Hundley",
-#   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso",
-#   "EarlyEndosome","RecyclingEndosome", "SynapseSVs",
-#  "SVfusion","Svendocytosis", "Svexocytosis"
-# )
+# all_ann <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
+#                   "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
+#                   "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
+#                   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
+#                   "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
 
 ```
 
@@ -3987,7 +3980,7 @@ write.csv(HeLaWCnMOST_df_annotated,file = file.path(out_dir_d50_nMOST_nDIAcorrel
 
 selected_annotations <- c(
   "EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
-  "Lysosome.Genes", "Presynaptic", "Postsynaptic",
+  "Lysosome", "Presynaptic", "Postsynaptic",
   "EarlyEndosome", "RecyclingEndosome"
 )
 
