@@ -77,6 +77,9 @@ dir.create(out_dir_lysoip_organelle_dist, recursive = TRUE, showWarnings = FALSE
 out_dir_lysoip_venn <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn"
 dir.create(out_dir_lysoip_venn, recursive = TRUE, showWarnings = FALSE)
 
+
+out_dir_lysoip_autophagy <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/autophagy"
+dir.create(out_dir_lysoip_autophagy, recursive = TRUE, showWarnings = FALSE)
 ```
 
 # I. Background HeLa LysoIP experiments
@@ -191,7 +194,10 @@ annotation_col_helalysoip <- tibble(Sample = expr_cols_lysoip) %>%
   ) %>%
   column_to_rownames("Sample")
 
-ann_colors_helalysoip$Fraction <- c(`Whole-cell` = "#bdbdbd")
+ann_colors_helalysoip$Fraction <- c(
+  `Whole-cell` = "#bdbdbd",
+  LysoIP = "#9ecae1"  # or another distinct color
+)
 
 # --- 4. Save heatmap and matrix
 pdf_file_helalysoip <- file.path(out_dir_lysoip_heatmap, "helalysoip_heatmap.pdf")
@@ -223,31 +229,6 @@ write.csv(mat_helalysoip_out,
           row.names = TRUE)
 
 
-
-
-
-# Violin plot of cluster abundance
-ggplot(annotated_df, aes(x = factor(cluster), y = ASAH1LysoIP)) +
-  geom_violin(fill = "dodgerblue", alpha = 0.6) +
-  theme_bw()
-
-
-selected_annot <- c("Lysosome Genes", "Endosome", "ER", "Golgi", "Mito")
-
-long_df <- annotated_df %>%
-  filter(Compartment %in% selected_annot) %>%
-  pivot_longer(cols = c(CtrlLysoIP, ASAH1LysoIP), names_to = "Condition", values_to = "Abundance")
-
-ggplot(long_df, aes(x = reorder(Compartment, Abundance, FUN = mean), y = Abundance, fill = Condition)) +
-  geom_violin(scale = "width", position = position_dodge(width = 0.8)) +
-  scale_fill_manual(values = c("CtrlLysoIP" = "gray70", "ASAH1LysoIP" = "dodgerblue")) +
-  theme_bw() +
-  coord_flip()
-
-
-# corr
-corr_mat <- cor(t(expr_mat), use = "pairwise.complete.obs")
-pheatmap(corr_mat, annotation_col = annotated_df[, "Compartment", drop=FALSE])
 ```
 
 
@@ -301,16 +282,16 @@ ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_clusterViolinPlot_log2FC.pdf"),
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- 1. Define setup
+organelles <- c("Lysosome", "Endo_iN_curated_Hundley", "Golgi", "ER", "Mito")
+
 org_mapping <- tibble(
-  Organelle = factor(c("Lysosome Genes", "Endo_iN_curated_Hundley", " Golgi Genes", "ER genes", "Mito"), levels = organelles),
+  Organelle = factor(organelles, levels = organelles),
   Org_Label = c("Lyso", "Endo", "Golgi", "ER", "Mito"),
-  Org_Number = c(1, 2, 3, 4, 5)
+  Org_Number = 1:5
 )
 
-violin_df <- bind_rows(df_ctrl, df_asah1) %>%
-  mutate(Sample = factor(Sample, levels = c("Ctrl vs Untagged", "ASAH1 vs Untagged")),
-         Organelle = factor(Organelle, levels = organelles)) %>%
-  left_join(org_mapping, by = "Organelle")
+org_labels <- org_mapping$Org_Label
+org_order  <- org_mapping$Org_Number
 
 # --- 2. Create data subset for both comparisons
 df_ctrl <- helalysoip_annotated_df %>%
@@ -327,27 +308,34 @@ df_asah1 <- helalysoip_annotated_df %>%
   filter(flag) %>%
   mutate(Sample = "ASAH1 vs Untagged", log2FC = log2FC_ASAH1LysoIP.untagged)
 
-# --- 3. Compute mean values for annotation
-label_df <- violin_df %>%
-  group_by(Organelle, Sample) %>%
-  summarize(mean_val = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop") %>%
+# --- 3. Combine dataframes and annotate
+violin_df <- bind_rows(df_ctrl, df_asah1) %>%
   mutate(
-    ypos = max(violin_df$log2FC, na.rm = TRUE) + 0.3
-  )
+    Sample = factor(Sample, levels = c("Ctrl vs Untagged", "ASAH1 vs Untagged")),
+    Organelle = factor(Organelle, levels = organelles)
+  ) %>%
+  left_join(org_mapping, by = "Organelle")
 
-# --- 4. Plot
+# --- 4. Mean value labels
+# label_df <- violin_df %>%
+#   group_by(Organelle, Sample) %>%
+#   summarize(mean_val = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop") %>%
+#   mutate(
+#     xpos = interaction(Organelle, Sample),
+#     ypos = max(violin_df$log2FC, na.rm = TRUE) + 0.3
+#   )
+
+# --- 5. Plot
 ggplot(violin_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
   geom_violin(scale = "width", trim = FALSE, width = 0.9) +
   geom_jitter(width = 0.15, height = 0, size = 0.3, alpha = 0.2) +
   geom_hline(yintercept = 0, linetype = "dotted") +
   scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70", "ASAH1 vs Untagged" = "dodgerblue3")) +
-  scale_x_discrete(labels = rep(org_labels, times = 2)) +
-  # geom_text(data = label_df,
-  #           aes(x = interaction(Organelle, Sample), y = ypos, label = mean_val),
-  #           inherit.aes = FALSE,
-  #           size = 3,
-  #           fontface = "bold",
-  #           color = c(rep("black", 5), rep("dodgerblue3", 5))) +
+  scale_x_discrete(labels = setNames(
+    rep(org_labels, times = 2),
+    interaction(rep(org_mapping$Organelle, times = 2),
+                rep(c("Ctrl vs Untagged", "ASAH1 vs Untagged"), each = length(organelles)))
+  )) +
   theme_bw(base_size = 10) +
   theme(
     panel.grid = element_blank(),
@@ -355,13 +343,94 @@ ggplot(violin_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sam
     axis.text.x = element_text(angle = 0),
     legend.position = "none"
   ) +
-  labs(y = expression(log[2]*"FC"), title = "Organelle Enrichment Ctrl / ASAH1-/-") +
-  annotate("text", x = 1:10, y = -4.5, label = rep(org_order, times = 2), color = rep(c("darkorange", "firebrick"), each = 5), size = 3) +
+  labs(y = expression(log[2]*"FC"), title = "Organelle Enrichment HeLa Ctrl vs ASAH1-/-") +
+  annotate("text", x = 1:10, y = -4.5, label = rep(org_order, times = 2),
+           color = rep(c("darkorange", "firebrick"), each = length(organelles)), size = 3) +
   annotate("text", x = 3, y = -5.2, label = "Ctrl vs Untagged", size = 3.2) +
   annotate("text", x = 8, y = -5.2, label = "ASAH1 vs Untagged", size = 3.2)
 
 # --- 5. Save
-ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_OrganelleEnrichment_ViolinCombo.pdf"), width = 5, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_ViolinCombo.pdf"), width = 5, height = 5, device = cairo_pdf)
+
+
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Violin Plot of detailed endo annotations in ctrl vs ASAH1-/-
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Define organelle labels and order for detailed Endo investigation
+organelle_detailed <- c(
+  "Lysosome", 
+  "Endo_iN_curated_Hundley", 
+  "EarlyEndosome", 
+  "RecyclingEndosome", 
+  "Golgi", 
+  "ER", 
+  "Mito"
+)
+
+org_endodetailed_mapping <- tibble(
+  Organelle = factor(organelle_detailed, levels = organelle_detailed),
+  Org_Label = c("Lyso", "Endo", "EarlyEndo", "RecyclingEndo", "Golgi", "ER", "Mito"),
+  Org_Number = 1:7
+)
+
+# --- 2. Subset data for Ctrl and ASAH1 comparisons
+df_det_ctrl <- helalysoip_annotated_df %>%
+  filter(if_any(all_of(organelle_detailed), ~ .x)) %>%
+  select(Gene.Symbol, all_of(organelle_detailed), log2FC_CtrlLysoIP.untagged) %>%
+  pivot_longer(cols = all_of(organelle_detailed), names_to = "Organelle", values_to = "flag") %>%
+  filter(flag) %>%
+  mutate(Sample = "Ctrl vs Untagged", log2FC = log2FC_CtrlLysoIP.untagged)
+
+df_det_asah1 <- helalysoip_annotated_df %>%
+  filter(if_any(all_of(organelle_detailed), ~ .x)) %>%
+  select(Gene.Symbol, all_of(organelle_detailed), log2FC_ASAH1LysoIP.untagged) %>%
+  pivot_longer(cols = all_of(organelle_detailed), names_to = "Organelle", values_to = "flag") %>%
+  filter(flag) %>%
+  mutate(Sample = "ASAH1 vs Untagged", log2FC = log2FC_ASAH1LysoIP.untagged)
+
+# --- 3. Combine and annotate
+violin_det_df <- bind_rows(df_det_ctrl, df_det_asah1) %>%
+  mutate(Sample = factor(Sample, levels = c("Ctrl vs Untagged", "ASAH1 vs Untagged")),
+         Organelle = factor(Organelle, levels = organelle_detailed)) %>%
+  left_join(org_endodetailed_mapping, by = "Organelle")
+
+# # --- 4. Compute mean labels
+# label_det_df <- violin_det_df %>%
+#   group_by(Organelle, Sample) %>%
+#   summarize(mean_val = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop") %>%
+#   mutate(
+#     ypos = max(violin_det_df$log2FC, na.rm = TRUE) + 0.3
+#   )
+
+# --- 5. Plot
+ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
+  geom_violin(scale = "width", trim = FALSE, width = 0.9) +
+  geom_jitter(width = 0.15, height = 0, size = 0.3, alpha = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70", "ASAH1 vs Untagged" = "dodgerblue3")) +
+  # scale_x_discrete(
+  #   labels = setNames(
+  #     rep(org_endodetailed_mapping$Org_Label, times = 2),
+  #     interaction(rep(org_endodetailed_mapping$Organelle, times = 2),
+  #                 rep(c("Ctrl vs Untagged", "ASAH1 vs Untagged"), each = nrow(org_endodetailed_mapping)))
+  #   )
+  # ) +
+  theme_bw(base_size = 10) +
+  theme(
+    panel.grid = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(angle = 90),
+    legend.position = "none"
+  ) +
+  labs(y = expression(log[2]*"FC"), title = "Organelle Enrichment HeLa Ctrl vs ASAH1-/-")
+
+# --- 6. Save
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_detailedEndo_ViolinCombo.pdf"), width = 5, height = 5, device = cairo_pdf)
 
 
 
@@ -370,18 +439,56 @@ ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_OrganelleEnrichment_ViolinCombo
 
 # IV. Abundnance of lysosomal hydrolases
 ```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Hydrolase abundance in lysosome Ctrl vs ASAH1-/-
+# ─────────────────────────────────────────────────────────────────────────────
 
+# --- Step 1: Prepare data for slope plot
+hydro_df <- helalysoip_annotated_df %>%
+  filter(LysoHydrolase == TRUE) %>%
+  select(Gene.Symbol,
+         Ctrl = log2FC_CtrlLysoIP.untagged,
+         ASAH1 = log2FC_ASAH1LysoIP.untagged) %>%
+  pivot_longer(cols = c("Ctrl", "ASAH1"), names_to = "Sample", values_to = "log2FC") %>%
+  mutate(Gene.Symbol = factor(Gene.Symbol, levels = unique(Gene.Symbol)))  # maintain order
+
+# Ensure factor levels enforce desired order
+hydro_df <- hydro_df %>%
+  mutate(Sample = factor(Sample, levels = c("Ctrl", "ASAH1")))
+
+# --- Step 2: Plot slope plot
+p_slope <- ggplot(hydro_df, aes(x = Sample, y = log2FC, group = Gene.Symbol)) +
+  geom_line(color = "grey90", alpha = 0.8) +
+  geom_point(size = 3, aes(fill = Sample), shape = 21, color = "black") +
+  scale_fill_manual(values = c("Ctrl" = "grey70", "ASAH1" = "dodgerblue3")) +
+  theme_bw(base_size = 6) +
+  labs(x = NULL, y = expression(log[2]*"FC"),
+       title = "Lysohydrolase Abundance in Ctrl vs ASAH1-/-") +
+  theme(
+    panel.grid = element_blank(),
+    aspect.ratio = 1.75,
+    legend.position = "none"
+  )
+
+# --- Step 3: Save as square PDF
+ggsave(filename = file.path(out_dir_lysoip_organelle_dist,
+                            "lysohydrolase_slopeplot.pdf"),
+       plot = p_slope, width = 2, height = 4, device = cairo_pdf)
 ```
 
 
 # V. Venn Diagramm of lyso, endo and iN-endo list to see overlap
 ```{r}
-#### Venn for all proteins detected ####
-## read in .csv file containing the genes which are sig down in proteomics
+# ─────────────────────────────────────────────────────────────────────────────
+# Venn for all proteins detected
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 1: read in .csv file containing the genes which are sig down in proteomics
 lysoIPvenn <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_venn.csv', 
                    header=T, sep = ",", , stringsAsFactors = FALSE)
 
-#### Venn of all three datasets #####
+
+# --- Step 2: Venn of all three datasets #####
 ggVennDiagram(
   lysoIPvenn,
   category.names = c("Lyso-enriched", "Endo-enriched", "iNendo-enriched"),
@@ -401,13 +508,15 @@ ggVennDiagram(
   scale_fill_gradient(low = "#F4FAFE", high = "#4981BF")
 
 
-## save Venn diagram as .pdf for further processing in illustrator for figures 
-ggsave('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoVennDiagramm.pdf', width =20, height = 20, units = "cm", dpi=600)
+# --- Step 3: Save Venn diagram as .pdf for further processing in illustrator for figures 
+ggsave(file.path(out_dir_lysoip_venn,'EndoLysoVennDiagramm.pdf'), width =20, height = 20, units = "cm", dpi=600)
 
 
 
-#### Venn of Lyso and iN endo list #####
-## make subset of IP data to only contain lyso and Endocurated list 
+# ─────────────────────────────────────────────────────────────────────────────
+# Venn of Lyso and iN endo list
+# ─────────────────────────────────────────────────────────────────────────────
+# --- Step 4: make subset of IP data to only contain lyso and Endocurated list 
 lysoIPvenn_subest <- lysoIPvenn[,c("Lyso", "EndoCurated")]
 
 ggVennDiagram(
@@ -430,23 +539,24 @@ ggVennDiagram(
   coord_flip() ## flip plot on side 
 
 
-## save Venn diagram as .pdf for further processing in illustrator for figures 
-ggsave('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoCuratedLysoVennDiagramm.pdf', width =27, height = 20, units = "cm", dpi=600)
+# --- Step 5: save Venn diagram as .pdf for further processing in illustrator for figures 
+ggsave(file.path(out_dir_lysoip_venn, 'EndoCuratedLysoVennDiagramm.pdf'), width =27, height = 20, units = "cm", dpi=600)
 
 
-#### Extract overlapping protein names #### 
+# --- Step 6: Extract overlapping protein names #### 
 ## parse and save overlapping protein names that between the lists 
 # Convert columns to sets (remove NA values)
 lyso_set <- na.omit(lysoIPvenn$Lyso)
 endosome_set <- na.omit(lysoIPvenn$Endosome)
 endocurated_set <- na.omit(lysoIPvenn$EndoCurated)
 
-# Compute pairwise intersections
+
+# --- Step 7: Compute pairwise intersections
 overlap_lyso_endosome <- intersect(lyso_set, endosome_set)
 overlap_lyso_endocurated <- intersect(lyso_set, endocurated_set)
 overlap_endosome_endocurated <- intersect(endosome_set, endocurated_set)
 
-# Save the results to CSV files
+# --- Step 8: Save the results to CSV files
 write.csv(data.frame(Overlap_Lyso_Endosome = overlap_lyso_endosome),
           '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Lyso_Endosome.csv', row.names = FALSE)
 write.csv(data.frame(Overlap_Lyso_EndoCurated = overlap_lyso_endocurated),
@@ -456,13 +566,16 @@ write.csv(data.frame(Overlap_Endosome_EndoCurated = overlap_endosome_endocurated
 
 
 
-#### Analysis for enriched protein (log2FC >0.5) in Ctrl over untagged ####
 
-## read in .csv file containing the genes which are sig down in proteomics
+# ─────────────────────────────────────────────────────────────────────────────
+# Analysis for enriched protein (log2FC >0.5) in Ctrl over untagged
+# ─────────────────────────────────────────────────────────────────────────────
+# --- Step 9: Read in .csv file containing the genes which are sig down in proteomics
 lysoIPvennCtrl <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_vennCtrl.csv', 
                    header=T, sep = ",", , stringsAsFactors = FALSE)
 
-## make subset of IP data to only contain lyso and Endocurated list 
+
+# --- Step 10: Make subset of IP data to only contain lyso and Endocurated list & plot
 lysoIPvennCtrl_subest <- lysoIPvennCtrl[,c("Lyso", "EndoCurated")]
 
 ggVennDiagram(
@@ -485,11 +598,13 @@ ggVennDiagram(
   coord_flip() ## flip plot on side 
 
 
-## save Venn diagram as .pdf for further processing in illustrator for figures 
-ggsave('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoCuratedLysoVennDiagrammCtrl.pdf', width =27, height = 20, units = "cm", dpi=600)
+# --- Step 11: Save Venn diagram as .pdf for further processing in illustrator for figures 
+ggsave(file.path(out_dir_lysoip_venn,'EndoCuratedLysoVennDiagrammCtrl.pdf'), width =27, height = 20, units = "cm", dpi=600)
 
-### Ctrl over untagged: Extract overlapping protein names 
+
+# --- Step 12: Ctrl over untagged: Extract overlapping protein names 
 ## parse and save overlapping protein names that between the lists 
+
 # Convert columns to sets (remove NA values)
 lyso_Ctrl_set <- na.omit(lysoIPvennCtrl$Lyso)
 endosome_Ctrl_set <- na.omit(lysoIPvennCtrl$Endosome)
@@ -501,22 +616,26 @@ overlap_Ctrl_lyso_endocurated <- intersect(lyso_Ctrl_set, endocurated_Ctrl_set)
 overlap_Ctrl_endosome_endocurated <- intersect(endosome_Ctrl_set, endocurated_Ctrl_set)
 
 # Save the results to CSV files
-write.csv(data.frame(Overlap_Ctrl_Lyso_Endosome = overlap_Ctrl_lyso_endosome),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Ctrl_Lyso_Endosome.csv', row.names = FALSE)
-write.csv(data.frame(Overlap_Ctrl_Lyso_EndoCurated = overlap_Ctrl_lyso_endocurated),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Ctrl_Lyso_EndoCurated.csv', row.names = FALSE)
-write.csv(data.frame(Overlap_Ctrl_Endosome_EndoCurated = overlap_Ctrl_endosome_endocurated),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Ctrl_Endosome_EndoCurated.csv', row.names = FALSE)
+write.csv(data.frame(Overlap_Ctrl_Lyso_Endosome = overlap_Ctrl_lyso_endosome),file=file.path(out_dir_lysoip_venn,
+          'Overlap_Ctrl_Lyso_Endosome.csv'), row.names = FALSE)
+write.csv(data.frame(Overlap_Ctrl_Lyso_EndoCurated = overlap_Ctrl_lyso_endocurated),file=file.path(out_dir_lysoip_venn,
+          'Overlap_Ctrl_Lyso_EndoCurated.csv'), row.names = FALSE)
+write.csv(data.frame(Overlap_Ctrl_Endosome_EndoCurated = overlap_Ctrl_endosome_endocurated),file=file.path(out_dir_lysoip_venn,
+          'Overlap_Ctrl_Endosome_EndoCurated.csv'), row.names = FALSE)
 
 
 
-#### Analysis for enriched protein (log2FC >0.5) in ASAH1 over untagged ####
 
-## read in .csv file containing the genes which are sig down in proteomics
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Analysis for enriched protein (log2FC >0.5) in ASAH1 over untagged 
+# ─────────────────────────────────────────────────────────────────────────────
+# --- Step 13: Read in .csv file containing the genes which are sig down in proteomics
 lysoIPvennASAH1 <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_vennASAH1.csv', 
                    header=T, sep = ",", , stringsAsFactors = FALSE)
 
-## make subset of IP data to only contain lyso and Endocurated list 
+
+# --- Step 14: Make subset of IP data to only contain lyso and Endocurated list & plot
 lysoIPvennASAH1_subest <- lysoIPvennASAH1[,c("Lyso", "EndoCurated")]
 
 ggVennDiagram(
@@ -539,10 +658,11 @@ ggVennDiagram(
   coord_flip() ## flip plot on side 
 
 
-## save Venn diagram as .pdf for further processing in illustrator for figures 
-ggsave('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoCuratedLysoVennDiagrammASAH1.pdf', width =27, height = 20, units = "cm", dpi=600)
+# --- Step 15: Save Venn diagram as .pdf for further processing in illustrator for figures 
+ggsave(file.path(out_dir_lysoip_venn,'EndoCuratedLysoVennDiagrammASAH1.pdf'), width =27, height = 20, units = "cm", dpi=600)
 
-### Ctrl over untagged: Extract overlapping protein names 
+
+# --- Step 16: Ctrl over untagged: Extract overlapping protein names 
 ## parse and save overlapping protein names that between the lists 
 # Convert columns to sets (remove NA values)
 lyso_ASAH1_set <- na.omit(lysoIPvennASAH1$Lyso)
@@ -555,15 +675,127 @@ overlap_ASAH1_lyso_endocurated <- intersect(lyso_ASAH1_set, endocurated_ASAH1_se
 overlap_ASAH1_endosome_endocurated <- intersect(endosome_ASAH1_set, endocurated_ASAH1_set)
 
 # Save the results to CSV files
-write.csv(data.frame(Overlap_ASAH1_Lyso_Endosome = overlap_ASAH1_lyso_endosome),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_ASAH1_Lyso_Endosome.csv', row.names = FALSE)
-write.csv(data.frame(Overlap_ASAH1_Lyso_EndoCurated = overlap_ASAH1_lyso_endocurated),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_ASAH1_Lyso_EndoCurated.csv', row.names = FALSE)
-write.csv(data.frame(Overlap_ASAH1_Endosome_EndoCurated = overlap_ASAH1_endosome_endocurated),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_ASAH1_Endosome_EndoCurated.csv', row.names = FALSE)
+write.csv(data.frame(Overlap_ASAH1_Lyso_Endosome = overlap_ASAH1_lyso_endosome),file=file.path(out_dir_lysoip_venn,
+          'Overlap_ASAH1_Lyso_Endosome.csv'), row.names = FALSE)
+write.csv(data.frame(Overlap_ASAH1_Lyso_EndoCurated = overlap_ASAH1_lyso_endocurated),file=file.path(out_dir_lysoip_venn,
+          '/Overlap_ASAH1_Lyso_EndoCurated.csv'), row.names = FALSE)
+write.csv(data.frame(Overlap_ASAH1_Endosome_EndoCurated = overlap_ASAH1_endosome_endocurated),file=file.path(out_dir_lysoip_venn,
+          'Overlap_ASAH1_Endosome_EndoCurated.csv'), row.names = FALSE)
 
 
 
 ```
+
+
+## VI. Autophagy investigation in more detail
+```{r}
+# --- 0.  define annotation lists:
+autophagy_receptors <- c(
+  "AMBRA1", "BCL2L13", "BECN1", "BNIP3L", "CALCOCO2", "CCPG1", "CDK5RAP3", "FUNDC1", 
+  "LGALS3", "LGALS8", "NBR1", "NCOA4", "NLRX1", "OPTN", "RETREG1", "SQSTM1", 
+  "STBD1", "TAX1BP1", "TEX264", "TOLLIP", "TRIM5"
+)
+autophagy_core <- c(
+  "ATG12", "ATG13", "ATG14", "ATG16L1", "ATG3", "ATG4A", "ATG4B", "ATG4C", "ATG5", 
+  "ATG7", "ATG9A", "GABARAP", "GABARAPL2", "MAP1LC3A", "MAP1LC3B", "MTOR", "PIK3C3", 
+  "PIK3R4", "PLEKHM1", "RAB5A", "RAB7A", "RB1CC1", "RUBCN", "STX17", "ULK1", 
+  "ULK2", "UVRAG", "WDR45", "WDR45B", "WIPI1", "WIPI2", "ZFYVE1"
+)
+golgi_trans <- c(
+  "PACS1", "VPS45", "VPS41", "GGA3", "ARFIP2", "GGA1", "GOLPH3L", "GOPC", 
+  "AP4M1", "GGA2", "OSBPL11", "GOLGA1", "FAM91A1", "C17orf75", "OSBPL9", "GOLGA4", 
+  "VPS51", "TBC1D23", "VPS52", "CCDC91", "ARFIP1", "AP4B1", "AP4E1", "IMPAD1"
+)
+golgi_trans <- c(
+  "PACS1", "VPS45", "VPS41", "GGA3", "ARFIP2", "GGA1", "GOLPH3L", "GOPC", 
+  "AP4M1", "GGA2", "OSBPL11", "GOLGA1", "FAM91A1", "C17orf75", "OSBPL9", "GOLGA4", 
+  "VPS51", "TBC1D23", "VPS52", "CCDC91", "ARFIP1", "AP4B1", "AP4E1", "IMPAD1"
+)
+
+golgi_cis <- c(
+  "TMED10", "TRAPPC3", "TMED1", "TRAPPC10", "COPG2", "TRAPPC5", "COPB1", "COPB2", 
+  "GOLM1", "COPG1", "B3GAT3", "TRAPPC11", "TRAPPC6B", "TMED2", "GOSR2", "TRAPPC8", 
+  "TRAPPC4", "GBF1", "TMED5", "TMED9", "GOLGA5", "SEB22B", "NUCB1", "GOLGA2"
+)
+ergic <- c(
+  "TMED10", "TMED1", "ATP6AP1", "RAB1B", "RAB2A", "TAOK2", "NXF1", "TMEM181", 
+  "STX16", "RAB2B", "RAB6B", "USP46", "SURF4", "GLE1", "GORASP1", "LMAN2L", 
+  "ECPAS", "TMED2", "UGGT1", "TRAPPC12", "DNM2", "SEH1L", "MARCKS", "GBF1", "RDX", 
+  "BCAP31", "DST", "ERGIC3", "TMED9", "LMAN1", "SEB22B", "LMAN2", "STX5"
+)
+
+annotation_lists <- list(
+  autophagy_receptors = autophagy_receptors,
+  autophagy_core = autophagy_core,
+  golgi_trans = golgi_trans,
+  golgi_cis = golgi_cis,
+  ergic = ergic,
+  ER = helalysoip_annotated_df %>% filter(ER) %>% pull(Gene.Symbol)  # if ER is already a logical column
+)
+
+
+# --- 1. Annotate dataframe
+annot_df <- helalysoip_annotated_df %>%
+  select(Gene.Symbol, sig_ASAH1LysoIP.CtrlLysoIP) %>%
+  mutate(across(Gene.Symbol, as.character)) %>%
+  mutate(across(Gene.Symbol, make.unique))  # in case of duplicate gene names
+
+for (ann in names(annotation_lists)) {
+  annot_df[[ann]] <- annot_df$Gene.Symbol %in% annotation_lists[[ann]]
+}
+
+# --- 2. Reshape to long format and filter sig hits
+sig_hits_df <- annot_df %>%
+  pivot_longer(cols = names(annotation_lists), names_to = "Annotation", values_to = "flag") %>%
+  filter(flag) %>%
+  rename(SigStatus = sig_ASAH1LysoIP.CtrlLysoIP) %>%
+  filter(SigStatus %in% c("up", "down"))
+
+# --- 3. Count hits
+sig_summary_autophagy <- sig_hits_df %>%
+  dplyr::count(.data$Annotation, .data$SigStatus) %>%
+  mutate(Comparison = "ASAH1LysoIP vs CtrlLysoIP")
+
+# --- 4. Get gene lists per annotation and direction
+sig_genes_autophagy <- sig_hits_df %>%
+  filter(SigStatus %in% c("up", "down")) %>%
+  group_by(Annotation, SigStatus) %>%
+  summarize(Genes = paste(Gene.Symbol, collapse = "; "), .groups = "drop")
+
+# --- 5. Plot
+sig_plot_autophagy <- ggplot(sig_summary_autophagy,
+                             aes(x = reorder(Annotation, n), y = n, fill = SigStatus)) +
+  geom_col(position = "stack") +
+  coord_flip() +
+  facet_wrap(~ Comparison, ncol = 1) +
+  scale_fill_manual(values = c(up = "grey70", down = "dodgerblue3")) +
+  labs(x = NULL, y = "# Significant Hits", title = "Significant Hits – ASAH1LysoIP vs CtrlLysoIP") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank())
+
+
+# --- 6. Save plot and table
+ggsave(file.path(out_dir_lysoip_autophagy, "sig_hits_ASAH1LysoIP_barplot.pdf"),
+       sig_plot_autophagy, width = 5, height = 4, device = cairo_pdf)
+
+# --- 7. Save gene-level summary for ASAH1LysoIP vs CtrlLysoIP
+sig_gene_summary_autophagy <- sig_hits_df %>%
+  mutate(
+    Type = "SigHits",  # Optional, for consistency
+    Comparison = "ASAH1LysoIP vs CtrlLysoIP"
+  ) %>%
+  group_by(Type, Comparison, Annotation, SigStatus) %>%
+  summarise(
+    n = n(),
+    GeneList = paste(unique(Gene.Symbol), collapse = ";"),
+    .groups = "drop"
+  )
+
+write.csv(sig_gene_summary_autophagy,file = file.path(out_dir_lysoip_autophagy, "sig_hits_annotation_geneList.csv"),row.names = FALSE)
+write_csv(sig_summary_autophagy, file.path(out_dir_lysoip_autophagy, "sig_hits_autophagy_summary.csv"))
+
+
+```
+
 
 
