@@ -360,15 +360,15 @@ organelle_detailed <- c(
   "Lysosome", 
   "Endo_iN_curated_Hundley", 
   "EarlyEndosome", 
-  "RecyclingEndosome", 
   "Golgi", 
+  "RecyclingEndosome", 
   "ER", 
   "Mito"
 )
 
 org_endodetailed_mapping <- tibble(
   Organelle = factor(organelle_detailed, levels = organelle_detailed),
-  Org_Label = c("Lyso", "Endo", "EarlyEndo", "RecyclingEndo", "Golgi", "ER", "Mito"),
+  Org_Label = c("Lyso", "Endo", "EarlyEndo",  "Golgi", "RecyclingEndo", "ER", "Mito"),
   Org_Number = 1:7
 )
 
@@ -393,13 +393,17 @@ violin_det_df <- bind_rows(df_det_ctrl, df_det_asah1) %>%
          Organelle = factor(Organelle, levels = organelle_detailed)) %>%
   left_join(org_endodetailed_mapping, by = "Organelle")
 
-# # --- 4. Compute mean labels
-# label_det_df <- violin_det_df %>%
-#   group_by(Organelle, Sample) %>%
-#   summarize(mean_val = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop") %>%
-#   mutate(
-#     ypos = max(violin_det_df$log2FC, na.rm = TRUE) + 0.3
-#   )
+# --- 4. Compute mean log2FC per annotation and sample
+mean_log2fc_det_df <- violin_det_df %>%
+  group_by(Organelle, Org_Label, Sample) %>%
+  summarise(mean_log2FC = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop")
+
+# Save to CSV
+write.csv(
+  mean_log2fc_det_df,
+  file = file.path(out_dir_lysoip_organelle_dist, "LysoIP_detailedEndo_mean_log2FC.csv"),
+  row.names = FALSE
+)
 
 # --- 5. Plot
 ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
@@ -414,7 +418,7 @@ ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill =
   #                 rep(c("Ctrl vs Untagged", "ASAH1 vs Untagged"), each = nrow(org_endodetailed_mapping)))
   #   )
   # ) +
-  theme_bw(base_size = 10) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.title.x = element_blank(),
@@ -424,7 +428,7 @@ ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill =
   labs(y = expression(log[2]*"FC"), title = "Organelle Enrichment HeLa Ctrl vs ASAH1-/-")
 
 # --- 6. Save
-ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_detailedEndo_ViolinCombo.pdf"), width = 5, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_detailedEndo_ViolinCombo.pdf"), width = 3, height = 5, device = cairo_pdf)
 
 
 
