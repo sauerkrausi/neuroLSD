@@ -557,7 +557,7 @@ annotation_cols <- annotation_cols[
 ]
 
 # Drop unwanted annotations
-annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetailLoac"))
+annotation_cols <- setdiff(annotation_cols, c("Autophagy_det", "EndoDetailLoac"))
 
 
 # 2. Reshape to long format for annotation × log2FC mapping
@@ -777,11 +777,11 @@ vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "A
 
 # Step 1: Prepare scatter_df with categorical y-axis
 scatter_df <- diff136_df_annotated %>%
-  filter(Gene.Symbol %in% vatpase_genes | Nucleus == 1 | `Lysosome Genes` == 1) %>%
+  filter(Gene.Symbol %in% vatpase_genes | Nucleus == 1 | `Lysosome` == 1) %>%
   mutate(
     y_group = case_when(
       Gene.Symbol %in% vatpase_genes      ~ "vATPase",
-      `Lysosome Genes` == 1               ~ "Lysosome",
+      `Lysosome` == 1               ~ "Lysosome",
       Nucleus == 1                        ~ "Nucleus",
       TRUE                                ~ NA_character_
     )
@@ -929,11 +929,11 @@ plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_d
 # 2. Define annotations to be plotted 
 #gene_sets <- c("SynGO", "Presynaptic", "Postsynaptic")
 #gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
-#gene_sets <- c("OXPHOS","Lysosome Genes","Endo_iN_curated_Hundley", "EarlyEndosome","RecyclingEndosome")
-#gene_sets <- c("OXPHOS","Golgi Genes","ER genes")
-#gene_sets <- c("Nucleus","Lysosome Genes","NeuroDev","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
-gene_sets <- c("Lysosome Genes","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
-gene_sets <- c("Nucleus","Lysosome Genes","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
+#gene_sets <- c("OXPHOS","Lysosome","Endo_iN_curated_Hundley", "EarlyEndosome","RecyclingEndosome")
+#gene_sets <- c("OXPHOS","Golgi","ER")
+#gene_sets <- c("Nucleus","Lysosome","NeuroDev","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
+gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
+gene_sets <- c("Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
 
 # 3. Define log2FC datasets to be plotted 
 log2fc_cols <- c(
@@ -952,7 +952,7 @@ plot_annotation_distribution_batch(
 
 
 # Annotations:
-#"Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI","Plasma Membrane","Golgi Genes","Lysosome.Genes","ER genes","	Endosome.Genes","EndoType","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","Presynaptic","Postsynaptic","EndoLyso" "EarlyEndosome","RecyclingEndosome", "SVfusion"         , "Svendocytosis","Svexocytosis")
+# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"     
 
 
 ```
