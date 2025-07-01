@@ -1348,7 +1348,7 @@ plot_log2fc_violin <- function(data, annotations, genotypes) {
   full_range <- range(plot_df_long$log2FC, na.rm = TRUE)
   midpoint <- median(plot_df_long$log2FC, na.rm = TRUE)
   range_width <- diff(full_range)
-  scaled_half_range <- 0.375 * range_width  # 75% total span
+  scaled_half_range <- 0.15 * range_width  # 75% total span
   lower_lim <- midpoint - scaled_half_range
   upper_lim <- midpoint + scaled_half_range
 
@@ -1377,14 +1377,14 @@ plot_log2fc_violin <- function(data, annotations, genotypes) {
 LSD_d50_Violin_plot <- plot_log2fc_violin(
   data = complete_data_annotated_day50,
   #annotations = c("Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI"),
-  annotations = c("EndoLyso","Presynaptic","Postsynaptic", "SynGO","SynapseSVs","EarlyEndosome","RecyclingEndosome"),
-  genotypes = c("ASAH1", "SMPD1", "GBA1")
+  annotations = c("Lysosome","Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome", "SynGO","Presynaptic","Postsynaptic", "SynapseSVs","SVfusion","Svendocytosis","Svexocytosis"),
+  genotypes = c("ASAH1", "ATP13A2","SMPD1", "GBA1", "MCOLN1")
 )
 LSD_d50_Violin_plot
 
 
 # Annotations:
-# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome","ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"     
+# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome","ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"     
 
 #annotations = c("Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI"),
 #annotations = c("Mito","Golgi","Lysosome","ER","Autophagy","Endo_iN_curated_Hundley","SynGO")
@@ -1393,7 +1393,7 @@ LSD_d50_Violin_plot
 
 # --- Step 3. Save as square-format PDF
 ggsave(file.path(out_dir_d50_violins, 
-  "diff132_d50_LSD_Violin_plot_ASAH1-SMPD1-GBA1_detailedEndoLysoSynGO.pdf"),
+  "diff132_d50_LSD_Violin_plot_ASAH1-ATP13A2-SMPD1-GBA1-MCOLN1_detailedEndoLysoSynGO_SV.pdf"),
   LSD_d50_Violin_plot,
   width = 12, height = 9, device = cairo_pdf)
 ```
