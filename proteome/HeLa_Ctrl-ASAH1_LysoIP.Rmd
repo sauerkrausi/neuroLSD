@@ -358,8 +358,8 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_Viol
 # --- 1. Define organelle labels and order for detailed Endo investigation
 organelle_detailed <- c(
   "Lysosome", 
-  "Endo_iN_curated_Hundley", 
   "EarlyEndosome", 
+  "Endo_iN_curated_Hundley", 
   "Golgi", 
   "RecyclingEndosome", 
   "ER", 
@@ -368,7 +368,7 @@ organelle_detailed <- c(
 
 org_endodetailed_mapping <- tibble(
   Organelle = factor(organelle_detailed, levels = organelle_detailed),
-  Org_Label = c("Lyso", "Endo", "EarlyEndo",  "Golgi", "RecyclingEndo", "ER", "Mito"),
+  Org_Label = c("Lyso", "EarlyEndo", "Endo", "Golgi","RecyclingEndo",  "ER", "Mito"),
   Org_Number = 1:7
 )
 
