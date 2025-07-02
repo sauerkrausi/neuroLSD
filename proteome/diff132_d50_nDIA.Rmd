@@ -935,7 +935,7 @@ plot_df <- plot_df %>%
 # ---- Create DataFrame for Annotating Undetected Proteins ----
 label_df <- plot_df %>%
   group_by(Genes) %>%
-  mutate(max_y = max(value, na.rm = TRUE)) %>%vi
+  mutate(max_y = max(value, na.rm = TRUE)) %>%
   filter(condition == "mean_ko" & value == 0) %>%
   mutate(
     label = "not detected",
@@ -992,28 +992,47 @@ write.csv(
 # Plot LSD protein abundance in their respective KOs
 # heatmaps
 # --------------------------------------------------- #
+# --- 0. Define expected genotype list (from your LSD gene list)
+expected_genes <- c("ASAH1", "PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "TPP1", "CLN3", 
+                    "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8", "CTNS", "GAA", "GALNS", 
+                    "GBA1", "GLB1", "HEXA", "HEXB", "LIPA", "MCOLN1", "NPC1", "NPC2", 
+                    "PSAP", "SMPD1")
 
-# --- 1. Filter and reshape for matching LSD KO genes at day 50 ---
-heatmap_matrix_abundance <- df_clean_heatmap %>%
+# --- 1. Construct all combinations of neuron × condition × gene
+all_rows <- expand.grid(
+  neuron    = c("iN", "iDA"),
+  condition = c("mean_ctrl", "mean_ko"),
+  Genes     = expected_genes,
+  stringsAsFactors = FALSE
+) %>%
+  mutate(RowID = paste(condition, neuron, sep = "_"))
+
+# --- 2. Get actual values from df_clean_heatmap
+values_df <- df_clean_heatmap %>%
   filter(day == 50, Genes == genotype) %>%
   group_by(Genes, neuron, condition) %>%
   summarise(value = mean(value, na.rm = TRUE), .groups = "drop") %>%
-  mutate(RowID = paste(condition, neuron, sep = "_")) %>%
+  mutate(RowID = paste(condition, neuron, sep = "_"))
+
+# --- 3. Left join to preserve full layout and reshape
+heatmap_matrix_abundance <- all_rows %>%
+  left_join(values_df, by = c("Genes", "neuron", "condition", "RowID")) %>%
   select(Genes, RowID, value) %>%
   pivot_wider(names_from = Genes, values_from = value) %>%
   column_to_rownames("RowID") %>%
   as.matrix()
 
-# --- 2. Plot heatmap ---
+# --- 4. Plot heatmap
 lsdkoheatmap <- pheatmap(
   heatmap_matrix_abundance,
   color = colorRampPalette(c("white", "firebrick"))(100),
   cluster_rows = FALSE,
   cluster_cols = FALSE,
-  na_col = "grey70",
+  na_col = "grey70",  # marks undetected proteins
   cellheight = 15,
   cellwidth = 15,
-  border_color = 0.25,
+  border_color = "black",
+  lwd = 0.25,
   main = "LSD Protein Abundance (Control vs KO) at Day 50"
 )
 
@@ -1029,10 +1048,11 @@ ggsave(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap.pdf"),lsdkoheatmap,
 
 
 #### IVc. -- neuro QC plots ---- 
+##### IVc1. -- plot pre / post synaptic marker
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
-# plot pre / post synaaptic markers of ctrl iN vs iDA & plot 
+# plot pre / post synaptic markers of ctrl iN vs iDA & plot 
 # --------------------------------------------------- #
 
 # --- Step 1. add annotation to cleaned_df (from PCA calculation, since has raw intensities for each gene in it)
@@ -1081,6 +1101,127 @@ plot_multiple_genes <- function(genes, data = PCAclean_d50_annotated) {
 # --- Step 5. Call function and plot proteins of Interest 
 Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "SYP", "SYN1", "SNCA", "NEFH", "BSN", "SNX5", "VAMP2", "CPLX1"))
 ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_Proteins, width = 12, height = 12, device = cairo_pdf)
+
+
+```
+
+#####IVc2. -- vATPase plots  ---- 
+```{r}
+# --------------------------------------------------- #
+# neuro QC plots
+# vATPase plots 
+# --------------------------------------------------- #
+vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
+                   "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
+                   "SYP", "DMXL1", "DMXL2", "PODXL", "PODXL2")
+				   
+# --- 1. Filter and compute log2FC ---
+vatpase_long_df <- clean_d50_transformed_df %>%
+  filter(Genes %in% vatpase_genes, day == 50) %>%
+  mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
+  mutate(group = paste(genotype, neuron, sep = "_"))
+
+# --- 2. Compute average log2FC per group ---
+avg_fc_summary <- vatpase_long_df %>%
+  group_by(group, neuron) %>%
+  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+
+# --- 3. Order by increasing avg log2FC ---
+avg_fc_summary <- avg_fc_summary %>%
+  arrange(neuron, avg_log2FC) %>%
+  group_by(neuron) %>%
+  mutate(group = factor(group, levels = unique(group)))
+
+# --- 4. Merge ordering into main data frame ---
+vatpase_long_df <- vatpase_long_df %>%
+  inner_join(avg_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
+  mutate(group = factor(group, levels = levels(avg_fc_summary$group)))
+
+# --- 5. Plot ---
+d50_vATPase_plot <- ggplot(vatpase_long_df, aes(x = group, y = log2FC, group = Genes)) +
+  geom_line(color = "grey70", size = 0.3, alpha = 0.8) +
+  geom_hline(yintercept =0, linetype = "dashed", color = "black") +
+  geom_point(color = "grey70", size = 0.5, alpha = 0.8) +
+  geom_line(data = avg_fc_summary, 
+            aes(x = group, y = avg_log2FC, group = 1),
+            color = "red", size = 1.2, inherit.aes = FALSE) +
+  facet_wrap(~neuron, scales = "free_x") +
+  theme_bw(base_size = 8) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    title = "v-ATPase Genes: log2FC Summary by Genotype × Neuron",
+    x = "Genotype × Neuron (sorted by mean log2FC)",
+    y = expression(log[2]*"(KO / Ctrl)")
+  )
+
+d50_vATPase_plot
+
+# --- 6. save pdf ---
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_vATPase.pdf"), d50_vATPase_plot, width = 4, height = 3, device = cairo_pdf)
+
+
+```
+
+#####IVc3. -- SV snare plots  ---- 
+```{r}
+# --------------------------------------------------- #
+# neuro QC plots
+# SV snare plots 
+# --------------------------------------------------- #
+svsnare_genes <- c("SYP", "VAMP2", "STXBP1", "CPLX1", "SYT1", "SNAP25","SNAP","STX1A", "STX1")
+
+# --- 1. Filter and compute log2FC ---
+svsnare_long_df <- clean_d50_transformed_df %>%
+  filter(Genes %in% svsnare_genes, day == 50) %>%
+  mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
+  mutate(group = paste(genotype, neuron, sep = "_"))
+
+# --- 2. Compute average log2FC per group ---
+avg_svsnare_fc_summary <- svsnare_long_df %>%
+  group_by(group, neuron) %>%
+  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+
+# --- 3. Order by increasing avg log2FC ---
+avg_svsnare_fc_summary <- avg_svsnare_fc_summary %>%
+  arrange(neuron, avg_log2FC) %>%
+  group_by(neuron) %>%
+  mutate(group = factor(group, levels = unique(group)))
+
+# --- 4. Merge ordering into main data frame ---
+vsvsnare_long_df <- svsnare_long_df %>%
+  inner_join(avg_svsnare_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
+  mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
+
+# --- 5. Plot ---
+d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = Genes)) +
+  geom_line(color = "grey70", size = 0.3, alpha = 0.8) +
+  geom_hline(yintercept =0, linetype = "dashed", color = "black") +
+  geom_point(color = "grey70", size = 0.5, alpha = 0.8) +
+  geom_line(data = avg_svsnare_fc_summary, 
+            aes(x = group, y = avg_log2FC, group = 1),
+            color = "red", size = 1.2, inherit.aes = FALSE) +
+  facet_wrap(~neuron, scales = "free_x") +
+  theme_bw(base_size = 8) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    title = "SV SNARE Genes: log2FC Summary by Genotype × Neuron",
+    x = "Genotype × Neuron (sorted by mean log2FC)",
+    y = expression(log[2]*"(KO / Ctrl)")
+  )
+
+d50_svsnare_plot
+
+# --- 6. save pdf ---
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_svsnare_plot, width = 4, height = 3, device = cairo_pdf)
+
+
+
 ```
 
 
@@ -1573,7 +1714,7 @@ dev.off()
 selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
                           "Lysosome", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis")
 
-# selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")     
+# selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"      ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")     
    
 
 log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
@@ -1594,7 +1735,7 @@ SphMut_corr_df <- purrr::map_dfr(selected_annotations, function(ann) {
 
 # --- Step 3. Save Corr results as csv
 # Save correlation results
-write_csv(SphMut_corr_df, file.path(out_dir_d50_SphMut, "SphMut_annotation_correlation.csv"))
+write_csv(SphMut_corr_df, file.path(out_dir_d50_SphMut, "SphMut_annotation_correlation_selected.csv"))
 
 
 # --- Step 4. Create Corr matrix with KO annotations
@@ -1611,7 +1752,7 @@ rownames(SphMut_ko_type) <- rownames(SphMut_corr_mat)
 
 
 # --- Step 5. Plot correlation matrix
-pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap.pdf"), width = 10, height = 14, useDingbats = FALSE)
+pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap_selected.pdf"), width = 10, height = 14, useDingbats = FALSE)
 pheatmap(
   SphMut_corr_mat,
   color = rev(brewer.pal(11, "RdYlBu")),
@@ -1674,16 +1815,19 @@ plot_sphmut_corr_matrix <- function(organelle_name, df = SphMut_annotated_df) {
 
 
 # --- Step 3. Run for all selected organelles 
-# selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")   
+selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"      ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
   
 
 
-selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
-                          "Lysosome", "Presynaptic", "Postsynaptic","SVfusion","Svendocytosis", "Svexocytosis")
+# selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
+#                           "Lysosome", "Presynaptic", "Postsynaptic","SVfusion","Svendocytosis", "Svexocytosis")
 
 
-SphMut_ko_corr_hms <- lapply(selected_annotations, plot_sphmut_corr_matrix)
-SphMut_ko_corr_hms <- Filter(Negate(is.null), SphMut_ko_corr_hms)
+valid_annotations <- intersect(selected_annotations, colnames(SphMut_annotated_df))
+SphMut_ko_corr_hms <- lapply(valid_annotations, plot_sphmut_corr_matrix)
+
+# SphMut_ko_corr_hms <- lapply(selected_annotations, plot_sphmut_corr_matrix)
+# SphMut_ko_corr_hms <- Filter(Negate(is.null), SphMut_ko_corr_hms)
 
 
 # --- Step 4. Save multi-panel heatmap PDF 
@@ -4023,6 +4167,18 @@ selected_annotations <- c(
   "Lysosome", "Presynaptic", "Postsynaptic",
   "EarlyEndosome", "RecyclingEndosome"
 )
+
+selected_annotations = c("Mito","OXPHOS",
+                  "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
+                  "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
+                  "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
+                  "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
+
+# selected_annotations = c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
+#                   "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
+#                   "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
+#                   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
+#                   "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
 
 
 ## ─────────────────────────────────────────────────────────────
