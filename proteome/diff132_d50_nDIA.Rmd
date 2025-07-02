@@ -259,7 +259,7 @@ n_days <- length(unique(pca_scores_d50$day))
 
 # Create color palettes
 genotype_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_genotypes)
-neuron_colors <- c("#A50026", "#313695", "#FFFFBF") 
+neuron_colors <- c("#A50026", "#313695", "grey50") 
 #neuron_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_neurons)
 day_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_days)
 
@@ -362,7 +362,7 @@ n_days_noQC <- length(unique(pca_scores_d50_noQC$day))
 
 # Create color palettes
 genotype_colors_noQC <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_genotypes_noQC)
-neuron_colors_noQC <- c("#A50026", "#313695", "#FFFFBF") 
+neuron_colors_noQC <- c("#A50026", "#313695", "grey50") 
 #neuron_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_neurons)
 day_colors_noQC <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_days_noQC)
 
