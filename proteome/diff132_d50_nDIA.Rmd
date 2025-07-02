@@ -906,6 +906,7 @@ plan is to plot a heatmap of all LSD proteins of interest across the dataset -> 
 ```{r}
 # --------------------------------------------------- #
 # Plot LSD protein abundance in their respective KOs
+# barplots
 # --------------------------------------------------- #
 
 # ---- Define LSD Gene List ----
@@ -934,7 +935,7 @@ plot_df <- plot_df %>%
 # ---- Create DataFrame for Annotating Undetected Proteins ----
 label_df <- plot_df %>%
   group_by(Genes) %>%
-  mutate(max_y = max(value, na.rm = TRUE)) %>%
+  mutate(max_y = max(value, na.rm = TRUE)) %>%vi
   filter(condition == "mean_ko" & value == 0) %>%
   mutate(
     label = "not detected",
@@ -983,6 +984,45 @@ write.csv(
   "LSD_sorted.csv"),
   row.names = FALSE
 )
+
+
+
+
+# --------------------------------------------------- #
+# Plot LSD protein abundance in their respective KOs
+# heatmaps
+# --------------------------------------------------- #
+
+# --- 1. Filter and reshape for matching LSD KO genes at day 50 ---
+heatmap_matrix_abundance <- df_clean_heatmap %>%
+  filter(day == 50, Genes == genotype) %>%
+  group_by(Genes, neuron, condition) %>%
+  summarise(value = mean(value, na.rm = TRUE), .groups = "drop") %>%
+  mutate(RowID = paste(condition, neuron, sep = "_")) %>%
+  select(Genes, RowID, value) %>%
+  pivot_wider(names_from = Genes, values_from = value) %>%
+  column_to_rownames("RowID") %>%
+  as.matrix()
+
+# --- 2. Plot heatmap ---
+lsdkoheatmap <- pheatmap(
+  heatmap_matrix_abundance,
+  color = colorRampPalette(c("white", "firebrick"))(100),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  na_col = "grey70",
+  cellheight = 15,
+  cellwidth = 15,
+  border_color = 0.25,
+  main = "LSD Protein Abundance (Control vs KO) at Day 50"
+)
+
+  
+# --- 3. Save heatmap
+ggsave(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap.pdf"),lsdkoheatmap,
+       width = 8, height = 6, device = cairo_pdf)
+
+
 ```
 
 
