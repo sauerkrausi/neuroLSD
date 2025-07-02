@@ -333,7 +333,7 @@ annotation_cols <- setdiff(colnames(diff136_df_annotated), log2fc_cols)
 annotation_cols <- annotation_cols[sapply(diff136_df_annotated[, annotation_cols], function(x) all(x %in% c(0, 1, NA)))]
 
 # Drop unwanted ones
-annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetailLoac"))
+annotation_cols <- setdiff(annotation_cols, c("Autophagy_det", "EndoDetailLoac"))
 
 length(log2fc_cols)  # sanity check
 length(annotation_cols)
