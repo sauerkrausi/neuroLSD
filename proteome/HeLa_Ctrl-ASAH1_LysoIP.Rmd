@@ -48,6 +48,7 @@ library(tidyplots)
 library(gptstudio)
 library(rlang)
 library(devtools)
+library(Cairo)
 
 # Optional install commands
 # devtools::install_github("jbengler/tidyplots")
@@ -472,6 +473,41 @@ p_slope <- ggplot(hydro_df, aes(x = Sample, y = log2FC, group = Gene.Symbol)) +
 ggsave(filename = file.path(out_dir_lysoip_organelle_dist,
                             "lysohydrolase_slopeplot.pdf"),
        plot = p_slope, width = 2, height = 4, device = cairo_pdf)
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Hydrolase abundance in lysosome Ctrl vs ASAH1-/-
+# heatmap 
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 1: Prepare matrix for heatmap ---
+heatmap_matrix_lysohydro <- helalysoip_annotated_df %>%
+  filter(LysoHydrolase == TRUE) %>%
+  select(Gene.Symbol,
+         Ctrl = log2FC_CtrlLysoIP.untagged,
+         ASAH1 = log2FC_ASAH1LysoIP.untagged) %>%
+  column_to_rownames("Gene.Symbol") %>%
+  as.matrix()
+
+# --- Step 2: Plot heatmap ---
+pdf(file = file.path(out_dir_lysoip_organelle_dist, "lysohydrolase_heatmap.pdf"),
+    width = 2, height = 5, useDingbats = FALSE)
+pheatmap(
+  heatmap_matrix_lysohydro,
+  color = colorRampPalette(c("dodgerblue3","white", "firebrick"))(100),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  na_col = "grey70",
+  cellheight = 15,
+  cellwidth = 15,
+  border_color = "black",
+  lwd = 0.25,
+  main = "Lysosomal Hydrolase log2FC (Ctrl vs ASAH1−/−)"
+)
+dev.off()
+
+
 ```
 
 

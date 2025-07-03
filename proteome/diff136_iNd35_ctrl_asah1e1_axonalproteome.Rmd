@@ -641,10 +641,11 @@ mean2_log2fc_subset_df <- mean_log2fc_df %>% filter(Log2FC %in% subset2_log2fc)
 loc_dist_overview_subset2 <- ggplot(mean2_log2fc_subset_df, aes(x = reorder(Annotation, mean_log2FC), y = mean_log2FC)) +
   geom_col(fill = "steelblue") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  coord_flip(ylim = xlims) +
+  #coord_flip(ylim = xlims) +
+  coord_flip() +
   facet_wrap(~ Log2FC, ncol = 3) +
   labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation (Selected)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
    panel.grid = element_blank() 
   )
@@ -653,7 +654,7 @@ loc_dist_overview_subset2 <- ggplot(mean2_log2fc_subset_df, aes(x = reorder(Anno
 # --- 5. Save to PDF
 ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected_directCamp.pdf"),
   loc_dist_overview_subset2,
-  width = 14, height = 12, device = cairo_pdf
+  width = 3, height = 4, device = cairo_pdf
 )
 
 
