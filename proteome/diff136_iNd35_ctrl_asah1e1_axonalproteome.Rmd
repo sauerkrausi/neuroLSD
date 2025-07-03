@@ -69,7 +69,7 @@ dir.create(out_dir_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
 
 # I. Background diff 136 axonal proteome Ctrl / ASAH1 e1 day 35 iN differentiation 
 Dataset contains in vitro differentiaed iNeurons at day 35 of differentiation
-Genotypes: Control and ASAH1-/- clone E1
+Genotypes: H9 NGN2 TMEM192-3xHA (het) Control and ASAH1-/- clone E1
 Samples (all in triplicates): whole-cell (WC), soma fraction and axonal fraction 
 18plex_TMTpro & run on Thermo Orbitrap Ascent w/FAIMS-Pro, hrMS2
 data was created with MSstats, has p/q.values and log2FC for samples 
