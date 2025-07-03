@@ -194,7 +194,7 @@ mat <- mat[, expr_cols]
 mat <- mat[order(row_cluster), , drop = FALSE]
 
 
-# --- 2. set cluster colors and cluster anntations as rows
+# --- 2. set cluster colors and cluster annotations as rows
 # Define full cluster levels explicitly
 cluster_levels <- 0:6
 
