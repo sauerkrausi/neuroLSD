@@ -335,6 +335,8 @@ annotation_cols <- annotation_cols[sapply(diff136_df_annotated[, annotation_cols
 # Drop unwanted ones
 annotation_cols <- setdiff(annotation_cols, c("Autophagy_det", "EndoDetailLoac"))
 
+
+
 length(log2fc_cols)  # sanity check
 length(annotation_cols)
 
@@ -622,6 +624,41 @@ ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected.pdf
 )
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+# selected annotations  
+# ─────────────────────────────────────────────────────────────────────────────
+
+subset2_log2fc <- c(
+  "log2FC_ASAH1_Soma.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon"
+)
+
+mean2_log2fc_subset_df <- mean_log2fc_df %>% filter(Log2FC %in% subset2_log2fc)
+
+loc_dist_overview_subset2 <- ggplot(mean2_log2fc_subset_df, aes(x = reorder(Annotation, mean_log2FC), y = mean_log2FC)) +
+  geom_col(fill = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip(ylim = xlims) +
+  facet_wrap(~ Log2FC, ncol = 3) +
+  labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation (Selected)") +
+  theme_bw(base_size = 8) +
+  theme(
+   panel.grid = element_blank() 
+  )
+
+
+# --- 5. Save to PDF
+ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected_directCamp.pdf"),
+  loc_dist_overview_subset2,
+  width = 14, height = 12, device = cairo_pdf
+)
+
+
+
+
 ```
 
 
@@ -734,7 +771,7 @@ sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
 
 ggsave(file.path(out_dir_organelle_dist, "diff136_sig_hits_annotation_ror_barplot.pdf"),
   sig_plot_ror,
-  width = 10, height = 8, device = cairo_pdf
+  width = 6, height = 8, device = cairo_pdf
 )
 
 # --- 5. Save gene-level summary
