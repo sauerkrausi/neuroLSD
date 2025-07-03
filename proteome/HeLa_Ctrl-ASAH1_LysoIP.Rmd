@@ -493,9 +493,10 @@ heatmap_matrix_lysohydro <- helalysoip_annotated_df %>%
 # --- Step 2: Plot heatmap ---
 pdf(file = file.path(out_dir_lysoip_organelle_dist, "lysohydrolase_heatmap.pdf"),
     width = 2, height = 5, useDingbats = FALSE)
+
 pheatmap(
   heatmap_matrix_lysohydro,
-  color = colorRampPalette(c("dodgerblue3","white", "firebrick"))(100),
+  color = colorRampPalette(c("dodgerblue3", "white", "firebrick"))(100),
   cluster_rows = FALSE,
   cluster_cols = FALSE,
   na_col = "grey70",
@@ -506,7 +507,6 @@ pheatmap(
   main = "Lysosomal Hydrolase log2FC (Ctrl vs ASAH1−/−)"
 )
 dev.off()
-
 
 ```
 
