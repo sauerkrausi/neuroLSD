@@ -7,8 +7,10 @@ The folder contains scripts and evaluations realated to the neuroLSD project.\
 ## 🧪 proteomics
 Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons at day 50 of in-vitro differentiation.
 
-- `diff132_d50_nDIA.Rmd`: R Markdown pipeline for nDIA proteome analysis of whole cell iNeurons and iDA
-- `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of whole cell, soma and axonal fractions of iNeurons 
+- `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: R Markdown pipeline for TMTpro proteomic analysis of isolated lysosomes from HeLa cells.
+- `diff118_iNiDA_d23_CtrlSMPD1ASAH1.Rmd`: R Markdown pipeline for TMTpro proteomic analysis of whole cell iNeurons and iDA samples.
+- `diff132_d50_nDIA.Rmd`: R Markdown pipeline for nDIA proteome analysis of whole cell iNeurons and iDA.
+- `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of whole cell, soma and axonal fractions of iNeurons. 
 
 
 A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome/readmePROTEOME.md).
