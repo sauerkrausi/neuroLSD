@@ -188,10 +188,10 @@ mat <- mat[order(row_cluster), , drop = FALSE]
 cluster_levels <- 0:8
 
 # Force 'cluster' to be a factor with all levels, even if not present
-row_annotation <- data.frame(
+row_annotattions_diff118 <- data.frame(
   cluster = factor(row_cluster[order(row_cluster)], levels = cluster_levels)
 )
-rownames(row_annotation) <- rownames(mat)
+rownames(row_annotattions_diff118) <- rownames(mat)
 
 # Assign distinct colors
 cluster_palette <- setNames(
@@ -202,7 +202,7 @@ cluster_palette <- setNames(
 # Add to annotation color list
 ann_colors <- list(
   Genotype = c(Ctrl = "grey40", ASAH1 = "dodgerblue3", SMPD1 = "tomato3"),
-  Fraction = c(`iN` = "#f1eef6",
+  Neuron = c(`iN` = "#f1eef6",
                iDA  = "#74a9cf")
 )
 
@@ -210,7 +210,7 @@ ann_colors$cluster <- cluster_palette
 
 
 # --- 3. column annotations
-annotation_col <- tibble(Sample = expr_cols) %>%
+annotation_dif118_col <- tibble(Sample = expr_cols) %>%
   mutate(
     Genotype = case_when(
       str_detect(Sample, "^Ctrl")   ~ "Ctrl",
@@ -218,7 +218,7 @@ annotation_col <- tibble(Sample = expr_cols) %>%
       str_detect(Sample, "^SMPD1")  ~ "SMPD1",
       TRUE                          ~ NA_character_
     ),
-    Fraction = case_when(
+    Neuron = case_when(
       str_detect(Sample, "_iN_")    ~ "iN",
       str_detect(Sample, "_iDA_")   ~ "iDA",
       TRUE                          ~ NA_character_
@@ -235,8 +235,8 @@ pheatmap(
   mat,
   scale              = "row",
   color              = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
-  annotation_col     = annotation_col,
-  annotation_row     = row_annotation,
+  annotation_col     = annotation_dif118_col,
+  annotation_row     = row_annotattions_diff118,
   annotation_colors  = ann_colors,
   breaks             = seq(-4, 4, length.out = 101),
   cluster_rows       = FALSE,
@@ -252,7 +252,7 @@ pheatmap(
 dev.off()
 
 # Add cluster as first column to expression matrix
-mat_with_cluster <- cbind(cluster = row_annotation$cluster, mat)
+mat_with_cluster <- cbind(cluster = row_annotattions_diff118$cluster, mat)
 
 # Write to CSV with cluster
 write.csv(mat_with_cluster,
@@ -293,10 +293,10 @@ mat_norm <- mat_norm[order(row_cluster), , drop = FALSE]
 cluster_levels <- 0:8
 
 # Force 'cluster' to be a factor with all levels, even if not present
-row_annotation <- data.frame(
+row_annotattions_diff118 <- data.frame(
   cluster = factor(row_cluster[order(row_cluster)], levels = cluster_levels)
 )
-rownames(row_annotation) <- rownames(mat)
+rownames(row_annotattions_diff118) <- rownames(mat)
 
 # Assign distinct colors
 cluster_palette <- setNames(
@@ -307,7 +307,7 @@ cluster_palette <- setNames(
 # Add to annotation color list
 ann_colors <- list(
   Genotype = c(Ctrl = "grey40", ASAH1 = "dodgerblue3", SMPD1 = "tomato3"),
-  Fraction = c(`iN` = "#f1eef6",
+  Neuron = c(`iN` = "#f1eef6",
                iDA  = "#74a9cf")
 )
 
@@ -315,7 +315,7 @@ ann_colors$cluster <- cluster_palette
 
 
 # --- 3. column annotations
-annotation_col <- tibble(Sample = expr_cols) %>%
+annotation_dif118_col <- tibble(Sample = expr_cols) %>%
   mutate(
     Genotype = case_when(
       str_detect(Sample, "^Ctrl")   ~ "Ctrl",
@@ -323,7 +323,7 @@ annotation_col <- tibble(Sample = expr_cols) %>%
       str_detect(Sample, "^SMPD1")  ~ "SMPD1",
       TRUE                          ~ NA_character_
     ),
-    Fraction = case_when(
+    Neuron = case_when(
       str_detect(Sample, "_iN_")    ~ "iN",
       str_detect(Sample, "_iDA_")   ~ "iDA",
       TRUE                          ~ NA_character_
@@ -340,8 +340,8 @@ pheatmap(
   mat_norm,
   scale              = "row",
   color              = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
-  annotation_col     = annotation_col,
-  annotation_row     = row_annotation,
+  annotation_col     = annotation_dif118_col,
+  annotation_row     = row_annotattions_diff118,
   annotation_colors  = ann_colors,
   breaks             = seq(-2, 2, length.out = 101),
   cluster_rows       = FALSE,
@@ -357,7 +357,7 @@ pheatmap(
 dev.off()
 
 # Add cluster as first column to expression matrix
-mat_with_cluster <- cbind(cluster = row_annotation$cluster, mat)
+mat_with_cluster <- cbind(cluster = row_annotattions_diff118$cluster, mat)
 
 # Write to CSV with cluster
 write.csv(mat_with_cluster,
@@ -366,9 +366,170 @@ write.csv(mat_with_cluster,
 ```
 
 
-### IIc.  Violin Plot of Cluster Abundance
+### IIc.  *** Violin Plot of Cluster Abundance
 ### IId. Correlation of Selected Annotations
-### III. Scatterplots of selected annotations 
-### IV. Barplots of sig. up / down proteins per annotations (used defined)
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Correlation of Selected Annotations
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Copy out log2FC & annotated columns for wrangling
+# Define log2FC columns (all that start with log2FC_)
+log2fc_diff118_cols <- grep("^log2FC_", colnames(diff118_df_annotated), value = TRUE)
+
+# Define annotation columns (binary organelle terms)
+# assumes binary 0/1 format and not part of log2FC set
+annotation_corr_cols <- setdiff(colnames(diff118_df_annotated), log2fc_diff118_cols)
+annotation_corr_cols <- annotation_corr_cols[sapply(diff118_df_annotated[, annotation_corr_cols], function(x) all(x %in% c(0, 1, NA)))]
+
+# Drop unwanted ones
+annotation_corr_cols <- setdiff(annotation_corr_cols, c("Autophagy_det", "EndoDetailLoac"))
+
+length(log2fc_diff118_cols)  # sanity check
+length(annotation_corr_cols)
+
+
+
+# --- 2. Compute Spearman correlation between log2FC and annotations
+org_diff118_corr_df <- map_dfr(annotation_corr_cols, function(ann) {
+  map_dfr(log2fc_diff118_cols, function(fc_col) {
+    x <- diff118_df_annotated[[fc_col]]
+    y <- as.numeric(diff118_df_annotated[[ann]])
+    keep <- is.finite(x) & is.finite(y)
+    if (sum(keep) < 5) return(NULL)
+
+    cor_test <- suppressWarnings(cor.test(x[keep], y[keep], method = "spearman"))
+    tibble(
+      log2FC_Column = fc_col,
+      Organelle     = ann,
+      r             = unname(cor_test$estimate),
+      p             = cor_test$p.value
+    )
+  })
+})
+
+
+
+# --- 3. Summary heatmap (log2FC × Organelle)
+org_diff118_corr_mat <- org_diff118_corr_df %>%
+  select(log2FC_Column, Organelle, r) %>%
+  pivot_wider(names_from = Organelle, values_from = r) %>%
+  column_to_rownames("log2FC_Column") %>%
+  as.matrix()
+
+# Extract rownames from org_diff118_corr_mat (log2FC columns)
+annotation_row <- tibble(Sample = rownames(org_diff118_corr_mat)) %>%
+  mutate(
+    Genotype = case_when(
+      str_detect(Sample, "Ctrl")   ~ "Ctrl",
+      str_detect(Sample, "ASAH1")  ~ "ASAH1",
+      str_detect(Sample, "SMPD1")  ~ "SMPD1",
+      TRUE                         ~ NA_character_
+    ),
+    Neuron = case_when(
+      str_detect(Sample, "iN")  ~ "iN",
+      str_detect(Sample, "iDA") ~ "iDA",
+      TRUE                      ~ NA_character_
+    )
+  ) %>%
+  column_to_rownames("Sample")
+
+ann_colors_118 <- list(
+  Genotype = c(Ctrl = "grey40", ASAH1 = "dodgerblue3", SMPD1 = "tomato3"),
+  Neuron = c(iN = "#f1eef6", iDA = "#74a9cf")
+)
+
+
+# Replace NA with 0 (or leave NA if you prefer gaps)
+org_diff118_corr_mat[is.na(org_diff118_corr_mat)] <- 0
+
+diff118_iNiDACorr <- pheatmap(org_diff118_corr_mat,
+         color = rev(RColorBrewer::brewer.pal(11, "RdYlBu")),
+         annotation_row = annotation_row,                
+         annotation_colors = ann_colors_118,                
+         na_col = "grey90",
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         fontsize = 8,
+         cellheight = 10,
+         cellwidth = 10,
+         border_color = NA, 
+         main = "log2FC × Organelle Correlation")
+
+diff118_iNiDACorr
+
+
+
+# --- 4. Save heatmap as PDF and csv file 
+pdf(file.path(out_dir_diff118_corrplots, "axonprotCorr.pdf"),
+    width = 12, height = 16, useDingbats = FALSE)
+print(diff118_iNiDACorr)
+dev.off()
+
+ write.csv(org_diff118_corr_mat,
+          file = file.path(out_dir_diff118_corrplots, "axonprotCorr.csv"),
+          row.names = TRUE)
+
+
+
+# --- 5. Faceted correlation plots (per-organelle, KO×KO)
+# Function to plot KO×KO correlation for a given annotation
+plot_ko_corr_matrix <- function(organelle_name, df = diff118_df_annotated) {
+  gene_filter <- df[[organelle_name]] == 1
+  mat <- df[gene_filter, log2fc_diff118_cols, drop = FALSE]
+
+  if (nrow(mat) < 5) return(NULL)
+
+  corr_mat <- cor(mat, use = "pairwise.complete.obs", method = "spearman")
+
+  pheatmap(
+    corr_mat,
+    main = organelle_name,
+    color = rev(brewer.pal(11, "RdYlBu")),
+    silent = TRUE,
+    cellheight = 15,
+    cellwidth  = 15,
+    na_col = "grey90",
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    border_color = NA,
+    fontsize = 6
+  )
+}
+
+
+
+# --- 6. Apply to all annotations
+heatmap_list <- lapply(annotation_corr_cols, function(org) {
+  if (!org %in% colnames(diff118_df_annotated)) return(NULL)
+  plot_ko_corr_matrix(org)
+})
+heatmap_list <- Filter(Negate(is.null), heatmap_list)
+
+
+
+# --- 7. Save all in a faceted PDF
+# Select how many per row
+plots_per_row <- 5
+n_plots <- length(heatmap_list)
+n_rows <- ceiling(n_plots / plots_per_row)
+
+# Extract gtables
+grob_list <- lapply(heatmap_list, function(p) p$gtable)
+
+# Save all plots on a single PDF page
+pdf(file.path(out_dir_diff118_corrplots, "diff118_log2FC_annotation_corr_grid.pdf"),
+    width = 45, height = 45, useDingbats = FALSE)
+
+do.call(gridExtra::grid.arrange, c(grob_list, nrow = n_rows))
+
+dev.off()
+
+
+
+```
+
+### III. ***Scatterplots of selected annotations 
+### IV. ***Barplots of sig. up / down proteins per annotations (used defined)
 
 "log2FC_Ctrl_d23_iDA.Ctrl_d23_iN", "log2FC_ASAH1_d23_iDA.ASAH1_d23_iN", "log2FC_SMPD1_d23_iDA.Ctrl_d23_iDA" 
