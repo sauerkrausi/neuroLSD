@@ -63,6 +63,9 @@ dir.create(out_dir_diff118_scatterplots, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_diff118_bar <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/barplots"
 dir.create(out_dir_diff118_bar, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_diff118_violin <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/violins"
+dir.create(out_dir_diff118_violin, recursive = TRUE, showWarnings = FALSE)
 ```
 
 
@@ -635,6 +638,72 @@ plot_diff_scatter(diff118_df_annotated, annotation_list_scatter, x_vars, y_vars,
 
 
 
+##### IIIa. Scatterplots of select clusters 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Scatterplot of Selected clusters 
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Define function for scatter plots based on cluster 
+plot_diff_scatter_by_cluster <- function(df, cluster_list, x_vars, y_vars, sig_vars, out_dir) {
+  stopifnot(length(x_vars) == length(y_vars), length(x_vars) == length(sig_vars))
+  
+  sig_color_map <- c("up" = "tomato", "down" = "dodgerblue3", "n.s." = "grey70")
+
+  for (i in seq_along(x_vars)) {
+    x_col <- x_vars[i]
+    y_col <- y_vars[i]
+    sig_col <- sig_vars[i]
+
+    for (cl in cluster_list) {
+      gene_set <- df %>%
+        filter(cluster == cl, is.finite(.data[[x_col]]), is.finite(.data[[y_col]])) %>%
+        mutate(Cluster = paste0("Cluster_", cl))
+
+      if (nrow(gene_set) < 3) next
+      
+      top_genes <- gene_set %>%
+        slice_max(order_by = .data[[y_col]], n = 25)
+
+      p <- ggplot(gene_set, aes_string(x = x_col, y = y_col, color = sig_col, label = "Gene.Symbol")) +
+        geom_point(alpha = 0.6, size = 1) +
+        scale_color_manual(values = sig_color_map) +
+        geom_text_repel(
+          data = top_genes,
+          size = 2,
+          max.overlaps = Inf,
+          box.padding = 0.3,
+          segment.color = "grey60"
+        ) +
+        theme_bw(base_size = 6) +
+        theme(
+          panel.grid = element_blank(),
+          legend.position = "bottom"
+        ) +
+        labs(
+          title = paste("Scatterplot: Cluster", cl),
+          x = x_col,
+          y = y_col
+        ) +
+        geom_vline(xintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3) +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3)
+
+      ggsave(
+        filename = file.path(out_dir, paste0("scatter_cluster", cl, "_", gsub("\\.", "_", x_col), ".pdf")),
+        plot = p,
+        width = 4, height = 4, device = cairo_pdf
+      )
+    }
+  }
+}
+
+
+# --- 2. call function to plot clusters of interest
+cluster_list <- c(4,6)
+plot_diff_scatter_by_cluster(diff118_df_annotated, cluster_list, x_vars, y_vars, sig_vars, out_dir_diff118_scatterplots)
+
+```
+
 ### IV. Barplots of sig. up / down proteins per annotations (used defined)
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -714,6 +783,71 @@ ggsave(
 
 
 ```
+
+
+
+### V. Violinplots of selected clusters 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Violin Plot of Cluster Abundance
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. define & select sample labels for plotting  
+sample_cols_diff118_violin <- c(
+  "log2FC_ASAH1_d23_iN.Ctrl_d23_iN",
+  "log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA",
+  "log2FC_SMPD1_d23_iN.Ctrl_d23_iN",
+  "log2FC_SMPD1_d23_iDA.Ctrl_d23_iDA"
+)
+
+
+# --- 2. Drop cluster 0 and NA
+violin_diff118_df <- diff118_df_annotated %>%
+  filter(!is.na(cluster) & cluster != 0) %>%
+  pivot_longer(cols = all_of(sample_cols_diff118_violin), names_to = "Sample", values_to = "log2FC") %>%
+  filter(!is.na(log2FC))
+
+# --- 3. Consistent y-axis scale
+y_limits <- range(violin_diff118_df$log2FC, na.rm = TRUE)
+
+# --- 4. plot facet wrap
+diff118_clusterPlot <- ggplot(violin_diff118_df, aes(x = Sample, y = log2FC, fill = Sample)) +
+  geom_jitter(
+    aes(color = "red"), size = 0.5, alpha = 0.2, width = 0.2, height = 0
+  ) +
+  geom_violin(scale = "width", trim = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  # facet_wrap(~ cluster, scales = "fixed") +
+  #   coord_cartesian(ylim = c(-2, 2)) +
+  facet_wrap(~ cluster, scales = "free_y") +
+  scale_fill_manual(values = c(
+    "log2FC_ASAH1_d23_iN.Ctrl_d23_iN" = "#f1eef6",
+    "log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA" = "#bdc9e1",
+    "log2FC_SMPD1_d23_iN.Ctrl_d23_iN" = "#74a9cf",
+    "log2FC_SMPD1_d23_iDA.Ctrl_d23_iDA" = "dodgerblue3"
+  )) +
+  theme_bw(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "none", 
+        panel.grid = element_blank()
+        ) +
+  labs(title = "log2FC by Sample per Cluster", x = NULL, y = "log2FC")
+
+diff118_clusterPlot
+
+# --- 5. save plot as PDF
+ggsave(file.path(out_dir_diff118_violin, 
+  "diff118_clusterPlot.pdf"), 
+  diff118_clusterPlot, width = 6, height = 6, device = cairo_pdf)
+```
+
+
+
+
+
+
+
+
 
 
 
