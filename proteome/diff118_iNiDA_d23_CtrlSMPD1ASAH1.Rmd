@@ -18,6 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)     # includes dplyr, ggplot2, tidyr, purrr, tibble, readr, stringr, etc.
 
 # --- Plotting Enhancements ---
+library(ggplot2)
 library(ggdist)        # stat_halfeye
 library(gghalves)      # geom_half_point
 library(ggrepel)       # text labels (if used)
@@ -26,6 +27,7 @@ library(RColorBrewer)  # custom color scales
 library(viridis)       # color scales (optional)
 library(NatParksPalettes)
 library(scales) 
+library(ggrepel)
 
 # --- Plot Layouts ---
 library(gridExtra)     # arranging plots
@@ -41,6 +43,7 @@ library(data.table)    # fast table handling (if used)
 library(lintr)
 library(devtools)
 
+
 ```
 
 
@@ -55,6 +58,9 @@ dir.create(out_dir_diff118_heatmap, recursive = TRUE, showWarnings = FALSE)
 out_dir_diff118_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Organelle_CrossCorr"
 dir.create(out_dir_diff118_corrplots, recursive = TRUE, showWarnings = FALSE)
 
+
+out_dir_diff118_scatterplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Scatterplots"
+dir.create(out_dir_diff118_scatterplots, recursive = TRUE, showWarnings = FALSE)
 ```
 
 
@@ -529,7 +535,105 @@ dev.off()
 
 ```
 
-### III. ***Scatterplots of selected annotations 
+### III. Scatterplots of selected annotations 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Scatterplot of Selected Annotations
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Define x and y variable names
+x_vars <- c(
+  "log2FC_ASAH1_d23_iN.Ctrl_d23_iN",
+  "log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA",
+  "log2FC_SMPD1_d23_iN.Ctrl_d23_iN",
+  "log2FC_SMPD1_d23_iDA.Ctrl_d23_iDA"
+)
+
+y_vars <- c(
+  "neg_log10_q.val_ASAH1_d23_iN.Ctrl_d23_iN",
+  "neg_log10_q.val_ASAH1_d23_iDA.Ctrl_d23_iDA",
+  "neg_log10_q.val_SMPD1_d23_iN.Ctrl_d23_iN",
+  "neg_log10_q.val_SMPD1_d23_iDA.Ctrl_d23_iDA"
+)
+
+sig_vars <- c(
+  "sig_ASAH1_d23_iN.Ctrl_d23_iN",
+  "sig_ASAH1_d23_iDA.Ctrl_d23_iDA",
+  "sig_SMPD1_d23_iN.Ctrl_d23_iN",
+  "sig_SMPD1_d23_iDA.Ctrl_d23_iDA"
+)
+
+# --- 2. Annotation list (customize here)
+annotation_list_scatter <- c("SynapseSVs")
+annotation_list_scatter <- c("SVfusion","Svendocytosis","Svexocytosis")
+annotation_list_scatter <- c("SynGO")
+annotation_list_scatter <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
+
+# Annotations:
+# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"    
+
+# --- 3. Function to generate scatter plots
+plot_diff_scatter <- function(df, annotation_list_scatter, x_vars, y_vars, sig_vars, out_dir) {
+  stopifnot(length(x_vars) == length(y_vars), length(x_vars) == length(sig_vars))
+
+  sig_color_map <- c("up" = "tomato", "down" = "dodgerblue3", "n.s." = "grey70")
+
+  for (i in seq_along(x_vars)) {
+    x_col <- x_vars[i]
+    y_col <- y_vars[i]
+    sig_col <- sig_vars[i]
+
+    for (ann in annotation_list_scatter) {
+      gene_set <- df %>%
+        filter(.data[[ann]] == 1, is.finite(.data[[x_col]]), is.finite(.data[[y_col]])) %>%
+        mutate(annotation = ann)
+
+      if (nrow(gene_set) < 3) next
+    
+      # select top genes for labeling 
+      top_genes <- gene_set %>%
+        slice_max(order_by = .data[[y_col]], n = 25)
+      
+      # plot scatterplot
+      p <- ggplot(gene_set, aes_string(x = x_col, y = y_col, color = sig_col, label = "Gene.Symbol")) +
+        geom_point(alpha = 0.6, size = 1) +
+        scale_color_manual(values = sig_color_map) +
+        geom_text_repel(
+            data = top_genes,
+            size = 2,
+            max.overlaps = Inf,
+            box.padding = 0.3,
+            segment.color = "grey60"
+          ) +
+        theme_bw(base_size = 6) +
+        theme(
+          panel.grid = element_blank(),
+          legend.position = "bottom") +
+        labs(
+          title = paste("Scatterplot:", ann),
+          x = x_col,
+          y = y_col
+        ) +
+        geom_vline(xintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3) +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3)
+
+      ggsave(
+        filename = file.path(out_dir, paste0("scatter_", ann, "_", gsub("\\.", "_", x_col), ".pdf")),
+        plot = p,
+        width = 4, height = 4, device = cairo_pdf
+      )
+    }
+  }
+}
+
+# --- 4. Call function 
+plot_diff_scatter(diff118_df_annotated, annotation_list_scatter, x_vars, y_vars, sig_vars, out_dir_diff118_scatterplots)
+
+
+```
+
+
+
 ### IV. ***Barplots of sig. up / down proteins per annotations (used defined)
 
 "log2FC_Ctrl_d23_iDA.Ctrl_d23_iN", "log2FC_ASAH1_d23_iDA.ASAH1_d23_iN", "log2FC_SMPD1_d23_iDA.Ctrl_d23_iDA" 
