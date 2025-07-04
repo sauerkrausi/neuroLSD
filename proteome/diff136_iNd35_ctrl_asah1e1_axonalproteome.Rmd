@@ -642,7 +642,7 @@ ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected.pdf
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+# barplots of mean(log2FC) of each organelle annotations across all sample comparisons
 # selected annotations  
 # ─────────────────────────────────────────────────────────────────────────────
 

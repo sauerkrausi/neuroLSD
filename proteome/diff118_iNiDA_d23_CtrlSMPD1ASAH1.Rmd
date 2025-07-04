@@ -58,9 +58,11 @@ dir.create(out_dir_diff118_heatmap, recursive = TRUE, showWarnings = FALSE)
 out_dir_diff118_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Organelle_CrossCorr"
 dir.create(out_dir_diff118_corrplots, recursive = TRUE, showWarnings = FALSE)
 
-
 out_dir_diff118_scatterplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Scatterplots"
 dir.create(out_dir_diff118_scatterplots, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_diff118_bar <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/barplots"
+dir.create(out_dir_diff118_bar, recursive = TRUE, showWarnings = FALSE)
 ```
 
 
@@ -372,8 +374,7 @@ write.csv(mat_with_cluster,
 ```
 
 
-### IIc.  *** Violin Plot of Cluster Abundance
-### IId. Correlation of Selected Annotations
+### IIc. Correlation of Selected Annotations
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Correlation of Selected Annotations
@@ -634,6 +635,86 @@ plot_diff_scatter(diff118_df_annotated, annotation_list_scatter, x_vars, y_vars,
 
 
 
-### IV. ***Barplots of sig. up / down proteins per annotations (used defined)
+### IV. Barplots of sig. up / down proteins per annotations (used defined)
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# barplots of mean(log2FC) of each organelle annotations for select samples
+# selected annotations  
+# ─────────────────────────────────────────────────────────────────────────────
 
-"log2FC_Ctrl_d23_iDA.Ctrl_d23_iN", "log2FC_ASAH1_d23_iDA.ASAH1_d23_iN", "log2FC_SMPD1_d23_iDA.Ctrl_d23_iDA" 
+# --- 1. Define color mapping for barplot
+sig_color_map_bar <- c("up" = "grey70", "down" = "dodgerblue3")
+
+# --- 2. Define filtered annotation set (exclude "Nucleus")
+filtered_annotations <- setdiff(annotation_corr_cols, "Nucleus")
+
+
+# --- 3. Count hits and extract gene names
+count_sig_hits_with_genes <- function(df, annotation_cols, sig_vars) {
+  purrr::map_dfr(annotation_cols, function(ann) {
+    purrr::map_dfr(sig_vars, function(sig_col) {
+      subset <- df[df[[ann]] == 1 & !is.na(df[[sig_col]]), ]
+      purrr::map_dfr(c("up", "down"), function(sig_class) {
+        genes <- subset$Gene.Symbol[subset[[sig_col]] == sig_class]
+        tibble(
+          Annotation = ann,
+          Comparison = sig_col,
+          SigClass = sig_class,
+          Count = length(genes),
+          Genes = paste(genes, collapse = ";")
+        )
+      })
+    })
+  })
+}
+
+
+# --- 4. Run function
+sig_counts_long <- count_sig_hits_with_genes(diff118_df_annotated, filtered_annotations, sig_vars)
+
+# --- 5. Save CSV with gene lists
+write.csv(sig_counts_long,
+          file = file.path(out_dir_diff118_bar, "sig_counts_per_annotation_with_genes.csv"),
+          row.names = FALSE)
+
+# --- 6. Order and plot
+sig_barplot <- sig_counts_long %>%
+  group_by(Annotation) %>%
+  mutate(total = sum(Count)) %>%
+  ungroup() %>%
+  mutate(Annotation = fct_reorder(Annotation, total)) %>%
+  ggplot(aes(x = Annotation, y = Count, fill = SigClass)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = sig_color_map_bar) +
+  facet_wrap(~ Comparison, scales = "free_x") +
+  coord_flip() +
+  theme_bw(base_size = 8) +
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_rect(fill = "grey90"),
+    legend.position = "bottom"
+  ) +
+  labs(
+    title = "Significant hits per annotation (excluding Nucleus)",
+    y = "# of proteins",
+    x = NULL,
+    fill = "Significance"
+  )
+
+# --- 7. Save as PDF
+ggsave(
+  file.path(out_dir_diff118_bar, "sig_counts_per_annotation.pdf"),
+  plot = sig_barplot,
+  width = 8,
+  height = 10,
+  device = cairo_pdf
+)
+
+
+
+
+```
+
+
+
+
