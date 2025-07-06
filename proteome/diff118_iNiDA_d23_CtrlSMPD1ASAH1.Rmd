@@ -44,7 +44,6 @@ library(lintr)
 library(devtools)
 
 
-
 # --- GO Term analysis ---
 BiocManager::install("topGO")
 library(topGO)
@@ -858,7 +857,6 @@ ggsave(file.path(out_dir_diff118_violin,
 
 ## VI. GO analysis of clusters of interest 
 https://bioconductor.org/packages/release/bioc/vignettes/topGO/inst/doc/topGO.pdf
-
 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────

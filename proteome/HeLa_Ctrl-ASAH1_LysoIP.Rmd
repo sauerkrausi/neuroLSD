@@ -10,7 +10,7 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## laod packages
+## load packages
 ```{r}
 # --- Core tidyverse packages
 library(plyr)
@@ -50,6 +50,14 @@ library(rlang)
 library(devtools)
 library(Cairo)
 
+
+# --- GO Term analysis ---
+BiocManager::install("topGO")
+library(topGO)
+BiocManager::install("org.Hs.eg.db")
+library(org.Hs.eg.db)
+
+
 # Optional install commands
 # devtools::install_github("jbengler/tidyplots")
 # install.packages("magick")
@@ -72,9 +80,13 @@ dir.create(out_dir_lysoip_organelle_dist, recursive = TRUE, showWarnings = FALSE
 out_dir_lysoip_venn <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn"
 dir.create(out_dir_lysoip_venn, recursive = TRUE, showWarnings = FALSE)
 
-
 out_dir_lysoip_autophagy <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/autophagy"
 dir.create(out_dir_lysoip_autophagy, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_lysoip_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/GO"
+dir.create(out_dir_lysoip_GO, recursive = TRUE, showWarnings = FALSE)
+
+
 ```
 
 # I. Background HeLa LysoIP experiments
@@ -833,3 +845,97 @@ write_csv(sig_summary_autophagy, file.path(out_dir_lysoip_autophagy, "sig_hits_a
 
 
 
+## VII. GO term analysis of LysoIP data (based on clusters)
+
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# GO Term Analysis for LysoIP Clusters (ASAH1 vs Ctrl)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 1. Define function for GO Term analysis 
+plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX", out_dir) {
+  # library(topGO)
+  # library(org.Hs.eg.db)
+  # library(tidyverse)
+
+  # Step 1: Create geneList for topGO
+  geneList <- factor(as.integer(background_genes %in% gene_set))
+  names(geneList) <- background_genes
+
+  # Step 2: Run topGO Fisher test (BP)
+  GOdata <- new("topGOdata",
+                ontology = "BP",
+                allGenes = geneList,
+                geneSel = function(x) x == 1,
+                annot = annFUN.org,
+                mapping = "org.Hs.eg.db",
+                ID = "symbol")
+
+  resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+
+  # Step 3: Generate GO table and extract raw p-values
+  # calculate 30 top hits, but only plot top 10 
+  go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30)
+
+  go_table <- go_table %>%
+    mutate(
+      raw_pval     = score(resultFisher)[GO.ID],
+      Significant  = as.numeric(Significant),
+      Expected     = as.numeric(Expected),
+      Enrichment   = Significant / Expected,
+      log10P       = -log10(raw_pval)
+    ) %>%
+    filter(!is.na(raw_pval)) %>%
+    arrange(raw_pval) %>%
+    slice_head(n = 10)
+
+  # Step 4: Get associated genes per GO term
+  go_genes <- genesInTerm(GOdata)
+  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
+    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
+  })
+
+  # Step 5: Save GO term table + gene associations
+  write_csv(go_table, file = file.path(out_dir, paste0("GO_results_", tag, ".csv")))
+
+  # Step 6: Plot dot plot
+  p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+    geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
+    scale_fill_gradient(low = "white", high = "firebrick") +
+    theme_bw(base_size = 8) +
+    labs(
+      x = "Fold Enrichment",
+      y = "GO Term",
+      size = expression(-log[10]*"P"),
+      title = paste0("Top GO Terms (", tag, ")")
+    ) +
+    theme(panel.grid = element_blank())
+
+  ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
+
+  return(p)
+}
+
+
+
+# --- Step 2: Define target gene sets based on cluster assignment
+genes_lysoip_cluster_up <- helalysoip_annotated_df %>%
+  filter(cluster %in% c(5)) %>%
+  #filter(cluster %in% c(3, 5)) %>%
+  pull(Gene.Symbol) %>%
+  unique()
+
+# --- Step 3: Define background gene set
+background_genes_lysoip <- helalysoip_annotated_df %>%
+  pull(Gene.Symbol) %>%
+  unique()
+
+# --- Step 4: Run GO Term analysis & plotting
+plot_topGO_for_geneset(
+  gene_set = genes_lysoip_cluster_up,
+  background_genes = background_genes_lysoip,
+  tag = "LysoIP_cluster5",
+  out_dir = out_dir_lysoip_GO
+)
+
+```
