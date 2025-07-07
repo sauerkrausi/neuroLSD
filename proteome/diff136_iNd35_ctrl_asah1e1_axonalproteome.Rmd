@@ -1066,6 +1066,128 @@ plot_annotation_distribution_batch(
 ```
 
 
+
+## IVc. Rainbowplot of User-select Annotations for axon--soma localization distribution
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Rainfall plot for highlighting protein localization
+# user select input 
+# ─────────────────────────────────────────────────────────────────────────────
+# --- Step  1. Function for plotting user-defined gene sets for axon-soma localization distribution
+#    saves single plots and faceted version of the three subcell comparisons
+plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_dir, x_lim_override = NULL) {
+  if (is.character(gene_sets) && is.null(names(gene_sets))) {
+    gene_sets <- setNames(gene_sets, gene_sets)
+    gene_df <- purrr::imap_dfr(gene_sets, function(col, label) {
+      genes <- df$Gene.Symbol[df[[col]] == 1]
+      tibble(Gene.Symbol = genes, y_group = label)
+    })
+  } else {
+    gene_df <- purrr::imap_dfr(gene_sets, ~ tibble(Gene.Symbol = .x, y_group = .y))
+  }
+
+  # Helper
+  clean_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
+  default_colors <- c("grey30", "#bdc9e1", "dodgerblue3", "#74a9cf", "#045a8d", "#7fcdbb", "#e34a33", "#fdcc8a")
+  fill_colors <- setNames(rep_len(default_colors, length(gene_sets)), names(gene_sets))
+
+  # Collect all for faceting
+  full_plot_df <- purrr::map_dfr(log2fc_cols, function(fc) {
+    df %>%
+      right_join(gene_df, by = "Gene.Symbol") %>%
+      filter(!is.na(y_group), is.finite(.data[[fc]])) %>%
+      mutate(
+        y_group = factor(y_group, levels = names(gene_sets)),
+        Log2FC = fc
+      )
+  })
+
+  # Determine x-axis limits
+  if (!is.null(x_lim_override)) {
+    x_limits <- x_lim_override
+  } else {
+    x_limits <- range(full_plot_df[[log2fc_cols[1]]], na.rm = TRUE)
+    for (fc in log2fc_cols[-1]) {
+      x_limits <- range(c(x_limits, full_plot_df[[fc]]), na.rm = TRUE)
+    }
+  }
+
+  # Individual plots
+  for (fc in log2fc_cols) {
+    plot_df <- full_plot_df %>% filter(Log2FC == fc)
+
+    p <- ggplot(plot_df, aes(y = .data[[fc]], x = y_group, fill = y_group)) +
+      gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
+      geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+      ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
+      geom_boxplot(width = 0.15, outlier.shape = NA) +
+      scale_fill_manual(values = fill_colors) +
+      coord_flip(ylim = x_limits, clip = "off") +
+      theme_bw(base_size = 6) +
+      labs(y = fc, x = NULL, title = paste("Localization Distribution:", fc)) +
+      theme(panel.grid = element_blank(), legend.position = "none")
+
+    fname <- paste0("locdist_", clean_name(fc), "_", paste(clean_name(names(gene_sets)), collapse = "_"), ".pdf")
+    ggsave(file.path(out_dir, fname), p, width = 4, height = 4, device = cairo_pdf)
+  }
+
+  # Faceted version
+  facet_df <- full_plot_df %>%
+    pivot_longer(cols = all_of(log2fc_cols), names_to = "log2fc_col", values_to = "value") %>%
+    filter(!is.na(value))
+
+  p_all <- ggplot(facet_df, aes(y = value, x = y_group, fill = y_group)) +
+    gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+    ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
+    geom_boxplot(width = 0.15, outlier.shape = NA) +
+    scale_fill_manual(values = fill_colors) +
+    coord_flip(ylim = x_limits, clip = "off") +
+    facet_wrap(~ log2fc_col, ncol = 1) +
+    theme_bw(base_size = 6) +
+    labs(y = "log2FC", x = NULL, title = "Localization Distribution Across Comparisons") +
+    theme(panel.grid = element_blank(), legend.position = "none")
+
+  #fname_all <- paste0("facet_locdist_", paste(clean_name(log2fc_cols), collapse = "_"), "_", paste(clean_name(names(gene_sets)), collapse = "_"), ".pdf")
+  fname_all <- paste0("facet_locdist_", length(log2fc_cols), "comparisons_", length(gene_sets), "annotations.pdf")
+  ggsave(file.path(out_dir, fname_all), p_all, width = 4, height = 10, device = cairo_pdf)
+}
+
+
+
+# --- Step 2. Define annotations to be plotted 
+#gene_sets <- c("SynGO", "Presynaptic", "Postsynaptic")
+#gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
+#gene_sets <- c("OXPHOS","Lysosome","Endo_iN_curated_Hundley", "EarlyEndosome","RecyclingEndosome")
+#gene_sets <- c("OXPHOS","Golgi","ER")
+#gene_sets <- c("Nucleus","Lysosome","NeuroDev","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
+gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
+gene_sets <- c("Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
+gene_sets <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI")
+
+# --- Step 3. Define log2FC datasets to be plotted 
+log2fc_cols <- c(
+  "log2FC_ASAH1_Axon.ASAH1_Soma",
+  "log2FC_Ctrl_Axon.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon"
+)
+
+
+# --- Step 4. Call function and define output directory
+plot_annotation_distribution_batch(
+  df          = diff136_df_annotated,
+  gene_sets   = gene_sets,
+  log2fc_cols = log2fc_cols,
+  out_dir     = out_dir_diff136_rainbow,
+  x_lim_override = c(-2, 2) #do set manuarl x-lims if necessary
+)
+
+
+```
+
+
+
+
 ## IVc. RoR-based Rainbowplot of user-selected annotations 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1080,12 +1202,11 @@ diff136_df_annotated <- diff136_df_annotated %>%
   mutate(RoR_ASAH1_Soma = log2FC_ASAH1_Soma.ASAH1 - log2FC_Ctrl_Soma.Ctrl)
 
 # --- 2. Function: rainplot for RoR values by gene set
-plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir) {
-  # If gene_sets is a character vector, assume column names for binary annotations
+plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir, xlim = NULL) {
+  # --- 2.1. Prepare gene set annotations
   if (is.character(gene_sets) && is.null(names(gene_sets))) {
     gene_sets <- setNames(gene_sets, gene_sets)
     gene_df <- purrr::imap_dfr(gene_sets, function(col, label) {
-      gene_df <- gene_df %>% distinct(Gene.Symbol, y_group)
       genes <- df$Gene.Symbol[df[[col]] == 1]
       tibble(Gene.Symbol = genes, y_group = label)
     })
@@ -1097,6 +1218,7 @@ plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir) {
   default_colors <- c("grey30", "#bdc9e1", "dodgerblue3", "#74a9cf", "#045a8d", "#7fcdbb", "#e34a33", "#fdcc8a")
   fill_colors <- setNames(rep_len(default_colors, length(gene_sets)), names(gene_sets))
 
+  # --- 2.2. Build plotting data
   full_plot_df <- purrr::map_dfr(ror_cols, function(fc) {
     df %>%
       right_join(gene_df, by = "Gene.Symbol") %>%
@@ -1107,18 +1229,14 @@ plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir) {
       )
   })
 
-  # Reshape for faceting and compute x-axis limits after value exists
+  # --- 2.3. Compute or apply x-axis limits
   facet_df <- full_plot_df %>%
     pivot_longer(cols = all_of(ror_cols), names_to = "log2fc_col", values_to = "value") %>%
     filter(!is.na(value))
-  
-  # Compute shared x-axis limits
-  x_limits <- range(facet_df$value, na.rm = TRUE)
-  if (!all(is.finite(x_limits))) {
-    x_limits <- c(-2, 2)  # fallback default
-  }
-  
-  # Individual plots
+
+  x_limits <- if (!is.null(xlim)) xlim else range(facet_df$value, na.rm = TRUE)
+
+  # --- 2.4. Individual plots
   for (fc in ror_cols) {
     plot_df <- facet_df %>% filter(log2fc_col == fc)
 
@@ -1139,14 +1257,14 @@ plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir) {
     )
   }
 
-  # Faceted plot
+  # --- 2.5. Faceted plot
   p_all <- ggplot(facet_df, aes(y = value, x = y_group, fill = y_group)) +
     gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
     ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
     geom_boxplot(width = 0.15, outlier.shape = NA) +
     scale_fill_manual(values = fill_colors) +
-    coord_flip(ylim = x_limits, clip = "off") +
+    coord_flip(ylim = x_limits, clip = "on") +
     facet_wrap(~ log2fc_col, ncol = 1) +
     theme_bw(base_size = 6) +
     labs(y = "RoR (log2FC ΔAxon/WC)", x = NULL, title = "RoR Localization Across Comparisons") +
@@ -1154,9 +1272,10 @@ plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir) {
 
   ggsave(
     file.path(out_dir, paste0("facet_ror_locdist_", paste(clean_name(ror_cols), collapse = "_"), "_", paste(clean_name(names(gene_sets)), collapse = "_"), ".pdf")),
-    p_all, width = 4, height = 4, device = cairo_pdf
+    p_all, width = 6, height = 5, device = cairo_pdf
   )
 }
+
 
 # --- 3. Define input annotations 
 # gene_sets <- c("SynGO", "Presynaptic", "Postsynaptic")
@@ -1166,8 +1285,8 @@ plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir) {
 # gene_sets <- c("Nucleus","Lysosome","NeuroDev","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 # gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 # gene_sets <- c("Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
-gene_sets <- c("Nucleus", "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI")
 gene_sets <- c("Lysosome", "EarlyEndosome", "RecyclingEndosome", "SynapseSVs", "SVfusion", "Svendocytosis", "Svexocytosis")
+gene_sets <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI")
 
 
 # --- 4. Define dataframes to plot (either Axon, Soma or both)
@@ -1181,12 +1300,12 @@ ror_cols <- c("RoR_ASAH1_Axon", "RoR_ASAH1_Soma")
 
 # --- 5. Run function
 plot_ror_annotation_distribution(
-  df = diff136_df_annotated,
+  df        = diff136_df_annotated,
   gene_sets = gene_sets,
-  ror_cols = ror_cols,
-  out_dir = out_dir_diff136_rainbow_RoR
+  ror_cols  = ror_cols,
+  out_dir   = out_dir_diff136_rainbow_RoR,
+  xlim      = c(-3, 3) #do set manuarl x-lims if necessary
 )
-
 
 
 
