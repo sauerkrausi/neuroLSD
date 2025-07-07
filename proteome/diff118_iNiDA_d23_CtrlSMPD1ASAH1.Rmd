@@ -100,7 +100,7 @@ k-means clustering was performed on data, is in column "cluster"
 # 1.  read the data  
 # ─────────────────────────────────────────────────────────────────────────────
 
-diff118_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/diff118_All_results_stats_localizationAdded.csv', header=T, sep=',', stringsAsFactors = FALSE)
+diff118_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/datasets/diff118_All_results_stats_localizationAdded.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

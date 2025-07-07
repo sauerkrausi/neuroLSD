@@ -45,26 +45,26 @@ library(devtools)
 
 # output dirs overview:
 ```{r}
-out_dir_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes"
-dir.create(out_dir_dataframes, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes"
+dir.create(out_dir_diff136_dataframes, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
-dir.create(out_dir_heatmap, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
+dir.create(out_dir_diff136_heatmap, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
-dir.create(out_dir_corrplots, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
+dir.create(out_dir_diff136_corrplots, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
-dir.create(out_dir_organelle_dist, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
+dir.create(out_dir_diff136_organelle_dist, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
-dir.create(out_dir_rainbow, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
+dir.create(out_dir_diff136_rainbow, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_rainbow_RoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/ror"
-dir.create(out_dir_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_rainbow_RoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/ror"
+dir.create(out_dir_diff136_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_rainbow_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
-dir.create(out_dir_rainbow_GO, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_rainbow_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
+dir.create(out_dir_diff136_rainbow_GO, recursive = TRUE, showWarnings = FALSE)
 
 
 ```
@@ -83,15 +83,11 @@ k-means clustering was performed on data, is in column "cluster"
 # II. read in data & add protein organelle annotations
 - facet wrap by annotations & save 
 ```{r}
-# --- 0. create output directory 
-out_dir_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes"
-dir.create(out_dir_dataframes, recursive = TRUE, showWarnings = FALSE)
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  read the data  
 # ─────────────────────────────────────────────────────────────────────────────
 
-diff136_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_All_results_stats_localizationAdded.csv', header=T)
+diff136_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/datasets/diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_All_results_stats_localizationAdded.csv', header=T)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -161,7 +157,7 @@ diff136_df_annotated <- diff136_df_annotated %>%
 
 # --- Step 4. save as csv file 
 write.csv(diff136_df_annotated, 
-          file = file.path(out_dir_dataframes,"diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_annotated.csv"), row.names = FALSE)
+          file = file.path(out_dir_diff136_dataframes,"diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_annotated.csv"), row.names = FALSE)
 ```
 
 
@@ -170,8 +166,8 @@ write.csv(diff136_df_annotated,
 # ─────────────────────────────────────────────────────────────────────────────
 # Heatmap (z-norm rows, cluster by cluster)
 # ─────────────────────────────────────────────────────────────────────────────
-out_dir_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
-pdf_file <- file.path(out_dir_heatmap, "diff136_heatmap_axonalProt_ctrl_asah1.pdf")
+out_dir_diff136_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
+pdf_file <- file.path(out_dir_diff136_heatmap, "diff136_heatmap_axonalProt_ctrl_asah1.pdf")
 
 # --- 1. set annotations and sample names 
 expr_cols <- c(
@@ -267,7 +263,7 @@ mat_with_cluster <- cbind(cluster = row_annotation$cluster, mat)
 
 # Write to CSV with cluster
 write.csv(mat_with_cluster,
-          file = file.path(out_dir_heatmap,"diff136_iNd35_heatmap.csv"),
+          file = file.path(out_dir_diff136_heatmap,"diff136_iNd35_heatmap.csv"),
           row.names = TRUE)
 ```
 
@@ -323,7 +319,7 @@ diff136_clusterPlot <- ggplot(violin_df, aes(x = Sample, y = log2FC, fill = Samp
 diff136_clusterPlot
 
 # --- 5. save plot as PDF
-ggsave(file.path(out_dir_heatmap, 
+ggsave(file.path(out_dir_diff136_heatmap, 
   "diff136_clusterPlot.pdf"), 
   diff136_clusterPlot, width = 6, height = 6, device = cairo_pdf)
 ```
@@ -335,12 +331,6 @@ calculate annotated-based correlation across all and also facet wrap them
 # ─────────────────────────────────────────────────────────────────────────────
 # Correlation of Selected Annotations
 # ─────────────────────────────────────────────────────────────────────────────
-
-# --- 0. create output directory 
-out_dir_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
-dir.create(out_dir_corrplots, recursive = TRUE, showWarnings = FALSE)
-
-
 
 # --- 1. Copy out log2FC & annotated columns for wrangling
 # Define log2FC columns (all that start with log2FC_)
@@ -422,13 +412,13 @@ axonprotCorr
 
 
 # --- 4. Save heatmap as PDF and csv file 
-pdf(file.path(out_dir_corrplots, "axonprotCorr.pdf"),
+pdf(file.path(out_dir_diff136_corrplots, "axonprotCorr.pdf"),
     width = 12, height = 16, useDingbats = FALSE)
 print(axonprotCorr)
 dev.off()
 
 write.csv(org_corr_mat,
-          file = file.path(out_dir_corrplots, "axonprotCorr.csv"),
+          file = file.path(out_dir_diff136_corrplots, "axonprotCorr.csv"),
           row.names = TRUE)
 
 
@@ -470,7 +460,7 @@ heatmap_list <- Filter(Negate(is.null), heatmap_list)
 
 
 # --- 7. Save all in a faceted PDF
-pdf(file.path(out_dir_corrplots, "diff136_log2FC_annotation_corr_facet.pdf"),
+pdf(file.path(out_dir_diff136_corrplots, "diff136_log2FC_annotation_corr_facet.pdf"),
     width = 12, height = 16, useDingbats = FALSE)
 print(axonprotCorr)
 dev.off()
@@ -510,7 +500,7 @@ axonprotCorr_subset <- pheatmap(org_corr_subset,
 )
 
 # Save to PDF
-pdf(file.path(out_dir_corrplots, "axonprotCorr_subset.pdf"),
+pdf(file.path(out_dir_diff136_corrplots, "axonprotCorr_subset.pdf"),
     width = 10, height = 12, useDingbats = FALSE)
 print(axonprotCorr_subset)
 dev.off()
@@ -549,7 +539,7 @@ heatmap_list_selected <- lapply(annotation_cols, function(org) {
 heatmap_list_selected <- Filter(Negate(is.null), heatmap_list_selected)
 
 # Save to PDF
-pdf(file.path(out_dir_corrplots, "diff136_selected_log2FC_annotation_corr_facet.pdf"), width = 35, height = 35, useDingbats = FALSE)
+pdf(file.path(out_dir_diff136_corrplots, "diff136_selected_log2FC_annotation_corr_facet.pdf"), width = 35, height = 35, useDingbats = FALSE)
 grid.arrange(grobs = lapply(heatmap_list_selected, `[[`, "gtable"), ncol = 4)
 dev.off()
 
@@ -563,12 +553,8 @@ dev.off()
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
 # ─────────────────────────────────────────────────────────────────────────────
-# --- 0. create output directory 
-out_dir_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
-dir.create(out_dir_organelle_dist, recursive = TRUE, showWarnings = FALSE)
 
-
-# 1. Define relevant log2FC and annotation columns
+# --- Step 1. Define relevant log2FC and annotation columns
 log2fc_cols <- grep("^log2FC_", colnames(diff136_df_annotated), value = TRUE)
 
 # Filter binary annotation columns (0/1 or NA only)
@@ -581,7 +567,7 @@ annotation_cols <- annotation_cols[
 annotation_cols <- setdiff(annotation_cols, c("Autophagy_det", "EndoDetailLoac"))
 
 
-# 2. Reshape to long format for annotation × log2FC mapping
+# --- Step 2. Reshape to long format for annotation × log2FC mapping
 long_df <- diff136_df_annotated %>%
   select(all_of(c("Gene.Symbol", log2fc_cols, annotation_cols))) %>%
   pivot_longer(cols = all_of(log2fc_cols), names_to = "Log2FC", values_to = "value") %>%
@@ -589,13 +575,13 @@ long_df <- diff136_df_annotated %>%
   filter(is_annotated == 1 & is.finite(value))
 
 
-# 3. Compute mean log2FC per organelle annotation
+# --- Step 3. Compute mean log2FC per organelle annotation
 mean_log2fc_df <- long_df %>%
   group_by(Log2FC, Annotation) %>%
   summarise(mean_log2FC = mean(value, na.rm = TRUE), .groups = "drop")
 
 
-# --- 4. Shared x-axis range calculation
+# --- Step 4. Shared x-axis range calculation
 xlims <- range(mean_log2fc_df$mean_log2FC, na.rm = TRUE)
 
 # --- 4a. Facet plot across all log2FCs with fixed x-axis
@@ -607,7 +593,7 @@ loc_dist_overview_all <- ggplot(mean_log2fc_df, aes(x = reorder(Annotation, mean
   labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation (All)") +
   theme_bw(base_size = 8)
 
-ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_all.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_all.pdf"),
   loc_dist_overview_all,
   width = 14, height = 12, device = cairo_pdf
 )
@@ -636,8 +622,8 @@ loc_dist_overview_subset <- ggplot(mean_log2fc_subset_df, aes(x = reorder(Annota
   theme_bw(base_size = 8)
 
 
-# --- 5. Save to PDF
-ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected.pdf"),
+# --- Step 5. Save to PDF
+ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected.pdf"),
   loc_dist_overview_subset,
   width = 14, height = 12, device = cairo_pdf
 )
@@ -650,6 +636,7 @@ ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected.pdf
 # selected annotations  
 # ─────────────────────────────────────────────────────────────────────────────
 
+# --- Step 6. Manual Subset of comparisons for function 
 subset2_log2fc <- c(
   "log2FC_ASAH1_Soma.Ctrl_Soma",
   "log2FC_ASAH1_Axon.Ctrl_Axon"
@@ -670,8 +657,8 @@ loc_dist_overview_subset2 <- ggplot(mean2_log2fc_subset_df, aes(x = reorder(Anno
   )
 
 
-# --- 5. Save to PDF
-ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected_directCamp.pdf"),
+# --- Step 7. Save to PDF
+ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directCamp.pdf"),
   loc_dist_overview_subset2,
   width = 3, height = 4, device = cairo_pdf
 )
@@ -693,14 +680,14 @@ ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected_dir
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Calculate RoR and call significance:
-# 1. Calculate RoR
+# --- Step 1. Calculate RoR
 diff136_df_annotated <- diff136_df_annotated %>%
   mutate(RoR_ASAH1_Axon = `log2FC_ASAH1_Axon.ASAH1` - `log2FC_Ctrl_Axon.Ctrl`)
 
-# 2. Define threshold for up/down calls (adjust as needed)
+# --- Step 2. Define threshold for up/down calls (adjust as needed)
 fc_thresh <- 0.585  # ~1.5-fold
 
-# 3. Call significance
+# --- Step 3. Call significance
 diff136_df_annotated <- diff136_df_annotated %>%
   mutate(sig_RoR_ASAH1_Axon = case_when(
     is.na(RoR_ASAH1_Axon)        ~ NA_character_,
@@ -710,7 +697,7 @@ diff136_df_annotated <- diff136_df_annotated %>%
   ))
 
 
-# --- 1. Define relevant sig columns and annotations
+# --- Step 4. Define relevant sig columns and annotations
 sig_cols_abs <- c("sig_ASAH1_Axon.ASAH1_Soma", "sig_Ctrl_Axon.Ctrl_Soma", "sig_ASAH1_Axon.Ctrl_Axon")
 sig_cols_ror <- c("sig_RoR_ASAH1_Axon")
 
@@ -721,7 +708,7 @@ annotation_cols <- annotation_cols[
 ]
 annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetailLoac"))
 
-# --- 2a. Long-format: ABS comparisons
+# --- Step 4a. Long-format: ABS comparisons
 sig_long_abs <- diff136_df_annotated %>%
   select(Gene.Symbol, all_of(sig_cols_abs), all_of(annotation_cols)) %>%
   pivot_longer(cols = all_of(sig_cols_abs), names_to = "Comparison", values_to = "SigStatus") %>%
@@ -729,7 +716,7 @@ sig_long_abs <- diff136_df_annotated %>%
   filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
   mutate(Type = "Absolute")
 
-# --- 2b. Long-format: RoR comparisons
+# --- Step 4b. Long-format: RoR comparisons
 sig_long_ror <- diff136_df_annotated %>%
   select(Gene.Symbol, all_of(sig_cols_ror), all_of(annotation_cols)) %>%
   pivot_longer(cols = all_of(sig_cols_ror), names_to = "Comparison", values_to = "SigStatus") %>%
@@ -737,15 +724,15 @@ sig_long_ror <- diff136_df_annotated %>%
   filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
   mutate(Type = "RatioOfRatio")
 
-# --- Combine
+# --- Step 4c. Combine
 sig_long_df <- bind_rows(sig_long_abs, sig_long_ror)
 
-# --- 3. Count per Annotation × Comparison × Direction
+# --- Step 5. Count per Annotation × Comparison × Direction
 sig_summary <- sig_long_df %>%
   group_by(Type, Comparison, Annotation, SigStatus) %>%
   summarise(n = n(), .groups = "drop")
 
-# --- 4. Save gene-level summary
+# --- Step 6. Save gene-level summary
 sig_gene_summary <- sig_long_df %>%
   group_by(Type, Comparison, Annotation, SigStatus) %>%
   summarise(
@@ -760,7 +747,7 @@ sig_gene_summary <- sig_gene_summary %>% filter(Annotation != "Nucleus")
 
 
 
-# --- 5. Plot
+# --- Step 7. Plot
 # --- Absolute plot
 sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
                        aes(x = reorder(Annotation, n), y = n, fill = SigStatus)) +
@@ -772,7 +759,7 @@ sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
   theme_bw(base_size = 8) +
   theme(panel.grid = element_blank())
 
-ggsave(file.path(out_dir_organelle_dist,"diff136_sig_hits_annotation_absolute_barplot.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist,"diff136_sig_hits_annotation_absolute_barplot.pdf"),
   sig_plot_abs,
   width = 5, height = 8, device = cairo_pdf
 )
@@ -789,12 +776,12 @@ sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
   theme_bw(base_size = 8) +
   theme(panel.grid = element_blank())
 
-ggsave(file.path(out_dir_organelle_dist, "diff136_sig_hits_annotation_ror_barplot.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_ror_barplot.pdf"),
   sig_plot_ror,
   width = 6, height = 8, device = cairo_pdf
 )
 
-# --- 5. Save gene-level summary
+# --- Step 8. Save gene-level summary
 sig_gene_summary <- sig_long_df %>%
   group_by(Type, Comparison, Annotation, SigStatus) %>%
   summarise(
@@ -805,7 +792,7 @@ sig_gene_summary <- sig_long_df %>%
 
 write.csv(
   sig_gene_summary,
-  file = file.path(out_dir_organelle_dist, "diff136_sig_hits_annotation_geneList.csv"),
+  file = file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv"),
   row.names = FALSE
 )
 ```
@@ -823,17 +810,14 @@ library(ggdist)
 #install.packages("gghalves")
 library(gghalves)
 
-# --- 0. create output directory 
-out_dir_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
-dir.create(out_dir_rainbow, recursive = TRUE, showWarnings = FALSE)
 
-
+# --- Step 0. Define vATPase genes 
 vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
                    "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
                    "SYP", "DMXL1", "DMXL2", "PODXL", "PODXL2")
 
 
-# Step 1: Prepare scatter_df with categorical y-axis
+# # --- Step 1: Prepare scatter_df with categorical y-axis
 scatter_df <- diff136_df_annotated %>%
   filter(Gene.Symbol %in% vatpase_genes | Nucleus == 1 | `Lysosome` == 1) %>%
   mutate(
@@ -852,7 +836,7 @@ scatter_df <- scatter_df %>%
     y_group = factor(y_group, levels = c("Nucleus", "Lysosome", "vATPase"))
   )
 
-# create plot 
+# --- Step 2. create plot 
 ASAH1_axonXsoma_loc_rainbowplot <- ggplot(scatter_df, aes(y = log2FC_ASAH1_Axon.ASAH1_Soma, x = y_group, fill = y_group)) + 
   # 1. Aligned half-point jitter
   gghalves::geom_half_point(
@@ -896,7 +880,8 @@ ASAH1_axonXsoma_loc_rainbowplot <- ggplot(scatter_df, aes(y = log2FC_ASAH1_Axon.
   )
 
 
-ggsave(file.path(out_dir_rainbow, "diff136_lysosome_vATPase_nucleus_scatter.pdf"),
+# --- Step 3. save pdf file 
+ggsave(file.path(out_dir_diff136_rainbow, "diff136_lysosome_vATPase_nucleus_scatter.pdf"),
   ASAH1_axonXsoma_loc_rainbowplot,
   width = 10, height = 8, device = cairo_pdf
 )
@@ -911,7 +896,7 @@ ggsave(file.path(out_dir_rainbow, "diff136_lysosome_vATPase_nucleus_scatter.pdf"
 # Rainfall plot for highlighting protein localization
 # user select input 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. Function for plotting user-defined gene sets for axon-soma localization distribution
+# --- Step  1. Function for plotting user-defined gene sets for axon-soma localization distribution
 #    saves single plots and faceted version of the three subcell comparisons
 plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_dir) {
   if (is.character(gene_sets) && is.null(names(gene_sets))) {
@@ -988,7 +973,7 @@ plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_d
 
 
 
-# 2. Define annotations to be plotted 
+# --- Step 2. Define annotations to be plotted 
 #gene_sets <- c("SynGO", "Presynaptic", "Postsynaptic")
 #gene_sets <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
 #gene_sets <- c("OXPHOS","Lysosome","Endo_iN_curated_Hundley", "EarlyEndosome","RecyclingEndosome")
@@ -998,19 +983,19 @@ gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfu
 gene_sets <- c("Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
 gene_sets <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI")
 
-# 3. Define log2FC datasets to be plotted 
+# --- Step 3. Define log2FC datasets to be plotted 
 log2fc_cols <- c(
   "log2FC_ASAH1_Axon.ASAH1_Soma",
   "log2FC_Ctrl_Axon.Ctrl_Soma",
   "log2FC_ASAH1_Axon.Ctrl_Axon"
 )
 
-# 4. Call function and define output directory
+# --- Step 4. Call function and define output directory
 plot_annotation_distribution_batch(
   df          = diff136_df_annotated,
   gene_sets   = gene_sets,
   log2fc_cols = log2fc_cols,
-  out_dir     = out_dir_rainbow
+  out_dir     = out_dir_diff136_rainbow
 )
 
 
@@ -1139,7 +1124,7 @@ plot_ror_annotation_distribution(
   df = diff136_df_annotated,
   gene_sets = gene_sets,
   ror_cols = ror_cols,
-  out_dir = out_dir_rainbow_RoR
+  out_dir = out_dir_diff136_rainbow_RoR
 )
 
 
@@ -1245,7 +1230,7 @@ plot_topGO_for_geneset(
   gene_set = genes_interest,
   background_genes = background_genes,
   tag = "ASAH1_cluster6",
-  out_dir = out_dir_rainbow_GO
+  out_dir = out_dir_diff136_rainbow_GO
 )
 
 

@@ -103,7 +103,7 @@ k-means clustering was performed on data, is in column "cluster"
 ```{r}
 # read in df
 helalysoip_df <- read.csv(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/20241130_HeLaLysoIP_ASAH1_All_results_stats_localizationAdded.csv",
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/datasets/20241130_HeLaLysoIP_ASAH1_All_results_stats_localizationAdded.csv",
   header = TRUE
 )
 
