@@ -9,6 +9,9 @@ Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons a
 
 
 ## change log
+- [x] 2025-07-07: `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Added sig. up/down genes per group-comparison. Added GO term analyiss based on heatmap clusters. Updated outdir structure & code hierarchy. 
+- [x] 2025-07-07: `Diff118_d23_iN-iDA_TMTpro.Rmd`: Added sig. up/down genes per group-comparison. Added GO term analyiss based on heatmap clusters. Updated outdir structure & code hierarchy. 
+- [x] 2025-07-07: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: added RoR evaluation for axonal enrichment & rainfall plots. Added GO term analyiss based on heatmap clusters. Updated outdir structure & code hierarchy. 
 - [x] 2025-06-30: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: added synaptic endo / exyocytosis
 - [x] 2025-06-30: `diff132_d50_nDIA.Rmd`: added synaptic endo / exyocytosis
 - [x] 2025-06-30: `diff132_d50_nDIA.Rmd`: HeLa - neuron cross correlations
