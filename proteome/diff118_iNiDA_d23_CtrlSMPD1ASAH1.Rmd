@@ -699,6 +699,7 @@ plot_diff_scatter_by_cluster <- function(df, cluster_list, x_vars, y_vars, sig_v
         ) +
         geom_vline(xintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3)
+        # coord_cartesian(xlim = c(-4, 1))  # <- add to manually change x-axis 
 
       ggsave(
         filename = file.path(out_dir, paste0("scatter_cluster", cl, "_", gsub("\\.", "_", x_col), ".pdf")),
@@ -711,7 +712,7 @@ plot_diff_scatter_by_cluster <- function(df, cluster_list, x_vars, y_vars, sig_v
 
 
 # --- 2. call function to plot clusters of interest
-cluster_list <- c(4,6)
+cluster_list <- c(4)
 plot_diff_scatter_by_cluster(diff118_df_annotated, cluster_list, x_vars, y_vars, sig_vars, out_dir_diff118_scatterplots)
 
 ```

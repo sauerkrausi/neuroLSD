@@ -63,6 +63,10 @@ dir.create(out_dir_rainbow, recursive = TRUE, showWarnings = FALSE)
 out_dir_rainbow_RoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/ror"
 dir.create(out_dir_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_rainbow_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
+dir.create(out_dir_rainbow_GO, recursive = TRUE, showWarnings = FALSE)
+
+
 ```
 
 
@@ -325,7 +329,7 @@ ggsave(file.path(out_dir_heatmap,
 ```
 
 
-### IIc. Correlation of Selected Annotations
+# III. Correlation of Selected Annotations
 calculate annotated-based correlation across all and also facet wrap them
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -554,7 +558,7 @@ dev.off()
 
 
 
-### IId. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+## IIa. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
@@ -680,7 +684,7 @@ ggsave(file.path(out_dir_organelle_dist, "diff136_loc_dist_overview_selected_dir
 
 
 
-## IIe.  Absolute & RoR comparison of Axonal Proteome 
+## IIIb.  Absolute & RoR comparison of Axonal Proteome 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Analysis of axonal proteome in Ctrl & ASAH1-/- neurons 
@@ -807,8 +811,8 @@ write.csv(
 ```
 
 
-
-### IIf. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
+# IV. Rainbowplot of annotations markers 
+## IVa. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -901,7 +905,7 @@ ggsave(file.path(out_dir_rainbow, "diff136_lysosome_vATPase_nucleus_scatter.pdf"
 
 
 
-### IIf2. Rainbowplot of User-select Annotations for axon--soma localization distribution
+## IVb. Rainbowplot of User-select Annotations for axon--soma localization distribution
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -1017,7 +1021,7 @@ plot_annotation_distribution_batch(
 ```
 
 
-### IIf3. RoR-based Rainbowplot of user-selected annotations 
+## IVc. RoR-based Rainbowplot of user-selected annotations 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -1150,4 +1154,100 @@ plot_ror_annotation_distribution(
 
 
 
+# VI. GO analysis of clusters of interest 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# GO term analysis based on clusters 
+# ─────────────────────────────────────────────────────────────────────────────
 
+# --- Step 1. Define function for GO Term analysis 
+plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX", out_dir) {
+  library(topGO)
+  library(org.Hs.eg.db)
+  library(tidyverse)
+
+  # Step 1: Create geneList for topGO
+  geneList <- factor(as.integer(background_genes %in% gene_set))
+  names(geneList) <- background_genes
+
+  # Step 2: Run topGO Fisher test (BP)
+  GOdata <- new("topGOdata",
+                ontology = "BP",
+                allGenes = geneList,
+                geneSel = function(x) x == 1,
+                annot = annFUN.org,
+                mapping = "org.Hs.eg.db",
+                ID = "symbol")
+
+  resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+
+  # Step 3: Generate GO table and extract raw p-values
+  # calculate 30 top hits, but only plot top 10 
+  go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30)
+
+  go_table <- go_table %>%
+    mutate(
+      raw_pval     = score(resultFisher)[GO.ID],
+      Significant  = as.numeric(Significant),
+      Expected     = as.numeric(Expected),
+      Enrichment   = Significant / Expected,
+      log10P       = -log10(raw_pval)
+    ) %>%
+    filter(!is.na(raw_pval)) %>%
+    arrange(raw_pval) %>%
+    slice_head(n = 10)
+
+  # Step 4: Get associated genes per GO term
+  go_genes <- genesInTerm(GOdata)
+  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
+    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
+  })
+
+  # Step 5: Save GO term table + gene associations
+  write_csv(go_table, file = file.path(out_dir, paste0("GO_results_", tag, ".csv")))
+
+  # Step 6: Plot dot plot
+  p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+    geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
+    scale_fill_gradient(low = "white", high = "firebrick") +
+    theme_bw(base_size = 8) +
+    labs(
+      x = "Fold Enrichment",
+      y = "GO Term",
+      size = expression(-log[10]*"P"),
+      title = paste0("Top GO Terms (", tag, ")")
+    ) +
+    theme(panel.grid = element_blank())
+
+  ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
+
+  return(p)
+}
+
+
+
+# --- Step 2. Define input clusters to analyse & background genes 
+# Input: cluster genes
+genes_interest <- diff136_df_annotated %>%
+  filter(cluster %in% c(6)) %>%
+  #filter(cluster %in% c(5,6)) %>%
+  pull(Gene.Symbol) %>%
+  unique()
+
+# Background genes
+background_genes <- unique(diff136_df_annotated$Gene.Symbol)
+
+
+
+# --- Step 3. Run function 
+# Run function
+plot_topGO_for_geneset(
+  gene_set = genes_interest,
+  background_genes = background_genes,
+  tag = "ASAH1_cluster6",
+  out_dir = out_dir_rainbow_GO
+)
+
+
+
+```

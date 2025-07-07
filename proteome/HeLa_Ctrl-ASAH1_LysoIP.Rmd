@@ -920,7 +920,7 @@ plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX",
 
 # --- Step 2: Define target gene sets based on cluster assignment
 genes_lysoip_cluster_up <- helalysoip_annotated_df %>%
-  filter(cluster %in% c(5)) %>%
+  filter(cluster %in% c(1)) %>%
   #filter(cluster %in% c(3, 5)) %>%
   pull(Gene.Symbol) %>%
   unique()
@@ -934,7 +934,7 @@ background_genes_lysoip <- helalysoip_annotated_df %>%
 plot_topGO_for_geneset(
   gene_set = genes_lysoip_cluster_up,
   background_genes = background_genes_lysoip,
-  tag = "LysoIP_cluster5",
+  tag = "LysoIP_cluster1",
   out_dir = out_dir_lysoip_GO
 )
 
