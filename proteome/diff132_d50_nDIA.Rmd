@@ -68,19 +68,50 @@ library(gptstudio)
 
 
 # output dirs overview:
+```{r}
 out_dir_d50_QC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC"
-out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/"
-out_dir_d50_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes”
+dir.create(out_dir_d50_QC, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps"
+dir.create(out_dir_d50_heatmaps, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d50_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes"
+dir.create(out_dir_d50_dataframes, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_violins <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_Violin"
+dir.create(out_dir_d50_violins, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_SphMut <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
-out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN
+dir.create(out_dir_d50_SphMut, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
+dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_CrossCorr <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
+dir.create(out_dir_d50_CrossCorr, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_LinReg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg"
+dir.create(out_dir_d50_LinReg, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_LinReg_limma <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_all_coef"
+dir.create(out_dir_d50_LinReg_limma, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_LinReg_limma_select <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_select"
+dir.create(out_dir_d50_LinReg_limma_select, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_nMOST_nDIAcorrelation <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation"
+dir.create(out_dir_d50_nMOST_nDIAcorrelation, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_nMOST_nDIAcorrelationS_single <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/SingleGeno"
+dir.create(out_dir_d50_nMOST_nDIAcorrelationS_single, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/HeLa_Neuron_SelectAnnotation_comparisons"
+dir.create(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, recursive = TRUE, showWarnings = FALSE)
+
+
+```
+
+
 
 
 # II. Circos plot for neuroLSD 
@@ -163,11 +194,6 @@ iN, DA, pool (== QC mmaker)
 # --------------------------------------------------- #
 # PCA plots for supplements  
 # --------------------------------------------------- #
-
-# --- 0. create output directory 
-out_dir_d50_QC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC"
-dir.create(out_dir_d50_QC, recursive = TRUE, showWarnings = FALSE)
-
 
 # --- Step 1: Read in the data from the CSV file
 # The CSV file has been pre-processed in Excel to replace all NA values with 0.
@@ -629,12 +655,6 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 library(pheatmap)
 library(RColorBrewer) # For color palettes
 
-# --- 0. create output directory 
-out_dir_d50_heatmaps <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps/"
-dir.create(out_dir_d50_heatmaps, recursive = TRUE, showWarnings = FALSE)
-
-
-
 # --- Step 1. Load and Inspect Data
 # Define the path to the input CSV file
 input_LSD_file <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/lsd_fc_pv.csv"
@@ -807,11 +827,6 @@ add all colums of interest: FC, mean intensity, q-value
 # Subcell annotation to df for QC and Organelle Violin Plots 
 # add annotations do df and split by day and save as .csv files  
 # --------------------------------------------------- #
-
-# --- 0. create output directory 
-out_dir_d50_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes"
-dir.create(out_dir_d50_dataframes, recursive = TRUE, showWarnings = FALSE)
-
 
 # --- Step 0: Define contaminant list
 contaminant_genes <- c(
@@ -1598,11 +1613,6 @@ use unique variables, so I can calculate the correlation between neurons and nMO
 # Add annotations & heatmap & save csv
 # --------------------------------------------------- #
 
-# --- 0. create output directory 
-out_dir_d50_SphMut <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
-dir.create(out_dir_d50_SphMut, recursive = TRUE, showWarnings = FALSE)
-
-
 # --- Step 1.Define SphMut sample IDs
 SphMut_samples <- c("Ctrl_iN", "Ctrl_iDA", "GLB1_iN", "GLB1_iDA", "GBA1_iN", "GBA1_iDA", 
                     "ASAH1_iN", "ASAH1_iDA", "SMPD1_iN", "SMPD1_iDA", "PSAP_iN", "PSAP_iDA", 
@@ -1858,11 +1868,6 @@ use complete_data_annotated_day30 & complete_data_annotated_day50 for evaluation
 # GRN d30/50 DA neuron investigation  
 # Cross-correlation matrix of Sph-genotypes for each organelle
 # --------------------------------------------------- #
-# --- 0. create output directory 
-out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
-dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
-
-
 
 # --- Step 1. use modified function to loop through clean_50_transformed_df to get genotypes and days and annotations in new dataframe 
 process_day_data_combined <- function(df, binary_matrix) {
@@ -2512,11 +2517,6 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 # Linear regression on neuro nDIA dataset
 # Plot average correlation per annotation across genotypes
 # --------------------------------------------------- #
-# --- 0. create output directory 
-out_dir_d50_LinReg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg"
-dir.create(out_dir_d50_LinReg, recursive = TRUE, showWarnings = FALSE)
-
-
 
 ### ---- Per-Gene Linear Modeling ----
 # This script performs gene-specific linear regression to identify differential
@@ -3620,9 +3620,6 @@ each value must have its own cell
 # HeLa nMOST whole cell correlations
 # GO cluster ranking
 # --------------------------------------------------- #
-# --- 0. create output directory 
-out_dir_d50_nMOST_nDIAcorrelation <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation"
-dir.create(out_dir_d50_nMOST_nDIAcorrelation, recursive = TRUE, showWarnings = FALSE)
 
 # --- Step 1. Color palette for gene groups
 col <- c(

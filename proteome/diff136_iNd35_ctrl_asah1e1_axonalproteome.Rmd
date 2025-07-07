@@ -10,13 +10,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-# load packackes & set project directory
+# load packackes 
 ```{r}
 # --- Load Required Libraries ---
 # --- Core Tidyverse ---
 library(tidyverse)     # includes dplyr, ggplot2, tidyr, purrr, tibble, readr, stringr, etc.
+library(dplyr)
+library(tidyr)
 
 # --- Plotting Enhancements ---
+library(ggplot2)
 library(ggdist)        # stat_halfeye
 library(gghalves)      # geom_half_point
 library(ggrepel)       # text labels (if used)
@@ -129,7 +132,7 @@ contaminant_genes <- c(
 )
 
 # --- Step 2: Load and process subcellular annotation
-cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32)
+cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
 subcell_df <- read_csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
@@ -548,7 +551,7 @@ dev.off()
 
 
 
-## IIa. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+## IIIa. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
@@ -670,8 +673,65 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_sele
 
 
 
+## IIIb. Barplots of mean(log2FC) of synaptic annotations
+```{r}
+# --- Step 1. Define columns and color mapping
+plot_cols <- c("log2FC_ASAH1_Axon.ASAH1_Soma", "log2FC_Ctrl_Axon.Ctrl_Soma")
+condition_labels <- c("ASAH1", "Ctrl")
+names(condition_labels) <- plot_cols
 
-## IIIb.  Absolute & RoR comparison of Axonal Proteome 
+fill_colors <- c("ASAH1" = "dodgerblue", "Ctrl" = "grey70")
+
+selected_annotations <- c("SVfusion", "Svendocytosis", "Svexocytosis", 
+                          "SynapseSVs", "Presynaptic", "Postsynaptic","vATPase")
+
+
+
+# --- Step 2. Prepare data
+summary_sv_df <- diff136_df_annotated %>%
+  filter(Gene.Symbol %in% vatpase_genes | 
+           rowSums(across(all_of(selected_annotations)), na.rm = TRUE) > 0) %>%
+  select(Gene.Symbol, all_of(plot_cols), all_of(selected_annotations)) %>%
+  pivot_longer(cols = all_of(plot_cols), names_to = "Comparison", values_to = "log2FC") %>%
+  pivot_longer(cols = all_of(selected_annotations), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1, is.finite(log2FC)) %>%
+  mutate(Condition = recode(Comparison, !!!condition_labels)) %>%
+  group_by(Annotation, Condition) %>%
+  summarise(
+    mean = mean(log2FC, na.rm = TRUE),
+    sem  = sd(log2FC, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+
+# --- Step 3. Plot means + SEM
+barplot_SV_means_sem <- ggplot(summary_sv_df, aes(x = Annotation, y = mean, fill = Condition)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.8, color = "black") +
+  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), 
+                position = position_dodge(width = 0.8), width = 0.2) +
+  scale_fill_manual(values = fill_colors) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank()) +
+  labs(
+    title = "Mean log2FC ± SEM for Synaptic Annotations",
+    x = NULL,
+    y = "log2FC",
+    fill = "Condition"
+  )
+
+barplot_SV_means_sem
+
+
+# --- Step 4. Save PDF
+ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_vatpase_synaptic_barplot_means_sem.pdf"),
+       barplot_SV_means_sem, width = 3, height = 3, device = cairo_pdf)
+
+
+```
+
+
+## IIIc.  Absolute & RoR comparison of Axonal Proteome 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Analysis of axonal proteome in Ctrl & ASAH1-/- neurons 
@@ -1214,8 +1274,8 @@ plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX",
 # --- Step 2. Define input clusters to analyse & background genes 
 # Input: cluster genes
 genes_interest <- diff136_df_annotated %>%
-  filter(cluster %in% c(6)) %>%
-  #filter(cluster %in% c(5,6)) %>%
+  #filter(cluster %in% c(4)) %>%
+  filter(cluster %in% c(4,5)) %>%
   pull(Gene.Symbol) %>%
   unique()
 
@@ -1229,7 +1289,7 @@ background_genes <- unique(diff136_df_annotated$Gene.Symbol)
 plot_topGO_for_geneset(
   gene_set = genes_interest,
   background_genes = background_genes,
-  tag = "ASAH1_cluster6",
+  tag = "ASAH1_cluster4_5",
   out_dir = out_dir_diff136_rainbow_GO
 )
 
