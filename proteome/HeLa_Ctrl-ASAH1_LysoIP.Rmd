@@ -289,7 +289,9 @@ violin_scaled_plot <- ggplot(violin_df_lysoip_mean_scaled, aes(x = Sample, y = s
     "ASAH1LysoIP" = "dodgerblue3"
   )) +
   theme_bw(base_size = 10) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
         legend.position = "none") +
   labs(title = "LysoIP: Scaled Intensities by Sample per Cluster", x = NULL, y = "Scaled Intensity")
 
