@@ -1310,7 +1310,7 @@ plot_ror_annotation_distribution(
 
 
 # Annotations:
-# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"     
+# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"     
 
 
 ```
