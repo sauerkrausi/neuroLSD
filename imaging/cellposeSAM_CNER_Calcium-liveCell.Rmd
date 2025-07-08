@@ -69,15 +69,20 @@ library(factoextra)
 
 
 # Paths, user-defined parameters, sample/genotype mapping, colors
-base_path <- "/Users/felix/Desktop/nd2_labels/"
+base_path <- "/Users/felix/Desktop/cpdemo/nd2_labels/"
+
+# genotype_map <- list(
+#   "iDA_Ctrl_d33_Flou4_100ms"        = "Control",
+#   "iDA_Ctrl_d33_Flou4_90mM-KCL"     = "ControlKCL",
+#   "iDA_ASAH1_d33_Flou4_100ms"       = "ASAH1",
+#   "iDA_ASAH1_d33_Flou4_90mM-KCL"    = "ASAH1KCL"
+# )
 
 genotype_map <- list(
-  "iDA_Ctrl_d33_Flou4_100ms"        = "Control",
-  "iDA_Ctrl_d33_Flou4_90mM-KCL"     = "ControlKCL",
-  "iDA_ASAH1_d33_Flou4_100ms"       = "ASAH1",
-  "iDA_ASAH1_d33_Flou4_90mM-KCL"    = "ASAH1KCL"
-)
+  "iN_d36_Ctrl_Fed_Fura4-LysoRed"        = "Control",
+  "iN_d36_ASAH1_Fed_Fura4-LysoRed"       = "ASAH1"
 
+)
 # Direct mapping (no interpolation)
 # Colors auto-generated based on mapping
 geno_levels <- unique(unname(genotype_map))
@@ -88,10 +93,9 @@ geno_cols <- setNames(base_colors[seq_along(geno_levels)], geno_levels)
 
 
 # Analysis parameters
-baseline_window <- 150    # Rolling window size for baseline (frames)  
+baseline_window <- 25     # Rolling window size for baseline (frames)  
 frame_rate      <- 10
 smoothing_k     <- 1      # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
-window          <- 250.   # Window for rolling baseline calculation in second pass
 threshold_factor <- 0.2   # Threshold for binarization (fraction of SD)
 correlation_threshold <- 0.2  #Correlation threshold for network (used in make_network())
 
@@ -172,6 +176,11 @@ summary_list <- list()
 
 ## IIc. Trace Plotting (per sample), Correlations and Firing Statistics 
 ```{r}
+
+# --- create new sub-output dir for traces
+trace_dir <- file.path(base_path, "label_traces")
+dir.create(trace_dir, recursive = TRUE, showWarnings = FALSE)
+
 # -----------------------------
 # Per-Sample Processing
 # -----------------------------
@@ -198,20 +207,27 @@ for (sample_id in all_sample_ids) {
       ) %>%
       ungroup()
 
-    
   ## -----------------------------
-  ## Trace plotting 
+  ## Trace plotting -- Iterate over each cell and save trace plots
   ## -----------------------------
-  example_cell <- unique(df_processed$ObjectNumber)[1]
-  df_trace <- dplyr::filter(df_processed, ObjectNumber == example_cell)
-
-  p_raw    <- ggplot(df_trace, aes(x = ImageNumber, y = Intensity_IntegratedIntensity_Fura)) + geom_line(color = "black") + theme_minimal()
-  p_scaled <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_scaled)) + geom_line(color = "dodgerblue") + theme_minimal()
-  p_binary <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_binary)) + geom_step(color = "firebrick2") + theme_minimal()
-
-  ggsave(file.path(output_dir, paste0(clean_sample_id, "_Traces.pdf")), p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
-
+  roi_ids <- unique(df_processed$ObjectNumber)
+  for (i in seq_along(roi_ids)) {
+    roi <- roi_ids[i]
+    df_trace <- dplyr::filter(df_processed, ObjectNumber == roi)
   
+    p_raw    <- ggplot(df_trace, aes(x = ImageNumber, y = Intensity_IntegratedIntensity_Fura)) + 
+                geom_line(color = "black") + theme_minimal()
+    p_scaled <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_scaled)) + 
+                geom_line(color = "dodgerblue") + theme_minimal()
+    p_binary <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_binary)) + 
+                geom_step(color = "firebrick2") + theme_minimal()
+  
+    filename <- paste0(clean_sample_id, "_ROI_", i, ".pdf")
+    ggsave(file.path(trace_dir, filename),
+           p_raw / p_scaled / p_binary,
+           width = 6, height = 6, device = cairo_pdf)
+  }
+    
   ## -----------------------------
   ## Calculation of Correlation matrix
   ## -----------------------------
@@ -303,7 +319,7 @@ firing_stats <- df_processed %>%
 
   if (vcount(g) > 0 && ecount(g) > 0) {
     edge_df <- as_data_frame(g, what = "edges")
-    colnames(edge_df) <- c("Cell1", "Cell2", "F.Corr")
+    colnames(edge_df) <- c("Label1", "Label2", "F.Corr")
 
     comms <- cluster_louvain(g)
     membership_df <- data.frame(
