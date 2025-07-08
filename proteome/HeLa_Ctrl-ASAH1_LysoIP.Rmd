@@ -103,7 +103,7 @@ k-means clustering was performed on data, is in column "cluster"
 ```{r}
 # read in df
 helalysoip_df <- read.csv(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/datasets/20241130_HeLaLysoIP_ASAH1_All_results_stats_localizationAdded.csv",
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/datasets/20241130_HeLaLysoIP_ASAH1_All_results_stats_localizationAdded.csv",
   header = TRUE
 )
 
@@ -222,7 +222,6 @@ pheatmap(
   cluster_cols       = TRUE,
   show_rownames      = FALSE,
   show_colnames      = TRUE,
-  angle_col          = 90,
   main               = "HeLa LysoIP: Ctrl vs ASAH1",
   fontsize           = 6,
   border_color       = NA
@@ -234,6 +233,72 @@ mat_helalysoip_out <- cbind(cluster = row_annotation_helalysoip$cluster, mat_hel
 write.csv(mat_helalysoip_out,
           file = file.path(out_dir_lysoip_heatmap, "helalysoip_heatmap_data.csv"),
           row.names = TRUE)
+
+
+```
+
+
+
+### IIIa. Scaled intensity Violinplot based on heatmap clusters 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Violin Plot of scaled intensities of mat_helalysoip_out: Group Means by Cluster
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 1.  Step: Row-wise Scaling (Z-score)
+# Scale intensities row-wise (z-score across all replicates)
+mat_scaled <- mat_helalysoip_out %>%
+  select(untagged_1:ASAH1LysoIP_3) %>%
+  as.matrix() %>%
+  t() %>%
+  scale(center = TRUE, scale = TRUE) %>%
+  t() %>%
+  as.data.frame()
+
+# --- Add cluster info back ---
+mat_scaled$cluster <- mat_helalysoip_out$cluster
+
+
+
+# --- Step 2. Rebuild long-format dataframe for plotting
+# Compute group-wise scaled means
+violin_df_lysoip_mean_scaled <- mat_scaled %>%
+  mutate(
+    untagged     = rowMeans(select(., c("untagged_1", "untagged_2", "untagged_3")), na.rm = TRUE),
+    CtrlLysoIP   = rowMeans(select(., c("CtrlLysoIP_1", "CtrlLysoIP_2", "CtrlLysoIP_3")), na.rm = TRUE),
+    ASAH1LysoIP  = rowMeans(select(., c("ASAH1LysoIP_1", "ASAH1LysoIP_2", "ASAH1LysoIP_3")), na.rm = TRUE)
+  ) %>%
+  select(cluster, untagged, CtrlLysoIP, ASAH1LysoIP) %>%
+  pivot_longer(cols = c("untagged", "CtrlLysoIP", "ASAH1LysoIP"),
+               names_to = "Sample", values_to = "scaled_intensity") %>%
+  filter(!is.na(cluster) & cluster != 0 & is.finite(scaled_intensity)) %>%
+  mutate(cluster = factor(cluster),
+         Sample = factor(Sample, levels = c("untagged", "CtrlLysoIP", "ASAH1LysoIP")))
+
+
+# --- Step 3. Plot scaled violin plot
+# Scaled violin plot
+violin_scaled_plot <- ggplot(violin_df_lysoip_mean_scaled, aes(x = Sample, y = scaled_intensity, fill = Sample)) +
+  geom_jitter(color = "red", size = 0.5, alpha = 0.2, width = 0.2) +
+  geom_violin(scale = "width", trim = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  facet_wrap(~ cluster, scales = "free_y") +
+  scale_fill_manual(values = c(
+    "untagged"    = "#bdc9e1",
+    "CtrlLysoIP"  = "#74a9cf",
+    "ASAH1LysoIP" = "dodgerblue3"
+  )) +
+  theme_bw(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "none") +
+  labs(title = "LysoIP: Scaled Intensities by Sample per Cluster", x = NULL, y = "Scaled Intensity")
+
+
+
+# --- Step 4. Save to PDF
+ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_clusterViolinPlot_scaled.pdf"),
+       violin_scaled_plot, width = 6, height = 6, device = cairo_pdf)
+
 
 
 ```
