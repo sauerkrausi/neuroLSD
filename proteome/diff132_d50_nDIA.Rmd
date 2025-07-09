@@ -2994,9 +2994,7 @@ plot_annotation_genotype_chorddiagram(
 )
 
 
-
-
-
+# detach Compelxhatmap, since it masks pheatmap for later 
 detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 ```
 
