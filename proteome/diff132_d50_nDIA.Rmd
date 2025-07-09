@@ -87,11 +87,17 @@ dir.create(out_dir_d50_SphMut, recursive = TRUE, showWarnings = FALSE)
 out_dir_d50_DisClass <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/DisClass"
 dir.create(out_dir_d50_DisClass, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d50_DisClass_chord <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/DisClass/chorddiagram"
+dir.create(out_dir_d50_DisClass_chord, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
 dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_CrossCorr <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
 dir.create(out_dir_d50_CrossCorr, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d50_CrossCorr_annotavg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/annot_avg"
+dir.create(out_dir_d50_CrossCorr_annotavg, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_LinReg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg"
 dir.create(out_dir_d50_LinReg, recursive = TRUE, showWarnings = FALSE)
@@ -1581,7 +1587,7 @@ LSD_d50_Violin_plot
 
 
 # Annotations:
-# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome","ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"     
+# "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","Golgi","Lysosome","ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"     
 
 #annotations = c("Mito","Mito.IMS","Mito.Matrix","Mito.MIM","Mito.MOM","OXPHOS","mtComplexI"),
 #annotations = c("Mito","Golgi","Lysosome","ER","Autophagy","Endo_iN_curated_Hundley","SynGO")
@@ -1616,15 +1622,18 @@ library(stringr)
 # Organelle Cross-DF correlations 
 # Generate  log2FC_d50_annotated dataframe
 # --------------------------------------------------- #
-# --- 0. create output directory 
-out_dir_d50_CrossCorr <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
-dir.create(out_dir_d50_CrossCorr, recursive = TRUE, showWarnings = FALSE)
 
 # --- Step 1: Extract log2FC columns (columns 1–47)
 log2fc_d50 <- complete_data_annotated_day50[, 1:48]
 
-# --- Step 2: Extract annotation columns (last 19 columns)
-annotation_d50 <- complete_data_annotated_day50[, (ncol(complete_data_annotated_day50) - 21):ncol(complete_data_annotated_day50)]
+# --- Step 2: Extract annotation columns
+annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+annotation_d50 <- complete_data_annotated_day50[, annotation_cols]
 
 # --- Step 3: Clean column names: remove "_log2_fold_change" suffix
 colnames(log2fc_d50) <- str_replace(colnames(log2fc_d50), "_log2_fold_change$", "")
@@ -1721,7 +1730,11 @@ correlate_log2fc_annotations(
 
 
 # Annotations:
-# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase" 
+# "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase"
 
 
 
@@ -1766,11 +1779,11 @@ run_all_organelle_corr <- function(df, annotations) {
 # --- Step 2. define annotations to correlate  
 org_corr_df <- run_all_organelle_corr(
   log2FC_d50_annotated,
-  annotations = c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
-                  "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
-                  "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
-                  "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
-                  "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase")
+  annotations = c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 )
 
 
@@ -1864,11 +1877,11 @@ plot_ko_corr_matrix <- function(organelle_name, df = log2FC_d50_annotated) {
 
 # --- Step 6. Annotations for plotting
 all_ann <- c(
-  "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
-  "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
-  "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
-  "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
-  "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase" 
+  "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase" 
 )
 
 
@@ -1951,27 +1964,133 @@ plot_avg_corr_per_genotype <- function(corr_mat, annotations, out_path = NULL) {
 avg_corr_plot <- plot_avg_corr_per_genotype(
   corr_mat = org_corr_mat,
   annotations = c("SVfusion","Svendocytosis", "Svexocytosis"),
-  out_path = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/bar_avg"
+  out_path = out_dir_d50_CrossCorr_annotavg
 )
 
 
-# all_ann <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
-#                   "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
-#                   "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
-#                   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
-#                   "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
+# all_ann <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
 
 ```
 
 
-### ??? VIIId. Average correlation per annotation across genotypes (disease class color)
+### VIIId. Average correlation per annotation across genotypes (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
 # Plot average correlation per annotation across genotypes
 # color by disease class color 
+# can facet wrap 
 # --------------------------------------------------- #
+
+# --- Step 1. Define colors for boxplots
+col_boxplots_corr <- c(
+  ASAH1 = "#D53E4F",
+  ATP13A2 = "#E6F598",
+  CLN3 = "#E6F598",
+  CLN5 = "#FEE08B",
+  CLN6 = "#FEE08B",
+  CLN8 = "#FEE08B",
+  CTSF = "#FEE08B",
+  CTSD = "#FEE08B",
+  DNAJC5 = "#FEE08B",
+  GAA = "#66C2A5",
+  GBA1 = "#D53E4F",
+  GRN = "#FEE08B",
+  HEXA = "#D53E4F",
+  HEXB = "#D53E4F",
+  LIPA = "#66C2A5",
+  MCOLN1 = "#E6F598",
+  MFSD8 = "#FEE08B",
+  NPC1 = "#E6F598",
+  NPC2 = "#E6F598",
+  PSAP = "#D53E4F",
+  SMPD1 = "#D53E4F",
+  TPP1 = "#FEE08B",
+  PTT1 = "#FEE08B"
+)
+
+# Expand color map to include iN and iDA variants
+col_boxplots_corr_expanded <- unlist(lapply(names(col_boxplots_corr), function(g) {
+  setNames(rep(col_boxplots_corr[[g]], 2), paste0(g, c("_iN", "_iDA")))
+}))
+
+# --- Step 2. Bargraph function of average correlation per annotation and genotype ---
+plot_bar_corr_per_genotype <- function(corr_mat, annotations, color_map, out_path = NULL) {
+  # Step 1: Filter annotations
+  valid_annotations <- annotations[annotations %in% colnames(corr_mat)]
+  if (length(valid_annotations) == 0) stop("None of the annotations found in matrix.")
+
+  # Step 2: Filter genotypes & color map
+  present_genotypes <- rownames(corr_mat)
+  filtered_colors <- color_map[names(color_map) %in% present_genotypes]
+
+  # Step 3: Melt and summarize
+  corr_long <- as.data.frame(corr_mat[, valid_annotations, drop = FALSE]) %>%
+    rownames_to_column("Genotype") %>%
+    pivot_longer(-Genotype, names_to = "Annotation", values_to = "Correlation") %>%
+    filter(Genotype %in% names(filtered_colors)) %>%
+    group_by(Genotype, Annotation) %>%
+    summarise(
+      mean_corr = mean(Correlation, na.rm = TRUE),
+      sem_corr = sd(Correlation, na.rm = TRUE) / sqrt(n()),
+      .groups = "drop"
+    )
+
+  # Label
+  ann2_label <- paste(valid_annotations, collapse = "_")
+  ann2_title <- paste(valid_annotations, collapse = ", ")
+
+  # Step 4: Plot barplot with error bars
+  p <- ggplot(corr_long, aes(x = reorder(Genotype, mean_corr), y = mean_corr, fill = Genotype)) +
+    geom_bar(stat = "identity", color = "black", width = 0.6, linewidth = 0.2) +
+    geom_errorbar(aes(ymin = mean_corr - sem_corr, ymax = mean_corr + sem_corr), width = 0.2) +
+    scale_fill_manual(values = filtered_colors) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+    facet_wrap(~ Annotation, scales = "free_y") +
+    labs(
+      title = paste("Average Organelle Correlation per Genotype -", ann2_title),
+      x = "Genotype", y = "Mean Correlation (±SEM)"
+    ) +
+    theme_bw(base_size = 7) +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+      legend.position = "none",
+      panel.grid = element_blank()
+    )
+
+  if (!is.null(out_path)) {
+    ggsave(
+      file.path(out_path, paste0("barplot_corr_per_genotype_", ann2_label, ".pdf")),
+      plot = p, width = 4, height = 4, device = cairo_pdf
+    )
+  }
+
+  return(p)
+}
+
+
+# --- Step 3. Call plotting function & define input annotations 
+plot_bar_corr_per_genotype(
+  corr_mat = org_corr_mat,
+  annotations = c("vATPase"),
+  color_map = col_boxplots_corr_expanded,  
+  out_path = out_dir_d50_CrossCorr_annotavg
+)
+
+
+ # all_ann <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+ #                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+ #                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+ #                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+ #                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+
+
 ```
 
 
@@ -2104,7 +2223,11 @@ dev.off()
 selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
                           "Lysosome", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis")
 
-# selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"      ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")     
+# selected_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")     
    
 
 log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
@@ -2205,7 +2328,7 @@ plot_sphmut_corr_matrix <- function(organelle_name, df = SphMut_annotated_df) {
 
 
 # --- Step 3. Run for all selected organelles 
-selected_annotations <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"      ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
+selected_annotations <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","Golgi","Lysosome"      ,"ER","Cytoplasm","Nucleus","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
   
 
 
@@ -2515,47 +2638,366 @@ ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_topHits.pdf"),  day305
 
 
 
-# ??? XI. Disease-class-based comparison day50
-only have good coverage for:
+# XI. Disease-class-based comparison day50
+Focus on disease classes with good coverage 
 1. Sphigolipidoses
 2. Neuronal.ceroid.lipofucinoses
 3. Integral.membrane.protein.disorders
 
-compare genotypes of these three groups 
-plot three-way circos plot to plot correlations based on organelle annotations 
-- plot overall correlations 
-- select for Annotations:
-"OXPHOS","Golgi","Lysosome","ER","Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"
 
-write function and plot & save as csv file 
+### XIa. Annotation-based corr heatmaps
 ```{r}
-# -----------------------------
-# I. Disease Class Definitions
-# -----------------------------
+# --------------------------------------------------- #
+# Disease-class-based comparison day50  
+# Comparison of User-selected annotations across disease classes 
+# --------------------------------------------------- #
+
+# --- Step 1. Define Disease Class Map
 disease_classes <- list(
   Sphigolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
-  Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
-  Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
   Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
-  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
-  PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
-  Lipid.storage.diseases = c("GAA", "LIPA")
+  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5")
 )
 disease_colors <- c(
-  Sphigolipidoses = "#D53E4F", Mucopolysaccharidoses = "#F46D43",
-  Glycoproteinoses = "#FDAE61", Neuronal.ceroid.lipofucinoses = "#FEE08B",
-  Integral.membrane.protein.disorders = "#E6F598", PTM.defects = "#ABDDA4",
-  Lipid.storage.diseases = "#66C2A5"
+  Sphigolipidoses = "#D53E4F",
+  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Integral.membrane.protein.disorders = "#E6F598"
 )
-ko_to_class <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, class = name)
+disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
+
+
+# --- Step 2. Add Disease Class to subdataframe, reshape and join back annotations 
+annotated_log2fc_df <- complete_data_annotated_day50 %>%
+  select(Genes, matches("_iN_log2_fold_change$|_iDA_log2_fold_change$")) %>%
+  pivot_longer(cols = -Genes, names_to = "sample", values_to = "log2fc") %>%
+  mutate(
+    sample = str_remove(sample, "_log2_fold_change$"),
+    KO = str_extract(sample, "^[^_]+"),
+    celltype = str_extract(sample, "(iN|iDA)$"),
+    log2fc = as.numeric(log2fc)
+  ) %>%
+  left_join(disease_class_df, by = "KO") %>%
+  distinct(Genes, sample, .keep_all = TRUE) %>%
+  pivot_wider(id_cols = c(Genes, KO, DiseaseClass), names_from = sample, values_from = log2fc)
+
+# Add annotation columns back in
+annotation_cols_all <- c(
+  "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+  "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+  "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+  "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+  "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase"
+)
+
+annotated_log2fc_df <- annotated_log2fc_df %>%
+  left_join(
+    complete_data_annotated_day50 %>% select(Genes, all_of(annotation_cols_all)),
+    by = "Genes"
+  )
+
+
+# --- Step 3. Save the annotated dataframe
+write.csv(annotated_log2fc_df, file = file.path(out_dir_d50_DisClass, "Annotated_Log2FC_with_DiseaseClass.csv"), row.names = FALSE)
+
+
+# --- Step 4. Define correlation and plotting function by annotations
+plot_annotation_correlation <- function(annot_df, annotation_cols, out_dir, cellsize = 10) {
+  # Calculate average profile per annotation
+  annotation_means <- map_dfc(annotation_cols, function(annot_col) {
+    genes <- annot_df %>% filter(.data[[annot_col]] == 1) %>% pull(Genes)
+    sub <- annot_df %>% filter(Genes %in% genes) %>% select(matches("_(iN|iDA)$"))
+    colMeans(sub, na.rm = TRUE)
+  })
+  colnames(annotation_means) <- annotation_cols
+  annotation_cor <- cor(annotation_means, use = "pairwise.complete.obs", method = "pearson")
+  
+  # Save correlation matrix
+  write.csv(annotation_cor, file = file.path(out_dir, "CustomAnnotation_CorrMatrix.csv"))
+  
+  # Create annotation bar
+  annotation_df <- data.frame(DiseaseClass = colnames(annotation_cor)) %>%
+    left_join(annotation_cols %>% enframe(name = NULL, value = "Annotation"), by = c("DiseaseClass" = "Annotation")) %>%
+    mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
+  
+  row_annot <- data.frame(DiseaseClass = factor(rep(names(disease_colors), length.out = ncol(annotation_cor)), levels = names(disease_colors)))
+  rownames(row_annot) <- colnames(annotation_cor)
+
+  # Plot heatmap
+  pdf(file = file.path(out_dir, "CustomAnnotation_AnnotationCorrHeatmap.pdf"), width = 8, height = 8)
+  pheatmap(
+    annotation_cor,
+    color = colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")))(100),
+    annotation_row = row_annot,
+    annotation_colors = list(DiseaseClass = disease_colors),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    fontsize = 6,
+    cellheight = 8,
+    cellwidth  = 8,
+    border = NA
+  )
+  dev.off()
+}
+
+
+# --- Step 5. Define annotations of interest and run function
+custom_annotation_cols <- c("RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+# custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir_d50_DisClass)
+
+
+```
+
+
+### XIb.  Annotation-based ChordDiagrams of correlations
+```{r}
+# --------------------------------------------------- #
+# Disease-class-based comparison day50  
+# Sphigolipidoses, NCL, Integral.membrane.protein.disorders
+# Correlations between KO conditions
+# --------------------------------------------------- #
+
+library(circlize)
+library(ComplexHeatmap)
+library(tidyverse)
+library(grid)
+
+
+# --- Step 1. Define color mappings for plotting
+neuron_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F")
+disease_colors <- c(
+  Sphigolipidoses = "#D53E4F",
+  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Integral.membrane.protein.disorders = "#E6F598"
+)
+
+
+# --- Step 2. Set Annotations of interest, can corr threshold 
+custom_annotation_cols <- c("EarlyEndosome","RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+# custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+
+min_genes_per_genotype <- 5
+cor_threshold <- 0.75
+
+
+
+# --- Step 3. Loop through custom annotations, calculate correlations and save as csv file 
+for (annot in custom_annotation_cols) {
+  message("Processing annotation: ", annot)
+
+  # Step 3.1: Filter for annotated genes
+  annot_subset_df <- annotated_log2fc_df %>%
+    filter(.data[[annot]] == 1)
+
+  # Step 3.2: Check valid samples with ≥3 annotated genes
+  valid_samples <- annot_subset_df %>%
+    select(Genes, KO, DiseaseClass, matches("_(iN|iDA)$")) %>%
+    pivot_longer(cols = matches("_(iN|iDA)$"), names_to = "sample", values_to = "log2fc") %>%
+    group_by(sample) %>%
+    filter(!is.na(log2fc)) %>%
+    summarise(n_genes = n_distinct(Genes), .groups = "drop") %>%
+    filter(n_genes >= min_genes_per_genotype) %>%
+    pull(sample)
+
+  if (length(valid_samples) < 2) {
+    warning("Skipping ", annot, ": not enough valid samples")
+    next
+  }
+
+  # Step 3.3: Create filtered log2FC matrix
+  log2fc_mat <- annot_subset_df %>%
+    select(Genes, all_of(valid_samples)) %>%
+    group_by(Genes) %>%
+    summarise(across(everything(), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
+    column_to_rownames("Genes") %>%
+    as.matrix()
+
+  # Step 3.4: Compute Pearson correlation
+  corr_mat <- cor(log2fc_mat, use = "pairwise.complete.obs", method = "pearson")
+
+  # Step 3.5: Save matrix
+  write.csv(corr_mat, file = file.path(out_dir_d50_DisClass_chord, paste0("CorrMatrix_", annot, ".csv")))
+
+  # Step 3.6: Link table for circos
+  corr_links <- expand.grid(from = rownames(corr_mat), to = colnames(corr_mat), stringsAsFactors = FALSE) %>%
+    filter(from != to) %>%
+    mutate(pair_id = map2_chr(from, to, ~ paste(sort(c(.x, .y)), collapse = "_"))) %>%
+    distinct(pair_id, .keep_all = TRUE) %>%
+    mutate(correlation = mapply(function(x, y) corr_mat[x, y], from, to)) %>%
+    filter(abs(correlation) > cor_threshold)
+
+  # Step 3.7: Save link table
+  write.csv(corr_links, file = file.path(out_dir_d50_DisClass_chord, paste0("LinkTable_", annot, "_absCorr", cor_threshold, ".csv")), row.names = FALSE)
+}
 
 
 
 
-out_dir_d50_DisClass
+
+
+# --- Step 4. Define plotting function for Circos plot of Disease mutant correlations
+plot_annotation_genotype_chorddiagram <- function(annot_df, annotation_cols, disease_class_df, out_dir, min_gene_n = min_genes_per_genotype, corr_thresh = cor_threshold) {
+  for (annot in annotation_cols) {
+    message("Processing annotation: ", annot)
+    
+    # Filter genes for the annotation
+    genes <- annot_df %>% filter(.data[[annot]] == 1) %>% pull(Genes) %>% unique()
+    sub_df <- annot_df %>% filter(Genes %in% genes)
+
+    # Make gene × genotype matrix
+    mat_long <- sub_df %>%
+      select(Genes, matches("_(iN|iDA)$")) %>%
+      pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
+      filter(!is.na(log2fc)) %>%
+      group_by(sample) %>%
+      filter(n() >= min_gene_n) %>%
+      ungroup()
+
+    mat_wide <- mat_long %>%
+      pivot_wider(names_from = sample, values_from = log2fc) %>%
+      column_to_rownames("Genes")
+
+    if (ncol(mat_wide) < 2) {
+      warning("Skipping: Not enough valid samples for ", annot)
+      next
+    }
+
+    # Compute correlation
+    cor_mat <- cor(mat_wide, use = "pairwise.complete.obs", method = "pearson")
+
+    # Save CSV
+    write.csv(cor_mat, file = file.path(out_dir, paste0("CorrMatrix_", annot, ".csv")))
+
+    # Make link table
+    link_df <- expand.grid(from = colnames(cor_mat), to = colnames(cor_mat), stringsAsFactors = FALSE) %>%
+      filter(from != to) %>%
+      mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+      distinct(pair_id, .keep_all = TRUE) %>%
+      mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to)) %>%
+      filter(abs(correlation) >= corr_thresh)
+
+    if (nrow(link_df) == 0) {
+      warning("Skipping: No high-correlation links for ", annot)
+      next
+    }
+
+    # Group sector ordering by DiseaseClass
+    sector_meta_df <- tibble(sample = colnames(cor_mat)) %>%
+      mutate(
+        KO = str_extract(sample, "^[^_]+"),
+        CellType = str_extract(sample, "iN|iDA")
+      ) %>%
+      left_join(disease_class_df, by = "KO") %>%
+      mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors))) %>%
+      arrange(DiseaseClass, KO, CellType)  # cluster by DiseaseClass
+    
+    # Use this as the sector order
+    sectors <- sector_meta_df$sample
+
+    
+    # Celltype layer
+    celltype_df <- tibble(sample = sectors) %>%
+      mutate(celltype = str_extract(sample, "iN|iDA"))
+    celltype_colors <- setNames(neuron_colors[celltype_df$celltype], celltype_df$sample)
+
+    # Disease class layer
+    ko_labels <- str_extract(sectors, "^[^_]+")
+    disease_df <- tibble(KO = ko_labels, sample = sectors) %>%
+      left_join(disease_class_df, by = "KO") %>%
+      mutate(DiseaseColor = disease_colors[DiseaseClass]) %>%
+      replace_na(list(DiseaseColor = "grey90"))
+    disease_colors_local <- setNames(disease_df$DiseaseColor, disease_df$sample)
+
+    # Start PDF
+    pdf(file.path(out_dir, paste0("ChordDiagram_", annot, ".pdf")), width = 10, height = 10)
+
+    # Track colors
+    neuron_type_colors <- setNames(neuron_colors[sector_meta_df$CellType], sector_meta_df$sample)
+    disease_class_colors <- setNames(disease_colors[sector_meta_df$DiseaseClass], sector_meta_df$sample)
+    
+    # Clear and configure
+    circos.clear()
+    circos.par(start.degree = 90, gap.degree = 1)
+    
+    # Chord Diagram
+    chordDiagram(
+      link_df,
+      order = sectors,
+      grid.col = neuron_type_colors,  # Grid = inner = neuron type
+      col = alpha(colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))(link_df$correlation), 0.6),
+      annotationTrack = "grid",
+      transparency = 0,
+      preAllocateTracks = list(
+        #list(track.height = 0.05),  # Labels
+        list(track.height = 0.03),  # Outer: disease type
+        list(track.height = 0.03)   # Iner: neuron class
+      )
+    )
+    
+    # Track 1: Labels
+    circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
+      circos.text(CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
+                  CELL_META$sector.index,
+                  facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5), cex = 0.5)
+    }, bg.border = NA)
+    
+    # Track 2: Outer = disease class
+    circos.trackPlotRegion(track.index = 2, bg.col = disease_class_colors, panel.fun = function(x, y) {}, bg.border = NA)
+    
+    # Track 3: Inner = neuron type
+    circos.trackPlotRegion(track.index = 3, bg.col = neuron_type_colors, panel.fun = function(x, y) {}, bg.border = NA)
+    
+
+
+    # Title
+    grid.text(paste0("Genotype Correlation | ", annot), x = 0.5, y = 0.98, gp = gpar(fontsize = 12, fontface = "bold"))
+
+    # Legends
+    draw(Legend(
+      at = c(-0.5, 0, 0.5),
+      col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+      title = "Pearson r",
+      direction = "horizontal",
+      legend_width = unit(3, "cm")
+    ), x = unit(0.5, "npc"), y = unit(0.02, "npc"), just = c("center", "bottom"))
+
+    draw(Legend(labels = names(neuron_colors), legend_gp = gpar(fill = neuron_colors), title = "Neuron Type"),
+         x = unit(0.02, "npc"), y = unit(0.02, "npc"), just = c("left", "bottom"))
+
+    draw(Legend(labels = names(disease_colors), legend_gp = gpar(fill = disease_colors), title = "Disease Class"),
+         x = unit(1, "npc"), y = unit(0.02, "npc"), just = c("right", "bottom"))
+
+    dev.off()
+  }
+}
 
 
 
+# --- Step 5. Call function and save in outdir 
+plot_annotation_genotype_chorddiagram(
+  annot_df = annotated_log2fc_df,
+  annotation_cols = custom_annotation_cols,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_d50_DisClass_chord,
+  min_gene_n = min_genes_per_genotype,
+  corr_thresh = cor_threshold
+)
+
+
+
+
+
+detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 ```
 
 
@@ -2762,7 +3204,7 @@ write_csv(top_ko_hits, file=file.path(out_dir_d50_LinReg, "diff132_d50_LinReg_si
 ```
 
 
-### XIIc.Limma linear modeling
+### XIIc. Limma linear modeling
 Use-Case for limma (Linear Models for Microarray/omics Data)
 
 limma is highly optimized for large-scale omics data where:
@@ -3978,7 +4420,7 @@ plot_dual_layer_circos <- function(link_df, title_text, output_path) {
   }, bg.border = NA)
 
   circos.trackPlotRegion(track.index = 2, bg.col = sample_colors_local, panel.fun = function(x, y) {}, bg.border = NA)
-  circos.trackPlotRegion(track.index = 3, bg.col = disease_track_colors, panel.fun = function(x, y) {}, bg.border = NA)
+  #circos.trackPlotRegion(track.index = 3, bg.col = disease_track_colors, panel.fun = function(x, y) {}, bg.border = NA)
 
   grid.text(title_text, x = 0.5, y = 0.98, gp = gpar(fontsize = 12, fontface = "bold"))
   
@@ -4205,13 +4647,13 @@ selected_annotations = c("Mito","OXPHOS",
                   "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
                   "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
                   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
-                  "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
+                  "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis", "vATPase")
 
-# selected_annotations = c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS",
+# selected_annotations = c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS",
 #                   "mtComplexI","Golgi", "Lysosome","ER","Cytoplasm","Nucleus",
 #                   "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
 #                   "Presynaptic","Postsynaptic","NeuroDev","EndoLyso","EarlyEndosome",
-#                   "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis")
+#                   "RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase")
 
 
 ## ─────────────────────────────────────────────────────────────
