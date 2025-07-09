@@ -1041,7 +1041,7 @@ plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_d
 #gene_sets <- c("Nucleus","Lysosome","NeuroDev","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 gene_sets <- c("Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
-gene_sets <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI")
+gene_sets <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI")
 
 # --- Step 3. Define log2FC datasets to be plotted 
 log2fc_cols <- c(
@@ -1060,7 +1060,7 @@ plot_annotation_distribution_batch(
 
 
 # Annotations:
-# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"     
+# "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"     
 
 
 ```
@@ -1163,7 +1163,7 @@ plot_annotation_distribution_batch <- function(df, gene_sets, log2fc_cols, out_d
 #gene_sets <- c("Nucleus","Lysosome","NeuroDev","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 gene_sets <- c("Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
-gene_sets <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI")
+gene_sets <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI")
 
 # --- Step 3. Define log2FC datasets to be plotted 
 log2fc_cols <- c(
@@ -1286,7 +1286,7 @@ plot_ror_annotation_distribution <- function(df, gene_sets, ror_cols, out_dir, x
 # gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis")
 # gene_sets <- c("Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic")
 gene_sets <- c("Lysosome", "EarlyEndosome", "RecyclingEndosome", "SynapseSVs", "SVfusion", "Svendocytosis", "Svexocytosis")
-gene_sets <- c("Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI")
+gene_sets <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI")
 
 
 # --- 4. Define dataframes to plot (either Axon, Soma or both)
@@ -1310,7 +1310,7 @@ plot_ror_annotation_distribution(
 
 
 # Annotations:
-# "Mito","Mito-IMS","Mito-Matrix","Mito-MIM","Mito-MOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"     
+# "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"     
 
 
 ```
