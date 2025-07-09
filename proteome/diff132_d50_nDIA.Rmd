@@ -2778,16 +2778,16 @@ disease_colors <- c(
 
 
 # --- Step 2. Set Annotations of interest, can corr threshold 
-custom_annotation_cols <- c("EarlyEndosome","RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
-# custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
-#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
-#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
-#                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
-#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+#custom_annotation_cols <- c("EarlyEndosome","RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
 
 min_genes_per_genotype <- 5
-cor_threshold <- 0.75
+cor_threshold <- 0.5
 
 
 
