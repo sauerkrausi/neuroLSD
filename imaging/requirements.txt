@@ -1,7 +1,0 @@
-cellpose[gui]
-matplotlib
-nd2
-tifffile
-tqdm
-pandas
-scikit-image
