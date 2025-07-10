@@ -1,0 +1,21 @@
+# Core Cellpose SAM
+cellpose>=4.0.5
+
+# GUI support
+pyqt6
+qtpy
+pyqt6-sip
+pyqtgraph
+superqt
+
+# GPU support (MPS backend)
+torch>=2.7.0
+torchvision>=0.22.0
+
+# Common dependencies
+matplotlib
+nd2
+tifffile
+tqdm
+pandas
+scikit-image
