@@ -102,6 +102,9 @@ dir.create(out_dir_d50_CrossCorr_annotavg, recursive = TRUE, showWarnings = FALS
 out_dir_d50_CrossCorr_genoavg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/geno_avg"
 dir.create(out_dir_d50_CrossCorr_genoavg, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d50_corrProtein <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/proteincorr"
+dir.create(out_dir_d50_corrProtein, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_LinReg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg"
 dir.create(out_dir_d50_LinReg, recursive = TRUE, showWarnings = FALSE)
 
@@ -709,7 +712,7 @@ heatmap_matrix_d50 <- heatmap_matrix_d50[, apply(heatmap_matrix_d50, 2, var) != 
 
 
 
-# --- Step 4. Create Annotations for Heatmap
+# --- Step 4. Create Annotations for Heatmap & save as csv
 # Extract sample information for annotations
 sample_d50_info <- clean_d50_df %>%
   select(sample_id, genotype, neuron) %>%
@@ -720,6 +723,8 @@ sample_d50_info <- clean_d50_df %>%
 df_day30 <- clean_d50_df %>% filter(day == 30)
 df_day50 <- clean_d50_df %>% filter(day == 50)
 
+write.csv(df_day30, file = file.path(out_dir_d50_dataframes, "df_day30_heatmap.csv"),row.names = FALSE)
+write.csv(df_day50, file = file.path(out_dir_d50_dataframes, "df_day50_heatmap.csv"),row.names = FALSE)
 
 
 # --- Step 5. Define a function to generate heatmaps
@@ -1643,7 +1648,7 @@ colnames(log2fc_d50) <- str_replace(colnames(log2fc_d50), "_log2_fold_change$", 
 
 # --- Step 4: Combine cleaned log2FC values with annotations
 log2FC_d50_annotated <- bind_cols(log2fc_d50, annotation_d50)
-
+write.csv(log2FC_d50_annotated, file = file.path(out_dir_d50_dataframes, "log2FC_d50_annotated.csv"),row.names = FALSE)
 
 
 # --------------------------------------------------- #
@@ -2195,6 +2200,257 @@ plot_bar_corr_per_annotation_multi(
 
 
 ```
+
+
+### ?? VIIIf. Pairwise protein–protein correlations
+```{r}
+# ─────────────────────────────────────────────
+# 1. Load required packages
+# ─────────────────────────────────────────────
+library(tidyverse)
+library(furrr)
+library(qs)
+library(pheatmap)
+
+# ─────────────────────────────────────────────
+# 2. Define disease class mapping (used for metadata)
+# ─────────────────────────────────────────────
+disease_classes <- list(
+  Sphigolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
+  Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
+  Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
+  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
+  PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
+  Lipid.storage.diseases = c("GAA", "LIPA")
+)
+
+# ─────────────────────────────────────────────
+# 3. Prepare annotation and log2FC matrix
+# ─────────────────────────────────────────────
+annotation_meta <- log2FC_d50_annotated %>%
+  select(Genes, all_of(annotation_cols))
+
+log2fc_protcorr <- log2FC_d50_annotated %>%
+  select(-any_of(annotation_cols)) %>%
+  column_to_rownames("Genes")
+
+# Filter out flat genes (zero variance)
+gene_sds <- apply(log2fc_protcorr, 1, sd, na.rm = TRUE)
+log2fc_protcorr_filtered <- log2fc_protcorr[gene_sds > 0, ]
+
+# Subset full matrix
+log2fc_subset <- log2fc_protcorr_filtered[, colnames(log2fc_protcorr_filtered)]
+
+# ─────────────────────────────────────────────
+# 4. Create metadata for plotting and downstream grouping
+# ─────────────────────────────────────────────
+genotype_metadata <- tibble(sample = colnames(log2fc_subset)) %>%
+  mutate(
+    KO = str_extract(sample, "^[^_]+"),
+    Neuron = str_extract(sample, "iN|iDA"),
+    DiseaseClass = map_chr(KO, function(ko) {
+      matched <- names(disease_classes)[map_lgl(disease_classes, ~ ko %in% .x)]
+      ifelse(length(matched) > 0, matched[1], NA_character_)
+    })
+  )
+
+# Save metadata
+write_csv(genotype_metadata, file.path(out_dir_d50_corrProtein, "genotype_metadata.csv"))
+write_csv(annotation_meta, file.path(out_dir_d50_corrProtein, "annotation_meta.csv"))
+qs::qsave(annotation_meta, file.path(out_dir_d50_corrProtein, "annotation_meta.qs"))
+qs::qsave(genotype_metadata, file.path(out_dir_d50_corrProtein, "genotype_metadata.qs"))
+
+
+
+# ─────────────────────────────────────────────
+# 5. Compute all pairwise protein–protein correlations ==> write as blocks on HDD
+# ─────────────────────────────────────────────
+plan(multisession, workers = 8)
+
+gene_combinations <- combn(rownames(log2fc_subset), 2, simplify = FALSE)
+block_size <- 750000
+blocks <- split(gene_combinations, ceiling(seq_along(gene_combinations) / block_size))
+
+stream_dir <- file.path(out_dir_d50_corrProtein, "streamed_blocks")
+dir.create(stream_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Compute and stream correlation blocks
+future_walk2(
+  blocks,
+  seq_along(blocks),
+  .f = function(pair_block, block_idx) {
+    block_results <- map_dfr(pair_block, function(pair) {
+      g1 <- pair[1]; g2 <- pair[2]
+      v1 <- as.numeric(log2fc_subset[g1, ])
+      v2 <- as.numeric(log2fc_subset[g2, ])
+      if (all(is.na(v1)) | all(is.na(v2))) {
+        return(tibble(Gene1 = g1, Gene2 = g2, Correlation = NA_real_))
+      }
+      r <- cor(v1, v2, use = "pairwise.complete.obs")
+      tibble(Gene1 = g1, Gene2 = g2, Correlation = r)
+    })
+
+    qs::qsave(block_results, file.path(stream_dir, paste0("block_", block_idx, ".qs")))
+  },
+  .progress = TRUE
+)
+
+
+# # ─────────────────────────────────────────────────────────────
+# # RAM-based pairwise protein correlation (no disk I/O)
+# # ─────────────────────────────────────────────────────────────
+# # Set up parallel workers
+# plan(multisession, workers = 8)
+# 
+# # Create gene pairs
+# gene_combinations <- combn(rownames(log2fc_subset), 2, simplify = FALSE)
+# 
+# # Run all correlations and store in memory
+# results_all <- future_map_dfr(
+#   gene_combinations,
+#   function(pair) {
+#     g1 <- pair[1]; g2 <- pair[2]
+#     v1 <- as.numeric(log2fc_subset[g1, ])
+#     v2 <- as.numeric(log2fc_subset[g2, ])
+#     if (all(is.na(v1)) | all(is.na(v2))) {
+#       return(tibble(Gene1 = g1, Gene2 = g2, Correlation = NA_real_))
+#     }
+#     r <- cor(v1, v2, use = "pairwise.complete.obs")
+#     tibble(Gene1 = g1, Gene2 = g2, Correlation = r)
+#   },
+#   .progress = TRUE
+# )
+# 
+# # Optional: Save to disk once after all blocks are complete
+# qs::qsave(results_all, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.qs"))
+# write_csv(results_all, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.csv"))
+
+
+
+
+# ======================================================================
+#  Protein–Protein Correlation Analysis and Heatmap Visualization
+# ======================================================================
+
+# --- Define paths
+stream_dir <- file.path(out_dir_d50_corrProtein, "streamed_blocks")
+annotation_meta <- qs::qread(file.path(out_dir_d50_corrProtein, "annotation_meta.qs"))
+
+# ----------------------------------------------------------------------
+# 1. Combine all correlation blocks
+# ----------------------------------------------------------------------
+corr_files <- list.files(stream_dir, full.names = TRUE, pattern = "\\.qs$")
+results <- map_dfr(corr_files, qs::qread)
+
+# Save full result
+qs::qsave(results, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.qs"))
+write_csv(results, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.csv"))
+
+# ----------------------------------------------------------------------
+# 2. Quick QC: Correlation density plot
+# ----------------------------------------------------------------------
+results_clean <- results %>% filter(!is.na(Correlation))
+
+qc_plot <- ggplot(results_clean, aes(x = Correlation)) +
+  geom_density(adjust = 1.2) +
+  labs(title = "Correlation density (all gene pairs)",
+       x = "Pearson correlation", y = "Density") +
+  theme_minimal()
+
+ggsave(file.path(out_dir_d50_corrProtein, "correlation_density_plot.pdf"),
+       plot = qc_plot, width = 6, height = 4)
+
+
+
+# ----------------------------------------------------------------------
+# Filter, Cluster, Plot, and Save Correlation Heatmap by Annotation
+# ----------------------------------------------------------------------
+
+plot_corr_heatmap_by_annotation <- function(results_df, annotation_df, annot_name, save_dir = ".", show_all = TRUE, top_n = 50, annotation_metadata = NULL) {
+  message("Filtering correlations where both genes are annotated as: ", annot_name)
+
+  # Step 1: Filter correlation pairs based on annotation
+  filtered <- results_df %>%
+    left_join(annotation_df, by = c("Gene1" = "Genes")) %>%
+    filter(.data[[annot_name]] == 1) %>%
+    left_join(annotation_df, by = c("Gene2" = "Genes"), suffix = c("_G1", "_G2")) %>%
+    filter(.data[[paste0(annot_name, "_G2")]] == 1)
+
+  if (nrow(filtered) == 0) {
+    warning("No valid gene pairs for this annotation: ", annot_name)
+    return(NULL)
+  }
+
+  # Step 2: Create symmetric correlation matrix
+  mat <- filtered %>%
+    pivot_wider(names_from = Gene2, values_from = Correlation) %>%
+    column_to_rownames("Gene1") %>%
+    as.matrix()
+
+  mat[lower.tri(mat)] <- t(mat)[lower.tri(mat)]
+
+  # Step 3: Optionally reduce to top N
+  if (!show_all) {
+    gene_scores <- rowMeans(abs(mat), na.rm = TRUE)
+    top_genes <- names(sort(gene_scores, decreasing = TRUE))[1:min(top_n, nrow(mat))]
+    mat <- mat[top_genes, top_genes]
+  }
+
+  # Step 4: Add gene annotations if provided
+  ann_col <- NULL
+  if (!is.null(annotation_metadata)) {
+    overlapping_genes <- intersect(colnames(mat), annotation_metadata$sample)
+    if (length(overlapping_genes) > 0) {
+      ann_col <- annotation_metadata %>%
+        filter(sample %in% overlapping_genes) %>%
+        column_to_rownames("sample")
+    }
+  }
+
+  # Step 5: Plot and save
+  pheatmap::pheatmap(
+    mat,
+    scale = "none",
+    color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100),
+    annotation_col = ann_col,
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = FALSE,
+    show_colnames = TRUE,
+    use_raster = TRUE,
+    angle_col = 90,
+    main = paste("Correlation Heatmap:", annot_name),
+    fontsize = 10,
+    border_color = NA,
+    filename = file.path(save_dir, paste0("corr_heatmap_", annot_name, ".pdf"))
+  )
+
+  # Save the filtered correlation data
+  write_csv(filtered, file.path(save_dir, paste0("correlations_", annot_name, ".csv")))
+}
+
+
+
+
+## call function 
+plot_corr_heatmap_by_annotation(
+  results_df = results,
+  annotation_df = annotation_meta,
+  annot_name = "SynapticVesicle",
+  save_dir = out_dir_d50_corrProtein,
+  show_all = TRUE,  # is overriding top_n below if TRUE
+  top_n = 50,
+  annotation_metadata = genotype_metadata
+)
+
+
+
+
+```
+
+
+
 
 
 # IX. Sph mutant investigation
