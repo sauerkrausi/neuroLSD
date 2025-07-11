@@ -72,21 +72,27 @@ library(dplyr)
 
 
 # Paths, user-defined parameters, sample/genotype mapping, colors
-base_path <- "/Users/felix/Desktop/cpdemo/nd2_labels/"
+#base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/nd2_labels/"
+#base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/test/"
+base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/test2/"
 
 # genotype map should be a unique file name part, so it can differentiate between conditions etc 
 # genotype_map <- list(
-#   "iDA_Ctrl_d33_Flou4_100ms"        = "Control",
-#   "iDA_Ctrl_d33_Flou4_90mM-KCL"     = "ControlKCL",
-#   "iDA_ASAH1_d33_Flou4_100ms"       = "ASAH1",
-#   "iDA_ASAH1_d33_Flou4_90mM-KCL"    = "ASAH1KCL"
-# )
+#    "iN_d21_Ctrl_Fed_Fluo4"        = "iN_d21_Controlbasal",
+#    "iN_d21_Ctrl_100mMKCL_Fluo4"     = "iN_d21_ControlKCL",
+#    "iN_d21_Ctrl_10µMCQNX_Fluo4"     = "iN_d21_ControlCQNX",
+#    "iN_d21_ASAH1_Fed_Fluo4"        = "iN_d21_ASAH1basal",
+#    "iN_d21_ASAH1_100mMKCL_Fluo4"     = "iN_d21_ASAH1KCL",
+#    "iN_d21_ASAH1_10µMCQNX_Fluo4"     = "iN_d21_ASAH1CQNX"
+#  )
 
 genotype_map <- list(
-  "iN_d36_Ctrl_Fed_Fura4-LysoRed"        = "Control",
-  "iN_d36_ASAH1_Fed_Fura4-LysoRed"       = "ASAH1"
+   "iN_d21_ASAH1_Fed_Fluo4"        = "iN_d21_ASAH1basal",
+   "iN_d21_ASAH1_100mMKCL_Fluo4"     = "iN_d21_ASAH1KCL",
+   "iN_d21_ASAH1_10µMCQNX_Fluo4"     = "iN_d21_ASAH1CQNX"
+ )
 
-)
+
 # Direct mapping (no interpolation)
 # Colors auto-generated based on mapping
 geno_levels <- unique(unname(genotype_map))
@@ -95,13 +101,14 @@ geno_cols <- setNames(base_colors, geno_levels)
 
 stopifnot(length(base_colors) >= length(geno_levels))
 
+
 # Analysis parameters
-baseline_window <- 25     # Rolling window size for baseline (frames)  
+baseline_window <- 100        # Rolling window size for baseline (frames). should be maybe 10% of frames to get good avg.
 frame_rate      <- 10
-smoothing_k     <- 1      # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
-threshold_factor <- 0.2   # Threshold for binarization (fraction of SD)
-correlation_threshold <- 0.2  #Correlation threshold for network (used in make_network())
-image_dim <- c(1570, 1140)  # width, height in pixels of image. Need to backmap the roi activity network onto the image coordinats 
+smoothing_k     <- NULL          # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
+threshold_factor <- 0.4       # Threshold for binarization (fraction of SD)
+correlation_threshold <- 0.4  #Correlation threshold for network (used in make_network())
+image_dim <- c(1570, 1140)    # width, height in pixels of image. Need to backmap the roi activity network onto the image coordinats 
 
 
 # define output dirs:
@@ -112,22 +119,20 @@ dir.create(ca_results_dir, recursive = TRUE, showWarnings = FALSE)
 ## IIb. ∆F/F Processing
 ```{r}
 # -----------------------------
-# Helper Function - ΔF/F
+# Helper Function – ΔF/F Calculation
 # -----------------------------
-# Approach: Rolling Percentile + Edge-Safe
 calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, percentile = 0.2) {
   if (!is.null(smoothing_k)) {
     trace <- zoo::rollmean(trace, k = smoothing_k, fill = NA)
   }
 
-  # Handle short or NA-filled traces
   if (length(trace) < window || all(is.na(trace))) {
     return(rep(NA, length(trace)))
   }
 
   baseline <- zoo::rollapply(trace, width = window,
-    FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
-    align = "center", fill = NA, partial = TRUE)  # <- partial allows shorter edges
+                              FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
+                              align = "center", fill = NA, partial = TRUE)
 
   baseline <- pmax(baseline, 1e-3)  # Avoid division by zero
   dff <- (trace - baseline) / baseline
@@ -135,25 +140,8 @@ calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, p
 }
 
 # -----------------------------
-# File Loader + Merger
+# Helper Function – Noise Filter + dF/F per File
 # -----------------------------
-
-calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, percentile = 0.2) {
-  if (!is.null(smoothing_k)) {
-    trace <- zoo::rollmean(trace, k = smoothing_k, fill = NA)
-  }
-  if (length(trace) < window || all(is.na(trace))) {
-    return(rep(NA, length(trace)))
-  }
-  baseline <- zoo::rollapply(trace, width = window,
-    FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
-    align = "center", fill = NA, partial = TRUE)
-  baseline <- pmax(baseline, 1e-3)
-  dff <- (trace - baseline) / baseline
-  pmax(dff, 0)
-}
-
-# Load and parse each centroid + intensity file pair
 process_pair <- function(centroid_file) {
   intensity_file <- sub("_centroids_valid.csv$", "_intensity.csv", centroid_file)
   if (!file.exists(intensity_file)) return(NULL)
@@ -165,9 +153,18 @@ process_pair <- function(centroid_file) {
     select(file, ObjectNumber, centroid_x, centroid_y)
 
   intensity <- read_csv(intensity_file, show_col_types = FALSE) %>%
-    select(-file)  # Drop if present
+    select(-file)  # Drop 'file' if present
 
-  traces_dff <- intensity %>%
+  # --- Compute filtering threshold from first frame
+  baseline_avg <- median(as.numeric(intensity[1, -1]), na.rm = TRUE)
+  filter_thresh <- 0.3 * baseline_avg
+
+  # --- Apply noise filter: clamp the signal to the threshold
+  intensity_filtered <- intensity %>%
+   mutate(across(-time, ~pmax(.x, filter_thresh)))
+
+  # --- Calculate dF/F on filtered data
+  traces_dff <- intensity_filtered %>%
     mutate(across(-time, ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
 
   traces_long <- traces_dff %>%
@@ -182,30 +179,15 @@ process_pair <- function(centroid_file) {
   list(traces = traces_long, centroids = centroids)
 }
 
-# Load all files
+# -----------------------------
+# Load and Merge All Samples
+# -----------------------------
 file_list <- list.files(base_path, pattern = "_centroids_valid.csv$", full.names = TRUE)
 parsed_data <- map(file_list, process_pair) %>% compact()
 
 combined_df  <- map_dfr(parsed_data, "traces")
 centroid_df  <- map_dfr(parsed_data, "centroids")
 
-# -----------------------------
-# Global dF/F Processing
-# -----------------------------
-df_processed <- combined_df %>%
-  left_join(centroid_df, by = c("file", "ObjectNumber")) %>%
-  group_by(file, ObjectNumber) %>%
-  arrange(ImageNumber, .by_group = TRUE) %>%
-  mutate(
-    dF_F = calculate_dff(Intensity_IntegratedIntensity_Fura,
-                         window = baseline_window,
-                         smoothing_k = smoothing_k,
-                         percentile = 0.2),
-    dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
-    dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
-    spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
-  ) %>%
-  ungroup()
 
 # -----------------------------
 # Initialize Result Lists
@@ -213,9 +195,7 @@ df_processed <- combined_df %>%
 cor_list <- list()
 comm_list <- list()
 events_list <- list()
-
 summary_list <- list()
-
 ```
 
 
@@ -252,7 +232,7 @@ for (sample_id in all_sample_ids) {
       dF_F = calculate_dff(Intensity_IntegratedIntensity_Fura,
                            window = baseline_window,
                            smoothing_k = smoothing_k,
-                           percentile = 0.2),
+                           percentile = 0.4),
       dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
       dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
       spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
@@ -292,6 +272,18 @@ for (sample_id in all_sample_ids) {
     "Unknown"
   }
   
+  # Filter invalid-length binary bursts
+  df_sample <- df_sample %>%
+    dplyr::group_by(ObjectNumber) %>%
+    dplyr::arrange(ImageNumber, .by_group = TRUE) %>%
+    dplyr::mutate(
+      run_id = data.table::rleid(dF_F_binary),
+      run_len = ave(dF_F_binary, ObjectNumber, run_id, FUN = length),
+      dF_F_binary = ifelse(dF_F_binary == 1 & (run_len < 3 | run_len > 30), 0, dF_F_binary)
+    ) %>%
+    dplyr::ungroup()
+  
+  # Compute firing stats
   firing_stats <- df_sample %>%
     dplyr::group_by(ObjectNumber) %>%
     dplyr::mutate(rising_edge = dF_F_binary == 1 & lag(dF_F_binary, default = 0) == 0) %>%
@@ -300,8 +292,11 @@ for (sample_id in all_sample_ids) {
       total_frames    = dplyr::n(),
       active_frames   = sum(dF_F_binary, na.rm = TRUE),
       percent_active  = 100 * active_frames / total_frames,
-      spike_amplitude = mean(dF_F_scaled[dF_F_binary == 1], na.rm = TRUE),
-      .groups = "drop"
+      spike_amplitude = if (sum(dF_F_binary, na.rm = TRUE) > 0) {
+        quantile(dF_F_scaled[dF_F_binary == 1], 0.75, na.rm = TRUE)
+        } else {
+         NA_real_
+      }
     ) %>%
     dplyr::mutate(
       Sample = sample_id,
@@ -498,13 +493,14 @@ stopifnot("Sample" %in% names(events_df),
 # ----------------------------------------------------------------------
 # add genotype label
 # ----------------------------------------------------------------------
-add_genotype <- function(df, mapping) {
+add_genotype <- function(df, genotype_map) {
+  sorted_keys <- names(genotype_map)[order(nchar(names(genotype_map)), decreasing = TRUE)]
+
   df %>%
-    mutate(Genotype = map_chr(Sample, function(s) {
-      matched <- names(mapping)[str_detect(s, fixed(names(mapping)))]
-      if (length(matched) > 0) mapping[[matched[1]]] else NA_character_
-    })) %>%
-    drop_na(Genotype)
+    dplyr::mutate(Genotype = purrr::map_chr(.data[["Sample"]], function(s) {
+      matched <- sorted_keys[stringr::str_detect(s, fixed(sorted_keys))]
+      if (length(matched) > 0) genotype_map[[matched[1]]] else NA_character_
+    }))
 }
 events_df <- add_genotype(events_df, genotype_map)
 comm_df   <- add_genotype(comm_df, genotype_map)
@@ -602,7 +598,9 @@ p <- ggplot(dat, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
   theme(legend.position = "none",
         aspect.ratio = 2,
         panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 0.5)
+        )
 
   
   # --- Add pairwise significance bars
@@ -730,7 +728,9 @@ p_comm <- ggplot(comm_df, aes(x = Genotype, y = CommunitySize, fill = Genotype))
   theme(legend.position = "none",
         aspect.ratio    = 2,
         panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 0.5)
+        )
 
 # --- Add significance brackets manually
 if (nrow(comm_pw_df) > 0) {
@@ -873,6 +873,7 @@ plot_timecourse <- function(data, metric, sem, ylab, outfile) {
     theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 90, hjust = 0.5),
       legend.position = "right")
 }
 
@@ -885,6 +886,33 @@ p_bin_amp     <- plot_timecourse(plot_df, "mean_amp", "sem_amp", "Spike Amplitud
 ggsave(file.path(ca_results_dir, "plot_time_binned_firing_events.pdf"),  p_bin_events, width = 3, height = 2.5, device = cairo_pdf)
 ggsave(file.path(ca_results_dir, "plot_time_binned_percent_active.pdf"), p_bin_active, width = 3, height = 2.5, device = cairo_pdf)
 ggsave(file.path(ca_results_dir, "plot_time_binned_spike_amplitude.pdf"), p_bin_amp,  width = 3, height = 2.5, device = cairo_pdf)
+
+
+
+# ----------------------------
+# Extract first file per genotype
+# ----------------------------
+first_files_per_genotype <- traces_with_genotype %>%
+  distinct(file, Genotype) %>%
+  group_by(Genotype) %>%
+  slice(1) %>%
+  pull(file)
+
+first_trace_df <- traces_with_genotype %>%
+  filter(file %in% first_files_per_genotype)
+
+# Plot Example Traces per Genotype
+ggplot(first_trace_df, aes(x = ImageNumber, y = dF_F_scaled, group = ObjectNumber)) +
+  geom_line(alpha = 0.5, size = 0.3) +
+  facet_wrap(~Genotype, scales = "free_y") +
+  labs(title = "Example dF/F Traces (First File per Genotype)",
+       x = "Frame", y = "dF/F (scaled)") +
+  theme_bw(base_size = 6)
+
+ggsave(file.path(ca_results_dir, "example_traces_first_file_per_genotype.pdf"),
+       width = 5, height = 3, device = cairo_pdf)
+
+
 
 
 ```
