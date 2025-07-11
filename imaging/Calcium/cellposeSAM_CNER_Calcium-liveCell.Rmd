@@ -116,7 +116,7 @@ ca_results_dir <- file.path(base_path, "calcium_results")
 dir.create(ca_results_dir, recursive = TRUE, showWarnings = FALSE)
 ```
 
-## IIb. ∆F/F Processing
+## IIb. baseline correction, ∆F/F Processing
 ```{r}
 # -----------------------------
 # Helper Function – ΔF/F Calculation
@@ -279,52 +279,59 @@ for (sample_id in all_sample_ids) {
     dplyr::mutate(
       run_id = data.table::rleid(dF_F_binary),
       run_len = ave(dF_F_binary, ObjectNumber, run_id, FUN = length),
-      dF_F_binary = ifelse(dF_F_binary == 1 & (run_len < 3 | run_len > 30), 0, dF_F_binary)
+      dF_F_binary = ifelse(dF_F_binary == 1 & (run_len < 1 | run_len > 60), 0, dF_F_binary)
     ) %>%
+    dplyr::ungroup()
+  
+  # Recompute rising edge AFTER filtering
+  df_sample <- df_sample %>%
+    dplyr::group_by(ObjectNumber) %>%
+    dplyr::arrange(ImageNumber, .by_group = TRUE) %>%
+    dplyr::mutate(rising_edge = dF_F_binary == 1 & lag(dF_F_binary, default = 0) == 0) %>%
     dplyr::ungroup()
   
   # Compute firing stats
   firing_stats <- df_sample %>%
     dplyr::group_by(ObjectNumber) %>%
-    dplyr::mutate(rising_edge = dF_F_binary == 1 & lag(dF_F_binary, default = 0) == 0) %>%
     dplyr::summarise(
       firing_events   = sum(rising_edge, na.rm = TRUE),
       total_frames    = dplyr::n(),
       active_frames   = sum(dF_F_binary, na.rm = TRUE),
       percent_active  = 100 * active_frames / total_frames,
-      spike_amplitude = if (sum(dF_F_binary, na.rm = TRUE) > 0) {
-        quantile(dF_F_scaled[dF_F_binary == 1], 0.75, na.rm = TRUE)
-        } else {
-         NA_real_
-      }
+      spike_amplitude = if (sum(dF_F_binary == 1 & dF_F_scaled > 0.2, na.rm = TRUE) > 0) {
+        quantile(dF_F_scaled[dF_F_binary == 1 & dF_F_scaled > 0.2], 0.75, na.rm = TRUE)
+      } else {
+        NA_real_
+      },
+      .groups = "drop"
     ) %>%
     dplyr::mutate(
       Sample = sample_id,
-      firing_rate_per_min = firing_events / (max(df_sample$ImageNumber) / (frame_rate * 60)),
+      firing_rate_per_min = firing_events / (max(df_sample$ImageNumber, na.rm = TRUE) / (frame_rate * 60)),
       Group = group_label
     )
-
-  # save firing stats in events_list   
+  
+  # Save to list
   events_list[[clean_sample_id]] <- firing_stats
   
-    # --- Sample-level summary stats
+  # --- Sample-level summary stats
   n_cells        <- dplyr::n_distinct(df_sample$ObjectNumber)
   n_frames_total <- max(df_sample$ImageNumber, na.rm = TRUE)
   duration_min   <- n_frames_total / (frame_rate * 60)
-
+  
   sample_summary <- firing_stats %>%
     dplyr::summarise(
-      Sample                       = clean_sample_id,
-      Total_cells                  = n_cells,
-      Total_firing_events          = sum(firing_events, na.rm = TRUE),
-      Firing_events_per_min        = Total_firing_events / duration_min,
-      Firing_events_per_min_norm   = Firing_events_per_min / n_cells,
-      Cells_active                 = sum(firing_events > 0, na.rm = TRUE),
-      Percent_cells_active         = 100 * Cells_active / n_cells,
-      Mean_percent_active_frames   = mean(percent_active, na.rm = TRUE),
-      Mean_percent_active_frames_norm = Mean_percent_active_frames  # already normalized
+      Sample                          = clean_sample_id,
+      Total_cells                     = n_cells,
+      Total_firing_events             = sum(firing_events, na.rm = TRUE),
+      Firing_events_per_min           = Total_firing_events / duration_min,
+      Firing_events_per_min_norm      = Firing_events_per_min / n_cells,
+      Cells_active                    = sum(firing_events > 0, na.rm = TRUE),
+      Percent_cells_active            = 100 * Cells_active / n_cells,
+      Mean_percent_active_frames      = mean(percent_active, na.rm = TRUE),
+      Mean_percent_active_frames_norm = Mean_percent_active_frames
     )
-
+  
   summary_list[[clean_sample_id]] <- sample_summary
   
   # --- Network edges and coords
@@ -762,52 +769,7 @@ ggsave(file.path(ca_results_dir, "plot_community_size.pdf"),
 
 ```
 
-
-## IIIe. Combined Summary Figure & export of all values 
-```{r}
-# ---------------------------------------------------------------------------
-# Create combined six‑panel figure
-# ---------------------------------------------------------------------------
-neuro_combinedplot <-
-  ((p_fire_orig | p_active_orig | p_amp_orig) /
-   (p_fire_norm | p_active_norm | p_comm    )) +
-  plot_layout(heights = c(1, 1)) &
-  theme(plot.margin = margin(.01, 10, .01, 10))
-
-ggsave(file.path(ca_results_dir, "neuro_combinedplot.pdf"),
-       neuro_combinedplot, width = 6, height = 4, device = cairo_pdf)
-
-# ---------------------------------------------------------------------------
-# Combine and save all stat. values 
-# ---------------------------------------------------------------------------
-
-# Save All P-values in csv file in prev. defined outdir 
-all_pvals <- bind_rows(
-  p_fire_orig_result$pval,
-  p_active_orig_result$pval,
-  p_amp_orig_result$pval,
-  p_fire_norm_result$pval,
-  p_active_norm_result$pval,
-  bind_rows(
-  tibble(Metric = "CommunitySize", group1 = "ANOVA", group2 = "", p.value = comm_aov_pval),
-  comm_pw_df %>% mutate(Metric = "CommunitySize") %>%
-    select(Metric, group1, group2, p.value)
-  )
-)
-
-
-all_pvals <- all_pvals %>%
-  select(Metric, group1, group2, p.value)
-
-
-write.csv(all_pvals,
-          file = file.path(ca_results_dir, "calcium_metrics_pvals.csv"),
-          row.names = FALSE)
-
-```
-
-
-## IIIf. Time-binned Firing Metrics Over Time
+## IIIe. Time-binned Firing Metrics Over Time
 ```{r}
 # -------------------------------------------------
 # IIIf. Time-binned Firing Metrics Over Time
@@ -889,30 +851,48 @@ ggsave(file.path(ca_results_dir, "plot_time_binned_spike_amplitude.pdf"), p_bin_
 
 
 
-# ----------------------------
-# Extract first file per genotype
-# ----------------------------
-first_files_per_genotype <- traces_with_genotype %>%
-  distinct(file, Genotype) %>%
-  group_by(Genotype) %>%
-  slice(1) %>%
-  pull(file)
-
-first_trace_df <- traces_with_genotype %>%
-  filter(file %in% first_files_per_genotype)
-
-# Plot Example Traces per Genotype
-ggplot(first_trace_df, aes(x = ImageNumber, y = dF_F_scaled, group = ObjectNumber)) +
-  geom_line(alpha = 0.5, size = 0.3) +
-  facet_wrap(~Genotype, scales = "free_y") +
-  labs(title = "Example dF/F Traces (First File per Genotype)",
-       x = "Frame", y = "dF/F (scaled)") +
-  theme_bw(base_size = 6)
-
-ggsave(file.path(ca_results_dir, "example_traces_first_file_per_genotype.pdf"),
-       width = 5, height = 3, device = cairo_pdf)
+```
 
 
+## IIIf. Combined Summary Figure & export of all values 
+```{r}
+# ---------------------------------------------------------------------------
+# Create combined six‑panel figure
+# ---------------------------------------------------------------------------
+neuro_combinedplot <-
+  ((p_fire_norm | p_active_norm | p_amp_orig) /
+   (p_bin_amp | p_bin_events | p_comm    )) +
+  plot_layout(heights = c(1, 1)) &
+  theme(plot.margin = margin(5, 10, 5, 10))
 
+ggsave(file.path(ca_results_dir, "neuro_combinedplot.pdf"),
+       neuro_combinedplot, width = 12, height = 12, device = cairo_pdf)
+
+# ---------------------------------------------------------------------------
+# Combine and save all stat. values 
+# ---------------------------------------------------------------------------
+
+# Save All P-values in csv file in prev. defined outdir 
+all_pvals <- bind_rows(
+  p_fire_orig_result$pval,
+  p_active_orig_result$pval,
+  p_amp_orig_result$pval,
+  p_fire_norm_result$pval,
+  p_active_norm_result$pval,
+  bind_rows(
+  tibble(Metric = "CommunitySize", group1 = "ANOVA", group2 = "", p.value = comm_aov_pval),
+  comm_pw_df %>% mutate(Metric = "CommunitySize") %>%
+    select(Metric, group1, group2, p.value)
+  )
+)
+
+
+all_pvals <- all_pvals %>%
+  select(Metric, group1, group2, p.value)
+
+
+write.csv(all_pvals,
+          file = file.path(ca_results_dir, "calcium_metrics_pvals.csv"),
+          row.names = FALSE)
 
 ```
