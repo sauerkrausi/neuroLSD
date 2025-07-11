@@ -89,7 +89,7 @@ for nd2_file in tqdm(nd2_files, desc="Running Cellpose"):
         if label in valid_labels
     ]
     centroid_df = pd.DataFrame(centroid_data)
-    centroid_df.to_csv(output / f"{nd2_file.stem}_centroids.csv", index=False)
+    #centroid_df.to_csv(output / f"{nd2_file.stem}_centroids.csv", index=False)
 
     intensity_data = []
 

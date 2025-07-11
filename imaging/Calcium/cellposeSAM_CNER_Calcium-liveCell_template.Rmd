@@ -90,7 +90,7 @@ genotype_map <- list(
 # Direct mapping (no interpolation)
 # Colors auto-generated based on mapping
 geno_levels <- unique(unname(genotype_map))
-base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Paired")  
+base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
 geno_cols <- setNames(base_colors, geno_levels)
 
 stopifnot(length(base_colors) >= length(geno_levels))
