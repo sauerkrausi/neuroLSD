@@ -2212,6 +2212,8 @@ library(furrr)
 library(qs)
 library(pheatmap)
 
+#log2FC_d50_annotated <- read.csv("/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes/log2FC_d50_annotated.csv")
+
 # ─────────────────────────────────────────────
 # 2. Define disease class mapping (used for metadata)
 # ─────────────────────────────────────────────
@@ -2362,15 +2364,24 @@ ggsave(file.path(out_dir_d50_corrProtein, "correlation_density_plot.pdf"),
        plot = qc_plot, width = 6, height = 4)
 
 
+dev.off()
 
 # ----------------------------------------------------------------------
 # Filter, Cluster, Plot, and Save Correlation Heatmap by Annotation
 # ----------------------------------------------------------------------
 
-plot_corr_heatmap_by_annotation <- function(results_df, annotation_df, annot_name, save_dir = ".", show_all = TRUE, top_n = 50, annotation_metadata = NULL) {
+plot_corr_heatmap_by_annotation <- function(
+    results_df,
+    annotation_df,
+    annot_name,
+    save_dir = ".",
+    show_all = TRUE,
+    top_n = 50,
+    annotation_metadata = NULL
+) {
   message("Filtering correlations where both genes are annotated as: ", annot_name)
 
-  # Step 1: Filter correlation pairs based on annotation
+  # Step 1: Filter for both genes being annotated
   filtered <- results_df %>%
     left_join(annotation_df, by = c("Gene1" = "Genes")) %>%
     filter(.data[[annot_name]] == 1) %>%
@@ -2378,37 +2389,45 @@ plot_corr_heatmap_by_annotation <- function(results_df, annotation_df, annot_nam
     filter(.data[[paste0(annot_name, "_G2")]] == 1)
 
   if (nrow(filtered) == 0) {
-    warning("No valid gene pairs for this annotation: ", annot_name)
+    warning("No valid gene pairs for annotation: ", annot_name)
     return(NULL)
   }
 
-  # Step 2: Create symmetric correlation matrix
-  mat <- filtered %>%
-    pivot_wider(names_from = Gene2, values_from = Correlation) %>%
-    column_to_rownames("Gene1") %>%
-    as.matrix()
+  # Step 2: Create symmetric correlation matrix (deduplicated)
+  filtered_unique <- filtered %>%
+    filter(!is.na(Correlation)) %>%
+    distinct(Gene1, Gene2, .keep_all = TRUE)
 
-  mat[lower.tri(mat)] <- t(mat)[lower.tri(mat)]
+  mat_df <- filtered_unique %>%
+    pivot_wider(names_from = Gene2, values_from = Correlation)
 
-  # Step 3: Optionally reduce to top N
+  rownames(mat_df) <- make.unique(mat_df$Gene1)  # avoid duplicate rownames
+  mat <- as.matrix(mat_df[,-1])  # drop Gene1 column after rownames
+
+  # Step 3: Symmetrize if needed
+  if (!isSymmetric(mat)) {
+    mat[lower.tri(mat)] <- t(mat)[lower.tri(mat)]
+  }
+
+  # Step 4: Optionally subset to top N genes by avg abs correlation
   if (!show_all) {
     gene_scores <- rowMeans(abs(mat), na.rm = TRUE)
-    top_genes <- names(sort(gene_scores, decreasing = TRUE))[1:min(top_n, nrow(mat))]
-    mat <- mat[top_genes, top_genes]
+    top_genes <- names(sort(gene_scores, decreasing = TRUE))[1:min(top_n, length(gene_scores))]
+    mat <- mat[top_genes, top_genes, drop = FALSE]
   }
 
-  # Step 4: Add gene annotations if provided
+  # Step 5: Add KO / neuron / disease annotations (columns only)
   ann_col <- NULL
   if (!is.null(annotation_metadata)) {
-    overlapping_genes <- intersect(colnames(mat), annotation_metadata$sample)
-    if (length(overlapping_genes) > 0) {
-      ann_col <- annotation_metadata %>%
-        filter(sample %in% overlapping_genes) %>%
-        column_to_rownames("sample")
-    }
+    overlapping <- intersect(colnames(mat), annotation_metadata$sample)
+    ann_col <- annotation_metadata %>%
+      filter(sample %in% overlapping) %>%
+      column_to_rownames("sample") %>%
+      select(KO, Neuron, DiseaseClass)
   }
 
-  # Step 5: Plot and save
+  # Step 6: Save heatmap
+  out_file <- file.path(save_dir, paste0("corr_heatmap_", annot_name, ".pdf"))
   pheatmap::pheatmap(
     mat,
     scale = "none",
@@ -2423,11 +2442,11 @@ plot_corr_heatmap_by_annotation <- function(results_df, annotation_df, annot_nam
     main = paste("Correlation Heatmap:", annot_name),
     fontsize = 10,
     border_color = NA,
-    filename = file.path(save_dir, paste0("corr_heatmap_", annot_name, ".pdf"))
+    filename = out_file
   )
 
-  # Save the filtered correlation data
-  write_csv(filtered, file.path(save_dir, paste0("correlations_", annot_name, ".csv")))
+  # Step 7: Save filtered correlation table
+  write_csv(filtered_unique, file.path(save_dir, paste0("correlations_", annot_name, ".csv")))
 }
 
 
@@ -2437,14 +2456,20 @@ plot_corr_heatmap_by_annotation <- function(results_df, annotation_df, annot_nam
 plot_corr_heatmap_by_annotation(
   results_df = results,
   annotation_df = annotation_meta,
-  annot_name = "SynapticVesicle",
+  annot_name = "SynapseSVs",
   save_dir = out_dir_d50_corrProtein,
-  show_all = TRUE,  # is overriding top_n below if TRUE
+  show_all = TRUE,  # or FALSE
   top_n = 50,
   annotation_metadata = genotype_metadata
 )
 
 
+
+ # all_ann <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+ #                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+ #                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+ #                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+ #                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
 
 ```
