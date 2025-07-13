@@ -534,24 +534,17 @@ geno_cols <- setNames(colorRampPalette(base_colors)(length(unique_genos)), uniqu
 ## IIIb. Scatterplots / Violinplots with SEM (per genotype)
 ```{r}
 # ----------------------------------------------------------------------
-# Helper function: plotting violinplot with scatter+SEM error‑bars
+# Updated plot_metric(): Non-parametric version using Kruskal-Wallis + Wilcoxon
 # ----------------------------------------------------------------------
 plot_metric <- function(dat, metric, ylab, outfile, base_dir) {
   require(ggpubr)
 
-  # --- check that metric exists
-  if (!metric %in% names(dat)) {
-    stop(paste("Metric", metric, "not found in data"))
-  }
-
   metric_sym <- rlang::sym(metric)
 
-  # --- Ensure factor order
   dat <- dat %>%
     mutate(Genotype = factor(Genotype,
                              levels = unique(unname(genotype_map))))
 
-  # --- Group stats
   mean_dat <- dat %>%
     group_by(Genotype) %>%
     summarise(
@@ -560,54 +553,55 @@ plot_metric <- function(dat, metric, ylab, outfile, base_dir) {
       .groups  = "drop"
     )
 
-  # --- Calculate ANOVA
-  aov_model <- aov(as.formula(paste0(metric, " ~ Genotype")), data = dat)
-  aov_pval  <- summary(aov_model)[[1]][["Pr(>F)"]][1]
+  # --- Kruskal-Wallis test
+  kruskal_pval <- kruskal.test(as.formula(paste0(metric, " ~ Genotype")), data = dat)$p.value
 
-  # --- Pairwise comparisons
+  # --- Pairwise Wilcoxon (Mann-Whitney) tests
   filtered_dat <- dplyr::filter(dat, !is.na(!!metric_sym))
-  pw <- pairwise.t.test(filtered_dat[[metric]], filtered_dat$Genotype, p.adjust.method = "holm")
-
+  pw <- pairwise.wilcox.test(filtered_dat[[metric]], filtered_dat$Genotype, p.adjust.method = "holm")
+  
   if (!is.null(pw$p.value)) {
     pairwise_df <- as.data.frame(as.table(pw$p.value), stringsAsFactors = FALSE) %>%
-      dplyr::filter(!is.na(Freq) & Freq < 0.05) %>%
-      dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq)
-
-    if (nrow(pairwise_df) > 0) {
-      pairwise_df <- pairwise_df %>%
-        mutate(
-          y.position = seq(from = max(dat[[metric]], na.rm = TRUE) * 1.05,
-                           by   = max(dat[[metric]], na.rm = TRUE) * 0.05,
-                           length.out = n()),
-          p.adj = signif(p.value, 2),
-          group1 = factor(group1, levels = levels(dat$Genotype)),
-          group2 = factor(group2, levels = levels(dat$Genotype))
+      dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
+      dplyr::filter(!is.na(p.value)) %>%
+      dplyr::mutate(
+        p.adj = signif(p.value, 2),
+        significance = dplyr::case_when(
+          p.value < 0.001 ~ "***",
+          p.value < 0.01  ~ "**",
+          p.value < 0.05  ~ "*",
+          TRUE            ~ NA_character_
         )
-    }
+      ) %>%
+      dplyr::filter(!is.na(significance)) %>%
+      dplyr::mutate(
+        y.position = seq(from = max(dat[[metric]], na.rm = TRUE) * 1.05,
+                         by   = max(dat[[metric]], na.rm = TRUE) * 0.05,
+                         length.out = dplyr::n())
+      )
   } else {
-    pairwise_df <- tibble(group1 = character(), group2 = character(), p.value = numeric())
+    pairwise_df <- tibble(group1 = character(0), group2 = character(0),
+                          p.value = numeric(0), p.adj = character(0), significance = character(0),
+                          y.position = numeric(0))
   }
 
-  # --- Plot violin plot 
-p <- ggplot(dat, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
-  geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
-  geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85, adjust = 1.5) +
-  geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
-  scale_fill_manual(values = geno_cols) +
-  labs(y = ylab, x = NULL) +
-  theme_bw(base_size = 6) +
-  theme(legend.position = "none",
-        aspect.ratio = 2,
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.x = element_text(angle = 90, hjust = 0.5)
-        )
+  # --- Plot violin plot
+  p <- ggplot(dat, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
+    geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
+    geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85, adjust = 1.5) +
+    geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
+    scale_fill_manual(values = geno_cols) +
+    labs(y = ylab, x = NULL) +
+    theme_bw(base_size = 6) +
+    theme(legend.position = "none",
+          aspect.ratio = 2,
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text.x = element_text(angle = 90, hjust = 0.5))
 
-  
-  # --- Add pairwise significance bars
   if (nrow(pairwise_df) > 0) {
     p <- p + stat_pvalue_manual(pairwise_df,
-                                label = "p.adj",
+                                label = "significance",
                                 y.position = "y.position",
                                 xmin = "group1",
                                 xmax = "group2",
@@ -616,17 +610,15 @@ p <- ggplot(dat, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
                                 inherit.aes = FALSE)
   }
 
-  # --- Save plot
-  ggsave(file.path(ca_results_dir, paste0(outfile, ".pdf")),
+  ggsave(file.path(base_dir, paste0(outfile, ".pdf")),
          p, width = 2, height = 5, device = cairo_pdf)
 
-  # --- Return plot + pvals
   list(
     plot = p,
     pval = bind_rows(
-      tibble(Metric = metric, group1 = "ANOVA", group2 = "", p.value = aov_pval),
+      tibble(Metric = metric, group1 = "KruskalWallis", group2 = "", p.value = kruskal_pval),
       pairwise_df %>% mutate(Metric = metric) %>%
-        select(Metric, group1, group2, p.value)
+        select(Metric, group1, group2, p.value, significance)
     )
   )
 }
@@ -673,10 +665,10 @@ p_active_norm <- p_active_norm_result$plot
 
 
 
-## IIId. Community Size Analysis & ANOVA tests 
+## IIId. Community Size Analysis (Non-parametric) 
 ```{r}
 # ---------------------------------------------------------------------------
-# Community‑size plot with ANOVA + pairwise stats
+# Community Size Analysis (Non-parametric) 
 # ---------------------------------------------------------------------------
 comm_df <- add_genotype(comm_df, genotype_map) %>%
   mutate(Genotype = factor(Genotype, levels = unique(unname(genotype_map))))
@@ -690,31 +682,38 @@ comm_dat <- comm_df %>%
             sem       = sd(CommunitySize, na.rm = TRUE) / sqrt(n()),
             .groups   = "drop")
 
-# --- Global ANOVA
-comm_aov <- aov(CommunitySize ~ Genotype, data = comm_df)
-comm_aov_pval <- summary(comm_aov)[[1]][["Pr(>F)"]][1]
+# --- Global Kruskal-Wallis test
+comm_kw <- kruskal.test(CommunitySize ~ Genotype, data = comm_df)
+comm_kw_pval <- comm_kw$p.value
 
-# --- Pairwise comparisons
-comm_pw <- pairwise.t.test(comm_df$CommunitySize, comm_df$Genotype, p.adjust.method = "holm")
+# --- Pairwise Wilcoxon tests
+comm_pw <- pairwise.wilcox.test(comm_df$CommunitySize, comm_df$Genotype, p.adjust.method = "holm")
 
 if (is.null(comm_pw$p.value)) {
   comm_pw_df <- tibble(group1 = character(0),
                        group2 = character(0),
-                       p.value = numeric(0))
+                       p.value = numeric(0),
+                       significance = character(0))
 } else {
   comm_pw_df <- as.data.frame(as.table(comm_pw$p.value), stringsAsFactors = FALSE) %>%
-    dplyr::filter(!is.na(Freq) & Freq < 0.05) %>%
-    dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq)
-}
-
-# --- Add y positions and format annotations
-if (nrow(comm_pw_df) > 0) {
-  comm_pw_df <- comm_pw_df %>%
+    dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
+    dplyr::filter(!is.na(p.value)) %>%
     mutate(
-      y_position = seq(from = max(comm_df$CommunitySize, na.rm = TRUE) * 1.05,
-                       by = max(comm_df$CommunitySize, na.rm = TRUE) * 0.05,
+      p.adj = signif(p.value, 2),
+      significance = case_when(
+        p.value < 0.001 ~ "***",
+        p.value < 0.01  ~ "**",
+        p.value < 0.05  ~ "*",
+        TRUE            ~ NA_character_
+      )
+    ) %>%
+    filter(!is.na(significance)) %>%
+    mutate(
+      y.position = seq(from = max(comm_df$CommunitySize, na.rm = TRUE) * 1.05,
+                       by   = max(comm_df$CommunitySize, na.rm = TRUE) * 0.05,
                        length.out = n()),
-      annotations = signif(p.value, 2)
+      group1 = factor(group1, levels = levels(comm_df$Genotype)),
+      group2 = factor(group2, levels = levels(comm_df$Genotype))
     )
 }
 
@@ -733,21 +732,11 @@ p_comm <- ggplot(comm_df, aes(x = Genotype, y = CommunitySize, fill = Genotype))
         axis.text.x = element_text(angle = 90, hjust = 0.5)
         )
 
-# --- Add significance brackets manually
+# --- Add significance annotations
 if (nrow(comm_pw_df) > 0) {
-  comm_pw_df <- comm_pw_df %>%
-    mutate(
-      y.position = seq(from = max(comm_df$CommunitySize, na.rm = TRUE) * 1.05,
-                       by = max(comm_df$CommunitySize, na.rm = TRUE) * 0.05,
-                       length.out = n()),
-      p.adj = signif(p.value, 2),
-      group1 = factor(group1, levels = levels(comm_df$Genotype)),
-      group2 = factor(group2, levels = levels(comm_df$Genotype))
-    )
-
   p_comm <- p_comm +
     stat_pvalue_manual(comm_pw_df,
-                       label = "p.adj",
+                       label = "significance",
                        y.position = "y.position",
                        xmin = "group1",
                        xmax = "group2",
@@ -759,9 +748,9 @@ if (nrow(comm_pw_df) > 0) {
 # --- Save
 ggsave(file.path(ca_results_dir, "plot_community_size.pdf"),
        p_comm, width = 2, height = 3, device = cairo_pdf)
-
-
 ```
+
+
 
 ## IIIe. Time-binned Firing Metrics Over Time
 ```{r}
@@ -769,7 +758,7 @@ ggsave(file.path(ca_results_dir, "plot_community_size.pdf"),
 # IIIf. Time-binned Firing Metrics Over Time
 # -------------------------------------------------
 
-bin_size <- baseline_window  # Use consistent bin size across analysis
+bin_size <- floor(baseline_window * 0.2)
 
 # Combine traces and add genotype
 traces_with_genotype <- combined_df %>%
@@ -866,25 +855,47 @@ ggsave(file.path(ca_results_dir, "neuro_combinedplot.pdf"),
 # Combine and save all stat. values 
 # ---------------------------------------------------------------------------
 
-# Save All P-values in csv file in prev. defined outdir 
-all_pvals <- bind_rows(
-  p_fire_orig_result$pval,
-  p_active_orig_result$pval,
-  p_amp_orig_result$pval,
-  p_fire_norm_result$pval,
-  p_active_norm_result$pval,
-  bind_rows(
-  tibble(Metric = "CommunitySize", group1 = "ANOVA", group2 = "", p.value = comm_aov_pval),
-  comm_pw_df %>% mutate(Metric = "CommunitySize") %>%
-    select(Metric, group1, group2, p.value)
+# ---------------------------------------------------------------------------
+# Replace ANOVA + t-tests with Kruskal-Wallis + Wilcoxon
+# ---------------------------------------------------------------------------
+calc_nonparametric_stats <- function(df, metric_col, group_col = "Genotype") {
+  kruskal <- kruskal.test(reformulate(group_col, metric_col), data = df)
+  kw_pval <- kruskal$p.value
+
+  pairwise <- pairwise.wilcox.test(df[[metric_col]], df[[group_col]], p.adjust.method = "BH")
+  pairwise_df <- as.data.frame(as.table(pairwise$p.value))
+  colnames(pairwise_df) <- c("group1", "group2", "p.value")
+  pairwise_df <- pairwise_df %>%
+    dplyr::mutate(Metric = metric_col) %>%
+    dplyr::select(Metric, group1, group2, p.value)
+
+  all_pvals <- dplyr::bind_rows(
+    tibble(Metric = metric_col, group1 = "Kruskal-Wallis", group2 = "", p.value = kw_pval),
+    pairwise_df
   )
+
+  all_pvals <- all_pvals %>%
+    dplyr::mutate(sig_label = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    ))
+
+  return(all_pvals)
+}
+
+# ---------------------------------------------------------------------------
+# Run on all metrics
+# ---------------------------------------------------------------------------
+all_pvals <- dplyr::bind_rows(
+  calc_nonparametric_stats(events_df, "firing_rate_per_min"),
+  calc_nonparametric_stats(events_df, "percent_active"),
+  calc_nonparametric_stats(events_df, "spike_amplitude"),
+  calc_nonparametric_stats(comm_df, "CommunitySize")
 )
 
-
-all_pvals <- all_pvals %>%
-  select(Metric, group1, group2, p.value)
-
-
+# Save updated p-value summary
 write.csv(all_pvals,
           file = file.path(ca_results_dir, "calcium_metrics_pvals.csv"),
           row.names = FALSE)
