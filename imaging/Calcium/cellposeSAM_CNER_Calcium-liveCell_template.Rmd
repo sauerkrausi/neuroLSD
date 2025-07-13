@@ -758,7 +758,7 @@ ggsave(file.path(ca_results_dir, "plot_community_size.pdf"),
 # IIIf. Time-binned Firing Metrics Over Time
 # -------------------------------------------------
 
-bin_size <- floor(baseline_window * 0.2)
+bin_size <- baseline_window
 
 # Combine traces and add genotype
 traces_with_genotype <- combined_df %>%
@@ -779,9 +779,9 @@ binned_metrics <- traces_with_genotype %>%
                          window = baseline_window,
                          smoothing_k = smoothing_k,
                          percentile = 0.2),
-    dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
+    dF_F_scaled = if (all(is.na(dF_F))) 0 else dF_F / max(dF_F, na.rm = TRUE),
     dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
-    spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
+    spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA_real_)
   ) %>%
   dplyr::mutate(rising_edge = dF_F_binary == 1 & dplyr::lag(dF_F_binary, default = 0) == 0) %>%
   dplyr::summarise(
@@ -791,6 +791,20 @@ binned_metrics <- traces_with_genotype %>%
     spike_amplitude = mean(spike_amplitude, na.rm = TRUE),
     .groups = "drop"
   )
+
+# Summarize per genotype and bin
+plot_df <- binned_metrics %>%
+  dplyr::group_by(Genotype, Bin) %>%
+  dplyr::summarise(
+    mean_events = mean(firing_events, na.rm = TRUE),
+    sem_events  = sd(firing_events, na.rm = TRUE) / sqrt(dplyr::n()),
+    mean_active = mean(percent_active, na.rm = TRUE),
+    sem_active  = sd(percent_active, na.rm = TRUE) / sqrt(dplyr::n()),
+    mean_amp    = mean(spike_amplitude, na.rm = TRUE),
+    sem_amp     = sd(spike_amplitude, na.rm = TRUE) / sqrt(dplyr::n()),
+    .groups = "drop"
+  )
+
 
 # Summarize per genotype and bin
 plot_df <- binned_metrics %>%
@@ -831,6 +845,7 @@ p_bin_amp     <- plot_timecourse(plot_df, "mean_amp", "sem_amp", "Spike Amplitud
 ggsave(file.path(ca_results_dir, "plot_time_binned_firing_events.pdf"),  p_bin_events, width = 3, height = 2.5, device = cairo_pdf)
 ggsave(file.path(ca_results_dir, "plot_time_binned_percent_active.pdf"), p_bin_active, width = 3, height = 2.5, device = cairo_pdf)
 ggsave(file.path(ca_results_dir, "plot_time_binned_spike_amplitude.pdf"), p_bin_amp,  width = 3, height = 2.5, device = cairo_pdf)
+
 
 
 
