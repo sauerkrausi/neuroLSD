@@ -2110,21 +2110,28 @@ plot_bar_corr_per_genotype(
 # --------------------------------------------------- #
 # nMOST LSD GO signatures of select Clusters (Neurons)
 # --------------------------------------------------- #
-
-# --- Step 1. Load GO annotation and match clusters to neuro dataset
+# --- Step 1. Load GO annotation
 nMOST_GOannot <- read.csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/cell_protein_clusters_20250711KAO.csv",
                           header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
-log2FC_d50_annotated_GO <- log2FC_d50_annotated %>%
-  left_join(nMOST_GOannot[, c("Gene.names", "protein_hclust_clusters")],
-            by = c("Genes" = "Gene.names")) %>%
-  rename(Cluster = protein_hclust_clusters)
+# --- Step 2. Partial string matching function
+get_cluster_by_partial_match <- function(gene, reference_df) {
+  match_row <- reference_df[str_detect(reference_df$Gene.names, paste0("\\b", gene, "\\b")), ]
+  if (nrow(match_row) > 0) return(match_row$protein_hclust_clusters[1])
+  return(NA)
+}
 
-# --- Step 2. Save merged dataframe
+# --- Step 3. Annotate clusters using partial match
+log2FC_d50_annotated_GO <- log2FC_d50_annotated %>%
+  rowwise() %>%
+  mutate(Cluster = get_cluster_by_partial_match(Genes, nMOST_GOannot)) %>%
+  ungroup()
+
+# --- Step 4. Save merged dataframe
 write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_CrossCorr_GOavg, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
 write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_dataframes, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
 
-# --- Step 3. Split iN and iDA into separate long-format dataframes
+# --- Step 5. Split iN and iDA into separate long-format dataframes
 iN_cols <- grep("_iN$", colnames(log2FC_d50_annotated_GO), value = TRUE)
 iDA_cols <- grep("_iDA$", colnames(log2FC_d50_annotated_GO), value = TRUE)
 shared_cols <- c("Genes", "Cluster")
@@ -2152,7 +2159,7 @@ log2FC_iDA_df <- log2FC_d50_annotated_GO %>%
 write.csv(log2FC_iN_df, file.path(out_dir_d50_CrossCorr_GOavg, "log2FC_iN_long.csv"), row.names = FALSE)
 write.csv(log2FC_iDA_df, file.path(out_dir_d50_CrossCorr_GOavg, "log2FC_iDA_long.csv"), row.names = FALSE)
 
-# --- Step 4. Define and expand color palette
+# --- Step 6. Define and expand color palette
 col <- c(AGA="grey76", ARSA="grey76", ARSB="grey76", ASAH1="#D53E4F", PPT1="#FEE08B", CTSD="#FEE08B", GRN="#FEE08B",
          ATP13A2="#E6F598", CTSF="#FEE08B", KCTD7="grey76", TPP1="#FEE08B", CLN3="#E6F598", DNAJC5="#FEE08B", 
          CLN5="#FEE08B", CLN6="#FEE08B", MFSD8="#FEE08B", CLN8="#FEE08B", CTNS="#E6F598", CTSA="grey76", FUCA="grey76", GAA="#66C2A5",
@@ -2171,31 +2178,32 @@ expand_color_dict <- function(base_colors) {
 
 col_expanded <- expand_color_dict(col)
 
-# --- Step 5. Function: Barplot with SEM for iN or iDA, includes CSV output
-NeuroClusterBarplot <- function(df_long, cluster_name = "Cluster 2", cell_type = "iN") {
+# --- Step 7. Function: Barplot with SEM for iN or iDA, includes CSV output
+NeuroClusterBarplot <- function(df_long, cluster_name = 2, cell_type = "iN") {
   df_sub <- df_long %>%
     filter(Cluster == cluster_name, CellType == cell_type)
 
   group_order_df <- df_sub %>%
-    group_by(KO_Cell) %>%
+    group_by(KO, KO_Cell) %>%
     summarise(
       mean_score = mean(Score, na.rm = TRUE),
-      sem = sd(Score, na.rm = TRUE) / sqrt(n())
+      sem = sd(Score, na.rm = TRUE) / sqrt(n()),
+      .groups = "drop"
     ) %>%
     arrange(mean_score)
 
-  group_order <- group_order_df$KO_Cell
-  group_order_df$KO_Cell <- factor(group_order_df$KO_Cell, levels = group_order)
+  # Ensure character for plotting and matching
+  group_order_df$KO_Cell <- as.character(group_order_df$KO_Cell)
+  group_order_df$KO <- factor(group_order_df$KO, levels = unique(group_order_df$KO))
 
-  ko_colors <- col_expanded[group_order]
-  names(ko_colors) <- group_order
+  # Assert color mapping is valid
+  stopifnot(all(unique(group_order_df$KO_Cell) %in% names(col_expanded)))
 
-  # Barplot with SEM error bars
-  p <- ggplot(group_order_df, aes(x = KO_Cell, y = mean_score, fill = KO_Cell)) +
+  p <- ggplot(group_order_df, aes(x = KO, y = mean_score, fill = KO_Cell)) +
     geom_bar(stat = "identity", color = "black", size = 0.3) +
     geom_errorbar(aes(ymin = mean_score - sem, ymax = mean_score + sem),
                   width = 0.2, size = 0.3) +
-    scale_fill_manual(values = ko_colors) +
+    scale_fill_manual(values = col_expanded) +
     theme_bw(base_size = 10) +
     labs(title = paste0("Mean Score ± SEM – ", cluster_name, " (", cell_type, ")"),
          x = NULL, y = "Mean Score") +
@@ -2205,20 +2213,18 @@ NeuroClusterBarplot <- function(df_long, cluster_name = "Cluster 2", cell_type =
 
   file_tag <- paste0(gsub(" ", "", cluster_name), "_", cell_type)
 
-  # Save PDF
   ggsave(file.path(out_dir_d50_CrossCorr_GOavg, paste0("nMOST_LSD_Corr_Barplot_", file_tag, ".pdf")),
          p, width = 4, height = 4, device = cairo_pdf)
 
-  # Save CSV
   write.csv(group_order_df,
             file = file.path(out_dir_d50_CrossCorr_GOavg, paste0("Barplot_Mean_SEM_", file_tag, ".csv")),
             row.names = FALSE)
 }
 
-# --- Step 6. call function and plot cluster
-plot_cluster <- "Cluster 7"
-NeuroClusterBarplot(neuro_GO_long, cluster_name = plot_cluster, cell_type = "iN")
-NeuroClusterBarplot(neuro_GO_long, cluster_name = plot_cluster, cell_type = "iDA")
+# --- Step 8. call function and plot cluster
+plot_cluster <- 7
+NeuroClusterBarplot(log2FC_iN_df, cluster_name = plot_cluster, cell_type = "iN")
+NeuroClusterBarplot(log2FC_iDA_df, cluster_name = plot_cluster, cell_type = "iDA")
 ```
 
 
