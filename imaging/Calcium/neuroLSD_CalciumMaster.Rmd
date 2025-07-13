@@ -1,0 +1,62 @@
+---
+title: "neuroLSD_CalciumMaster"
+output: html_document
+date: "2025-07-13"
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# I. Background
+create master file that loops through all calcium imaging evals and combines results in master file for stats, plotting and saving.
+
+# II. 
+```{r}
+# Define directories
+timepoint_dirs <- list(
+  d21 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/nd2_labels/calcium_results",
+  d38 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/nd2_labels/calcium_results",
+  d42 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_results"
+  #d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_results"
+  #d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_results"
+)
+
+# Define filenames to merge
+filenames <- c(
+  "calcium_metrics_pvals.csv",
+  "combined_cell_community_membership.csv",
+  "combined_cell_pairwise_correlations.csv",
+  "combined_events_per_min_results.csv",
+  "combined_sample_level_normalised_metrics.csv"
+)
+
+# Read and combine
+master_list <- lapply(filenames, function(fname) {
+  df_list <- purrr::imap(timepoint_dirs, function(path, tp) {
+    fpath <- file.path(path, fname)
+    if (file.exists(fpath)) {
+      readr::read_csv(fpath, show_col_types = FALSE) %>%
+        dplyr::mutate(Timepoint = tp)
+    } else {
+      NULL
+    }
+  })
+  bind_rows(df_list)
+})
+
+# Assign names to master data frames
+names(master_list) <- c("metrics_pvals", "community_membership", "correlations",
+                        "events_per_min", "sample_level_metrics")
+
+# Save each master dataframe
+out_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/neuroLSDgit/imaging/Calcium/master_merged_calcium"
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+purrr::iwalk(master_list, function(df, name) {
+  write.csv(df, file = file.path(out_dir, paste0("master_", name, ".csv")), row.names = FALSE)
+})
+```
+
