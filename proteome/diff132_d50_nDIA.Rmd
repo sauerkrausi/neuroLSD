@@ -2962,114 +2962,34 @@ SynPRM_ann_colors <- list(
     setNames(unique(SynPRM_annotation_col$Genotype))
 )
 
-# Clean matrix
-SynPRM_mat_clean <- SynPRM_mat[apply(SynPRM_mat, 1, function(x) all(is.finite(x))), ]
-
-# K-means clustering
-set.seed(42)
-SynPRM_mat_scaled <- t(scale(t(SynPRM_mat_clean)))
-k <- 2
-km <- kmeans(SynPRM_mat_scaled, centers = k)
-cluster_assignment <- factor(km$cluster)
-
-# Annotate and order by cluster
-SynPRM_mat_clustered <- SynPRM_mat_clean[order(cluster_assignment), ]
-cluster_annotation <- data.frame(Cluster = cluster_assignment[order(cluster_assignment)])
-rownames(cluster_annotation) <- rownames(SynPRM_mat_clustered)
-
-# Save clusters for joining
-SynPRM_cluster_df <- tibble(Genes = rownames(SynPRM_mat_clean), Cluster = cluster_assignment)
-
-# Merge cluster info into annotated df
-SynPRM_log2fc_annotated_cluster <- SynPRM_log2fc_annotated %>%
-  left_join(SynPRM_cluster_df, by = "Genes")
-
-# Heatmap
-pheatmap(
-  mat = SynPRM_mat,
-  scale = "row",
-  annotation_row = cluster_annotation,
-  color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdYlBu")))(100),
-  annotation_col = SynPRM_annotation_col,
-  annotation_colors = SynPRM_ann_colors,
-  breaks = seq(-4, 4, length.out = 101),
-  cluster_rows = FALSE,
-  cluster_cols = TRUE,
-  show_rownames = FALSE,
-  show_colnames = TRUE,
-  use_raster = FALSE,
-  cellheight = 10,
-  cellwidth  = 10,
-  angle_col = "90",
-  main = "Day 50 iN / iDA Data",
-  fontsize = 6,
-  border_color = NA
-  na_col = "grey70"
-)
-
-# Save updated dataframe
-write.csv(SynPRM_log2fc_annotated_cluster, file = file.path(out_dir_d50_SynPRM, "SynPRM_log2fc_annotated_clustered.csv"), row.names = FALSE)
 
 
+library(dplyr)
 
-# --- Step 3: Violin Plot by Cluster
-plot_log2fc_violin <- function(data, cluster_levels, genotypes) {
-  # 1. Gather gene identifiers per cluster
-  cluster_genes <- map_dfr(cluster_levels, function(cl) {
-    data %>%
-      filter(Cluster == cl) %>%
-      select(Genes) %>%
-      mutate(annotation = paste0("Cluster_", cl))
-  })
+SynPRM_pval_df <- SynPRM_long %>%
+  filter(Genotype != "Ctrl") %>%
+  group_by(NeuronType, Genotype, Genes) %>%
+  summarise(
+    p_value = wilcox.test(
+      Intensity[Genotype == cur_group()$Genotype],
+      Intensity[Genotype == "Ctrl"]
+    )$p.value,
+    log2FC = median(Intensity[Genotype == cur_group()$Genotype], na.rm = TRUE) -
+             median(Intensity[Genotype == "Ctrl"], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(FDR = p.adjust(p_value, method = "BH"))
 
-  # 2. Join cluster info back
-  plot_df <- cluster_genes %>%
-    left_join(data, by = "Genes")
+library(ggplot2)
 
-  # 3. Generate fc col names
-  fc_cols <- unlist(lapply(genotypes, function(g) {
-    paste0(g, c("_iDA_log2_fold_change", "_iN_log2_fold_change"))
-  }))
+ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
+  geom_point(alpha = 0.7) +
+  facet_wrap(~ NeuronType + Genotype) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  scale_color_manual(values = c("grey70", "red")) +
+  theme_bw() +
+  labs(title = "Volcano Plot", x = "log2 Fold Change (KO vs Ctrl)", y = "-log10(FDR)")
 
-  # 4. Long format for plotting
-  plot_df_long <- plot_df %>%
-    select(Genes, annotation, all_of(fc_cols)) %>%
-    pivot_longer(cols = -c(Genes, annotation), names_to = "sample", values_to = "log2FC") %>%
-    separate(sample, into = c("genotype", "neuron", NA), sep = "_")
-
-  # 5. Trim y-axis
-  full_range <- range(plot_df_long$log2FC, na.rm = TRUE)
-  midpoint <- median(plot_df_long$log2FC, na.rm = TRUE)
-  range_width <- diff(full_range)
-  scaled_half_range <- 0.15 * range_width
-  lower_lim <- midpoint - scaled_half_range
-  upper_lim <- midpoint + scaled_half_range
-
-  # 6. Violin plot
-  ggplot(plot_df_long, aes(x = neuron, y = log2FC, fill = annotation)) +
-    geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
-    geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85) +
-    geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
-    facet_grid(rows = vars(genotype), cols = vars(annotation), scales = "free_y") +
-    scale_fill_brewer(palette = "Paired") +
-    labs(title = "log2 Fold Change by Cluster", x = "Neuron Type", y = "log2 Fold Change") +
-    coord_cartesian(ylim = c(lower_lim, upper_lim)) +
-    theme_bw() +
-    theme(
-      strip.text = element_text(size = 6, face = "bold"),
-      axis.text.x = element_text(angle = 0, hjust = 0.5),
-      panel.grid = element_blank()
-    )
-}
-
-# --- Run and save violin plot
-violin_plot <- plot_log2fc_violin(
-  data = SynPRM_log2fc_annotated_cluster,
-  cluster_levels = levels(SynPRM_log2fc_annotated_cluster$Cluster),
-  genotypes = c("ASAH1", "MCOLN1", "GBA1", "GRN")
-)
-violin_plot
 
 ```
 
@@ -5074,6 +4994,8 @@ ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff13
 
 ```
 
+
+    
 # -------------------------------------------------- 
 # ---------- comparative analysis ----------  
 # --------------------------------------------------  
