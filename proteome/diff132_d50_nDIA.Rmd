@@ -2336,6 +2336,22 @@ plot_bar_corr_per_annotation_multi(
 
 ### ?? VIIIg. Bubble plot of annotation corr of iN vs iDA neuron
 ```{r}
+
+# --- Step 1. Define Disease Class Map
+disease_classes <- list(
+  Sphigolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
+  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5")
+)
+disease_colors <- c(
+  Sphigolipidoses = "#D53E4F",
+  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Integral.membrane.protein.disorders = "#E6F598"
+)
+disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
+
+
+
 plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_colors, out_path = NULL) {
   # Extract genotypes
   all_genos <- intersect(rownames(corr_mat), paste0(disease_class_df$KO, "_iN"))  # or all_iN & iDA genos
@@ -2359,15 +2375,16 @@ plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_c
 
   # Plot
   p <- ggplot(bubble_df, aes(x = Cor_iN, y = Cor_iDA, color = DiseaseClass)) +
-    geom_point(alpha = 0.8, size = 2) +
-    scale_color_manual(values = disease_colors) +
-    facet_wrap(~ Annotation, scales = "free") +
-    theme_bw(base_size = 8) +
-    theme(panel.grid = element_blank()) +
-    labs(
-      x = "iN Correlation", y = "iDA Correlation",
-      title = "iN vs iDA Annotation Correlations per Genotype"
-    )
+  geom_point(alpha = 0.8, size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+  scale_color_manual(values = disease_colors) +
+  facet_wrap(~ Annotation, scales = "fixed") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank()) +
+  labs(
+    x = "iN Correlation", y = "iDA Correlation",
+    title = "iN vs iDA Annotation Correlations per Genotype"
+  )
 
   if (!is.null(out_path)) {
     ggsave(file.path(out_path, "facet_bubbleplot_iN_vs_iDA_by_annotation.pdf"),
@@ -2384,6 +2401,126 @@ plot_corr_bubble_by_annotation(
   disease_colors = disease_colors,
   out_path = out_dir_d50_CrossCorr_bubble  # optional output path
 )
+
+
+
+# ---  Extract gene counts per annotation
+annotation_cols <- colnames(log2FC_d50_annotated_GO)[which(colnames(log2FC_d50_annotated_GO) == "Mito"):which(colnames(log2FC_d50_annotated_GO) == "vATPase")]
+
+# Count number of genes per annotation (non-NA or non-zero entries)
+gene_count_df <- log2FC_d50_annotated_GO %>%
+  select(all_of(annotation_cols)) %>%
+  summarise(across(everything(), ~ sum(., na.rm = TRUE))) %>% 
+  pivot_longer(everything(), names_to = "Annotation", values_to = "GeneCount")
+
+# --- Step 1. Define annotation color classes
+annotation_classes_corrgeno <- list(
+  Mito = c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI"),
+  Synaptic = c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic", "NeuroDev", "SVfusion", "Svendocytosis", "Svexocytosis"),
+  Endo = c("Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome"),
+  Lyso = c("Lysosome", "vATPase", "EndoLyso", "Autophagy"),
+  Golgi = "Golgi",
+  ER = "ER",
+  Misc = c("Cytoplasm", "Nucleus")
+)
+
+annotation_class_colors_corrgeno <- c(
+  Mito = "grey30",
+  Synaptic = "dodgerblue3",
+  Endo = "dodgerblue2",
+  Lyso = "dodgerblue",
+  Golgi = "grey50",
+  ER = "grey70",
+  Misc = "grey90"
+)
+
+
+
+# Map annotation to classes
+annotation_to_class_corrgeno <- enframe(annotation_classes_corrgeno, name = "Class", value = "Annotation") %>%
+  unnest(Annotation)
+
+
+# --- Function: Facet by Genotype, Save All
+plot_corr_iN_vs_iDA_by_genotype <- function(corr_mat, annot_class_df, annot_colors, gene_count_df, out_dir) {
+  # Ensure matrix is a data frame
+  corr_mat <- as.data.frame(corr_mat)
+
+  # Get all genotypes (must have both iN and iDA)
+  geno_base <- unique(gsub("_(iN|iDA)$", "", rownames(corr_mat)))
+  valid_genos <- geno_base[
+    paste0(geno_base, "_iN") %in% rownames(corr_mat) &
+    paste0(geno_base, "_iDA") %in% rownames(corr_mat)
+  ]
+
+  # ---------- COLLECT ALL FOR FACET ----------
+  all_df <- map_dfr(valid_genos, function(g) {
+    iN_vec  <- corr_mat[paste0(g, "_iN"), ]
+    iDA_vec <- corr_mat[paste0(g, "_iDA"), ]
+
+    tibble(
+      Genotype = g,
+      Annotation = names(iN_vec),
+      Cor_iN = as.numeric(iN_vec),
+      Cor_iDA = as.numeric(iDA_vec)
+    )
+  }) %>%
+    left_join(annot_class_df, by = "Annotation") %>%
+    left_join(gene_count_df, by = "Annotation") %>%
+    mutate(Class = factor(Class, levels = names(annot_colors)))
+
+  # ---------- FACET-WRAPPED PLOT ----------
+   p_facet <- ggplot(all_df, aes(x = Cor_iN, y = Cor_iDA, color = Class)) +
+    geom_point(aes(size = GeneCount), alpha = 0.8) +
+    scale_size(range = c(1, 8), breaks = c(10, 50, 100, 250, 500, 750, 1000), name = "Gene Count") +
+    #scale_size_continuous(trans = "log10", range = c(1.5, 5), name = "Gene Count") +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+    scale_color_manual(values = annot_colors, drop = FALSE) +
+    coord_fixed(ratio = 1) +
+    facet_wrap(~ Genotype, scales = "fixed") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank()) +
+    labs(x = "iN Correlation", y = "iDA Correlation", title = "Annotation Correlation: iN vs iDA by Genotype")
+
+  ggsave(file.path(out_dir, "facet_bubbleplot_iN_vs_iDA_all.pdf"), p_facet, width = 12, height = 12, device = cairo_pdf)
+
+  # ---------- INDIVIDUAL PLOTS ----------
+  for (g in valid_genos) {
+    df_g <- filter(all_df, Genotype == g)
+
+    axis_lim <- range(c(all_df$Cor_iN, all_df$Cor_iDA), na.rm = TRUE)
+    
+    p <- ggplot(df_g, aes(x = Cor_iN, y = Cor_iDA, color = Class)) +
+      geom_point(aes(size = GeneCount), alpha = 0.8) +
+      scale_size(range = c(1, 8), breaks = c(10, 50, 100, 250, 500, 750, 1000), name = "Gene Count") +
+      #scale_size_continuous(trans = "log2", range = c(1, 8), name = "Gene Count") +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+      scale_color_manual(values = annot_colors, drop = FALSE) +
+      coord_fixed(ratio = 1, xlim = axis_lim, ylim = axis_lim) +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank()) +
+      labs(
+        title = paste("iN vs iDA Correlation —", g),
+        x = "iN Correlation", y = "iDA Correlation"
+      )
+
+    ggsave(
+      filename = file.path(out_dir, paste0("iN_vs_iDA_bubble_", g, ".pdf")),
+      plot = p, width = 5, height = 5, device = cairo_pdf
+    )
+  }
+}
+
+
+# --- call function 
+plot_corr_iN_vs_iDA_by_genotype(
+  corr_mat = org_corr_mat,
+  annot_class_df = annotation_to_class_corrgeno,
+  annot_colors = annotation_class_colors_corrgeno,
+  gene_count_df = gene_count_df,
+  out_dir = out_dir_d50_CrossCorr_bubble
+)
+
 
 ```
 
