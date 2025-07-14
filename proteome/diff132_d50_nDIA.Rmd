@@ -99,11 +99,14 @@ dir.create(out_dir_d50_CrossCorr, recursive = TRUE, showWarnings = FALSE)
 out_dir_d50_CrossCorr_annotavg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/annot_avg"
 dir.create(out_dir_d50_CrossCorr_annotavg, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_d50_CrossCorr_GOavg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/GOavg"
-dir.create(out_dir_d50_CrossCorr_GOavg, recursive = TRUE, showWarnings = FALSE)
+out_dir_d50_CrossCorr_nMOSTGOavgannot <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/nMOSTGOavgannnot"
+dir.create(out_dir_d50_CrossCorr_nMOSTGOavgannot, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_CrossCorr_genoavg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/geno_avg"
 dir.create(out_dir_d50_CrossCorr_genoavg, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d50_CrossCorr_bubble <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/bubble"
+dir.create(out_dir_d50_CrossCorr_bubble, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_corrProtein <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/proteincorr"
 dir.create(out_dir_d50_corrProtein, recursive = TRUE, showWarnings = FALSE)
@@ -1918,6 +1921,8 @@ dev.off()
 ```
 
 
+
+
 ### VIIIc. Average correlation per annotation across genotypes
 ```{r}
 # --------------------------------------------------- #
@@ -2128,7 +2133,7 @@ log2FC_d50_annotated_GO <- log2FC_d50_annotated %>%
   ungroup()
 
 # --- Step 4. Save merged dataframe
-write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_CrossCorr_GOavg, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
+write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
 write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_dataframes, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
 
 # --- Step 5. Split iN and iDA into separate long-format dataframes
@@ -2156,8 +2161,8 @@ log2FC_iDA_df <- log2FC_d50_annotated_GO %>%
   ) %>%
   filter(!is.na(Cluster), is.finite(Score))
 
-write.csv(log2FC_iN_df, file.path(out_dir_d50_CrossCorr_GOavg, "log2FC_iN_long.csv"), row.names = FALSE)
-write.csv(log2FC_iDA_df, file.path(out_dir_d50_CrossCorr_GOavg, "log2FC_iDA_long.csv"), row.names = FALSE)
+write.csv(log2FC_iN_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, "log2FC_iN_long.csv"), row.names = FALSE)
+write.csv(log2FC_iDA_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, "log2FC_iDA_long.csv"), row.names = FALSE)
 
 # --- Step 6. Define and expand color palette
 col <- c(AGA="grey76", ARSA="grey76", ARSB="grey76", ASAH1="#D53E4F", PPT1="#FEE08B", CTSD="#FEE08B", GRN="#FEE08B",
@@ -2213,11 +2218,11 @@ NeuroClusterBarplot <- function(df_long, cluster_name = 2, cell_type = "iN") {
 
   file_tag <- paste0(gsub(" ", "", cluster_name), "_", cell_type)
 
-  ggsave(file.path(out_dir_d50_CrossCorr_GOavg, paste0("nMOST_LSD_Corr_Barplot_", file_tag, ".pdf")),
+  ggsave(file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, paste0("nMOST_LSD_Corr_Barplot_", file_tag, ".pdf")),
          p, width = 4, height = 4, device = cairo_pdf)
 
   write.csv(group_order_df,
-            file = file.path(out_dir_d50_CrossCorr_GOavg, paste0("Barplot_Mean_SEM_", file_tag, ".csv")),
+            file = file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, paste0("Barplot_Mean_SEM_", file_tag, ".csv")),
             row.names = FALSE)
 }
 
@@ -2329,7 +2334,62 @@ plot_bar_corr_per_annotation_multi(
 ```
 
 
-### ?? VIIIg. Pairwise protein–protein correlations
+### ?? VIIIg. Bubble plot of annotation corr of iN vs iDA neuron
+```{r}
+plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_colors, out_path = NULL) {
+  # Extract genotypes
+  all_genos <- intersect(rownames(corr_mat), paste0(disease_class_df$KO, "_iN"))  # or all_iN & iDA genos
+  genos_iN <- grep("_iN$", all_genos, value = TRUE)
+  genos_iDA <- sub("_iN$", "_iDA", genos_iN)
+
+  # Build long dataframe
+  df_list <- lapply(seq_along(genos_iN), function(i) {
+    tibble(
+      KO = sub("_iN$", "", genos_iN[i]),
+      Genotype_iN = genos_iN[i],
+      Genotype_iDA = genos_iDA[i],
+      Annotation = colnames(corr_mat),
+      Cor_iN = corr_mat[genos_iN[i], ],
+      Cor_iDA = corr_mat[genos_iDA[i], ]
+    )
+  })
+  bubble_df <- bind_rows(df_list) %>%
+    left_join(disease_class_df, by = "KO") %>%
+    mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
+
+  # Plot
+  p <- ggplot(bubble_df, aes(x = Cor_iN, y = Cor_iDA, color = DiseaseClass)) +
+    geom_point(alpha = 0.8, size = 2) +
+    scale_color_manual(values = disease_colors) +
+    facet_wrap(~ Annotation, scales = "free") +
+    theme_bw(base_size = 8) +
+    theme(panel.grid = element_blank()) +
+    labs(
+      x = "iN Correlation", y = "iDA Correlation",
+      title = "iN vs iDA Annotation Correlations per Genotype"
+    )
+
+  if (!is.null(out_path)) {
+    ggsave(file.path(out_path, "facet_bubbleplot_iN_vs_iDA_by_annotation.pdf"),
+           plot = p, width = 10, height = 8, device = cairo_pdf)
+  }
+
+  return(p)
+}
+
+
+plot_corr_bubble_by_annotation(
+  corr_mat = org_corr_mat,  # your correlation matrix (genotype × annotation)
+  disease_class_df = disease_class_df,  # KO → disease class mapping
+  disease_colors = disease_colors,
+  out_path = out_dir_d50_CrossCorr_bubble  # optional output path
+)
+
+```
+
+
+
+### ?? VIIIh. Pairwise protein–protein correlations
 ```{r}
 # ─────────────────────────────────────────────
 # 1. Load required packages
@@ -2601,6 +2661,19 @@ plot_corr_heatmap_by_annotation(
 
 ```
 
+
+# ??? IX. PRM of synaptic annotatons
+```{r}
+# --- Step 1: Read in the data from the CSV file
+# The CSV file has been pre-processed in Excel to replace all NA values with 0.
+diff132_d50_prm_synaptic <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/prm_protein_synapse.tsv', 
+                                    header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+
+
+
+
+```
 
 
 
