@@ -2916,70 +2916,56 @@ write.csv(SynPRM_log2fc_annotated, file = file.path(out_dir_d50_SynPRM, "log2fc_
 # PART 2: heatmaps, k-means clustering, Violin plots  
 # --------------------------------------------------- #
 
+# --- Step 0: Start from replicate-level intensities
+df_raw <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/prm_protein_synapse.tsv', 
+                                    header = TRUE, sep = '\t', stringsAsFactors = FALSE)
+
+
+# --- Step 1: pivot replicate columns
 library(tidyverse)
-library(pheatmap)
-library(RColorBrewer)
-library(ggrepel)
 
-# --- Step 1: Heatmap Plotting
-# 1. Pivot to long format per gene x neuron x genotype
-SynPRM_long <- SynPRM_log2fc_annotated %>%
+SynPRM_replicate_long <- df_raw %>%
   pivot_longer(
-    cols = starts_with("log2FC_"),
-    names_to = "Genotype",
-    names_prefix = "log2FC_",
-    values_to = "log2FC"
-  )
+    cols = starts_with("aa05"),  # your replicate columns
+    names_to = "Sample",
+    values_to = "Intensity"
+  ) %>%
+  mutate(
+    Sample = str_remove(Sample, "aa[0-9]+_YH_PRMLSD200_"),  # remove prefix
+    Time = str_extract(Sample, "d\\d+"),
+    NeuronType = str_extract(Sample, "i[AD]A"),
+    Genotype = str_extract(Sample, "ASAH1|MCOLN1|GBA1|GRN|Ctrl"),
+    Replicate = str_extract(Sample, "rep\\d+")
+  ) %>%
+  select(Genes, NeuronType, Genotype, Replicate, Intensity) %>%
+  filter(!is.na(Genes) & !is.na(Intensity))
 
-# 2. Construct unique condition label
-SynPRM_long <- SynPRM_long %>%
-  mutate(Condition = paste(Genotype, NeuronType, "log2_fold_change", sep = "_"))
+# --- Step 2: get Ctrl reference
+ctrl_medians <- SynPRM_replicate_long %>%
+  filter(Genotype == "Ctrl") %>%
+  group_by(NeuronType, Genes) %>%
+  summarise(Ctrl_Intensity = list(Intensity), .groups = "drop")
 
-# 3. Pivot wider to final matrix shape
-SynPRM_mat <- SynPRM_long %>%
-  select(Genes, Condition, log2FC) %>%
-  pivot_wider(
-  names_from = Condition,
-  values_from = log2FC,
-  values_fn = \(x) mean(x, na.rm = TRUE)
-) %>%
-  group_by(Genes) %>%
-  summarise(across(everything(), mean, na.rm = TRUE)) %>%  # in case of duplicates
-  ungroup() %>%
-  column_to_rownames("Genes") %>%
-  as.matrix()
-
-# optional: define annotation_col and ann_colors if needed
-SynPRM_annotation_col <- data.frame(
-  Neuron = ifelse(grepl("_iDA", colnames(SynPRM_mat)), "iDA", "iN"),
-  Genotype = str_extract(colnames(SynPRM_mat), "^[A-Z0-9]+")
-)
-rownames(SynPRM_annotation_col) <- colnames(SynPRM_mat)
-
-SynPRM_ann_colors <- list(
-  Neuron = c(iDA = "grey80", iN = "grey60"),
-  Genotype = RColorBrewer::brewer.pal(n = length(unique(SynPRM_annotation_col$Genotype)), "Set3") %>%
-    setNames(unique(SynPRM_annotation_col$Genotype))
-)
-
-
-
-library(dplyr)
-
-SynPRM_pval_df <- SynPRM_long %>%
+# --- Step 3: compute stats for KO vs Ctrl
+SynPRM_pval_df <- SynPRM_replicate_long %>%
   filter(Genotype != "Ctrl") %>%
   group_by(NeuronType, Genotype, Genes) %>%
-  summarise(
-    p_value = wilcox.test(
-      Intensity[Genotype == cur_group()$Genotype],
-      Intensity[Genotype == "Ctrl"]
-    )$p.value,
-    log2FC = median(Intensity[Genotype == cur_group()$Genotype], na.rm = TRUE) -
-             median(Intensity[Genotype == "Ctrl"], na.rm = TRUE),
-    .groups = "drop"
+  summarise(KO_Intensity = list(Intensity), .groups = "drop") %>%
+  left_join(ctrl_medians, by = c("NeuronType", "Genes")) %>%
+  rowwise() %>%
+  mutate(
+    p_value = if (length(KO_Intensity) > 0 && length(Ctrl_Intensity) > 0) {
+      tryCatch(wilcox.test(KO_Intensity, Ctrl_Intensity)$p.value, error = function(e) NA_real_)
+    } else NA_real_,
+    log2FC = if (length(KO_Intensity) > 0 && length(Ctrl_Intensity) > 0) {
+      median(KO_Intensity, na.rm = TRUE) - median(Ctrl_Intensity, na.rm = TRUE)
+    } else NA_real_
   ) %>%
+  ungroup() %>%
   mutate(FDR = p.adjust(p_value, method = "BH"))
 
+
+# --- Step 4: Volcano plot
 library(ggplot2)
 
 ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
