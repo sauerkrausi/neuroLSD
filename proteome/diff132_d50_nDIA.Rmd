@@ -2334,7 +2334,7 @@ plot_bar_corr_per_annotation_multi(
 ```
 
 
-### ?? VIIIg. Bubble plot of annotation corr of iN vs iDA neuron
+### VIIIg. Bubble plot of annotation corr of iN vs iDA neuron by genotype or annotation
 ```{r}
 # --------------------------------------------------- #
 # Bubble plot by disease class 
@@ -2402,7 +2402,7 @@ plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_c
 
   if (!is.null(out_path)) {
     ggsave(file.path(out_path, "facet_bubbleplot_iN_vs_iDA_by_annotation.pdf"),
-           plot = p, width = 15, height = 18, device = cairo_pdf)
+           plot = p, width = 20, height = 15, device = cairo_pdf)
   }
 
   return(p)
@@ -2422,20 +2422,20 @@ plot_corr_bubble_by_annotation(
 
 # --------------------------------------------------- #
 # Bubble plot by disease class 
-# facet wrapped by annotation
+# facet wrapped by genotype 
 # --------------------------------------------------- #
-# ----- 
-# data preparations 
-# ---  Extract gene counts per annotation
+
+# --- Step 4. Data preparations 
+# --- Step 4.1. Extract gene counts per annotation
 annotation_cols <- colnames(log2FC_d50_annotated_GO)[which(colnames(log2FC_d50_annotated_GO) == "Mito"):which(colnames(log2FC_d50_annotated_GO) == "vATPase")]
 
-# Count number of genes per annotation (non-NA or non-zero entries)
+# --- Step 4.2. Count number of genes per annotation (non-NA or non-zero entries)
 gene_count_df <- log2FC_d50_annotated_GO %>%
   select(all_of(annotation_cols)) %>%
   summarise(across(everything(), ~ sum(., na.rm = TRUE))) %>% 
   pivot_longer(everything(), names_to = "Annotation", values_to = "GeneCount")
 
-# --- Step 1. Define annotation color classes
+# --- Step 4.3. Define annotation color classes
 annotation_classes_corrgeno <- list(
   Mito = c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI"),
   Synaptic = c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic", "NeuroDev", "SVfusion", "Svendocytosis", "Svexocytosis"),
@@ -2456,14 +2456,12 @@ annotation_class_colors_corrgeno <- c(
   Misc = "grey90"
 )
 
-
-
-# Map annotation to classes
+# --- Step 4.4. Map annotation to classes
 annotation_to_class_corrgeno <- enframe(annotation_classes_corrgeno, name = "Class", value = "Annotation") %>%
   unnest(Annotation)
 
 
-# --- Function: Facet by Genotype, Save All
+# --- Step 5. Function: Facet by Genotype, Save All
 plot_corr_iN_vs_iDA_by_genotype <- function(corr_mat, annot_class_df, annot_colors, gene_count_df, out_dir) {
   # Ensure matrix is a data frame
   corr_mat <- as.data.frame(corr_mat)
@@ -2547,7 +2545,7 @@ plot_corr_iN_vs_iDA_by_genotype <- function(corr_mat, annot_class_df, annot_colo
 }
 
 
-# --- call function 
+# --- Step 6. call function 
 plot_corr_iN_vs_iDA_by_genotype(
   corr_mat = org_corr_mat,
   annot_class_df = annotation_to_class_corrgeno,
