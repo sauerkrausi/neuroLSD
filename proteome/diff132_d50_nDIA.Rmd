@@ -111,6 +111,9 @@ dir.create(out_dir_d50_CrossCorr_bubble, recursive = TRUE, showWarnings = FALSE)
 out_dir_d50_corrProtein <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/proteincorr"
 dir.create(out_dir_d50_corrProtein, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d50_SynPRM <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SynPRM"
+dir.create(out_dir_d50_SynPRM, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_LinReg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg"
 dir.create(out_dir_d50_LinReg, recursive = TRUE, showWarnings = FALSE)
 
@@ -2834,14 +2837,239 @@ plot_corr_heatmap_by_annotation(
 
 # ??? IX. PRM of synaptic annotatons
 ```{r}
+# --------------------------------------------------- #
+# PRM on select synaptic / endolyso annotation list 
+# PART 1: data import, wrangling and add annotations 
+# --------------------------------------------------- #
+
 # --- Step 1: Read in the data from the CSV file
 # The CSV file has been pre-processed in Excel to replace all NA values with 0.
 diff132_d50_prm_synaptic <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/prm_protein_synapse.tsv', 
-                                    header = TRUE, sep = ',', stringsAsFactors = FALSE)
+                                    header = TRUE, sep = '\t', stringsAsFactors = FALSE)
+
+# --- Step 2: Parse sample metadata from column names
+sample_info <- tibble(Sample = colnames(diff132_d50_prm_synaptic)[-(1:4)]) %>%
+  mutate(
+    Time = "d50",
+    NeuronType = str_extract(Sample, "_i[DN]A_") %>% str_remove_all("_"),
+    Genotype = str_extract(Sample, "_(Ctrl|ASAH1|MCOLN1|GBA1|GRN)_") %>% str_remove_all("_"),
+    Replicate = str_extract(Sample, "rep[1-3]"),
+    NewName = paste(Time, NeuronType, Genotype, Replicate, sep = "_")
+  )
+
+# Rename columns with parsed metadata
+colnames(diff132_d50_prm_synaptic)[-(1:4)] <- sample_info$NewName
+
+# --- Step 3: Calculate mean per genotype x neuron type
+# Identify the columns containing intensities only
+intensity_cols <- colnames(diff132_d50_prm_synaptic)[5:ncol(diff132_d50_prm_synaptic)]
+
+# Now reshape only intensity containing columns
+long_prm <- diff132_d50_prm_synaptic %>%
+  pivot_longer(cols = all_of(intensity_cols), names_to = "Sample", values_to = "Intensity") %>%
+  separate(Sample, into = c("Time", "NeuronType", "Genotype", "Replicate"), sep = "_") %>%
+  mutate(Genes = rep(diff132_d50_prm_synaptic$Genes, times = length(intensity_cols))) %>%
+  group_by(Genes, NeuronType, Genotype) %>%
+  summarise(MeanIntensity = mean(Intensity, na.rm = TRUE), .groups = "drop")
+
+# --- Step 4: Compute log2FC to Ctrl within neuron type
+SynPRM_log2fc_df <- long_prm %>%
+  pivot_wider(names_from = Genotype, values_from = MeanIntensity) %>%
+  mutate(
+    log2FC_ASAH1 = log2(ASAH1 / Ctrl),
+    log2FC_GBA1 = log2(GBA1 / Ctrl),
+    log2FC_GRN = log2(GRN / Ctrl),
+    log2FC_MCOLN1 = log2(MCOLN1 / Ctrl)
+  ) %>%
+  select(Genes, NeuronType, starts_with("log2FC"))
+
+# --- Step 5: Load Subcellular Annotation
+cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
+subcell_df <- read.csv(
+  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv",
+  stringsAsFactors = FALSE
+)[, cols_to_read]
+subcell_df[] <- lapply(subcell_df, as.character)
+
+long_subcell_df <- subcell_df %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Localization",
+    values_to = "Genes"
+  ) %>%
+  filter(!is.na(Genes) & Genes != "") %>%
+  mutate(Genes = trimws(Genes)) %>%
+  distinct()
+
+# --- Step 6: Annotate PRM data
+SynPRM_log2fc_annotated <- SynPRM_log2fc_df %>%
+  left_join(long_subcell_df, by = "Genes")
+
+# --- Step 7: Save outputs
+write.csv(SynPRM_log2fc_annotated, file = file.path(out_dir_d50_dataframes, "log2fc_prm_synaptic_annotated.csv"), row.names = FALSE)
+write.csv(SynPRM_log2fc_annotated, file = file.path(out_dir_d50_SynPRM, "log2fc_prm_synaptic_annotated.csv"), row.names = FALSE)
 
 
 
+# --------------------------------------------------- #
+# PRM on select synaptic / endolyso annotation list 
+# PART 2: heatmaps, k-means clustering, Violin plots  
+# --------------------------------------------------- #
 
+library(tidyverse)
+library(pheatmap)
+library(RColorBrewer)
+library(ggrepel)
+
+# --- Step 1: Heatmap Plotting
+# 1. Pivot to long format per gene x neuron x genotype
+SynPRM_long <- SynPRM_log2fc_annotated %>%
+  pivot_longer(
+    cols = starts_with("log2FC_"),
+    names_to = "Genotype",
+    names_prefix = "log2FC_",
+    values_to = "log2FC"
+  )
+
+# 2. Construct unique condition label
+SynPRM_long <- SynPRM_long %>%
+  mutate(Condition = paste(Genotype, NeuronType, "log2_fold_change", sep = "_"))
+
+# 3. Pivot wider to final matrix shape
+SynPRM_mat <- SynPRM_long %>%
+  select(Genes, Condition, log2FC) %>%
+  pivot_wider(
+  names_from = Condition,
+  values_from = log2FC,
+  values_fn = \(x) mean(x, na.rm = TRUE)
+) %>%
+  group_by(Genes) %>%
+  summarise(across(everything(), mean, na.rm = TRUE)) %>%  # in case of duplicates
+  ungroup() %>%
+  column_to_rownames("Genes") %>%
+  as.matrix()
+
+# optional: define annotation_col and ann_colors if needed
+SynPRM_annotation_col <- data.frame(
+  Neuron = ifelse(grepl("_iDA", colnames(SynPRM_mat)), "iDA", "iN"),
+  Genotype = str_extract(colnames(SynPRM_mat), "^[A-Z0-9]+")
+)
+rownames(SynPRM_annotation_col) <- colnames(SynPRM_mat)
+
+SynPRM_ann_colors <- list(
+  Neuron = c(iDA = "grey80", iN = "grey60"),
+  Genotype = RColorBrewer::brewer.pal(n = length(unique(SynPRM_annotation_col$Genotype)), "Set3") %>%
+    setNames(unique(SynPRM_annotation_col$Genotype))
+)
+
+# Clean matrix
+SynPRM_mat_clean <- SynPRM_mat[apply(SynPRM_mat, 1, function(x) all(is.finite(x))), ]
+
+# K-means clustering
+set.seed(42)
+SynPRM_mat_scaled <- t(scale(t(SynPRM_mat_clean)))
+k <- 2
+km <- kmeans(SynPRM_mat_scaled, centers = k)
+cluster_assignment <- factor(km$cluster)
+
+# Annotate and order by cluster
+SynPRM_mat_clustered <- SynPRM_mat_clean[order(cluster_assignment), ]
+cluster_annotation <- data.frame(Cluster = cluster_assignment[order(cluster_assignment)])
+rownames(cluster_annotation) <- rownames(SynPRM_mat_clustered)
+
+# Save clusters for joining
+SynPRM_cluster_df <- tibble(Genes = rownames(SynPRM_mat_clean), Cluster = cluster_assignment)
+
+# Merge cluster info into annotated df
+SynPRM_log2fc_annotated_cluster <- SynPRM_log2fc_annotated %>%
+  left_join(SynPRM_cluster_df, by = "Genes")
+
+# Heatmap
+pheatmap(
+  mat = SynPRM_mat,
+  scale = "row",
+  annotation_row = cluster_annotation,
+  color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdYlBu")))(100),
+  annotation_col = SynPRM_annotation_col,
+  annotation_colors = SynPRM_ann_colors,
+  breaks = seq(-4, 4, length.out = 101),
+  cluster_rows = FALSE,
+  cluster_cols = TRUE,
+  show_rownames = FALSE,
+  show_colnames = TRUE,
+  use_raster = FALSE,
+  cellheight = 10,
+  cellwidth  = 10,
+  angle_col = "90",
+  main = "Day 50 iN / iDA Data",
+  fontsize = 6,
+  border_color = NA
+  na_col = "grey70"
+)
+
+# Save updated dataframe
+write.csv(SynPRM_log2fc_annotated_cluster, file = file.path(out_dir_d50_SynPRM, "SynPRM_log2fc_annotated_clustered.csv"), row.names = FALSE)
+
+
+
+# --- Step 3: Violin Plot by Cluster
+plot_log2fc_violin <- function(data, cluster_levels, genotypes) {
+  # 1. Gather gene identifiers per cluster
+  cluster_genes <- map_dfr(cluster_levels, function(cl) {
+    data %>%
+      filter(Cluster == cl) %>%
+      select(Genes) %>%
+      mutate(annotation = paste0("Cluster_", cl))
+  })
+
+  # 2. Join cluster info back
+  plot_df <- cluster_genes %>%
+    left_join(data, by = "Genes")
+
+  # 3. Generate fc col names
+  fc_cols <- unlist(lapply(genotypes, function(g) {
+    paste0(g, c("_iDA_log2_fold_change", "_iN_log2_fold_change"))
+  }))
+
+  # 4. Long format for plotting
+  plot_df_long <- plot_df %>%
+    select(Genes, annotation, all_of(fc_cols)) %>%
+    pivot_longer(cols = -c(Genes, annotation), names_to = "sample", values_to = "log2FC") %>%
+    separate(sample, into = c("genotype", "neuron", NA), sep = "_")
+
+  # 5. Trim y-axis
+  full_range <- range(plot_df_long$log2FC, na.rm = TRUE)
+  midpoint <- median(plot_df_long$log2FC, na.rm = TRUE)
+  range_width <- diff(full_range)
+  scaled_half_range <- 0.15 * range_width
+  lower_lim <- midpoint - scaled_half_range
+  upper_lim <- midpoint + scaled_half_range
+
+  # 6. Violin plot
+  ggplot(plot_df_long, aes(x = neuron, y = log2FC, fill = annotation)) +
+    geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
+    geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85) +
+    geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+    facet_grid(rows = vars(genotype), cols = vars(annotation), scales = "free_y") +
+    scale_fill_brewer(palette = "Paired") +
+    labs(title = "log2 Fold Change by Cluster", x = "Neuron Type", y = "log2 Fold Change") +
+    coord_cartesian(ylim = c(lower_lim, upper_lim)) +
+    theme_bw() +
+    theme(
+      strip.text = element_text(size = 6, face = "bold"),
+      axis.text.x = element_text(angle = 0, hjust = 0.5),
+      panel.grid = element_blank()
+    )
+}
+
+# --- Run and save violin plot
+violin_plot <- plot_log2fc_violin(
+  data = SynPRM_log2fc_annotated_cluster,
+  cluster_levels = levels(SynPRM_log2fc_annotated_cluster$Cluster),
+  genotypes = c("ASAH1", "MCOLN1", "GBA1", "GRN")
+)
+violin_plot
 
 ```
 
