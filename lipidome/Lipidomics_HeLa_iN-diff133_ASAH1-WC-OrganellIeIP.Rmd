@@ -10,68 +10,71 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # load packackes
 ```{r}
-install.packages("GWalkR")
-library(GWalkR)
-#install.packages("gptstudio")
-library(gptstudio)
+# Core Data Manipulation & Tidyverse
+library(tidyverse)     # Includes ggplot2, dplyr, tidyr, readr, tibble, purrr, stringr, forcats
 library(plyr)
-library(grid)
-library(stringr)
-library(tidyverse)
 library(dplyr)
-library(tibble)
-library(purrr)
+library(data.table)
+library(broom)
 library(rlang)
-library(devtools)
-#install_github("vqv/ggbiplot")
-library(ggbiplot)
-library(ggrepel)
-library(scales)
-library(cowplot)
-library(NatParksPalettes)
-library(viridis)
-library(gridExtra)
+
+# Visualization: ggplot2 Extensions & Plots
 library(ggplot2)
 library(ggrepel)
-##install("gplots")
-library(gplots)
-library(ggVennDiagram)
-#install_github("jokergoo/ComplexHeatmap")
-library(ComplexHeatmap)
-#library(dendextend)
-#install.packages("magick")
-#library(magick)
-library(png)
-#devtools::install_github("rlbarter/superheat")
+library(ggpubr)
+library(ggpmisc)
+library(cowplot)
+library(patchwork)
+library(scales)
+library(gghighlight)
 library(superheat)
-#install.packages("fmsb")
-library(fmsb)
-#devtools::install_github("krassowski/complex-upset")
-library(ComplexUpset)
-#install.packages("UpSetR")
+library(ggVennDiagram)
 library(UpSetR)
-library(data.table)
-library(plotly)
-#library(gghighlight)
-library(viridis)
+library(ComplexUpset)
+
+# Heatmaps & Clustering
+library(pheatmap)
 library(RColorBrewer)
-#devtools::install_github("jbengler/tidyplots")
-library(tidyplots)
+library(circlize)
+#install.packages("magick")
+library(magick)
+
+# Color Palettes
+library(viridis)
+library(NatParksPalettes)
+
+
+# Dimension Reduction / Statistics
+library(limma)
+library(ggbiplot)
+
+# Interactive & Advanced Plotting
+library(plotly)
+library(circlize)
+
+# Utilities / Dev / Misc
+library(grid)
+library(gridExtra)
+library(Cairo)
+#library(png)
+library(devtools)
+library(lintr)
+library(gptstudio)
 ```
 
 
 # output dirs overview:
 ```{r}
-out_dir_lipids_HeLaWC <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaWC"
+out_dir_lipids_HeLaWC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaWC"
 dir.create(out_dir_lipids_HeLaWC, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lipids_HeLaLysoIP <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaLysoIP"
+out_dir_lipids_HeLaLysoIP <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaLysoIP"
 dir.create(out_dir_lipids_HeLaLysoIP, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lipids_iNWC <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNWC"
+out_dir_lipids_iNWC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNWC"
 dir.create(out_dir_lipids_iNWC, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lipids_iNLysoIP <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNLysoIP"
+out_dir_lipids_iNLysoIP <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNLysoIP"
 dir.create(out_dir_lipids_iNLysoIP, recursive = TRUE, showWarnings = FALSE)
 
 
@@ -90,8 +93,75 @@ contains evaluation for whole-cell and organelle-IP from HeLa or iNeuron d21
 load LysoIP data for volcano plots. Color by lipid class in minimal theme (BW)
 got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 ```{r}
-# load dataset for volcano 
+# ----------------------------
+# LysoIP HeLa 
+# bargraph of lipid classes
+# ----------------------------
+
+# --- Step 1. read in csv file
 lyso_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
+
+# Rename LBPA to LBPA-BMPs
+lyso_df <- lyso_df %>%
+  mutate(ClassKey = str_replace(ClassKey, "^LBPA$", "LBPA-BMP"))
+
+# --- Step 2. get colnames, calculate log2FC
+# Columns for replicates
+asah1_cols <- c("HeLaLysoIPASAH11", "HeLaLysoIPASAH12", "HeLaLysoIPASAH13")
+ctrl_cols  <- c("HeLaLysoIPCtrl1",  "HeLaLysoIPCtrl2",  "HeLaLysoIPCtrl3")
+
+# Per-lipid mean abundance
+lyso_fc_df <- lyso_df %>%
+  mutate(ASAH1_mean = rowMeans(across(all_of(asah1_cols)), na.rm = TRUE),
+         Ctrl_mean  = rowMeans(across(all_of(ctrl_cols)),  na.rm = TRUE),
+         log2FC     = log2(ASAH1_mean / Ctrl_mean),
+         ClassKey = str_replace(ClassKey, "^LBPA$", "LBPA-BMP"))
+
+
+# Convert p-value column to numeric if necessary
+lyso_df$X..LOG10.pValue. <- as.numeric(lyso_df$X..LOG10.pValue.)
+
+# Add p-value and -log10(p-value) to fc dataframe
+lyso_fc_df <- lyso_fc_df %>%
+  mutate(pvalue     = 10^(-X..LOG10.pValue.),
+         negLog10P  = X..LOG10.pValue.)
+
+# Class-level stats
+lyso_fc_stats <- lyso_fc_df %>%
+  group_by(ClassKey) %>%
+  summarise(mean_log2FC = mean(log2FC, na.rm = TRUE),
+            sd_log2FC   = sd(log2FC, na.rm = TRUE),
+            .groups = "drop")
+
+
+# --- Step 3. Barplot
+HelalysoIPplot <- ggplot() +
+  geom_col(data = lyso_fc_stats,
+           aes(x = ClassKey, y = mean_log2FC),
+           fill = "grey70", width = 0.7) +
+  geom_errorbar(data = lyso_fc_stats,
+                aes(x = ClassKey,
+                    ymin = mean_log2FC - sd_log2FC,
+                    ymax = mean_log2FC + sd_log2FC),
+                width = 0.25) +
+  geom_jitter(data = lyso_fc_df,
+              aes(x = ClassKey, y = log2FC),
+              alpha = 0.3, width = 0.25, size = 1) +
+  geom_hline(yintercept =0, linetype = "dashed", color = "black") +
+  scale_x_discrete(limits = c("Cer","Ch","ChE","DG","FA","GM1","GM2","GM3",
+                              "Hex1Cer","Hex2Cer","Hex3Cer","LBPA-BMP",
+                              "LPC","LPE","PC","PE","PI","PS","SM","TG")) +
+  labs(x = "Lipid class", y = "log2FC (ASAH1 / Ctrl)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.5))
+
+
+# --- Step 4. Save plot as pdf   
+ggsave(file.path(out_dir_lipids_HeLaLysoIP,"HelaLysoIP_Ctrl-ASAh1_lipidomics.pdf"), HelalysoIPplot, width = 6, height = 4, device = cairo_pdf)
+write.csv(lyso_fc_df, file = file.path(out_dir_lipids_HeLaLysoIP,"HeLaLysoIP_with_log2FC.csv"), row.names = FALSE)
+
+
+
 
 # Determine the number of unique classes
 num_colors <- length(unique(lyso_df$ClassKey))
@@ -99,13 +169,12 @@ num_colors <- length(unique(lyso_df$ClassKey))
 custom_colors <- colorRampPalette(brewer.pal(20, "RdYlBu"))(num_colors)
 
 # plot volcano 
-lysoVol <- ggplot(data = lyso_df, aes(x = FoldChange, y = X..LOG10.pValue.)) +
+HeLalysoVol <- ggplot(data = lyso_fc_df, aes(x = log2FC, y = negLog10P)) +
   geom_point(aes(color = ClassKey), alpha = 0.8, size = 3, stroke = 0) +
   geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
   geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
-  # Only label significant hits
   geom_text_repel(
-    data = subset(lyso_df, X..LOG10.pValue. > 2.0 & (FoldChange < -log2(3.5) | FoldChange > log2(3.5))),
+    data = subset(lyso_fc_df, negLog10P > 2.0 & (log2FC < -log2(3.5) | log2FC > log2(3.5))),
     aes(label = LipidMolec),
     force = 10, max.overlaps = 100, box.padding = 0.35
   ) +
@@ -117,62 +186,15 @@ lysoVol <- ggplot(data = lyso_df, aes(x = FoldChange, y = X..LOG10.pValue.)) +
     legend.position = "bottom"
   ) +
   ggtitle("Lysosomal Lipidome of HeLa Ctrl vs ASAH1") +
-  labs(x = "Log2 FC HeLa Ctrl vs ASAH1", y = "-Log10(q-value)")
-
-lysoVol +
+  labs(x = "Log2 FC (ASAH1 / Ctrl)", y = "-Log10(p-value)") +
   coord_fixed(ratio = 2.5)
 
-#save the plot in a square 
-ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Volcano_LysoIP_CtrlvsASAH1.pdf", width =15, height = 15, units = "cm", dpi=600)
+# --- Step x. save the plot in a square 
+ggsave(file.path(out_dir_lipids_HeLaLysoIP,"Volcano_LysoIP_CtrlvsASAH1.pdf"), HeLalysoVol, width = 15, height = 15, device = cairo_pdf)
 
 ```
 
 
-### LysoIP Data only plotting lipid groups of interest ###
-plot all data, but make lipid classes that are not of special interest grey. Focus on Cer, HexCer, BMPs, GMs etc 
-```{r}
-# Load dataset for volcano plot
-lyso_select_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header = TRUE, sep = ',', stringsAsFactors = FALSE)
-
-# Determine the unique classes excluding "Other"
-unique_classes <- setdiff(unique(lyso_select_df$ClassKeyMod), "Other")
-num_colors <- length(unique_classes)
-
-# Generate a color palette for the non-"Other" classes
-custom_colors <- colorRampPalette(brewer.pal(20, "RdYlBu"))(num_colors)
-
-# Create a named vector of colors, with "Other" as grey76
-color_map <- setNames(c(custom_colors, "grey76"), c(unique_classes, "Other"))
-
-# Plot volcano
-lysoSelVol <- ggplot(data = lyso_select_df, aes(x = log2.ASAH1.Ctrl., y = X..LOG10.pValue.)) +
-  geom_point(aes(color = ClassKeyMod), alpha = 0.8, size = 3, stroke = 0) +
-  geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
-  geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
-  # Only label significant hits
-  geom_text_repel(
-    data = subset(lyso_select_df, X..LOG10.pValue. > 2.0 & (log2.ASAH1.Ctrl. < -log2(3.5) | log2.ASAH1.Ctrl. > log2(3.5))),
-    aes(label = LipidMolec),
-    force = 10, max.overlaps = 100, box.padding = 0.35
-  ) +
-  scale_color_manual(values = color_map) +
-  theme_minimal() +
-  theme(
-    panel.background = element_rect(colour = "black", fill = NA, size = 1),
-    panel.grid = element_blank(),
-    legend.position = "bottom"
-  ) +
-  ggtitle("Select Lysosomal Lipidome of HeLa Ctrl vs ASAH1") +
-  labs(x = "Log2 FC HeLa Ctrl vs ASAH1", y = "-Log10(q-value)")
-
-# Display plot
-lysoSelVol + coord_fixed(ratio = 2.5)
-
-#save the plot in a square 
-ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Volcano_LysoIP_select_CtrlvsASAH1.pdf", width =15, height = 15, units = "cm", dpi=600)
-
-
-```
 
 
 
@@ -181,8 +203,55 @@ ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_H
 load WC data for volcano plots. Color by lipid class in minimal theme (BW)
 got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 ```{r}
+# ----------------------------
+# Whole-cell HeLa 
+# bargraph of lipid classes
+# ----------------------------
+
 # load dataset for volcano 
-WC_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_WC/volcano_plot_CtrlvsASAH1_noPI.csv', header=T, sep=',', stringsAsFactors = FALSE)
+HeLaWCIP_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-WholeCell-lipidomics_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
+
+
+### --- HeLa whole cell (6 replicates) -----------------------------------------
+rep_cols_wc <- paste0("HeLaWCuntagged", 1:6)
+
+wc_long <- HeLaWCIP_df %>% 
+  select(ClassKey, LipidMolec, all_of(rep_cols_wc)) %>% 
+  pivot_longer(all_of(rep_cols_wc), names_to = "Rep", values_to = "Abund")
+
+wc_stats <- wc_long %>% 
+  group_by(ClassKey) %>% 
+  summarise(mean_abund = mean(Abund, na.rm = TRUE),
+            sd_abund   = sd(Abund,   na.rm = TRUE),
+            .groups = "drop")
+
+ggplot() +
+  geom_col(data = wc_stats,
+           aes(x = ClassKey, y = mean_abund),
+           fill = "grey70", width = 0.7) +
+  geom_errorbar(data = wc_stats,
+                aes(x = ClassKey,
+                    ymin = mean_abund - sd_abund,
+                    ymax = mean_abund + sd_abund),
+                width = 0.25) +
+  geom_jitter(data = wc_long,
+              aes(x = ClassKey, y = Abund),
+              alpha = 0.3, width = 0.25, size = 1) +
+  scale_x_discrete(limits = c("Cer","ChE","CL","DG","DGDG","FA","GD1","GM1","GM2",
+                              "GM3","GT1a","Hex1Cer","Hex2Cer","Hex3Cer",
+                              "LBPA / BMP","LPC","LPE","PA","PC","PC-P","PE",
+                              "PG","PI","PS","SM","SPH","ST","TG")) +
+  labs(x = "Lipid class", y = "Abundance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
+
+
+
+
 
 # Determine the number of unique classes
 num_colors_wc <- length(unique(WC_df$ClassKey))
