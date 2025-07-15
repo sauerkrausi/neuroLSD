@@ -1,5 +1,5 @@
 ---
-title: "Lipidomics_HeLa_iN-diff134_ASAH1-WC-OrganellIeIP"
+title: "Lipidomics_HeLa_iN-diff133_ASAH1-WC-OrganellIeIP"
 output: html_document
 date: "`r Sys.Date()`"
 ---
@@ -8,7 +8,7 @@ date: "`r Sys.Date()`"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## load packackes
+# load packackes
 ```{r}
 install.packages("GWalkR")
 library(GWalkR)
@@ -60,13 +60,38 @@ library(tidyplots)
 ```
 
 
+# output dirs overview:
+```{r}
+out_dir_lipids_HeLaWC <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaWC"
+dir.create(out_dir_lipids_HeLaWC, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_lipids_HeLaLysoIP <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaLysoIP"
+dir.create(out_dir_lipids_HeLaLysoIP, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_lipids_iNWC <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNWC"
+dir.create(out_dir_lipids_iNWC, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_lipids_iNLysoIP <- "Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNLysoIP"
+dir.create(out_dir_lipids_iNLysoIP, recursive = TRUE, showWarnings = FALSE)
+
+
+
+
+```
+
+# background:
+contains evaluation for whole-cell and organelle-IP from HeLa or iNeuron d21
+- Hela untagged, Ctrl LysoIP, ASAH1-/- LysoIP
+- iNeuron untagged, Ctrl EL EndoIP, ASAH11-/- EL EndoIP
+
+
 # HeLa lipidomics data
-## Lyso-IP data ##
+## Lyso-IP
 load LysoIP data for volcano plots. Color by lipid class in minimal theme (BW)
 got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 ```{r}
 # load dataset for volcano 
-lyso_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/volcano_plot_CtrlvsASAH1.csv', header=T, sep=',', stringsAsFactors = FALSE)
+lyso_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 # Determine the number of unique classes
 num_colors <- length(unique(lyso_df$ClassKey))
