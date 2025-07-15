@@ -22,7 +22,16 @@ pip install -r requirements.txt
 ## 2.  Calcium Signal Processing
 
 **Script:** `cellposeSAM_CNER_Calcium-liveCell.Rmd`
-- Loads Cellpose/SAM mask outputs and raw calcium signal data
-- Computes ΔF/F traces per ROI
-- Performs binarization and extracts event synchrony
-- Generates per-cell trace plots and community-level summaries
+- Loads Cellpose/SAM segmentation masks and raw signal data
+- Extracts per-ROI fluorescence over time and computes ΔF/F normalization
+- Applies adaptive thresholding and event binarization
+- Calculates event timing, synchrony, and coactivity across the network
+- Outputs: raster plots, trace plots, synchrony matrices, and summary metrics
+
+
+## 3. Dataset-Level Meta-Analysis
+**Script:** `neuroLSD_CalciumMaster.Rmd`
+- Integrates multiple imaging experiments grouped by genotype, condition, or neuron type
+- Aggregates per-cell and per-experiment activity metrics
+- Computes inter-cell correlation networks and burst frequency distributions
+- Produces violin plots, correlation heatmaps, and condition-wise summary plots
