@@ -368,9 +368,56 @@ write.csv(endo_fc_df, file = file.path(out_dir_lipids_iNEndoIP, "iNEndoIP_with_l
 Data from day 21 iNeurons, untagged, Ctrl EL c125 and ASAH1 EL D4
 got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 ```{r}
-# load dataset for volcano 
-iNWC_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20250206_diff133_iNd21_Untagged_CtrlEL_ASAH1EL_EndoIP_Lipidomics/Eval/plots/volcano_data_CtrlASAH1.csv', header=T, sep=',', stringsAsFactors = FALSE)
+# ----------------------------
+# WC iN d21
+# bargraph of lipid classes
+# ----------------------------
 
+# --- Step 1. read in csv file
+iNd21_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-wholecell-iNeuron_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
+# --- Step 2. Define replicate columns and calculate log2FC
+asah1_cols <- paste0("ASAH1", 1:5)
+ctrl_cols  <- paste0("Ctrl", 1:5)
+
+iNWC_fc_df <- iNd21_df %>%
+  mutate(across(all_of(c(asah1_cols, ctrl_cols)), as.numeric),
+         ASAH1_mean = rowMeans(across(all_of(asah1_cols)), na.rm = TRUE),
+         Ctrl_mean  = rowMeans(across(all_of(ctrl_cols)),  na.rm = TRUE),
+         log2FCraw = log2(ASAH1_mean / Ctrl_mean),
+         log2FC = ifelse(is.finite(log2FCraw), log2FCraw, NA_real_),
+         ClassKey = str_replace(ClassKey, "^LBPA$", "LBPA-BMP"))
+
+# --- Step 3. Class-level stats
+iNWC_fc_stats <- iNWC_fc_df %>%
+  group_by(ClassKey) %>%
+  summarise(mean_log2FC = mean(log2FC, na.rm = TRUE),
+            sd_log2FC   = sd(log2FC,   na.rm = TRUE),
+            .groups = "drop")
+
+# --- Step 4. Barplot
+iNWC_plot <- ggplot() +
+  geom_col(data = iNWC_fc_stats,
+           aes(x = ClassKey, y = mean_log2FC),
+           fill = "grey70", width = 0.7) +
+  geom_errorbar(data = iNWC_fc_stats,
+                aes(x = ClassKey,
+                    ymin = mean_log2FC - sd_log2FC,
+                    ymax = mean_log2FC + sd_log2FC),
+                width = 0.25) +
+  geom_jitter(data = iNWC_fc_df,
+              aes(x = ClassKey, y = log2FC),
+              alpha = 0.3, width = 0.25, size = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_x_discrete(limits = c("Cer","DG","FA","GM1","GM2","GM3","Hex1Cer",
+                              "LBPA-BMP","PC","PE","PG","PI","PS","SM","TG")) +
+  labs(x = "Lipid class", y = "log2FC (ASAH1 / Ctrl)") +
+  theme_classic() +
+  ylim(-5,5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.5))
+
+# --- Step 5. Save outputs
+ggsave(file.path(out_dir_lipids_iNWC, "iNWC_Ctrl-ASAH1_lipidomics.pdf"), iNWC_plot, width = 6, height = 4, device = cairo_pdf)
+write.csv(iNWC_fc_df, file = file.path(out_dir_lipids_iNWC, "iNWC_with_log2FC.csv"), row.names = FALSE)
 
 ```
