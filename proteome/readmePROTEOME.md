@@ -2,22 +2,26 @@
 Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons at day 50 of in-vitro differentiation as well as proteomic analysis of isolated lysosomes. 
 
 ## active projects 
-- 🚧 `Diff118_d23_iN-iDA_TMTpro.Rmd`: Pipeline for TMTpro proteome analysis of day 23 iN and iDA whole cell samples
-- 🚧 `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Pipeline for TMTpro proteome analysis of isolated lysoosmes from HeLa Ctrl and ASAH1 mutants 
-- 🚧 `diff132_d50_nDIA.Rmd`: R Markdown pipeline for nDIA proteome analysis of whole cell iNeurons and iDA
-- 🚧 `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of whole cell, soma and axonal fractions of iNeurons
+🚧 `Diff118_d23_iN-iDA_TMTpro.Rmd`: Pipeline for TMTpro proteome analysis of day 23 iN and iDA whole cell samples
+-	TMTpro-based differential proteomic analysis of day 23 iN and iDA samples.
+-	Compares Ctrl, SMPD1-/-, and ASAH1-/- lines across neuronal types.
+-	Outputs log2FC, significance tables, and cluster-based GO term enrichments.
+-	Integrates curated subcellular annotations to identify lysosomal and synaptic changes.
 
+🚧 `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Pipeline for TMTpro proteome analysis of isolated lysoosmes from HeLa Ctrl and ASAH1 mutants 
+- Lysosome-enriched fraction proteomics from HeLa Ctrl vs ASAH1-/-.
+- Focus on lysosomal hydrolase abundance, lysosomal-endosomal pathway components, and autophagy markers.
+- Includes cluster-based heatmaps, scaled violin plots, and annotation-wise log2FC summaries.
+- Performs GO term enrichment per cluster and compares overlap with iNeuron datasets via Venn diagrams.
 
-## change log
-- [x] 2025-07-07: `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Added sig. up/down genes per group-comparison. Added GO term analyiss based on heatmap clusters. Updated outdir structure & code hierarchy. 
-- [x] 2025-07-07: `Diff118_d23_iN-iDA_TMTpro.Rmd`: Added sig. up/down genes per group-comparison. Added GO term analyiss based on heatmap clusters. Updated outdir structure & code hierarchy. 
-- [x] 2025-07-07: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: added RoR evaluation for axonal enrichment & rainfall plots. Added GO term analyiss based on heatmap clusters. Updated outdir structure & code hierarchy. 
-- [x] 2025-06-30: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: added synaptic endo / exyocytosis
-- [x] 2025-06-30: `diff132_d50_nDIA.Rmd`: added synaptic endo / exyocytosis
-- [x] 2025-06-30: `diff132_d50_nDIA.Rmd`: HeLa - neuron cross correlations
-- [x] 2025-06-30: `diff132_d50_nDIA.Rmd`: cleaned up R package library & harmonization of outdirs
-- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: harmonization of outdirs
-- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: cleaned up R package library
-- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: harmonization of outdirs
-- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: distribution function for select input organelles
-- [x] 2025-06-29: `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: Analysis of proteins enriched in ctrl vs ko and vice versa axon & soma 
+🚧 `diff132_d50_nDIA.Rmd`: R Markdown pipeline for nDIA proteome analysis of whole cell iNeurons and iDA
+- nDIA-based quantification of whole-cell iN and iDA neurons at day 50.
+- Performs pairwise KO vs Ctrl comparisons and neuron-type interaction effects.
+- Integrates organelle annotations and correlates KO profiles by organelle enrichment.
+- Generates cluster heatmaps, GO term enrichments, and cross-cell-type correlation plots (HeLa vs neuron).
+
+🚧 `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of whole cell, soma and axonal fractions of iNeurons
+-	TMTpro-based proteome of iNeuron whole-cell, soma, and axonal fractions at day 35.
+-	Evaluates compartment-specific KO effects using log2FC and RoR metrics.
+-	Correlates subcellular enrichment (e.g., endo/lyso/synaptic) with KO-induced localization shifts.
+-	Visualizes data via heatmaps, barplots, violin plots, and custom “rainfall” plots for spatial proteomic mapping.
