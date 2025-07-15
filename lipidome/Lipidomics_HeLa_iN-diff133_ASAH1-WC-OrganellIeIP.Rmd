@@ -8,7 +8,7 @@ date: "`r Sys.Date()`"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# load packackes
+# I. load packackes
 ```{r}
 # Core Data Manipulation & Tidyverse
 library(tidyverse)     # Includes ggplot2, dplyr, tidyr, readr, tibble, purrr, stringr, forcats
@@ -63,7 +63,7 @@ library(gptstudio)
 ```
 
 
-# output dirs overview:
+# II. output dirs overview:
 ```{r}
 out_dir_lipids_HeLaWC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaWC"
 dir.create(out_dir_lipids_HeLaWC, recursive = TRUE, showWarnings = FALSE)
@@ -74,8 +74,8 @@ dir.create(out_dir_lipids_HeLaLysoIP, recursive = TRUE, showWarnings = FALSE)
 out_dir_lipids_iNWC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNWC"
 dir.create(out_dir_lipids_iNWC, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lipids_iNLysoIP <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNLysoIP"
-dir.create(out_dir_lipids_iNLysoIP, recursive = TRUE, showWarnings = FALSE)
+out_dir_lipids_iNEndoIP <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNEndoIP"
+dir.create(out_dir_lipids_iNEndoIP, recursive = TRUE, showWarnings = FALSE)
 
 
 
@@ -88,8 +88,8 @@ contains evaluation for whole-cell and organelle-IP from HeLa or iNeuron d21
 - iNeuron untagged, Ctrl EL EndoIP, ASAH11-/- EL EndoIP
 
 
-# HeLa lipidomics data
-## Lyso-IP
+# III. HeLa lipidomics data
+## IIIa. Lyso-IP
 load LysoIP data for volcano plots. Color by lipid class in minimal theme (BW)
 got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 ```{r}
@@ -162,7 +162,10 @@ write.csv(lyso_fc_df, file = file.path(out_dir_lipids_HeLaLysoIP,"HeLaLysoIP_wit
 
 
 
-
+# ----------------------------
+# LysoIP HeLa 
+# Volcao plot
+# ----------------------------
 # Determine the number of unique classes
 num_colors <- length(unique(lyso_df$ClassKey))
 # Generate an interpolated palette with num_colors colors
@@ -195,11 +198,7 @@ ggsave(file.path(out_dir_lipids_HeLaLysoIP,"Volcano_LysoIP_CtrlvsASAH1.pdf"), He
 ```
 
 
-
-
-
-
-## WC data ##
+## IIIb. WC data
 load WC data for volcano plots. Color by lipid class in minimal theme (BW)
 got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 ```{r}
@@ -212,27 +211,31 @@ got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 HeLaWCIP_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-WholeCell-lipidomics_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 
-# --- Rename lipid class
+# --- Step 2. Rename lipid class
 HeLaWCIP_df <- HeLaWCIP_df %>%
   mutate(ClassKey = str_replace(ClassKey, "^LBPA$", "LBPA-BMP"))
 
-# --- Compute per-lipid means and log2FC
+# --- Step 3. Compute per-lipid means and log2FC
 asah1_cols_wc <- paste0("HeLaWCASAH1", 1:6)
 ctrl_cols_wc  <- paste0("HeLaWCControl", 1:6)
 
 HeLaWCIP_log2fc_df <- HeLaWCIP_df %>%
-  mutate(log2.ASAH1.Ctrl. = as.numeric(log2.ASAH1.Ctrl.),
-         ASAH1_mean = rowMeans(across(all_of(asah1_cols_wc)), na.rm = TRUE),
-         Ctrl_mean  = rowMeans(across(all_of(ctrl_cols_wc)),  na.rm = TRUE),
-         log2FC_raw = log2(ASAH1_mean / Ctrl_mean),
-         log2FC = ifelse(is.finite(log2FC_raw), log2FC_raw, NA_real_),
-         negLOG10.pValue. = log2.ASAH1.Ctrl. * log10(2)) %>%
+  mutate(across(all_of(c(asah1_cols_wc, ctrl_cols_wc)), as.numeric)) %>%
+  rowwise() %>%
+  mutate(
+    ASAH1_mean = mean(c_across(all_of(asah1_cols_wc)), na.rm = TRUE),
+    Ctrl_mean  = mean(c_across(all_of(ctrl_cols_wc)),  na.rm = TRUE),
+    log2FC_raw = log2(ASAH1_mean / Ctrl_mean),
+    log2FC = ifelse(is.finite(log2FC_raw), log2FC_raw, NA_real_),
+    negLOG10pValue = negLOG10pValue
+  ) %>%
+  ungroup() %>%
   select(-log2FC_raw)
 
-# --- Save updated dataframe
+# --- Step 4. Save updated dataframe
 write.csv(HeLaWCIP_log2fc_df, file = file.path(out_dir_lipids_HeLaWC, "HeLaWCIP_with_log2FC.csv"), row.names = FALSE)
 
-# --- Barplot
+# --- Step 5. plot Barplot & save
 HeLaWC_fc_stats <- HeLaWCIP_log2fc_df %>%
   filter(is.finite(log2FC)) %>%
   group_by(ClassKey) %>%
@@ -255,7 +258,7 @@ HeLaWC_ctrlasah1_lipids_bar <- ggplot() +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
   scale_x_discrete(limits = c("Cer","ChE","CL","DG","DGDG","FA","GD1","GM1","GM2","GM3",
                               "GT1a","Hex1Cer","Hex2Cer","Hex3Cer","LBPA-BMP","LPC","LPE",
-                              "PA","PC","PC-P","PE","PG","PI","PS","SM","SPH","ST","TG")) +
+                              "PA","PC","PE","PG","PI","PS","SM","SPH","ST","TG")) +
   labs(x = "Lipid class", y = "log2FC (ASAH1 / Ctrl)") +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 90, hjust = 0.5)) +
@@ -264,16 +267,24 @@ HeLaWC_ctrlasah1_lipids_bar <- ggplot() +
 ggsave(file.path(out_dir_lipids_HeLaWC, "HeLaWCIP_Ctrl-ASAH1_barplot.pdf"), HeLaWC_ctrlasah1_lipids_bar, width = 6, height = 4, device = cairo_pdf)
 
 
-# --- Volcano plot
+
+
+# ----------------------------
+# Whole-cell HeLa 
+# Volcao plot
+# ---------------------------
+
+# --- Step 6. define color based on lipid classes
 num_colors_wc <- length(unique(HeLaWCIP_log2fc_df$ClassKey))
 custom_colors_wc <- colorRampPalette(brewer.pal(27, "RdYlBu"))(num_colors_wc)
 
-HeLaWC_ctrl-asah1_lipids_vol <- ggplot(data = HeLaWCIP_log2fc_df, aes(x = log2FC, y = negLOG10.pValue.)) +
+# --- Step 7. plot volcano plot & save 
+HeLaWC_ctrlasah1_lipids_vol <- ggplot(data = HeLaWCIP_log2fc_df, aes(x = log2FC, y = negLOG10pValue)) +
   geom_point(aes(color = ClassKey), alpha = 0.8, size = 3, stroke = 0) +
   geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
   geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
   geom_text_repel(
-    data = subset(WC_df, negLOG10.pValue. > 3.0 & (log2FC < -log2(5) | log2FC > log2(5))),
+    data = subset(HeLaWCIP_log2fc_df, negLOG10pValue > 3.0 & (log2FC < -log2(5) | log2FC > log2(5))),
     aes(label = LipidMolec),
     force = 10, max.overlaps = 100, box.padding = 0.35
   ) +
@@ -285,63 +296,81 @@ HeLaWC_ctrl-asah1_lipids_vol <- ggplot(data = HeLaWCIP_log2fc_df, aes(x = log2FC
     legend.position = "bottom"
   ) +
   ggtitle("Whole Cell Lipidome of HeLa Ctrl vs ASAH1") +
-  labs(x = "Log2 FC (ASAH1 / Ctrl)", y = "-Log10(p-value)") +
-  coord_fixed(ratio = 1.10)
+  labs(x = "Log2 FC (ASAH1 / Ctrl)", y = "-Log10(p-value)")
 
-ggsave(file.path(out_dir_lipids_HeLaWC, "Volcano_WC_CtrlvsASAH1.pdf"), HeLaWC_ctrl-asah1_lipids_vol , width = 20, height = 20, units = "cm", dpi = 600)
+ggsave(file.path(out_dir_lipids_HeLaWC, "Volcano_WC_CtrlvsASAH1.pdf"), HeLaWC_ctrlasah1_lipids_vol , width = 20, height = 20, units = "cm", dpi = 600)
+
+
+```
+
+
+# IV. iNeuron WC and EndoIP
+## IVa. EndoIP
+```{r}
+# ----------------------------
+# EndoIP iN d21
+# bargraph of lipid classes
+# ----------------------------
+
+# --- Step 1. read in csv file
+endo_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/iNeuron_iNd21_EndoIP_normalized_data.csv', header=T, sep=',', stringsAsFactors = FALSE)
+
+# Define replicate columns for ASAH1 and Ctrl
+asah1_cols <- paste0("ASAH..._", 1:5)
+ctrl_cols  <- paste0("Control.", 1:5)
+
+# --- Step 2. Calculate per-lipid means and log2FC
+endo_fc_df <- endo_df %>%
+  mutate(across(all_of(c(asah1_cols, ctrl_cols)), as.numeric),
+         ASAH1_mean = rowMeans(across(all_of(asah1_cols)), na.rm = TRUE),
+         Ctrl_mean  = rowMeans(across(all_of(ctrl_cols)),  na.rm = TRUE),
+         log2FCraw = log2(ASAH1_mean / Ctrl_mean),
+         log2FC = ifelse(is.finite(log2FCraw), log2FCraw, NA_real_),
+         ClassKey = str_replace(ClassKey, "^LBPA$", "LBPA-BMP"))
+
+# --- Step 3. Class-level summary
+endo_fc_stats <- endo_fc_df %>%
+  group_by(ClassKey) %>%
+  summarise(mean_log2FC = mean(log2FC, na.rm = TRUE),
+            sd_log2FC   = sd(log2FC, na.rm = TRUE),
+            .groups = "drop")
+
+# --- Step 4. Plot barplot
+EndoIPplot <- ggplot() +
+  geom_col(data = endo_fc_stats,
+           aes(x = ClassKey, y = mean_log2FC),
+           fill = "grey70", width = 0.7) +
+  geom_errorbar(data = endo_fc_stats,
+                aes(x = ClassKey,
+                    ymin = mean_log2FC - sd_log2FC,
+                    ymax = mean_log2FC + sd_log2FC),
+                width = 0.25) +
+  geom_jitter(data = endo_fc_df,
+              aes(x = ClassKey, y = log2FC),
+              alpha = 0.3, width = 0.25, size = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_x_discrete(limits = c("Cer","DG","FA","GM1","GM2","GM3","Hex1Cer",
+                              "BMP","PC","PE","PG","PI","PS","SM","TG"))+
+  labs(x = "Lipid class", y = "log2FC (ASAH1 / Ctrl)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.5))
+
+# --- Step 5. Save as pdf and csv
+ggsave(file.path(out_dir_lipids_iNEndoIP, "iNEndoIP_Ctrl-ASAH1_lipidomics.pdf"),EndoIPplot, width = 6, height = 4, device = cairo_pdf)
+write.csv(endo_fc_df, file = file.path(out_dir_lipids_iNEndoIP, "iNEndoIP_with_log2FC.csv"),row.names = FALSE)
 
 
 ```
 
 
 
-## WC data if iNeurons ##
+## IVb. WC data
 Data from day 21 iNeurons, untagged, Ctrl EL c125 and ASAH1 EL D4
 got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 ```{r}
 # load dataset for volcano 
 iNWC_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20250206_diff133_iNd21_Untagged_CtrlEL_ASAH1EL_EndoIP_Lipidomics/Eval/plots/volcano_data_CtrlASAH1.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
-# Determine the number of unique classes
-num_colors_iNwc <- length(unique(iNWC_df$ClassKey))
-# Generate an interpolated palette with num_colors colors
-custom_colors_iNwc <- colorRampPalette(brewer.pal(32, "RdYlBu"))(num_colors_iNwc)
 
-# plot volcano 
-iNwcVol <- ggplot(data = iNWC_df, aes(x = FoldChange, y = negLOG10.pValue.)) +
-  geom_point(aes(color = ClassKey), alpha = 0.8, size = 3, stroke = 0) +
-  geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
-  geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
-  # Only label significant hits
-  geom_text_repel(
-    data = subset(iNWC_df, negLOG10.pValue. > 1.33 & (FoldChange < -log2(3) | FoldChange > log2(3))),
-    aes(label = LipidMolec),
-    force = 10, max.overlaps = 100, box.padding = 0.35
-  ) +
-  scale_color_manual(values = custom_colors_iNwc)  +
-  theme_minimal() +
-  theme(
-    panel.background = element_rect(colour = "black", fill = NA, size = 1),
-    panel.grid = element_blank(),
-    legend.position = "bottom"
-  ) +
-  ggtitle("Whole Cell Lipidome of iNeuron d21 Ctrl vs ASAH1") +
-  labs(x = "Log2 FC iN d21 Ctrl vs ASAH1", y = "-Log10(q-value)")
-
-iNwcVol +
-  scale_x_continuous(limits = c(-5, 5)) +
-  coord_fixed(ratio = 1.75)
-
-#save the plot in a square 
-ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20250206_diff133_iNd21_Untagged_CtrlEL_ASAH1EL_EndoIP_Lipidomics/Eval/plots/Volcano_iNWC_CtrlvsASAH1.pdf", width =20, height = 20, units = "cm", dpi=600)
 
 ```
-
-
-
-```{r}
-library(GWalkR)
-LysoLipidHeLaASAH1_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
-gwalkr(LysoLipidHeLaASAH1_df)
-```
-
