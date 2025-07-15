@@ -1,0 +1,247 @@
+---
+title: "Lipidomics_HeLa_iN-diff134_ASAH1-WC-OrganellIeIP"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## load packackes
+```{r}
+install.packages("GWalkR")
+library(GWalkR)
+#install.packages("gptstudio")
+library(gptstudio)
+library(plyr)
+library(grid)
+library(stringr)
+library(tidyverse)
+library(dplyr)
+library(tibble)
+library(purrr)
+library(rlang)
+library(devtools)
+#install_github("vqv/ggbiplot")
+library(ggbiplot)
+library(ggrepel)
+library(scales)
+library(cowplot)
+library(NatParksPalettes)
+library(viridis)
+library(gridExtra)
+library(ggplot2)
+library(ggrepel)
+##install("gplots")
+library(gplots)
+library(ggVennDiagram)
+#install_github("jokergoo/ComplexHeatmap")
+library(ComplexHeatmap)
+#library(dendextend)
+#install.packages("magick")
+#library(magick)
+library(png)
+#devtools::install_github("rlbarter/superheat")
+library(superheat)
+#install.packages("fmsb")
+library(fmsb)
+#devtools::install_github("krassowski/complex-upset")
+library(ComplexUpset)
+#install.packages("UpSetR")
+library(UpSetR)
+library(data.table)
+library(plotly)
+#library(gghighlight)
+library(viridis)
+library(RColorBrewer)
+#devtools::install_github("jbengler/tidyplots")
+library(tidyplots)
+```
+
+
+# HeLa lipidomics data
+## Lyso-IP data ##
+load LysoIP data for volcano plots. Color by lipid class in minimal theme (BW)
+got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
+```{r}
+# load dataset for volcano 
+lyso_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/volcano_plot_CtrlvsASAH1.csv', header=T, sep=',', stringsAsFactors = FALSE)
+
+# Determine the number of unique classes
+num_colors <- length(unique(lyso_df$ClassKey))
+# Generate an interpolated palette with num_colors colors
+custom_colors <- colorRampPalette(brewer.pal(20, "RdYlBu"))(num_colors)
+
+# plot volcano 
+lysoVol <- ggplot(data = lyso_df, aes(x = FoldChange, y = X..LOG10.pValue.)) +
+  geom_point(aes(color = ClassKey), alpha = 0.8, size = 3, stroke = 0) +
+  geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
+  geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
+  # Only label significant hits
+  geom_text_repel(
+    data = subset(lyso_df, X..LOG10.pValue. > 2.0 & (FoldChange < -log2(3.5) | FoldChange > log2(3.5))),
+    aes(label = LipidMolec),
+    force = 10, max.overlaps = 100, box.padding = 0.35
+  ) +
+  scale_color_manual(values = custom_colors)  +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(colour = "black", fill = NA, size = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  ) +
+  ggtitle("Lysosomal Lipidome of HeLa Ctrl vs ASAH1") +
+  labs(x = "Log2 FC HeLa Ctrl vs ASAH1", y = "-Log10(q-value)")
+
+lysoVol +
+  coord_fixed(ratio = 2.5)
+
+#save the plot in a square 
+ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Volcano_LysoIP_CtrlvsASAH1.pdf", width =15, height = 15, units = "cm", dpi=600)
+
+```
+
+
+### LysoIP Data only plotting lipid groups of interest ###
+plot all data, but make lipid classes that are not of special interest grey. Focus on Cer, HexCer, BMPs, GMs etc 
+```{r}
+# Load dataset for volcano plot
+lyso_select_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+# Determine the unique classes excluding "Other"
+unique_classes <- setdiff(unique(lyso_select_df$ClassKeyMod), "Other")
+num_colors <- length(unique_classes)
+
+# Generate a color palette for the non-"Other" classes
+custom_colors <- colorRampPalette(brewer.pal(20, "RdYlBu"))(num_colors)
+
+# Create a named vector of colors, with "Other" as grey76
+color_map <- setNames(c(custom_colors, "grey76"), c(unique_classes, "Other"))
+
+# Plot volcano
+lysoSelVol <- ggplot(data = lyso_select_df, aes(x = log2.ASAH1.Ctrl., y = X..LOG10.pValue.)) +
+  geom_point(aes(color = ClassKeyMod), alpha = 0.8, size = 3, stroke = 0) +
+  geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
+  geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
+  # Only label significant hits
+  geom_text_repel(
+    data = subset(lyso_select_df, X..LOG10.pValue. > 2.0 & (log2.ASAH1.Ctrl. < -log2(3.5) | log2.ASAH1.Ctrl. > log2(3.5))),
+    aes(label = LipidMolec),
+    force = 10, max.overlaps = 100, box.padding = 0.35
+  ) +
+  scale_color_manual(values = color_map) +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(colour = "black", fill = NA, size = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  ) +
+  ggtitle("Select Lysosomal Lipidome of HeLa Ctrl vs ASAH1") +
+  labs(x = "Log2 FC HeLa Ctrl vs ASAH1", y = "-Log10(q-value)")
+
+# Display plot
+lysoSelVol + coord_fixed(ratio = 2.5)
+
+#save the plot in a square 
+ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Volcano_LysoIP_select_CtrlvsASAH1.pdf", width =15, height = 15, units = "cm", dpi=600)
+
+
+```
+
+
+
+
+## WC data ##
+load WC data for volcano plots. Color by lipid class in minimal theme (BW)
+got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
+```{r}
+# load dataset for volcano 
+WC_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_WC/volcano_plot_CtrlvsASAH1_noPI.csv', header=T, sep=',', stringsAsFactors = FALSE)
+
+# Determine the number of unique classes
+num_colors_wc <- length(unique(WC_df$ClassKey))
+# Generate an interpolated palette with num_colors colors
+custom_colors_wc <- colorRampPalette(brewer.pal(27, "RdYlBu"))(num_colors_wc)
+
+# plot volcano 
+wcVol <- ggplot(data = WC_df, aes(x = FoldChange, y = negLOG10.pValue.)) +
+  geom_point(aes(color = ClassKey), alpha = 0.8, size = 3, stroke = 0) +
+  geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
+  geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
+  # Only label significant hits
+  geom_text_repel(
+    data = subset(WC_df, negLOG10.pValue. > 3.0 & (FoldChange < -log2(5) | FoldChange > log2(5))),
+    aes(label = LipidMolec),
+    force = 10, max.overlaps = 100, box.padding = 0.35
+  ) +
+  scale_color_manual(values = custom_colors_wc)  +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(colour = "black", fill = NA, size = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  ) +
+  ggtitle("Whole Cell Lipidome of HeLa Ctrl vs ASAH1") +
+  labs(x = "Log2 FC HeLa Ctrl vs ASAH1", y = "-Log10(q-value)")
+
+wcVol +
+  coord_fixed(ratio = 1.10)
+
+#save the plot in a square 
+ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_WC/Volcano_WC_CtrlvsASAH1.pdf", width =20, height = 20, units = "cm", dpi=600)
+
+```
+
+
+
+## WC data if iNeurons ##
+Data from day 21 iNeurons, untagged, Ctrl EL c125 and ASAH1 EL D4
+got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
+```{r}
+# load dataset for volcano 
+iNWC_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20250206_diff133_iNd21_Untagged_CtrlEL_ASAH1EL_EndoIP_Lipidomics/Eval/plots/volcano_data_CtrlASAH1.csv', header=T, sep=',', stringsAsFactors = FALSE)
+
+# Determine the number of unique classes
+num_colors_iNwc <- length(unique(iNWC_df$ClassKey))
+# Generate an interpolated palette with num_colors colors
+custom_colors_iNwc <- colorRampPalette(brewer.pal(32, "RdYlBu"))(num_colors_iNwc)
+
+# plot volcano 
+iNwcVol <- ggplot(data = iNWC_df, aes(x = FoldChange, y = negLOG10.pValue.)) +
+  geom_point(aes(color = ClassKey), alpha = 0.8, size = 3, stroke = 0) +
+  geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
+  geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
+  # Only label significant hits
+  geom_text_repel(
+    data = subset(iNWC_df, negLOG10.pValue. > 1.33 & (FoldChange < -log2(3) | FoldChange > log2(3))),
+    aes(label = LipidMolec),
+    force = 10, max.overlaps = 100, box.padding = 0.35
+  ) +
+  scale_color_manual(values = custom_colors_iNwc)  +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(colour = "black", fill = NA, size = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  ) +
+  ggtitle("Whole Cell Lipidome of iNeuron d21 Ctrl vs ASAH1") +
+  labs(x = "Log2 FC iN d21 Ctrl vs ASAH1", y = "-Log10(q-value)")
+
+iNwcVol +
+  scale_x_continuous(limits = c(-5, 5)) +
+  coord_fixed(ratio = 1.75)
+
+#save the plot in a square 
+ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20250206_diff133_iNd21_Untagged_CtrlEL_ASAH1EL_EndoIP_Lipidomics/Eval/plots/Volcano_iNWC_CtrlvsASAH1.pdf", width =20, height = 20, units = "cm", dpi=600)
+
+```
+
+
+
+```{r}
+library(GWalkR)
+LysoLipidHeLaASAH1_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_LysoIP/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
+gwalkr(LysoLipidHeLaASAH1_df)
+```
+
