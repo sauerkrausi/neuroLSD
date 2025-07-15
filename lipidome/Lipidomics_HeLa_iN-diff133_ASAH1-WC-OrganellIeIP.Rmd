@@ -208,68 +208,76 @@ got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 # bargraph of lipid classes
 # ----------------------------
 
-# load dataset for volcano 
+# --- Step 1. Load data
 HeLaWCIP_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-WholeCell-lipidomics_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 
-### --- HeLa whole cell (6 replicates) -----------------------------------------
-rep_cols_wc <- paste0("HeLaWCuntagged", 1:6)
+# --- Rename lipid class
+HeLaWCIP_df <- HeLaWCIP_df %>%
+  mutate(ClassKey = str_replace(ClassKey, "^LBPA$", "LBPA-BMP"))
 
-wc_long <- HeLaWCIP_df %>% 
-  select(ClassKey, LipidMolec, all_of(rep_cols_wc)) %>% 
-  pivot_longer(all_of(rep_cols_wc), names_to = "Rep", values_to = "Abund")
+# --- Compute per-lipid means and log2FC
+asah1_cols_wc <- paste0("HeLaWCASAH1", 1:6)
+ctrl_cols_wc  <- paste0("HeLaWCControl", 1:6)
 
-wc_stats <- wc_long %>% 
-  group_by(ClassKey) %>% 
-  summarise(mean_abund = mean(Abund, na.rm = TRUE),
-            sd_abund   = sd(Abund,   na.rm = TRUE),
+HeLaWCIP_log2fc_df <- HeLaWCIP_df %>%
+  mutate(log2.ASAH1.Ctrl. = as.numeric(log2.ASAH1.Ctrl.),
+         ASAH1_mean = rowMeans(across(all_of(asah1_cols_wc)), na.rm = TRUE),
+         Ctrl_mean  = rowMeans(across(all_of(ctrl_cols_wc)),  na.rm = TRUE),
+         log2FC_raw = log2(ASAH1_mean / Ctrl_mean),
+         log2FC = ifelse(is.finite(log2FC_raw), log2FC_raw, NA_real_),
+         negLOG10.pValue. = log2.ASAH1.Ctrl. * log10(2)) %>%
+  select(-log2FC_raw)
+
+# --- Save updated dataframe
+write.csv(HeLaWCIP_log2fc_df, file = file.path(out_dir_lipids_HeLaWC, "HeLaWCIP_with_log2FC.csv"), row.names = FALSE)
+
+# --- Barplot
+HeLaWC_fc_stats <- HeLaWCIP_log2fc_df %>%
+  filter(is.finite(log2FC)) %>%
+  group_by(ClassKey) %>%
+  summarise(mean_log2FC = mean(log2FC, na.rm = TRUE),
+            sd_log2FC   = sd(log2FC,   na.rm = TRUE),
             .groups = "drop")
 
-ggplot() +
-  geom_col(data = wc_stats,
-           aes(x = ClassKey, y = mean_abund),
+HeLaWC_ctrlasah1_lipids_bar <- ggplot() +
+  geom_col(data = HeLaWC_fc_stats,
+           aes(x = ClassKey, y = mean_log2FC),
            fill = "grey70", width = 0.7) +
-  geom_errorbar(data = wc_stats,
+  geom_errorbar(data = HeLaWC_fc_stats,
                 aes(x = ClassKey,
-                    ymin = mean_abund - sd_abund,
-                    ymax = mean_abund + sd_abund),
+                    ymin = mean_log2FC - sd_log2FC,
+                    ymax = mean_log2FC + sd_log2FC),
                 width = 0.25) +
-  geom_jitter(data = wc_long,
-              aes(x = ClassKey, y = Abund),
+  geom_jitter(data = HeLaWCIP_log2fc_df,
+              aes(x = ClassKey, y = log2FC),
               alpha = 0.3, width = 0.25, size = 1) +
-  scale_x_discrete(limits = c("Cer","ChE","CL","DG","DGDG","FA","GD1","GM1","GM2",
-                              "GM3","GT1a","Hex1Cer","Hex2Cer","Hex3Cer",
-                              "LBPA / BMP","LPC","LPE","PA","PC","PC-P","PE",
-                              "PG","PI","PS","SM","SPH","ST","TG")) +
-  labs(x = "Lipid class", y = "Abundance") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_x_discrete(limits = c("Cer","ChE","CL","DG","DGDG","FA","GD1","GM1","GM2","GM3",
+                              "GT1a","Hex1Cer","Hex2Cer","Hex3Cer","LBPA-BMP","LPC","LPE",
+                              "PA","PC","PC-P","PE","PG","PI","PS","SM","SPH","ST","TG")) +
+  labs(x = "Lipid class", y = "log2FC (ASAH1 / Ctrl)") +
   theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.5)) +
+  ylim(-6,6)
+
+ggsave(file.path(out_dir_lipids_HeLaWC, "HeLaWCIP_Ctrl-ASAH1_barplot.pdf"), HeLaWC_ctrlasah1_lipids_bar, width = 6, height = 4, device = cairo_pdf)
 
 
-
-
-
-
-
-
-
-# Determine the number of unique classes
-num_colors_wc <- length(unique(WC_df$ClassKey))
-# Generate an interpolated palette with num_colors colors
+# --- Volcano plot
+num_colors_wc <- length(unique(HeLaWCIP_log2fc_df$ClassKey))
 custom_colors_wc <- colorRampPalette(brewer.pal(27, "RdYlBu"))(num_colors_wc)
 
-# plot volcano 
-wcVol <- ggplot(data = WC_df, aes(x = FoldChange, y = negLOG10.pValue.)) +
+HeLaWC_ctrl-asah1_lipids_vol <- ggplot(data = HeLaWCIP_log2fc_df, aes(x = log2FC, y = negLOG10.pValue.)) +
   geom_point(aes(color = ClassKey), alpha = 0.8, size = 3, stroke = 0) +
   geom_hline(yintercept = 1.30102, colour = "#990000", linetype = "dashed") +
   geom_vline(xintercept = c(log2(0.5), log2(2)), colour = "#990000", linetype = "dashed") +
-  # Only label significant hits
   geom_text_repel(
-    data = subset(WC_df, negLOG10.pValue. > 3.0 & (FoldChange < -log2(5) | FoldChange > log2(5))),
+    data = subset(WC_df, negLOG10.pValue. > 3.0 & (log2FC < -log2(5) | log2FC > log2(5))),
     aes(label = LipidMolec),
     force = 10, max.overlaps = 100, box.padding = 0.35
   ) +
-  scale_color_manual(values = custom_colors_wc)  +
+  scale_color_manual(values = custom_colors_wc) +
   theme_minimal() +
   theme(
     panel.background = element_rect(colour = "black", fill = NA, size = 1),
@@ -277,13 +285,11 @@ wcVol <- ggplot(data = WC_df, aes(x = FoldChange, y = negLOG10.pValue.)) +
     legend.position = "bottom"
   ) +
   ggtitle("Whole Cell Lipidome of HeLa Ctrl vs ASAH1") +
-  labs(x = "Log2 FC HeLa Ctrl vs ASAH1", y = "-Log10(q-value)")
-
-wcVol +
+  labs(x = "Log2 FC (ASAH1 / Ctrl)", y = "-Log10(p-value)") +
   coord_fixed(ratio = 1.10)
 
-#save the plot in a square 
-ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/20241229_HeLa-Ctrl-ASAH1_LysoIP_lipidocmics/Eval_WC/Volcano_WC_CtrlvsASAH1.pdf", width =20, height = 20, units = "cm", dpi=600)
+ggsave(file.path(out_dir_lipids_HeLaWC, "Volcano_WC_CtrlvsASAH1.pdf"), HeLaWC_ctrl-asah1_lipids_vol , width = 20, height = 20, units = "cm", dpi = 600)
+
 
 ```
 
