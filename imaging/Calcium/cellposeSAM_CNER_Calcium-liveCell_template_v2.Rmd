@@ -248,20 +248,24 @@ process_pair <- function(file_id, intensity_df, centroids_df) {
   traces_dff <- intensity_filtered %>%
     mutate(across(where(is.numeric) & !matches("frame"), ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
 
-traces_long <- traces_dff %>%
-  mutate(ImageNumber = row_number(), FileID = file_id) %>%
-  pivot_longer(
-    cols = matches("^[0-9]+$"),
-    names_to = "ObjectNumber",
-    values_to = "Intensity_IntegratedIntensity_Fura",
-    values_drop_na = TRUE
-  ) %>%
-  mutate(
-    ObjectNumber = as.integer(ObjectNumber)
-  ) %>%
-  left_join(centroids_sub, by = c("ObjectNumber", "FileID")) %>%
-  left_join(distinct(intensity_sub, FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate), by = "FileID")
+  traces_long <- traces_dff %>%
+    mutate(ImageNumber = row_number(), FileID = file_id) %>%
+    pivot_longer(
+      cols = matches("^[0-9]+$"),
+      names_to = "ObjectNumber",
+      values_to = "Intensity_IntegratedIntensity_Fura",
+      values_drop_na = TRUE
+    ) %>%
+    mutate(ObjectNumber = as.integer(ObjectNumber)) %>%
+    left_join(centroids_sub, by = c("ObjectNumber", "FileID"))
 
+  metadata <- distinct(intensity_sub, FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate)
+
+  traces_long <- traces_long %>%
+    left_join(metadata, by = "FileID") %>%
+    select(FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate,
+           frame, ImageNumber, ObjectNumber,
+           Intensity_IntegratedIntensity_Fura, centroid_x, centroid_y)
 
   return(traces_long)
 }
