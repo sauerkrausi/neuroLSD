@@ -300,9 +300,9 @@ summary_list <- list()
 trace_dir <- file.path(base_path, "label_traces")
 dir.create(trace_dir, recursive = TRUE, showWarnings = FALSE)
 
-all_sample_ids <- unique(combined_df$file)
-centroid_df_clean <- centroid_df %>%
-  dplyr::mutate(file = as.character(file), ObjectNumber = as.integer(ObjectNumber))
+all_sample_ids <- unique(dff_results$FileID)
+centroid_df_clean <- dff_results %>%
+  distinct(FileID, ObjectNumber, centroid_x, centroid_y)
 
 # --- Palettes
 corr_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100)
@@ -314,9 +314,9 @@ for (sample_id in all_sample_ids) {
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
   # --- dF/F computation
-  df_sample <- dplyr::filter(combined_df, file == sample_id) %>%
+  df_sample <- dplyr::filter(dff_results, FileID == sample_id) %>%
     dplyr::select(-matches("^centroid_")) %>%
-    dplyr::left_join(centroid_df_clean, by = c("file", "ObjectNumber")) %>%
+    dplyr::left_join(centroid_df_clean, by = c("FileID", "ObjectNumber")) %>%
     dplyr::group_by(ObjectNumber) %>%
     dplyr::arrange(ImageNumber, .by_group = TRUE) %>%
     dplyr::mutate(
@@ -1005,11 +1005,11 @@ centroid_df <- left_join(centroid_df, corr_annot,
                          by = c("file" = "Sample", "ObjectNumber" = "Label"))
 
 # Ensure ObjectNumber has matching types
-combined_df  <- combined_df  %>% mutate(ObjectNumber = as.character(ObjectNumber))
+dff_results  <- dff_results  %>% mutate(ObjectNumber = as.character(ObjectNumber))
 centroid_df  <- centroid_df  %>% mutate(ObjectNumber = as.character(ObjectNumber))
 
 # Add genotype, bin, and join metadata
-traces_with_genotype <- combined_df %>%
+traces_with_genotype <- dff_results %>%
   left_join(centroid_df, by = c("file", "ObjectNumber")) %>%
   mutate(
     Bin = floor(ImageNumber / baseline_window),
