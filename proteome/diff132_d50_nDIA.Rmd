@@ -11,6 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # I. load packackes & set project directory
 ```{r setup, include=FALSE}
+# install.packages(c(
+#   "plyr", "ggrepel", "ggpubr", "ggpmisc", "patchwork", "gghighlight", 
+#   "ggVennDiagram", "UpSetR", "ComplexUpset", "pheatmap", "circlize", 
+#   "magick", "viridis", "NatParksPalettes", "limma", "bigstatsr", 
+#   "irlba", "ggbiplot", "plotly", "Cairo", "devtools", "lintr"
+# ))
+
 # Core Data Manipulation & Tidyverse
 library(tidyverse)     # Includes ggplot2, dplyr, tidyr, readr, tibble, purrr, stringr, forcats
 library(plyr)
@@ -37,7 +44,6 @@ library(ComplexUpset)
 library(pheatmap)
 library(RColorBrewer)
 library(circlize)
-#install.packages("magick")
 library(magick)
 
 # Color Palettes
@@ -62,7 +68,6 @@ library(Cairo)
 #library(png)
 library(devtools)
 library(lintr)
-library(gptstudio)
 
 ```
 
