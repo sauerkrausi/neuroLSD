@@ -101,6 +101,8 @@ timepoint <- "d21"
 genotypes <- c("Ctrl", "ASAH1")
 treatments <- c("Fed_Fluo4", "100mMKCL_Fluo4", "10µMCQNX_Fluo4")
 
+
+
 # Generate genotype_map
 sample_keys <- expand.grid(
   CellType  = celltype,
@@ -161,18 +163,17 @@ parse_metadata <- function(file_list) {
       Filename  = basename(File),
       File_base = str_remove(Filename, "_(intensity|centroids_valid)\\.csv$"),
       parts     = str_split(File_base, "_", simplify = TRUE),
-      Celltype  = parts[,1],
-      Timepoint = parts[,2],
-      Genotype  = parts[,3],
-      Treatment = parts[,4],
-      Replicate = ifelse(ncol(parts) >= 5, parts[,5], NA),
-      Sample    = str_c(Celltype, Timepoint, Genotype, Treatment, sep = "_")
+      nparts    = ncol(parts),
+      Celltype  = parts[, 1],
+      Timepoint = parts[, 2],
+      Genotype  = parts[, 3],
+      Treatment = ifelse(nparts == 5, parts[, 4], paste(parts[, 4], parts[, 5], sep = "_")),
+      Replicate = ifelse(nparts == 6, parts[, 6], ifelse(nparts == 5, parts[, 5], NA_character_)),
+      Sample    = str_c(Celltype, Timepoint, Genotype, Treatment, sep = "_"),
+      FileID    = str_c(Celltype, Timepoint, Genotype, Treatment, Replicate, sep = "_")
     ) %>%
-    select(File, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate)
+    select(File, Sample, FileID, Celltype, Timepoint, Genotype, Treatment, Replicate)
 }
-
-intensity_meta <- parse_metadata(intensity_files)
-centroids_meta <- parse_metadata(centroids_files)
 
 
 
@@ -198,6 +199,7 @@ write.csv(intensity_df, file = file.path(ca_results_dataframes, "intensity_df.cs
 write.csv(centroids_df, file = file.path(ca_results_dataframes, "centroids_df.csv"), row.names = FALSE)
 
 ```
+
 
 ## IIc. baseline correction, ∆F/F Processing
 ```{r}
@@ -225,31 +227,26 @@ calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, p
 # -----------------------------
 # Helper Function – Noise Filter + dF/F from in-memory data
 # -----------------------------
-process_pair <- function(sample_name, intensity_df, centroids_df) {
-  intensity_sub <- intensity_df %>% filter(Sample == sample_name)
-  centroids_sub <- centroids_df %>% filter(Sample == sample_name)
+process_pair <- function(file_id, intensity_df, centroids_df) {
+  intensity_sub <- intensity_df %>% filter(FileID == file_id)
+  centroids_sub <- centroids_df %>% filter(FileID == file_id)
 
-  # Sanity check
   if (nrow(intensity_sub) == 0 || nrow(centroids_sub) == 0) return(NULL)
 
-  # --- Compute filtering threshold from first frame
   intensity_matrix <- intensity_sub %>%
-    select(where(is.numeric), -time)  # drop time, keep only numeric ROI cols
+    select(where(is.numeric), -time)
 
   baseline_avg <- median(as.numeric(intensity_matrix[1, ]), na.rm = TRUE)
   filter_thresh <- 0.3 * baseline_avg
 
-  # --- Apply noise filter
   intensity_filtered <- intensity_sub %>%
     mutate(across(where(is.numeric) & !matches("time"),
                   ~pmax(.x, filter_thresh)))
 
-  # --- Calculate dF/F
   traces_dff <- intensity_filtered %>%
     mutate(across(where(is.numeric) & !matches("time"),
                   ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
 
-  # --- Reshape to long format
   traces_long <- traces_dff %>%
     mutate(ImageNumber = row_number()) %>%
     pivot_longer(
@@ -259,7 +256,7 @@ process_pair <- function(sample_name, intensity_df, centroids_df) {
       values_drop_na = TRUE
     ) %>%
     mutate(ObjectNumber = as.integer(ObjectNumber)) %>%
-    left_join(centroids_sub, by = c("ObjectNumber", "Sample"))
+    left_join(centroids_sub, by = c("FileID", "ObjectNumber"))
 
   return(traces_long)
 }
@@ -267,11 +264,10 @@ process_pair <- function(sample_name, intensity_df, centroids_df) {
 # -----------------------------
 # Run dF/F processing across all samples
 # -----------------------------
-dff_results <- map(unique(intensity_df$Sample), ~process_pair(.x, intensity_df, centroids_df)) %>%
+dff_results <- map(unique(intensity_df$FileID), ~process_pair(.x, intensity_df, centroids_df)) %>%
   compact() %>%
   bind_rows()
 
-# Save if needed
 write.csv(dff_results, file = file.path(ca_results_dataframes, "dff_results.csv"), row.names = FALSE)
 
 
@@ -285,7 +281,7 @@ summary_list <- list()
 ```
 
 
-## IIc. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
+## IId. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
 ```{r}
 # -------------------------------------------------
 # Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
