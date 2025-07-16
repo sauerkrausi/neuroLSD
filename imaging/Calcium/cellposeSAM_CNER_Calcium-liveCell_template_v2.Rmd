@@ -801,6 +801,7 @@ p_fire_norm_low_results <- plot_genotype_violin_with_stats(
   base_dir = ca_results_dir
 )
 
+
 # plot low / high active frames
 p_active_norm_high_results <- plot_genotype_violin_with_stats(
   df = events_df %>% filter(is_high_corr == TRUE),
@@ -809,11 +810,11 @@ p_active_norm_high_results <- plot_genotype_violin_with_stats(
   output_prefix = "percent_active_norm_high",
   base_dir = ca_results_dir
 )
-p_active_norm_high_results <- plot_genotype_violin_with_stats(
-  df = events_df %>% filter(is_high_corr == TRUE),
+p_active_norm_low_results <- plot_genotype_violin_with_stats(
+  df = events_df %>% filter(is_high_corr == FALSE),
   metric = "percent_active",
   ylab = "% Active / ROI",
-  output_prefix = "percent_active_norm_high",
+  output_prefix = "percent_active_norm_low",
   base_dir = ca_results_dir
 )
 
