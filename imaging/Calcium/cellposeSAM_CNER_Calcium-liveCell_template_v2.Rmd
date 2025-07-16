@@ -137,8 +137,6 @@ correlation_threshold <- 0.6       # Correlation threshold for network (used in 
 roi_corr_threshold    <- 0.4       # for identifying synchronized ROIs (used in spike rate filtering)
 image_dim <- c(1570, 1140)         # width, height in pixels of image. Need to backmap the roi activity network onto the image coordinats 
 
-
-
 ```
 
 
@@ -155,6 +153,9 @@ all_files <- list.files(base_path, full.names = TRUE)
 # Select files
 intensity_files <- all_files[str_detect(all_files, "_intensity\\.csv$")]
 centroids_files <- all_files[str_detect(all_files, "_centroids_valid\\.csv$")]
+intensity_meta <- parse_metadata(intensity_files)
+centroids_meta <- parse_metadata(centroids_files)
+
 
 # Metadata parser
 parse_metadata <- function(file_list) {
@@ -194,6 +195,8 @@ read_and_annotate_csv <- function(meta_df, is_centroid = FALSE) {
 # Final annotated data frames
 intensity_df <- read_and_annotate_csv(intensity_meta)
 centroids_df <- read_and_annotate_csv(centroids_meta, is_centroid = TRUE)
+intensity_df <- intensity_df %>%
+  rename(frame = time)
 
 write.csv(intensity_df, file = file.path(ca_results_dataframes, "intensity_df.csv"), row.names = FALSE)
 write.csv(centroids_df, file = file.path(ca_results_dataframes, "centroids_df.csv"), row.names = FALSE)
@@ -234,29 +237,31 @@ process_pair <- function(file_id, intensity_df, centroids_df) {
   if (nrow(intensity_sub) == 0 || nrow(centroids_sub) == 0) return(NULL)
 
   intensity_matrix <- intensity_sub %>%
-    select(where(is.numeric), -time)
+    select(where(is.numeric), -frame)
 
   baseline_avg <- median(as.numeric(intensity_matrix[1, ]), na.rm = TRUE)
   filter_thresh <- 0.3 * baseline_avg
 
   intensity_filtered <- intensity_sub %>%
-    mutate(across(where(is.numeric) & !matches("time"),
-                  ~pmax(.x, filter_thresh)))
+    mutate(across(where(is.numeric) & !matches("frame"), ~pmax(.x, filter_thresh)))
 
   traces_dff <- intensity_filtered %>%
-    mutate(across(where(is.numeric) & !matches("time"),
-                  ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
+    mutate(across(where(is.numeric) & !matches("frame"), ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
 
-  traces_long <- traces_dff %>%
-    mutate(ImageNumber = row_number()) %>%
-    pivot_longer(
-      cols = where(is.numeric) & !matches("time|ImageNumber"),
-      names_to = "ObjectNumber",
-      values_to = "Intensity_IntegratedIntensity_Fura",
-      values_drop_na = TRUE
-    ) %>%
-    mutate(ObjectNumber = as.integer(ObjectNumber)) %>%
-    left_join(centroids_sub, by = c("FileID", "ObjectNumber"))
+traces_long <- traces_dff %>%
+  mutate(ImageNumber = row_number(), FileID = file_id) %>%
+  pivot_longer(
+    cols = matches("^[0-9]+$"),
+    names_to = "ObjectNumber",
+    values_to = "Intensity_IntegratedIntensity_Fura",
+    values_drop_na = TRUE
+  ) %>%
+  mutate(
+    ObjectNumber = as.integer(ObjectNumber)
+  ) %>%
+  left_join(centroids_sub, by = c("ObjectNumber", "FileID")) %>%
+  left_join(distinct(intensity_sub, FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate), by = "FileID")
+
 
   return(traces_long)
 }
