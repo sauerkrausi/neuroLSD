@@ -855,30 +855,6 @@ p_amp_orig_low      <- p_amp_orig_low_results$p
 ## IIIf. Community Size Analysis (Non-parametric) 
 ```{r}
 # ----------------------------------------------------------------------
-# Ensure genotype is annotated
-# ----------------------------------------------------------------------
-# After computing comm_df and events_df and converting types
-comm_df <- comm_df %>%
-  mutate(Sample = as.character(Sample),
-         Label  = as.character(ObjectNumber))
-
-events_df <- events_df %>%
-  mutate(Sample = as.character(Sample),
-         Label  = as.character(ObjectNumber))
-
-# Add is_high_corr to comm_df
-comm_df <- left_join(
-  comm_df,
-  events_df %>% select(Sample, Label, is_high_corr),
-  by = c("Sample", "Label")
-)
-
-# now annotate Genotype
-comm_df <- add_genotype(comm_df, genotype_map)
-
-
-
-# ----------------------------------------------------------------------
 # Stratify by high/low correlation
 # ----------------------------------------------------------------------
 comm_high <- comm_df %>% filter(is_high_corr == TRUE)
@@ -972,7 +948,6 @@ write.csv(stats_comm_all,
 
 
 # plots
-comm_df <- add_genotype(comm_df, genotype_map)
 p_comm_high <- plot_genotype_violin_with_stats(
   df = comm_df %>% filter(is_high_corr == TRUE),
   metric = "CommunitySize",
@@ -998,36 +973,36 @@ p_comm_low <- plot_genotype_violin_with_stats(
 # Time-binned Firing Metrics Over Time (High vs Low Corr)
 # -------------------------------------------------
 
-# Add is_high_corr to centroid_df
-centroid_df <- centroid_df %>%
+# Add is_high_corr to centroids_df
+centroids_df <- centroids_df %>%
   mutate(ObjectNumber = as.character(ObjectNumber))
 
 corr_annot <- events_df %>%
   select(Sample, Label, is_high_corr) %>%
   mutate(Label = as.character(Label))
 
-centroid_df <- left_join(centroid_df, corr_annot,
-                         by = c("file" = "Sample", "ObjectNumber" = "Label"))
+centroids_df <- left_join(centroids_df, corr_annot,
+                          by = c("FileID" = "Sample", "ObjectNumber" = "Label"))
 
 # Ensure ObjectNumber has matching types
 dff_results  <- dff_results  %>% mutate(ObjectNumber = as.character(ObjectNumber))
-centroid_df  <- centroid_df  %>% mutate(ObjectNumber = as.character(ObjectNumber))
+centroids_df  <- centroids_df  %>% mutate(ObjectNumber = as.character(ObjectNumber))
 
 # Add genotype, bin, and join metadata
 traces_with_genotype <- dff_results %>%
-  left_join(centroid_df, by = c("file", "ObjectNumber")) %>%
+  left_join(centroids_df, by = c("FileID" = "file", "ObjectNumber")) %>%
   mutate(
-    Bin = floor(ImageNumber / baseline_window),
-    Genotype = purrr::map_chr(file, function(s) {
-      matched <- names(genotype_map)[str_detect(s, fixed(names(genotype_map)))]
-      if (length(matched) > 0) genotype_map[[matched[1]]] else NA_character_
-    })
-  ) %>%
+  Bin = floor(ImageNumber / baseline_window),
+  Genotype = purrr::map_chr(FileID, function(s) {
+    matched <- names(genotype_map)[str_detect(s, fixed(names(genotype_map)))]
+    if (length(matched) > 0) genotype_map[[matched[1]]] else NA_character_
+  })
+) %>%
   filter(!is.na(Genotype), !is.na(is_high_corr))
 
 # Calculate metrics per cell per bin
 binned_metrics <- traces_with_genotype %>%
-  group_by(file, ObjectNumber, Bin, Genotype, is_high_corr) %>%
+  group_by(FileID, ObjectNumber, Bin, Genotype, is_high_corr) %>%
   arrange(ImageNumber, .by_group = TRUE) %>%
   mutate(
     dF_F = calculate_dff(Intensity_IntegratedIntensity_Fura,
@@ -1049,7 +1024,7 @@ binned_metrics <- traces_with_genotype %>%
 
 # Summarize per genotype, bin, and corr group
 plot_df_split <- binned_metrics %>%
-  group_by(Genotype, Bin, is_high_corr) %>%
+  group_by(FileID, ObjectNumber, Bin, Genotype, is_high_corr) %>%
   summarise(
     mean_events = mean(firing_events, na.rm = TRUE),
     sem_events  = sd(firing_events, na.rm = TRUE) / sqrt(n()),
@@ -1187,14 +1162,14 @@ ggsave(file.path(ca_results_dir, "neuro_combinedplot_low.pdf"),
 # Combine and save all nonparametric p-values
 # ---------------------------------------------------------------------------
 all_pvals_high <- bind_rows(
-  calc_nonparametric_stats(events_df %>% filter(is_high_corr == TRUE), "firing_rate_per_min"),
+  calc_nonparametric_stats(events_df %>% filter(is_high_corr == TRUE), "events_per_min_norm"),
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == TRUE), "percent_active"),
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == TRUE), "spike_amplitude"),
   calc_nonparametric_stats(comm_df   %>% filter(is_high_corr == TRUE), "CommunitySize")
 ) %>% mutate(Source = "high_corr_ROIs")
 
 all_pvals_low <- bind_rows(
-  calc_nonparametric_stats(events_df %>% filter(is_high_corr == FALSE), "firing_rate_per_min"),
+  calc_nonparametric_stats(events_df %>% filter(is_high_corr == FALSE), "events_per_min_norm"),
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == FALSE), "percent_active"),
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == FALSE), "spike_amplitude"),
   calc_nonparametric_stats(comm_df   %>% filter(is_high_corr == FALSE), "CommunitySize")
