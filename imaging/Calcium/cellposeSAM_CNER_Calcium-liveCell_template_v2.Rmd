@@ -536,8 +536,13 @@ for (sample_id in all_sample_ids) {
 ## ---------------------------------------------------------------------------
 ## Plot CellposeSAM / CNER results — incl. events per min⁻¹ (±SEM)
 ## ---------------------------------------------------------------------------
+# Aggregate sample-level summaries
+normalised_metrics <- bind_with_sample(summary_list)
+# --------------------------
+# Helpers
+# --------------------------
 
-# Helper to bind lists with Sample column
+# Combine list entries into one dataframe and append sample name
 bind_with_sample <- function(lst) {
   imap_dfr(lst, ~ {
     if (!"Sample" %in% names(.x))
@@ -546,66 +551,64 @@ bind_with_sample <- function(lst) {
   })
 }
 
-# Function to standardize sample naming
+# Standardize sample names for matching
 clean_sample_names <- function(s) {
   s %>%
-    stringr::str_replace("_centroids_valid\\.csv$", "") %>%
-    stringr::str_replace("_\\d+$", "")
+    str_replace("_centroids_valid\\.csv$", "") %>%
+    str_replace("_\\d+$", "")
 }
 
-# Collapse lists to data frames
+# --------------------------
+# Bind event and community data
+# --------------------------
 events_df <- bind_with_sample(events_list)
 comm_df   <- bind_with_sample(comm_list)
 
-# Add Label column to comm_df for later joins
-comm_df <- comm_df %>%
-  mutate(Label = as.character(ObjectNumber))
+comm_df <- comm_df %>% mutate(Label = as.character(ObjectNumber))
 
-# Sanity check: Sample column exists
 stopifnot("Sample" %in% names(events_df), "Sample" %in% names(comm_df))
 
-# ----------------------------------------------------------------------
-# Standardize Sample column and assign Genotype
-# ----------------------------------------------------------------------
+# --------------------------
+# Standardize Sample & Assign Genotype
+# --------------------------
 
-# events_df: ROI-level
 events_df <- events_df %>%
   mutate(
-    Sample = clean_sample_names(as.character(Sample)),
-    Label  = as.character(ObjectNumber),
+    Sample   = clean_sample_names(as.character(Sample)),
+    Label    = as.character(ObjectNumber),
     Genotype = genotype_map[Sample]
   )
 
-# comm_df: ROI-level
 comm_df <- comm_df %>%
   mutate(
-    Sample = clean_sample_names(as.character(Sample)),
-    Label  = as.character(ObjectNumber),
+    Sample   = clean_sample_names(as.character(Sample)),
+    Label    = as.character(ObjectNumber),
     Genotype = genotype_map[Sample]
   )
 
-# normalised_metrics: sample-level
 normalised_metrics <- normalised_metrics %>%
   mutate(
     Sample   = clean_sample_names(as.character(Sample)),
     Genotype = genotype_map[Sample]
   )
 
-# ----------------------------------------------------------------------
-# ROI count and calculation of (un)normalized firing rates
-# ----------------------------------------------------------------------
+# --------------------------
+# ROI count and events/min calculation
+# --------------------------
+
 events_df <- events_df %>%
   group_by(Sample) %>%
   mutate(
-    n_labels             = n(),  # total ROIs in sample
-    events_per_min       = firing_events / (total_frames / (frame_rate * 60)),
-    events_per_min_norm  = events_per_min / n_labels
+    n_labels            = n(),
+    events_per_min      = firing_events / (total_frames / (frame_rate * 60)),
+    events_per_min_norm = events_per_min / n_labels
   ) %>%
   ungroup()
 
-# ----------------------------------------------------------------------
-# Add is_high_corr to normalised_metrics after aggregation
-# ----------------------------------------------------------------------
+# --------------------------
+# Propagate is_high_corr to sample-level
+# --------------------------
+
 events_corr <- events_df %>%
   select(Sample, is_high_corr) %>%
   distinct()
@@ -613,9 +616,10 @@ events_corr <- events_df %>%
 normalised_metrics <- normalised_metrics %>%
   left_join(events_corr, by = "Sample")
 
-# ----------------------------------------------------------------------
-# Set genotype-specific colors
-# ----------------------------------------------------------------------
+# --------------------------
+# Assign Genotype Colors
+# --------------------------
+
 unique_genos <- unique(na.omit(c(events_df$Genotype, comm_df$Genotype)))
 geno_cols <- setNames(colorRampPalette(base_colors)(length(unique_genos)), unique_genos)
 
