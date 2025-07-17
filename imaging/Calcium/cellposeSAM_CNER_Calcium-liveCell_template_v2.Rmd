@@ -103,7 +103,7 @@ treatments <- c("Fed_Fluo4", "100mMKCL_Fluo4", "10µMCQNX_Fluo4")
 
 
 
-# Generate genotype_map
+## Add ordered label factor for consistent plotting
 sample_keys <- expand.grid(
   CellType  = celltype,
   Timepoint = timepoint,
@@ -113,10 +113,19 @@ sample_keys <- expand.grid(
 ) %>%
   mutate(
     Key   = paste(CellType, Timepoint, Genotype, Treatment, sep = "_"),
-    Label = paste(CellType, Timepoint, Genotype, Treatment, sep = "_")  # customize here if needed
-  )
+    Label = paste(CellType, Timepoint, Genotype, Treatment, sep = "_"),
+    PlotOrder = paste(Genotype, match(Treatment, treatments), sep = "_")  # combine for sorting
+  ) %>%
+  arrange(factor(Genotype, levels = genotypes), match(Treatment, treatments)) %>%
+  mutate(Label = factor(Label, levels = Label))  # ordered factor for plotting
 
 genotype_map <- setNames(sample_keys$Label, sample_keys$Key)
+
+set_genotype_factor <- function(df) {
+  df %>%
+    mutate(Genotype = factor(Genotype, levels = levels(sample_keys$Label)))
+}
+
 
 # Colors auto-generated based on mapping
 geno_levels <- unique(unname(genotype_map))
@@ -637,10 +646,14 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
 
   metric_sym <- rlang::sym(metric)
 
-  # Ensure correct genotype order
-  valid_levels <- intersect(unique(unname(genotype_map)), unique(df$Genotype))
-  df <- df %>%
-    mutate(Genotype = factor(Genotype, levels = valid_levels))
+  # # Ensure correct genotype order
+  # valid_levels <- intersect(unique(unname(genotype_map)), unique(df$Genotype))
+  # df <- df %>%
+  #   mutate(Genotype = factor(Genotype, levels = valid_levels))
+
+  # Consistent genotype label ordering from sample_keys
+df <- df %>%
+  mutate(Genotype = factor(Genotype, levels = sample_keys$Label))
 
   # Add early exit if only one genotype
   if (length(unique(na.omit(df$Genotype))) < 2) {
