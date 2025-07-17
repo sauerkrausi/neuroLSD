@@ -121,6 +121,8 @@ sample_keys <- expand.grid(
 
 genotype_map <- setNames(sample_keys$Label, sample_keys$Key)
 
+
+# define function for proper genotype / sample order 
 set_genotype_factor <- function(df) {
   df %>%
     mutate(Genotype = factor(Genotype, levels = levels(sample_keys$Label)))
@@ -134,6 +136,19 @@ geno_cols <- setNames(base_colors, geno_levels)
 
 stopifnot(length(base_colors) >= length(geno_levels))
 
+# Manually assign colors based on genotype identity
+geno_cols <- setNames(
+  sapply(geno_levels, function(label) {
+    if (str_detect(label, "_Ctrl_")) {
+      "grey70"
+    } else if (str_detect(label, "_ASAH1_")) {
+      "lightblue"
+    } else {
+      "lightgrey"  # fallback for unrecognized
+    }
+  }),
+  geno_levels
+)
 
 # -------------------
 # ANALYSIS PARAMETERS
@@ -647,13 +662,9 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
   metric_sym <- rlang::sym(metric)
 
   # # Ensure correct genotype order
-  # valid_levels <- intersect(unique(unname(genotype_map)), unique(df$Genotype))
-  # df <- df %>%
-  #   mutate(Genotype = factor(Genotype, levels = valid_levels))
-
   # Consistent genotype label ordering from sample_keys
-df <- df %>%
-  mutate(Genotype = factor(Genotype, levels = sample_keys$Label))
+  df <- df %>%
+    mutate(Genotype = factor(Genotype, levels = sample_keys$Label))
 
   # Add early exit if only one genotype
   if (length(unique(na.omit(df$Genotype))) < 2) {
