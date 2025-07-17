@@ -74,8 +74,8 @@ library(dplyr)
 # USER INPUT & OUTDIRS 
 # -----------------------------------------
 # Path to root directory where input data and output folders are/will be stored
-#base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/nd2_labels/"
-base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/test2/"
+base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/nd2_labels/"
+
 
 # Subfolder with merged per-object intensity values from CellProfiler
 input_file <- file.path(base_path, "combined_intensity_df.csv")
@@ -129,12 +129,12 @@ set_genotype_factor <- function(df) {
 }
 
 
-# Colors auto-generated based on mapping
-geno_levels <- unique(unname(genotype_map))
-base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
-geno_cols <- setNames(base_colors, geno_levels)
-
-stopifnot(length(base_colors) >= length(geno_levels))
+# # Colors auto-generated based on mapping
+# geno_levels <- unique(unname(genotype_map))
+# base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
+# geno_cols <- setNames(base_colors, geno_levels)
+# 
+# stopifnot(length(base_colors) >= length(geno_levels))
 
 # Manually assign colors based on genotype identity
 geno_cols <- setNames(
@@ -640,6 +640,19 @@ events_corr <- events_df %>%
 normalised_metrics <- normalised_metrics %>%
   left_join(events_corr, by = "Sample")
 
+# Ensure matching types
+events_df <- events_df %>%
+  mutate(ObjectNumber = as.character(ObjectNumber))
+
+comm_df <- comm_df %>%
+  mutate(ObjectNumber = as.character(ObjectNumber))
+
+# Add is_high_corr to comm_df by (Sample, ObjectNumber)
+comm_df <- comm_df %>%
+  left_join(events_df %>% select(Sample, ObjectNumber, is_high_corr),
+            by = c("Sample", "ObjectNumber"))
+
+
 # --------------------------
 # Assign Genotype Colors
 # --------------------------
@@ -664,7 +677,7 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
   # # Ensure correct genotype order
   # Consistent genotype label ordering from sample_keys
   df <- df %>%
-    mutate(Genotype = factor(Genotype, levels = sample_keys$Label))
+    mutate(Genotype = factor(Genotype, levels = names(geno_cols)))
 
   # Add early exit if only one genotype
   if (length(unique(na.omit(df$Genotype))) < 2) {
@@ -707,8 +720,8 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
   # Plot
   p <- ggplot(df, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
     geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85) +
-    geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, linewidth = 0.3) +
     geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = jitter_color) +
+    geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, linewidth = 0.3) +
     scale_fill_manual(values = geno_cols) +
     labs(y = ylab, x = NULL) +
     theme_bw(base_size = 6) +
