@@ -130,7 +130,7 @@ set_genotype_factor <- function(df) {
 
 
 # # Colors auto-generated based on mapping
-# geno_levels <- unique(unname(genotype_map))
+ geno_levels <- unique(unname(genotype_map))
 # base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
 # geno_cols <- setNames(base_colors, geno_levels)
 # 
