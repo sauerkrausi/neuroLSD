@@ -864,6 +864,8 @@ comm_low  <- comm_df %>% filter(is_high_corr == FALSE)
 # Helper to run KW + Wilcoxon + plot
 # ----------------------------------------------------------------------
 analyze_comm_size <- function(df, label, outfile_prefix) {
+  df <- df %>% filter(!is.na(Genotype)) # drop NA genotypes
+  df$Genotype <- factor(df$Genotype)    # convert to factor with clean levels
   # Skip if only one genotype
   if (length(unique(df$Genotype[!is.na(df$Genotype)])) < 2) {
     message("Skipping analysis: only one genotype present.")
@@ -949,7 +951,7 @@ write.csv(stats_comm_all,
 
 # plots
 p_comm_high <- plot_genotype_violin_with_stats(
-  df = comm_df %>% filter(is_high_corr == TRUE),
+  df = comm_high,
   metric = "CommunitySize",
   ylab = "# Communities",
   output_prefix = "community_stats_high",
@@ -957,7 +959,7 @@ p_comm_high <- plot_genotype_violin_with_stats(
 )
 
 p_comm_low <- plot_genotype_violin_with_stats(
-  df = comm_df %>% filter(is_high_corr == FALSE),
+  df = comm_low,
   metric = "CommunitySize",
   ylab = "# Communities",
   output_prefix = "community_stats_low",
@@ -1147,7 +1149,7 @@ p_bin_amp_low       <- p_bin_amp_low
 # High correlation summary
 neuro_combinedplot_high <-
   ((p_fire_norm_high | p_active_norm_high | p_amp_orig_high) /
-   (p_bin_amp_high | p_bin_events_high | p_comm_high)) +
+   (p_bin_amp_high | p_bin_events_high | p_comm_high$p)) +
   plot_layout(heights = c(1, 1)) &
   theme(plot.margin = margin(5, 10, 5, 10))
 
@@ -1157,7 +1159,7 @@ ggsave(file.path(ca_results_dir, "neuro_combinedplot_high.pdf"),
 # Low correlation summary
 neuro_combinedplot_low <-
   ((p_fire_norm_low | p_active_norm_low | p_amp_orig_low) /
-   (p_bin_amp_low | p_bin_events_low | p_comm_low)) +
+   (p_bin_amp_low | p_bin_events_low | p_comm_low$p)) +
   plot_layout(heights = c(1, 1)) &
   theme(plot.margin = margin(5, 10, 5, 10))
 
@@ -1165,6 +1167,58 @@ ggsave(file.path(ca_results_dir, "neuro_combinedplot_low.pdf"),
        neuro_combinedplot_low, width = 12, height = 12, device = cairo_pdf)
 
 
+# ---------------------------------------------------------------------------
+# Replace ANOVA + t-tests with Kruskal-Wallis + Wilcoxon
+# ---------------------------------------------------------------------------
+comm_df <- comm_df %>%
+  mutate(ObjectNumber = as.character(ObjectNumber))
+
+events_df <- events_df %>%
+  mutate(ObjectNumber = as.character(ObjectNumber))
+
+comm_df <- comm_df %>%
+  left_join(events_df %>% select(Sample, ObjectNumber, is_high_corr),
+            by = c("Sample", "ObjectNumber"))
+
+
+calc_nonparametric_stats <- function(df, metric_col, group_col = "Genotype") {
+  df <- df %>%
+    dplyr::filter(!is.na(.data[[metric_col]]), !is.na(.data[[group_col]])) %>%
+    dplyr::mutate(!!group_col := factor(.data[[group_col]]))
+
+  if (length(unique(df[[group_col]])) < 2) {
+    return(tibble(
+      Metric = metric_col,
+      group1 = "Kruskal-Wallis",
+      group2 = "",
+      p.value = NA_real_,
+      sig_label = "NA"
+    ))
+  }
+
+  kruskal <- kruskal.test(reformulate(group_col, metric_col), data = df)
+  kw_pval <- kruskal$p.value
+
+  pairwise <- pairwise.wilcox.test(df[[metric_col]], df[[group_col]], p.adjust.method = "BH")
+  pairwise_df <- as.data.frame(as.table(pairwise$p.value)) %>%
+    rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
+    filter(!is.na(p.value)) %>%
+    mutate(Metric = metric_col) %>%
+    select(Metric, group1, group2, p.value)
+
+  all_pvals <- bind_rows(
+    tibble(Metric = metric_col, group1 = "Kruskal-Wallis", group2 = "", p.value = kw_pval),
+    pairwise_df
+  ) %>%
+    mutate(sig_label = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    ))
+
+  return(all_pvals)
+}
 # ---------------------------------------------------------------------------
 # Combine and save all nonparametric p-values
 # ---------------------------------------------------------------------------
