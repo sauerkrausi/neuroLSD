@@ -972,32 +972,36 @@ p_comm_low <- plot_genotype_violin_with_stats(
 # -------------------------------------------------
 # Time-binned Firing Metrics Over Time (High vs Low Corr)
 # -------------------------------------------------
-
-# Add is_high_corr to centroids_df
+# Ensure character type for join keys
 centroids_df <- centroids_df %>%
+  mutate(
+    ObjectNumber = as.character(ObjectNumber),
+    SampleID_trimmed = str_remove(FileID, "_\\d{3}$")
+  )
+
+# Get is_high_corr from events_df
+events_corr <- events_df %>%
+  select(Sample, ObjectNumber, is_high_corr) %>%
   mutate(ObjectNumber = as.character(ObjectNumber))
 
-corr_annot <- events_df %>%
-  select(Sample, Label, is_high_corr) %>%
-  mutate(Label = as.character(Label))
+# Join is_high_corr into centroids_df
+centroids_df <- centroids_df %>%
+  left_join(events_corr, by = c("SampleID_trimmed" = "Sample", "ObjectNumber"))
 
-centroids_df <- left_join(centroids_df, corr_annot,
-                          by = c("FileID" = "Sample", "ObjectNumber" = "Label"))
-
-# Ensure ObjectNumber has matching types
-dff_results  <- dff_results  %>% mutate(ObjectNumber = as.character(ObjectNumber))
-centroids_df  <- centroids_df  %>% mutate(ObjectNumber = as.character(ObjectNumber))
+# Ensure ObjectNumber is character in dff_results
+dff_results <- dff_results %>%
+  mutate(ObjectNumber = as.character(ObjectNumber))
 
 # Add genotype, bin, and join metadata
 traces_with_genotype <- dff_results %>%
-  left_join(centroids_df, by = c("FileID" = "file", "ObjectNumber")) %>%
+  left_join(centroids_df, by = c("FileID", "ObjectNumber")) %>%
   mutate(
-  Bin = floor(ImageNumber / baseline_window),
-  Genotype = purrr::map_chr(FileID, function(s) {
-    matched <- names(genotype_map)[str_detect(s, fixed(names(genotype_map)))]
-    if (length(matched) > 0) genotype_map[[matched[1]]] else NA_character_
-  })
-) %>%
+    Bin = floor(ImageNumber / baseline_window),
+    Genotype = purrr::map_chr(FileID, function(s) {
+      matched <- names(genotype_map)[str_detect(s, fixed(names(genotype_map)))]
+      if (length(matched) > 0) genotype_map[[matched[1]]] else NA_character_
+    })
+  ) %>%
   filter(!is.na(Genotype), !is.na(is_high_corr))
 
 # Calculate metrics per cell per bin
@@ -1024,7 +1028,7 @@ binned_metrics <- traces_with_genotype %>%
 
 # Summarize per genotype, bin, and corr group
 plot_df_split <- binned_metrics %>%
-  group_by(FileID, ObjectNumber, Bin, Genotype, is_high_corr) %>%
+  group_by(Genotype, Bin, is_high_corr) %>%
   summarise(
     mean_events = mean(firing_events, na.rm = TRUE),
     sem_events  = sd(firing_events, na.rm = TRUE) / sqrt(n()),
@@ -1033,11 +1037,15 @@ plot_df_split <- binned_metrics %>%
     mean_amp    = mean(spike_amplitude, na.rm = TRUE),
     sem_amp     = sd(spike_amplitude, na.rm = TRUE) / sqrt(n()),
     .groups = "drop"
-  )
+  ) %>%
+  mutate(Genotype = factor(Genotype, levels = names(geno_cols)))
 
 # Plot helper
 plot_timecourse <- function(data, metric, sem, ylab) {
-  ggplot(data, aes(x = Bin * baseline_window, y = .data[[metric]], color = Genotype)) +
+  data <- data %>%
+    mutate(Frame = Bin * baseline_window)
+
+  ggplot(data, aes(x = Frame, y = .data[[metric]], color = Genotype)) +
     geom_line(linewidth = 0.5) +
     geom_ribbon(aes(ymin = .data[[metric]] - .data[[sem]],
                     ymax = .data[[metric]] + .data[[sem]],
@@ -1050,7 +1058,6 @@ plot_timecourse <- function(data, metric, sem, ylab) {
           axis.text.x = element_text(angle = 90, hjust = 0.5),
           legend.position = "right")
 }
-
 # Generate and save plots by correlation group
 for (corr_state in c(TRUE, FALSE)) {
   tag <- if (corr_state) "highcorr" else "lowcorr"
@@ -1131,7 +1138,7 @@ p_bin_amp_low       <- p_bin_amp_low
 ```
 
 
-## IIIf. Combined Summary Figure & export of all values 
+## IIIh. Combined Summary Figure & export of all values 
 ```{r}
 # ---------------------------------------------------------------------------
 # Create combined six‑panel figure (high and low corr separately)
