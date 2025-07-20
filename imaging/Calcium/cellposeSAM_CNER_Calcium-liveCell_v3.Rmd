@@ -1,5 +1,5 @@
 ---
-title: "cellposeSAM_CNER_Calcium-liveCell_v3_diff138_d38"
+title: "cellposeSAM_CNER_Calcium-liveCell_v3"
 output: html_document
 date: "2025-07-17"
   chunk_output_type: console
@@ -71,17 +71,10 @@ library(dplyr)
 # extracts per-cell statistics.
 
 # -----------------------------------------
-# USER INPUT & OUTDIRS 
+# BASE DIR & OUTPUT DIRs
 # -----------------------------------------
 # Path to root directory where input data and output folders are/will be stored
 base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/test"
-
-
-# Subfolder with merged per-object intensity values from CellProfiler
-input_file <- file.path(base_path, "combined_intensity_df.csv")
-
-# Subfolder with per-object centroid coordinates (used for network overlay)
-centroid_file <- file.path(base_path, "combined_centroids_df.csv")
 
 # Path to save all plots
 ca_results_dir <- file.path(base_path, "calcium_analysis_results")
@@ -91,8 +84,11 @@ dir.create(ca_results_dir, showWarnings = FALSE, recursive = TRUE)
 ca_results_dataframes <- file.path(base_path, "calcium_analysis_results_dataframes")
 dir.create(ca_results_dataframes, recursive = TRUE, showWarnings = FALSE)
 
+
+
+
 # -------------------
-# SAMPLE INFO & COLOR MAPPING 
+# USER-INPUT 1: SAMPLE INFO 
 # -------------------
 
 # USER INPUT HERE 
@@ -101,66 +97,67 @@ timepoint <- "d38"
 genotypes <- c("Ctrl", "ASAH1")
 treatments <- c("Fed_Fluo4", "100mMKCL_Fluo4","500µMCaffeine_Fluo4","25µMCQNX10µMDAP5_Fluo4")
 
+# -------------------
+# USER-INPUT 2: ANALYSIS PARAMETERS
+# -------------------
+baseline_window <- 50             # Rolling window size for baseline (frames).
+frame_rate      <- 10
+smoothing_k     <- 10            # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
+correlation_threshold <- 0.4       # Correlation threshold for network (used in make_network())
+threshold_factor <- 0.8 
+roi_corr_threshold    <- 0.4       # for identifying synchronized ROIs (used in spike rate filtering)
+image_dim <- c(785, 570)         # width, height in pixels of image. Need to backmap the roi activity network onto the image coordinats 
+#image_dim <- c(1570, 1140)
 
 
-## Add ordered label factor for consistent plotting
+
+# -------------------
+# COLOR MAPPING (by SampleLabel)
+# -------------------
+
+# Construct sample_keys with SampleLabel logic
 sample_keys <- expand.grid(
-  CellType  = celltype,
-  Timepoint = timepoint,
   Genotype  = genotypes,
   Treatment = treatments,
   stringsAsFactors = FALSE
 ) %>%
   mutate(
-    Key   = paste(CellType, Timepoint, Genotype, Treatment, sep = "_"),
-    Label = paste(CellType, Timepoint, Genotype, Treatment, sep = "_"),
-    PlotOrder = paste(Genotype, match(Treatment, treatments), sep = "_")  # combine for sorting
+    SampleLabel = str_c(Genotype, Treatment, sep = "_"),
+    PlotOrder = paste(Genotype, match(Treatment, treatments), sep = "_")
   ) %>%
   arrange(factor(Genotype, levels = genotypes), match(Treatment, treatments)) %>%
-  mutate(Label = factor(Label, levels = Label))  # ordered factor for plotting
+  mutate(SampleLabel = factor(SampleLabel, levels = SampleLabel))
 
-genotype_map <- setNames(sample_keys$Label, sample_keys$Key)
+# Color mapping for plots
+geno_levels <- sample_keys$SampleLabel
 
-
-# define function for proper genotype / sample order 
-set_genotype_factor <- function(df) {
-  df %>%
-    mutate(Genotype = factor(Genotype, levels = levels(sample_keys$Label)))
-}
-
-
-# # Colors auto-generated based on mapping
-geno_levels <- unique(unname(genotype_map))
-base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
-stopifnot(length(base_colors) >= length(geno_levels))
-
-# Manually assign colors based on genotype identity
 geno_cols <- setNames(
-  sapply(geno_levels, function(label) {
-    if (str_detect(label, "_Ctrl_")) {
+  sapply(sample_keys$Genotype, function(geno) {
+    if (geno == "Ctrl") {
       "grey70"
-    } else if (str_detect(label, "_ASAH1_")) {
+    } else if (geno == "ASAH1") {
       "lightblue"
     } else {
-      "lightgrey"  # fallback for unrecognized
+      "lightgrey"
     }
   }),
-  geno_levels
+  sample_keys$SampleLabel
 )
 
-# -------------------
-# ANALYSIS PARAMETERS
-# -------------------
-baseline_window <- 50             # Rolling window size for baseline (frames).
-frame_rate      <- 10
-smoothing_k     <- 10            # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
-correlation_threshold <- 0.6       # Correlation threshold for network (used in make_network())
-roi_corr_threshold    <- 0.4       # for identifying synchronized ROIs (used in spike rate filtering)
-image_dim <- c(785, 570)         # width, height in pixels of image. Need to backmap the roi activity network onto the image coordinats 
-#image_dim <- c(1570, 1140)
+# Mapping from sample key (Celltype_Timepoint_Genotype_Treatment) to SampleLabel
+genotype_map <- setNames(sample_keys$SampleLabel,
+                         paste(celltype, timepoint, sample_keys$Genotype, sample_keys$Treatment, sep = "_"))
+
+
+# # # Colors auto-generated based on mapping
+# base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
+# stopifnot(length(base_colors) >= length(geno_levels))
+
+
+
 ```
 
-## IIb1. Helper Function – parse through paried intesnitsy / centroids and join in wide format
+## IIb. Helper Function – parse through paried intesnitsy / centroids and join in wide format
 ```{r}
 # -----------------------------
 # Helper Function – parse through paired intensity / centroids and join in wide format
@@ -229,7 +226,7 @@ for (file_id in matched_ids) {
 
 ```
 
-## IIb2. Helper Function – parse through matched df folder and add metadata
+## IIc. Helper Function – parse through matched df folder and add metadata
 ```{r}
 # -----------------------------
 # Add metadata to matched CSVs
@@ -274,14 +271,13 @@ for (file in matched_files) {
 }
 ```
 
-## IIb3. Helper Function – parse through matched df folder and add metadata
+## IId. Helper Function – parse through matched df folder and add metadata
 ```{r}
 # -----------------------------
 # Define paths
 # -----------------------------
 annotated_dir <- file.path(base_path, "02_annotated_dfs")
-out_dir <- file.path(base_path, "03_combined_dfs")
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+out_dir <- ca_results_dataframes
 
 # -----------------------------
 # Function: Build combined centroid and intensity data frames
@@ -328,13 +324,13 @@ build_centroid_intensity_dfs <- function(annotated_dir, out_dir) {
 # -----------------------------
 # Run the function
 # -----------------------------
-combined_dfs <- build_centroid_intensity_dfs(annotated_dir, out_dir)
+combined_dfs <- build_centroid_intensity_dfs(annotated_dir, ca_results_dataframes)
 centroid_df <- combined_dfs$centroid_df
 intensity_df <- combined_dfs$intensity_df
 ```
 
 
-## IIc4. ∆F/F Processing
+## IIe. ∆F/F Processing
 ```{r}
 # -----------------------------
 # Helper Function – ΔF/F Calculation
@@ -436,7 +432,7 @@ summary_list <- list()
 
 
 
-## IId5. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
+## IIf. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
 ```{r}
 # Setup
 trace_dir <- file.path(base_path, "label_traces")
@@ -529,8 +525,8 @@ for (sample_id in all_sample_ids) {
     p_scaled <- ggplot(df_trace, aes(frame, scaled)) + geom_line(color = "dodgerblue") + theme_minimal()
     p_binary <- ggplot(df_trace, aes(frame, binary)) + geom_step(color = "firebrick2") + theme_minimal()
 
-    ggsave(file.path(trace_dir, paste0(clean_sample_id, "_ROI_", roi_id, ".pdf")),
-           p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
+    # ggsave(file.path(trace_dir, paste0(clean_sample_id, "_ROI_", roi_id, ".pdf")),
+    #        p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
   }
 
   # Correlation matrix of binary spike trains
@@ -554,261 +550,155 @@ for (sample_id in all_sample_ids) {
   })
   dev.off()
 
-  # Continue with: high-corr ROI extraction, firing stats, burst filtering, and network plots
-}
-
-
-
-
-```
-
-
-
-
-
-## IId. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
-```{r}
-# -------------------------------------------------
-# Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
-# -------------------------------------------------
-
-# --- Setup
-trace_dir <- file.path(base_path, "label_traces")
-dir.create(trace_dir, recursive = TRUE, showWarnings = FALSE)
-
-all_sample_ids <- unique(dff_results$FileID)
-centroid_df_clean <- dff_results %>%
-  distinct(FileID, ObjectNumber, centroid_x, centroid_y)
-
-# --- Palettes
-corr_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100)
-node_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, "YlGnBu")))(100)
-
-for (sample_id in all_sample_ids) {
-  clean_sample_id <- gsub("_centroids_valid.csv$", "", basename(sample_id))
-  output_dir <- file.path(base_path, clean_sample_id)
-  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-
-  # --- dF/F computation
-  df_sample <- dplyr::filter(dff_results, FileID == sample_id) %>%
-    dplyr::select(-matches("^centroid_")) %>%
-    dplyr::left_join(centroid_df_clean, by = c("FileID", "ObjectNumber")) %>%
-    dplyr::group_by(ObjectNumber) %>%
-    dplyr::arrange(ImageNumber, .by_group = TRUE) %>%
-    dplyr::mutate(
-      dF_F         = calculate_dff(Intensity_IntegratedIntensity_Fura, window = baseline_window, smoothing_k = smoothing_k, percentile = 0.4),
-      dF_F_scaled  = dF_F / max(dF_F, na.rm = TRUE),
-      dF_F_binary  = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
-      spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
-    ) %>%
-    dplyr::ungroup()
-
-  # --- ROI trace plots
-  roi_ids <- unique(df_sample$ObjectNumber)
-  for (i in seq_along(roi_ids)) {
-    df_trace <- dplyr::filter(df_sample, ObjectNumber == roi_ids[i])
-    p_raw    <- ggplot(df_trace, aes(x = ImageNumber, y = Intensity_IntegratedIntensity_Fura)) + geom_line() + theme_minimal()
-    p_scaled <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_scaled)) + geom_line(color = "dodgerblue") + theme_minimal()
-    p_binary <- ggplot(df_trace, aes(x = ImageNumber, y = dF_F_binary)) + geom_step(color = "firebrick2") + theme_minimal()
-    ggsave(file.path(trace_dir, paste0(clean_sample_id, "_ROI_", i, ".pdf")),
-           p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
-  }
-
-  # --- Binary matrix and correlation matrix
-  mat <- df_sample %>%
-    dplyr::select(ObjectNumber, ImageNumber, dF_F_binary) %>%
-    tidyr::pivot_wider(names_from = ImageNumber, values_from = dF_F_binary) %>%
-    dplyr::arrange(ObjectNumber)
-  mat_matrix <- as.matrix(dplyr::select(mat, -ObjectNumber))
-  rownames(mat_matrix) <- mat$ObjectNumber
-  cor_mat <- cor(t(mat_matrix), use = "pairwise.complete.obs")
-  cor_mat[!is.finite(cor_mat)] <- 0
-
-  pdf(file.path(output_dir, paste0(clean_sample_id, "_CorrelationMatrix.pdf")), width = 6, height = 6)
-  pheatmap(cor_mat, clustering_method = "complete", main = "Correlation Matrix", border_color = NA, fontsize = 6)
-  dev.off()
-
-  # --- Identify synchronized ROIs based on roi_corr_threshold
-  roi_edge_idx <- which(cor_mat > roi_corr_threshold & upper.tri(cor_mat), arr.ind = TRUE)
-  roi_high_corr_ids <- unique(c(rownames(cor_mat)[roi_edge_idx[, 1]], rownames(cor_mat)[roi_edge_idx[, 2]]))
-
-  # --- Group label from map
-  group_label <- if (sample_id %in% names(genotype_map)) genotype_map[[sample_id]] else "Unknown"
-
-  # --- Filter short/long bursts
-  df_sample <- df_sample %>%
-    dplyr::group_by(ObjectNumber) %>%
-    dplyr::arrange(ImageNumber, .by_group = TRUE) %>%
-    dplyr::mutate(
-      run_id   = data.table::rleid(dF_F_binary),
-      run_len  = ave(dF_F_binary, ObjectNumber, run_id, FUN = length),
-      dF_F_binary = ifelse(dF_F_binary == 1 & (run_len < 1 | run_len > 60), 0, dF_F_binary)
-    ) %>%
-    dplyr::ungroup()
-
-  # --- Recompute rising edge
-  df_sample <- df_sample %>%
-    dplyr::group_by(ObjectNumber) %>%
-    dplyr::arrange(ImageNumber, .by_group = TRUE) %>%
-    dplyr::mutate(rising_edge = dF_F_binary == 1 & lag(dF_F_binary, default = 0) == 0) %>%
-    dplyr::ungroup()
-
-  # --- Tag synchronized ROIs
-  df_sample <- df_sample %>%
-    dplyr::mutate(is_high_corr = as.character(ObjectNumber) %in% roi_high_corr_ids)
-
-  # --- Firing stats (by ROI)
-  firing_stats <- df_sample %>%
-    dplyr::group_by(ObjectNumber, is_high_corr) %>%
-    dplyr::summarise(
-      firing_events   = sum(rising_edge, na.rm = TRUE),
-      total_frames    = dplyr::n(),
-      active_frames   = sum(dF_F_binary, na.rm = TRUE),
-      percent_active  = 100 * active_frames / total_frames,
-      spike_amplitude = if (sum(dF_F_binary == 1 & dF_F_scaled > 0.2, na.rm = TRUE) > 0) {
-        quantile(dF_F_scaled[dF_F_binary == 1 & dF_F_scaled > 0.2], 0.75, na.rm = TRUE)
-      } else {
-        NA_real_
-      },
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(
-      Sample = sample_id,
-      firing_rate_per_min = firing_events / (max(df_sample$ImageNumber, na.rm = TRUE) / (frame_rate * 60)),
-      Group = group_label
-    )
-  events_list[[clean_sample_id]] <- firing_stats
-
-  # --- Sample-level summary
-  n_cells        <- dplyr::n_distinct(df_sample$ObjectNumber)
-  n_frames_total <- max(df_sample$ImageNumber, na.rm = TRUE)
-  duration_min   <- n_frames_total / (frame_rate * 60)
-
-  sample_summary <- firing_stats %>%
-    dplyr::summarise(
-      Sample                          = clean_sample_id,
-      Total_cells                     = n_cells,
-      Total_firing_events             = sum(firing_events, na.rm = TRUE),
-      Firing_events_per_min           = Total_firing_events / duration_min,
-      Firing_events_per_min_norm      = Firing_events_per_min / n_cells,
-      Cells_active                    = sum(firing_events > 0, na.rm = TRUE),
-      Percent_cells_active            = 100 * Cells_active / n_cells,
-      Mean_percent_active_frames      = mean(percent_active, na.rm = TRUE),
-      Mean_percent_active_frames_norm = Mean_percent_active_frames
-    )
-  summary_list[[clean_sample_id]] <- sample_summary
-
-  # --- Correlation-based network edges
-  edge_list <- which(cor_mat > correlation_threshold & upper.tri(cor_mat), arr.ind = TRUE)
   
-  edges <- data.frame(
-    from = rownames(cor_mat)[edge_list[, 1]],
-    to   = rownames(cor_mat)[edge_list[, 2]],
-    corr = cor_mat[edge_list]
+  
+# --- Identify synchronized ROIs based on roi_corr_threshold
+roi_edge_idx <- which(cor_mat > roi_corr_threshold & upper.tri(cor_mat), arr.ind = TRUE)
+roi_high_corr_ids <- unique(c(rownames(cor_mat)[roi_edge_idx[, 1]], rownames(cor_mat)[roi_edge_idx[, 2]]))
+
+# --- Tag synchronized ROIs
+df_sample <- df_sample %>%
+  mutate(is_high_corr = ObjectNumber %in% roi_high_corr_ids)
+
+# --- Firing stats
+firing_stats <- tibble(
+  ObjectNumber = df_sample$ObjectNumber,
+  is_high_corr = df_sample$is_high_corr,
+  firing_events = rowSums(dff_binary == 1 & apply(dff_binary, 2, function(col) c(0, diff(col))) == 1, na.rm = TRUE),
+  active_frames = rowSums(dff_binary == 1, na.rm = TRUE),
+  total_frames = ncol(dff_binary)
+) %>%
+  mutate(
+    percent_active = 100 * active_frames / total_frames,
+    spike_rate = active_frames / total_frames,
+    Sample = sample_id,
+    firing_rate_per_min = firing_events / (total_frames / (frame_rate * 60)),
+    Group = if (sample_id %in% names(genotype_map)) genotype_map[[sample_id]] else "Unknown"
   )
-  
-  valid_corr_vals <- cor_mat[upper.tri(cor_mat) & is.finite(cor_mat)]
-  min_corr <- min(valid_corr_vals, na.rm = TRUE)
-  max_corr <- 1  # fixed upper bound
-  
-  # Handle degenerate cases
-  if (nrow(edges) == 0 || is.na(min_corr) || min_corr == max_corr) {
-    edges$corr_scaled <- integer(0)
-    edges$color <- character(0)
-  } else {
-    edges$corr_scaled <- scales::rescale(edges$corr, to = c(1, 100), from = c(min_corr, max_corr))
-    edges$corr_scaled <- pmin(pmax(round(edges$corr_scaled), 1), 100)
-    edges$color <- corr_palette[edges$corr_scaled]
-  }
-  
-  write.csv(edges, file.path(output_dir, "edge_list_with_colors.csv"), row.names = FALSE)
+events_list[[clean_sample_id]] <- firing_stats
 
-  # --- Coordinates and node coloring
-  coords <- df_sample %>%
-    dplyr::filter(!is.na(centroid_x), !is.na(centroid_y)) %>%
-    dplyr::group_by(ObjectNumber) %>%
-    dplyr::slice(1) %>%
-    dplyr::ungroup() %>%
-    dplyr::distinct(ObjectNumber, centroid_x, centroid_y) %>%
-    dplyr::mutate(Label = as.character(ObjectNumber))
+# --- Summary per sample
+sample_summary <- firing_stats %>%
+  summarise(
+    Sample                     = unique(Sample),
+    Total_cells                = n(),
+    Total_firing_events        = sum(firing_events, na.rm = TRUE),
+    Firing_events_per_min      = mean(firing_rate_per_min, na.rm = TRUE),
+    Firing_events_per_min_norm = Total_firing_events / Total_cells,
+    Cells_active               = sum(firing_events > 0, na.rm = TRUE),
+    Percent_cells_active       = 100 * Cells_active / Total_cells,
+    Mean_percent_active_frames = mean(percent_active, na.rm = TRUE),
+    Mean_spike_rate            = mean(spike_rate, na.rm = TRUE)
+  )
 
-  spike_rates <- df_sample %>%
-    dplyr::group_by(ObjectNumber) %>%
-    dplyr::summarise(spike_rate = mean(dF_F_binary, na.rm = TRUE)) %>%
-    dplyr::mutate(Label = as.character(ObjectNumber))
+summary_list[[clean_sample_id]] <- sample_summary
 
-  coords <- dplyr::left_join(coords, spike_rates, by = "Label") %>%
-    dplyr::mutate(
-      color_idx = pmin(pmax(round(scales::rescale(spike_rate, to = c(1, 100))), 1), 100),
-      color = node_palette[color_idx]
-    )
 
-  # --- Network plotting wrapper
-  plot_network <- function(node_colors, edge_colors, legend_title, legend_range, file_name) {
-    pdf(file.path(output_dir, file_name), width = 6.9, height = 5)
-    layout(matrix(c(1, 2), nrow = 1), widths = c(5, 1.5))
-    par(mar = c(4, 4, 2, 1))
-    plot(coords$centroid_x, coords$centroid_y,
-         pch = 21, bg = node_colors, col = "grey50",
-         xlab = "X", ylab = "Y", main = clean_sample_id,
-         asp = 1, xlim = c(0, image_dim[1]), ylim = c(0, image_dim[2]))
-    for (i in seq_len(nrow(edges))) {
-      p1 <- dplyr::filter(coords, Label == edges$from[i])
-      p2 <- dplyr::filter(coords, Label == edges$to[i])
-      if (nrow(p1) == 1 && nrow(p2) == 1) {
-        segments(p1$centroid_x, p1$centroid_y, p2$centroid_x, p2$centroid_y,
-                 col = edge_colors[i], lwd = 1)
-      }
+
+# --- Coordinates and node coloring
+coords <- df_sample %>%
+  filter(!is.na(centroid_x), !is.na(centroid_y)) %>%
+  select(ObjectNumber, centroid_x, centroid_y)
+
+coords <- left_join(coords, firing_stats, by = "ObjectNumber") %>%
+  mutate(
+    Label = as.character(ObjectNumber),
+    color_idx = pmin(pmax(round(scales::rescale(spike_rate, to = c(1, 100))), 1), 100),
+    color = node_palette[color_idx]
+  )
+
+# --- Edge list
+edge_list <- which(cor_mat > correlation_threshold & upper.tri(cor_mat), arr.ind = TRUE)
+edges <- data.frame(
+  from = rownames(cor_mat)[edge_list[, 1]],
+  to   = rownames(cor_mat)[edge_list[, 2]],
+  corr = cor_mat[edge_list]
+)
+
+valid_corr_vals <- cor_mat[upper.tri(cor_mat) & is.finite(cor_mat)]
+min_corr <- min(valid_corr_vals, na.rm = TRUE)
+max_corr <- 1
+
+if (nrow(edges) == 0 || is.na(min_corr) || min_corr == max_corr) {
+  edges$corr_scaled <- integer(0)
+  edges$color <- character(0)
+} else {
+  edges$corr_scaled <- scales::rescale(edges$corr, to = c(1, 100), from = c(min_corr, max_corr))
+  edges$corr_scaled <- pmin(pmax(round(edges$corr_scaled), 1), 100)
+  edges$color <- corr_palette[edges$corr_scaled]
+}
+
+write.csv(edges, file.path(output_dir, "edge_list_with_colors.csv"), row.names = FALSE)
+
+# --- Network plotting wrapper
+plot_network <- function(node_colors, edge_colors, legend_title, legend_range, file_name) {
+  pdf(file.path(output_dir, file_name), width = 6.9, height = 5)
+  layout(matrix(c(1, 2), nrow = 1), widths = c(5, 1.5))
+  par(mar = c(4, 4, 2, 1))
+  plot(coords$centroid_x, coords$centroid_y,
+       pch = 21, bg = node_colors, col = "grey50",
+       xlab = "X", ylab = "Y", main = clean_sample_id,
+       asp = 1, xlim = c(0, image_dim[1]), ylim = c(0, image_dim[2]))
+  for (i in seq_len(nrow(edges))) {
+    p1 <- dplyr::filter(coords, Label == edges$from[i])
+    p2 <- dplyr::filter(coords, Label == edges$to[i])
+    if (nrow(p1) == 1 && nrow(p2) == 1) {
+      segments(p1$centroid_x, p1$centroid_y, p2$centroid_x, p2$centroid_y,
+               col = edge_colors[i], lwd = 1)
     }
-    par(mar = c(4, 2, 2, 4))
-    legend_img <- as.raster(matrix(rev(corr_palette), ncol = 1))
-    plot(NA, xlim = c(0, 1), ylim = legend_range, type = "n", axes = FALSE, xlab = "", ylab = "")
-    rasterImage(legend_img, 0, legend_range[1], 1, legend_range[2])
-    axis(4, at = pretty(legend_range), las = 1)
-    mtext(legend_title, side = 4, line = 2.5)
-    dev.off()
   }
+  par(mar = c(4, 2, 2, 4))
+  legend_img <- as.raster(matrix(rev(corr_palette), ncol = 1))
+  plot(NA, xlim = c(0, 1), ylim = legend_range, type = "n", axes = FALSE, xlab = "", ylab = "")
+  rasterImage(legend_img, 0, legend_range[1], 1, legend_range[2])
+  axis(4, at = pretty(legend_range), las = 1)
+  mtext(legend_title, side = 4, line = 2.5)
+  dev.off()
+}
 
-  # --- Network visualizations
-  plot_network(rep("grey50", nrow(coords)), edges$color, "Correlation", c(min_corr, max_corr), "network_from_centroids.pdf")
-  plot_network(coords$color, edges$color, "Spike rate", c(min_corr, max_corr), "network_from_centroids_spikerate.pdf")
+# --- Generate plots
+plot_network(rep("grey50", nrow(coords)), edges$color, "Correlation", c(min_corr, max_corr), "network_from_centroids.pdf")
+plot_network(coords$color, edges$color, "Spike rate", c(min_corr, max_corr), "network_from_centroids_spikerate.pdf")
 
-  # --- Save processed data
-  write.csv(filter(firing_stats, is_high_corr == TRUE),  file.path(output_dir, paste0(clean_sample_id, "_firing_stats_highcorr.csv")), row.names = FALSE)
-  write.csv(filter(firing_stats, is_high_corr == FALSE), file.path(output_dir, paste0(clean_sample_id, "_firing_stats_lowcorr.csv")),  row.names = FALSE)
-  write.csv(df_sample, file.path(output_dir, paste0(clean_sample_id, "_df_processed.csv")), row.names = FALSE)
+# --- Save processed data
+write.csv(filter(firing_stats, is_high_corr == TRUE),
+          file.path(output_dir, paste0(clean_sample_id, "_firing_stats_highcorr.csv")),
+          row.names = FALSE)
 
-  # --- Save correlation matrix (long)
-  cor_long <- as.data.frame(as.table(cor_mat)) %>%
-    dplyr::rename(from = Var1, to = Var2, corr = Freq) %>%
-    dplyr::mutate(Sample = sample_id) %>%
-    dplyr::filter(from != to)
-  cor_list[[clean_sample_id]] <- cor_long
+write.csv(filter(firing_stats, is_high_corr == FALSE),
+          file.path(output_dir, paste0(clean_sample_id, "_firing_stats_lowcorr.csv")),
+          row.names = FALSE)
 
-  # --- Louvain community detection
-  g <- igraph::graph_from_data_frame(edges, directed = FALSE)
-  if (igraph::gorder(g) > 0 && igraph::gsize(g) > 0) {
-    comms <- igraph::cluster_louvain(g)
-    membership <- membership(comms)
-    community_sizes <- sizes(comms)
+df_sample_export <- df_sample %>%
+  select(-any_of(c("dF_F_scaled", "dF_F_binary", "dF_F_second")))
 
-    membership_df <- data.frame(
-      ObjectNumber   = names(membership),
-      Community      = membership,
-      Sample         = sample_id,
-      CommunitySize  = as.integer(community_sizes[as.character(membership)])
-    )
-    comm_list[[clean_sample_id]] <- membership_df
-  }
+write.csv(df_sample_export,
+          file.path(output_dir, paste0(clean_sample_id, "_df_processed.csv")),
+          row.names = FALSE)
+
+
+# --- Louvain community detection
+g <- igraph::graph_from_data_frame(edges, directed = FALSE)
+if (igraph::gorder(g) > 0 && igraph::gsize(g) > 0) {
+  comms <- igraph::cluster_louvain(g)
+  membership <- membership(comms)
+  community_sizes <- sizes(comms)
+
+  membership_df <- tibble(
+    ObjectNumber   = names(membership),
+    Community      = as.integer(membership),
+    Sample         = sample_id,
+    CommunitySize  = as.integer(community_sizes[as.character(membership)])
+  )
+
+  comm_list[[clean_sample_id]] <- membership_df
+}
+
 }
 
 
-
-
-#dev.off()
-
-
 ```
+
 
 
 
@@ -824,19 +714,13 @@ for (sample_id in all_sample_ids) {
 # --------------------------
 # Helpers
 # --------------------------
-
-# Combine list entries into one dataframe and append sample name
 bind_with_sample <- function(lst) {
   imap_dfr(lst, ~ {
-    if (!"Sample" %in% names(.x))
-      .x <- mutate(.x, Sample = .y)
+    if (!"Sample" %in% names(.x)) .x <- mutate(.x, Sample = .y)
     .x
   })
 }
-# Aggregate sample-level summaries
-normalised_metrics <- bind_with_sample(summary_list)
 
-# Standardize sample names for matching
 clean_sample_names <- function(s) {
   s %>%
     str_replace("_centroids_valid\\.csv$", "") %>%
@@ -844,48 +728,61 @@ clean_sample_names <- function(s) {
 }
 
 # --------------------------
-# Bind event and community data
+# Bind data from result lists
 # --------------------------
 events_df <- bind_with_sample(events_list)
 comm_df   <- bind_with_sample(comm_list)
-
 comm_df <- comm_df %>% mutate(Label = as.character(ObjectNumber))
 
-stopifnot("Sample" %in% names(events_df), "Sample" %in% names(comm_df))
+# Define normalised_metrics
+if (length(summary_list) > 0) {
+  normalised_metrics <- bind_with_sample(summary_list) %>%
+    mutate(
+      Genotype = case_when(
+        str_detect(Sample, "Ctrl")  ~ "Ctrl",
+        str_detect(Sample, "ASAH1") ~ "ASAH1",
+        TRUE                        ~ NA_character_
+      )
+    )
+} else {
+  normalised_metrics <- tibble()
+}
 
-# --------------------------
-# Standardize Sample & Assign Genotype
-# --------------------------
-
+# Add Genotype to events_df and comm_df
 events_df <- events_df %>%
   mutate(
-    Sample   = clean_sample_names(as.character(Sample)),
-    Label    = as.character(ObjectNumber),
-    Genotype = genotype_map[Sample]
+    Genotype = case_when(
+      str_detect(Sample, "Ctrl")  ~ "Ctrl",
+      str_detect(Sample, "ASAH1") ~ "ASAH1",
+      TRUE                        ~ NA_character_
+    ),
+    ObjectNumber = as.character(ObjectNumber)
   )
 
 comm_df <- comm_df %>%
   mutate(
-    Sample   = clean_sample_names(as.character(Sample)),
-    Label    = as.character(ObjectNumber),
-    Genotype = genotype_map[Sample]
-  )
-
-normalised_metrics <- normalised_metrics %>%
-  mutate(
-    Sample   = clean_sample_names(as.character(Sample)),
-    Genotype = genotype_map[Sample]
+    Genotype = case_when(
+      str_detect(Sample, "Ctrl")  ~ "Ctrl",
+      str_detect(Sample, "ASAH1") ~ "ASAH1",
+      TRUE                        ~ NA_character_
+    ),
+    ObjectNumber = as.character(ObjectNumber)
+  ) %>%
+  left_join(
+    events_df %>%
+      select(Sample, ObjectNumber, is_high_corr) %>%
+      distinct(Sample, ObjectNumber, .keep_all = TRUE),
+    by = c("Sample", "ObjectNumber")
   )
 
 # --------------------------
 # ROI count and events/min calculation
 # --------------------------
-
 events_df <- events_df %>%
   group_by(Sample) %>%
   mutate(
-    n_labels            = n(),
-    events_per_min      = firing_events / (total_frames / (frame_rate * 60)),
+    n_labels = n(),
+    events_per_min = firing_events / (total_frames / (frame_rate * 60)),
     events_per_min_norm = events_per_min / n_labels
   ) %>%
   ungroup()
@@ -893,38 +790,64 @@ events_df <- events_df %>%
 # --------------------------
 # Propagate is_high_corr to sample-level
 # --------------------------
+events_sample_df <- events_df %>%
+  group_by(Sample) %>%
+  summarise(
+    n_total = n(),
+    n_high_corr = sum(is_high_corr, na.rm = TRUE),
+    prop_high_corr = n_high_corr / n_total,
+    .groups = "drop"
+  )
 
-events_corr <- events_df %>%
-  select(Sample, is_high_corr) %>%
-  distinct()
+if ("Sample" %in% names(normalised_metrics) && nrow(normalised_metrics) > 0) {
+  normalised_metrics <- normalised_metrics %>%
+    left_join(events_sample_df, by = "Sample", relationship = "many-to-one")
+}
 
-normalised_metrics <- normalised_metrics %>%
-  left_join(events_corr, by = "Sample")
+comm__sample_df <- comm_df %>%
+  left_join(
+    events_df %>%
+      select(Sample, ObjectNumber, is_high_corr) %>%
+      distinct(Sample, ObjectNumber, .keep_all = TRUE),
+    by = c("Sample", "ObjectNumber")
+  )
 
-# Ensure matching types
-events_df <- events_df %>%
-  mutate(ObjectNumber = as.character(ObjectNumber))
-
-comm_df <- comm_df %>%
-  mutate(ObjectNumber = as.character(ObjectNumber))
-
-# Add is_high_corr to comm_df by (Sample, ObjectNumber)
-comm_df <- comm_df %>%
-  left_join(events_df %>% select(Sample, ObjectNumber, is_high_corr),
-            by = c("Sample", "ObjectNumber"))
 
 
 # --------------------------
-# Assign Genotype Colors
+# Inject metadata from Sample
 # --------------------------
 
-unique_genos <- unique(na.omit(c(events_df$Genotype, comm_df$Genotype)))
-geno_cols <- setNames(colorRampPalette(base_colors)(length(unique_genos)), unique_genos)
+# Helper to extract matched component
+extract_match <- function(x, patterns) {
+  matched <- sapply(patterns, function(p) str_detect(x, fixed(p)))
+  result <- apply(matched, 1, function(row) {
+    if (any(row)) patterns[which.max(row)] else NA_character_
+  })
+  return(result)
+}
 
+# Apply to a dataframe
+annotate_sample_metadata <- function(df) {
+  df %>%
+    mutate(
+      Celltype    = extract_match(Sample, celltype),
+      Timepoint   = extract_match(Sample, timepoint),
+      Genotype    = extract_match(Sample, genotypes),
+      Treatment   = extract_match(Sample, treatments),
+      SampleLabel = str_c(Genotype, Treatment, sep = "_")
+    ) %>%
+    relocate(Sample, Celltype, Timepoint, Genotype, Treatment, SampleLabel)
+}
+
+# Annotate all three dataframes
+events_df <- annotate_sample_metadata(events_df)
+comm_df   <- annotate_sample_metadata(comm_df)
+normalised_metrics <- annotate_sample_metadata(normalised_metrics)
 ```
 
 
-## IIIb. Violin plots with Kruskal-Wallis test 
+## IIIb. Helper Function - Violin plots with Kruskal-Wallis test 
 ```{r}
 # ----------------------------------------------------------
 # Helper: Violin plot with significance stats
@@ -935,22 +858,20 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
 
   metric_sym <- rlang::sym(metric)
 
-  # # Ensure correct genotype order
-  # Consistent genotype label ordering from sample_keys
-  df <- df %>%
-    mutate(Genotype = factor(Genotype, levels = names(geno_cols)))
-
-  # Add early exit if only one genotype
-  if (length(unique(na.omit(df$Genotype))) < 2) {
-    message("Skipping plot: Only one genotype present in the data subset.")
+  # Ensure consistent factor levels
+  df <- set_samplelabel_factor(df)
+  
+  # Early exit if <2 unique conditions
+  if (length(unique(na.omit(df$SampleLabel))) < 2) {
+    message("Skipping plot: Only one condition present in the data subset.")
     return(NULL)
   }
-  
+
   # Kruskal-Wallis
-  kruskal_pval <- kruskal.test(reformulate("Genotype", metric), data = df)$p.value
+  kruskal_pval <- kruskal.test(reformulate("SampleLabel", metric), data = df)$p.value
 
   # Pairwise Wilcoxon
-  pw <- pairwise.wilcox.test(df[[metric]], df$Genotype, p.adjust.method = "holm")
+  pw <- pairwise.wilcox.test(df[[metric]], df$SampleLabel, p.adjust.method = "holm")
   pairwise_df <- as.data.frame(as.table(pw$p.value), stringsAsFactors = FALSE) %>%
     dplyr::rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
     dplyr::filter(!is.na(p.value)) %>%
@@ -967,10 +888,9 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
     ) %>%
     filter(!is.na(significance))
 
-  # Mean ± SEM if requested
   if (add_sem) {
     mean_df <- df %>%
-      group_by(Genotype) %>%
+      group_by(SampleLabel) %>%
       summarise(
         mean_val = mean(!!metric_sym, na.rm = TRUE),
         sem      = sd(!!metric_sym, na.rm = TRUE) / sqrt(n()),
@@ -979,14 +899,15 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
   }
 
   # Plot
-  p <- ggplot(df, aes(x = Genotype, y = !!metric_sym, fill = Genotype)) +
+  p <- ggplot(df, aes(x = SampleLabel, y = !!metric_sym, fill = SampleLabel)) +
     geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85) +
     geom_jitter(width = 0.1, size = 0.5, alpha = 0.5, color = jitter_color) +
     geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, linewidth = 0.3) +
     scale_fill_manual(values = geno_cols) +
     labs(y = ylab, x = NULL) +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), legend.position = "none", aspect.ratio = 1.5,axis.text.x = element_text(angle = 90, hjust = 0.5))
+    theme(panel.grid = element_blank(), legend.position = "none",
+          aspect.ratio = 1.5, axis.text.x = element_text(angle = 90, hjust = 0.5))
 
   if (nrow(pairwise_df) > 0) {
     p <- p + stat_pvalue_manual(pairwise_df,
@@ -1013,10 +934,12 @@ plot_genotype_violin_with_stats <- function(df, metric, ylab, output_prefix, bas
 
   return(list(p = p, stats = bind_rows(kruskal_df, pairwise_df)))
 }
+
+
 ```
 
 
-## IIIc. pairwise Wilcoxon tests
+## IIIc. Run pairwise Wilcoxon test comparisons 
 ```{r}
 # ----------------------------------------------------------
 # Run comparisons
@@ -1029,13 +952,11 @@ events_low  <- events_df %>% filter(is_high_corr == FALSE)
 # Per-cell metrics
 res_high      <- plot_genotype_violin_with_stats(events_high, "firing_events",   "Firing Events",    "firing_highcorr")
 res_low       <- plot_genotype_violin_with_stats(events_low,  "firing_events",   "Firing Events",    "firing_lowcorr")
-res_high_amp  <- plot_genotype_violin_with_stats(events_high, "spike_amplitude", "Spike Amplitude",  "amp_highcorr")
-res_low_amp   <- plot_genotype_violin_with_stats(events_low,  "spike_amplitude", "Spike Amplitude",  "amp_lowcorr")
 
 # Sample-level normalized
 res_fire_norm <- plot_genotype_violin_with_stats(normalised_metrics, "Firing_events_per_min_norm",
                                                  "Events · min⁻¹ / ROI", "firing_norm")
-res_active_norm <- plot_genotype_violin_with_stats(normalised_metrics, "Mean_percent_active_frames_norm",
+res_active_norm <- plot_genotype_violin_with_stats(normalised_metrics, "Mean_percent_active_frames",
                                                    "% Active / ROI", "active_norm")
 ```
 
@@ -1076,7 +997,7 @@ p_fire_norm_result <- plot_genotype_violin_with_stats(
 )
 p_active_norm_result <- plot_genotype_violin_with_stats(
   normalised_metrics,
-  metric = "Mean_percent_active_frames_norm",
+  metric = "Mean_percent_active_frames",
   ylab = "% Active / ROI",
   output_prefix = "percent_active_norm",
   base_dir = ca_results_dir
@@ -1116,22 +1037,6 @@ p_active_norm_low_results <- plot_genotype_violin_with_stats(
   base_dir = ca_results_dir
 )
 
-# plot low / high spike amplitude  
-p_amp_orig_high_results <- plot_genotype_violin_with_stats(
-  df = events_df %>% filter(is_high_corr == TRUE),
-  metric = "spike_amplitude",
-  ylab = "Spike Amplitude",
-  output_prefix = "spike_amplitude_high",
-  base_dir = ca_results_dir
-)
-p_amp_orig_low_results <- plot_genotype_violin_with_stats(
-  df = events_df %>% filter(is_high_corr == FALSE),
-  metric = "spike_amplitude",
-  ylab = "Spike Amplitude",
-  output_prefix = "spike_amplitude_low",
-  base_dir = ca_results_dir
-)
-
 
 # Extract violin plots
 p_fire_norm         <- p_fire_norm_result$p
@@ -1142,9 +1047,6 @@ p_fire_norm_low     <- p_fire_norm_low_results$p
 
 p_active_norm_high  <- p_active_norm_high_results$p
 p_active_norm_low   <- p_active_norm_low_results$p
-
-p_amp_orig_high     <- p_amp_orig_high_results$p
-p_amp_orig_low      <- p_amp_orig_low_results$p
 
 ```
 
@@ -1162,19 +1064,21 @@ comm_low  <- comm_df %>% filter(is_high_corr == FALSE)
 # Helper to run KW + Wilcoxon + plot
 # ----------------------------------------------------------------------
 analyze_comm_size <- function(df, label, outfile_prefix) {
-  df <- df %>% filter(!is.na(Genotype)) # drop NA genotypes
-  df$Genotype <- factor(df$Genotype)    # convert to factor with clean levels
-  # Skip if only one genotype
-  if (length(unique(df$Genotype[!is.na(df$Genotype)])) < 2) {
-    message("Skipping analysis: only one genotype present.")
+  df <- df %>% 
+    filter(!is.na(Genotype)) %>%
+    set_samplelabel_factor()
+
+  # Skip if only one condition
+  if (length(unique(df$SampleLabel)) < 2) {
+    message("Skipping analysis: only one condition present.")
     return(list(plot = NULL, stats = tibble()))
   }
 
   # Kruskal-Wallis test
-  kw_pval <- kruskal.test(CommunitySize ~ Genotype, data = df)$p.value
+  kw_pval <- kruskal.test(CommunitySize ~ SampleLabel, data = df)$p.value
 
   # Pairwise Wilcoxon
-  pw <- pairwise.wilcox.test(df$CommunitySize, df$Genotype, p.adjust.method = "holm")
+  pw <- pairwise.wilcox.test(df$CommunitySize, df$SampleLabel, p.adjust.method = "holm")
   pairwise_df <- as.data.frame(as.table(pw$p.value), stringsAsFactors = FALSE) %>%
     rename(group1 = Var1, group2 = Var2, p.value = Freq) %>%
     filter(!is.na(p.value)) %>%
@@ -1188,12 +1092,12 @@ analyze_comm_size <- function(df, label, outfile_prefix) {
       y.position = seq(from = max(df$CommunitySize, na.rm = TRUE) * 1.05,
                        by = max(df$CommunitySize, na.rm = TRUE) * 0.05,
                        length.out = dplyr::n()),
-      group1 = factor(group1, levels = levels(df$Genotype)),
-      group2 = factor(group2, levels = levels(df$Genotype))
+      group1 = factor(group1, levels = levels(df$SampleLabel)),
+      group2 = factor(group2, levels = levels(df$SampleLabel))
     )
 
   # Plot
-  p <- ggplot(df, aes(x = Genotype, y = CommunitySize, fill = Genotype)) +
+  p <- ggplot(df, aes(x = SampleLabel, y = CommunitySize, fill = SampleLabel)) +
     geom_jitter(color = "grey80", width = 0.1, size = 0.5, alpha = 0.5) +
     geom_violin(scale = "width", trim = FALSE, color = NA, width = 0.85, adjust = 1.5) +
     geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
@@ -1214,7 +1118,7 @@ analyze_comm_size <- function(df, label, outfile_prefix) {
   }
 
   ggsave(file.path(ca_results_dir, paste0(outfile_prefix, ".pdf")),
-         p, width = 2, height = 3, device = cairo_pdf)
+         p, width = 2.5, height = 3.5, device = cairo_pdf)
 
   return(list(p = p,
               stats = bind_rows(
@@ -1267,217 +1171,12 @@ p_comm_low <- plot_genotype_violin_with_stats(
 
 
 
-## IIIg. Time-binned Firing Metrics Over Time
-```{r}
-# -------------------------------------------------
-# Time-binned Firing Metrics Over Time (High vs Low Corr)
-# -------------------------------------------------
-# Ensure character type for join keys
-centroids_df <- centroids_df %>%
-  mutate(
-    ObjectNumber = as.character(ObjectNumber),
-    SampleID_trimmed = str_remove(FileID, "_\\d{3}$")
-  )
-
-# Get is_high_corr from events_df
-events_corr <- events_df %>%
-  select(Sample, ObjectNumber, is_high_corr) %>%
-  mutate(ObjectNumber = as.character(ObjectNumber))
-
-# Join is_high_corr into centroids_df
-centroids_df <- centroids_df %>%
-  left_join(events_corr, by = c("SampleID_trimmed" = "Sample", "ObjectNumber"))
-
-# Ensure ObjectNumber is character in dff_results
-dff_results <- dff_results %>%
-  mutate(ObjectNumber = as.character(ObjectNumber))
-
-# Add genotype, bin, and join metadata
-traces_with_genotype <- dff_results %>%
-  left_join(centroids_df, by = c("FileID", "ObjectNumber")) %>%
-  mutate(
-    Bin = floor(ImageNumber / baseline_window),
-    Genotype = purrr::map_chr(FileID, function(s) {
-      matched <- names(genotype_map)[str_detect(s, fixed(names(genotype_map)))]
-      if (length(matched) > 0) genotype_map[[matched[1]]] else NA_character_
-    })
-  ) %>%
-  filter(!is.na(Genotype), !is.na(is_high_corr))
-
-# Calculate metrics per cell per bin
-binned_metrics <- traces_with_genotype %>%
-  group_by(FileID, ObjectNumber, Bin, Genotype, is_high_corr) %>%
-  arrange(ImageNumber, .by_group = TRUE) %>%
-  mutate(
-    dF_F = calculate_dff(Intensity_IntegratedIntensity_Fura,
-                         window = baseline_window,
-                         smoothing_k = smoothing_k,
-                         percentile = 0.2),
-    dF_F_scaled = if (all(is.na(dF_F))) 0 else dF_F / max(dF_F, na.rm = TRUE),
-    dF_F_binary = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
-    spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA_real_)
-  ) %>%
-  mutate(rising_edge = dF_F_binary == 1 & lag(dF_F_binary, default = 0) == 0) %>%
-  summarise(
-    firing_events = sum(rising_edge, na.rm = TRUE),
-    total_frames = n(),
-    percent_active = 100 * sum(dF_F_binary, na.rm = TRUE) / total_frames,
-    spike_amplitude = mean(spike_amplitude, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Summarize per genotype, bin, and corr group
-plot_df_split <- binned_metrics %>%
-  group_by(Genotype, Bin, is_high_corr) %>%
-  summarise(
-    mean_events = mean(firing_events, na.rm = TRUE),
-    sem_events  = sd(firing_events, na.rm = TRUE) / sqrt(n()),
-    mean_active = mean(percent_active, na.rm = TRUE),
-    sem_active  = sd(percent_active, na.rm = TRUE) / sqrt(n()),
-    mean_amp    = mean(spike_amplitude, na.rm = TRUE),
-    sem_amp     = sd(spike_amplitude, na.rm = TRUE) / sqrt(n()),
-    .groups = "drop"
-  ) %>%
-  mutate(Genotype = factor(Genotype, levels = names(geno_cols)))
-
-# Plot helper
-plot_timecourse <- function(data, metric, sem, ylab) {
-  data <- data %>%
-    mutate(Frame = Bin * baseline_window)
-
-  ggplot(data, aes(x = Frame, y = .data[[metric]], color = Genotype)) +
-    geom_line(linewidth = 0.5) +
-    geom_ribbon(aes(ymin = .data[[metric]] - .data[[sem]],
-                    ymax = .data[[metric]] + .data[[sem]],
-                    fill = Genotype), alpha = 0.3, color = NA) +
-    labs(x = "Frame", y = ylab) +
-    scale_color_manual(values = geno_cols) +
-    scale_fill_manual(values = geno_cols) +
-    theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(),
-          axis.text.x = element_text(angle = 90, hjust = 0.5),
-          legend.position = "right")
-}
-# Generate and save plots by correlation group
-for (corr_state in c(TRUE, FALSE)) {
-  tag <- if (corr_state) "highcorr" else "lowcorr"
-  df_sub <- filter(plot_df_split, is_high_corr == corr_state)
-
-  p1 <- plot_timecourse(df_sub, "mean_events", "sem_events", "Firing Events")
-  p2 <- plot_timecourse(df_sub, "mean_active", "sem_active", "% Active Frames")
-  p3 <- plot_timecourse(df_sub, "mean_amp", "sem_amp", "Spike Amplitude")
-
-  pdf(file.path(ca_results_dir, paste0("time_binned_metrics_", tag, ".pdf")), width = 6, height = 6)
-  print(p1)
-  print(p2)
-  print(p3)
-  dev.off()
-}
-
-
-
-# -------------------------------------------------
-# plot low / high corr filtered time-binned metrics
-# -------------------------------------------------
-# filtered event rates 
-p_bin_events_high <- plot_timecourse(
-  plot_df_split %>% filter(is_high_corr == TRUE),
-  "mean_events",
-  "sem_events",
-  "Firing Events"
-)
-
-p_bin_events_low <- plot_timecourse(
-  plot_df_split %>% filter(is_high_corr == FALSE),
-  "mean_events",
-  "sem_events",
-  "Firing Events"
-)
-
-# filtered activity rates 
-p_bin_active_high <- plot_timecourse(
-  plot_df_split %>% filter(is_high_corr == TRUE),
-  "mean_active",
-  "sem_active",
-  "% Active Frames"
-)
-
-p_bin_active_low <- plot_timecourse(
-  plot_df_split %>% filter(is_high_corr == FALSE),
-  "mean_active",
-  "sem_active",
-  "% Active Frames"
-)
-
-# filtered spike amplitude 
-p_bin_amp_high <- plot_timecourse(
-  plot_df_split %>% filter(is_high_corr == TRUE),
-  "mean_amp",
-  "sem_amp",
-  "Spike Amplitude"
-)
-
-p_bin_amp_low <- plot_timecourse(
-  plot_df_split %>% filter(is_high_corr == FALSE),
-  "mean_amp",
-  "sem_amp",
-  "Spike Amplitude"
-)
-
-
-# Extract time-binned plots
-p_bin_events_high   <- p_bin_events_high
-p_bin_events_low    <- p_bin_events_low
-
-p_bin_active_high   <- p_bin_active_high
-p_bin_active_low    <- p_bin_active_low
-
-p_bin_amp_high      <- p_bin_amp_high
-p_bin_amp_low       <- p_bin_amp_low
-
-```
-
 
 ## IIIh. Combined Summary Figure & export of all values 
 ```{r}
 # ---------------------------------------------------------------------------
-# Create combined six‑panel figure (high and low corr separately)
-# ---------------------------------------------------------------------------
-
-# High correlation summary
-neuro_combinedplot_high <-
-  ((p_fire_norm_high | p_active_norm_high | p_amp_orig_high) /
-   (p_bin_amp_high | p_bin_events_high | p_comm_high$p)) +
-  plot_layout(heights = c(1, 1)) &
-  theme(plot.margin = margin(5, 10, 5, 10))
-
-ggsave(file.path(ca_results_dir, "neuro_combinedplot_high.pdf"),
-       neuro_combinedplot_high, width = 12, height = 12, device = cairo_pdf)
-
-# Low correlation summary
-neuro_combinedplot_low <-
-  ((p_fire_norm_low | p_active_norm_low | p_amp_orig_low) /
-   (p_bin_amp_low | p_bin_events_low | p_comm_low$p)) +
-  plot_layout(heights = c(1, 1)) &
-  theme(plot.margin = margin(5, 10, 5, 10))
-
-ggsave(file.path(ca_results_dir, "neuro_combinedplot_low.pdf"),
-       neuro_combinedplot_low, width = 12, height = 12, device = cairo_pdf)
-
-
-# ---------------------------------------------------------------------------
 # Replace ANOVA + t-tests with Kruskal-Wallis + Wilcoxon
 # ---------------------------------------------------------------------------
-comm_df <- comm_df %>%
-  mutate(ObjectNumber = as.character(ObjectNumber))
-
-events_df <- events_df %>%
-  mutate(ObjectNumber = as.character(ObjectNumber))
-
-comm_df <- comm_df %>%
-  left_join(events_df %>% select(Sample, ObjectNumber, is_high_corr),
-            by = c("Sample", "ObjectNumber"))
-
 
 calc_nonparametric_stats <- function(df, metric_col, group_col = "Genotype") {
   df <- df %>%
@@ -1504,7 +1203,7 @@ calc_nonparametric_stats <- function(df, metric_col, group_col = "Genotype") {
     mutate(Metric = metric_col) %>%
     select(Metric, group1, group2, p.value)
 
-  all_pvals <- bind_rows(
+  bind_rows(
     tibble(Metric = metric_col, group1 = "Kruskal-Wallis", group2 = "", p.value = kw_pval),
     pairwise_df
   ) %>%
@@ -1514,23 +1213,20 @@ calc_nonparametric_stats <- function(df, metric_col, group_col = "Genotype") {
       p.value < 0.05  ~ "*",
       TRUE            ~ "ns"
     ))
-
-  return(all_pvals)
 }
+
 # ---------------------------------------------------------------------------
 # Combine and save all nonparametric p-values
 # ---------------------------------------------------------------------------
 all_pvals_high <- bind_rows(
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == TRUE), "events_per_min_norm"),
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == TRUE), "percent_active"),
-  calc_nonparametric_stats(events_df %>% filter(is_high_corr == TRUE), "spike_amplitude"),
   calc_nonparametric_stats(comm_df   %>% filter(is_high_corr == TRUE), "CommunitySize")
 ) %>% mutate(Source = "high_corr_ROIs")
 
 all_pvals_low <- bind_rows(
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == FALSE), "events_per_min_norm"),
   calc_nonparametric_stats(events_df %>% filter(is_high_corr == FALSE), "percent_active"),
-  calc_nonparametric_stats(events_df %>% filter(is_high_corr == FALSE), "spike_amplitude"),
   calc_nonparametric_stats(comm_df   %>% filter(is_high_corr == FALSE), "CommunitySize")
 ) %>% mutate(Source = "low_corr_ROIs")
 
