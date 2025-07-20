@@ -335,7 +335,7 @@ intensity_df <- combined_dfs$intensity_df
 ```
 
 
-## IIc. baseline correction, ∆F/F Processing
+## IIc4. baseline correction, ∆F/F Processing
 ```{r}
 # -----------------------------
 # Helper Function – ΔF/F Calculation
@@ -361,54 +361,49 @@ calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, p
 # -----------------------------
 # Helper Function – Noise Filter + dF/F from in-memory data
 # -----------------------------
-process_pair <- function(file_id, intensity_df, centroids_df) {
+process_pair <- function(file_id, intensity_df, centroid_df) {
   intensity_sub <- intensity_df %>% filter(FileID == file_id)
-  centroids_sub <- centroids_df %>% filter(FileID == file_id)
+  centroid_sub <- centroid_df %>% filter(FileID == file_id)
 
-  if (nrow(intensity_sub) == 0 || nrow(centroids_sub) == 0) return(NULL)
+  if (nrow(intensity_sub) == 0 || nrow(centroid_sub) == 0) return(NULL)
 
-  intensity_matrix <- intensity_sub %>%
-    select(where(is.numeric), -frame)
+  time_cols <- names(intensity_sub)[grepl("^[0-9]+$", names(intensity_sub))]
 
-  baseline_avg <- median(as.numeric(intensity_matrix[1, ]), na.rm = TRUE)
+  baseline_avg <- intensity_sub %>%
+    select(all_of(time_cols)) %>%
+    as.matrix() %>%
+    .[1, ] %>%
+    median(na.rm = TRUE)
+
   filter_thresh <- 0.3 * baseline_avg
 
   intensity_filtered <- intensity_sub %>%
-    mutate(across(where(is.numeric) & !matches("frame"), ~pmax(.x, filter_thresh)))
+    mutate(across(all_of(time_cols), ~pmax(.x, filter_thresh)))
 
   traces_dff <- intensity_filtered %>%
-    mutate(across(where(is.numeric) & !matches("frame"), ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
+    mutate(across(all_of(time_cols), ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
 
-  traces_long <- traces_dff %>%
-    mutate(ImageNumber = row_number(), FileID = file_id) %>%
-    pivot_longer(
-      cols = matches("^[0-9]+$"),
-      names_to = "ObjectNumber",
-      values_to = "Intensity_IntegratedIntensity_Fura",
-      values_drop_na = TRUE
-    ) %>%
-    mutate(ObjectNumber = as.integer(ObjectNumber)) %>%
-    left_join(centroids_sub, by = c("ObjectNumber", "FileID"))
+  # Drop duplicated metadata columns from centroid_sub before join
+  centroid_meta <- centroid_sub %>%
+    select(FileID, ObjectNumber, centroid_x, centroid_y)
 
-  metadata <- distinct(intensity_sub, FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate)
+  # Now join and select
+  traces_dff <- traces_dff %>%
+    left_join(centroid_meta, by = c("FileID", "ObjectNumber")) %>%
+    select(Sample, FileID, Celltype, Timepoint, Genotype, Treatment, Replicate,
+           ObjectNumber, centroid_x, centroid_y, all_of(time_cols))
 
-  traces_long <- traces_long %>%
-    left_join(metadata, by = "FileID") %>%
-    select(FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate,
-           frame, ImageNumber, ObjectNumber,
-           Intensity_IntegratedIntensity_Fura, centroid_x, centroid_y)
-
-  return(traces_long)
+  return(traces_dff)
 }
 
 # -----------------------------
 # Run dF/F processing across all samples
 # -----------------------------
-dff_results <- map(unique(intensity_df$FileID), ~process_pair(.x, intensity_df, centroids_df)) %>%
+dff_results <- map(unique(intensity_df$FileID), ~process_pair(.x, intensity_df, centroid_df)) %>%
   compact() %>%
   bind_rows()
 
-write.csv(dff_results, file = file.path(ca_results_dataframes, "dff_results.csv"), row.names = FALSE)
+write_csv(dff_results, file = file.path(ca_results_dataframes, "dff_results.csv"))
 
 
 # -----------------------------
