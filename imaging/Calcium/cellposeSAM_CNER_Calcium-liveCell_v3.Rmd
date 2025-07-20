@@ -151,10 +151,9 @@ geno_cols <- setNames(
 # -------------------
 # ANALYSIS PARAMETERS
 # -------------------
-baseline_window <- 50             # Rolling window size for baseline (frames). should be maybe 10% of frames to get good avg.
+baseline_window <- 50             # Rolling window size for baseline (frames).
 frame_rate      <- 10
-smoothing_k     <- NULL            # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
-threshold_factor <- 0.4            # Threshold for binarization (fraction of SD)
+smoothing_k     <- 10            # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
 correlation_threshold <- 0.6       # Correlation threshold for network (used in make_network())
 roi_corr_threshold    <- 0.4       # for identifying synchronized ROIs (used in spike rate filtering)
 image_dim <- c(785, 570)         # width, height in pixels of image. Need to backmap the roi activity network onto the image coordinats 
@@ -335,7 +334,7 @@ intensity_df <- combined_dfs$intensity_df
 ```
 
 
-## IIc4. baseline correction, ∆F/F Processing
+## IIc4. ∆F/F Processing
 ```{r}
 # -----------------------------
 # Helper Function – ΔF/F Calculation
@@ -346,18 +345,25 @@ calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, p
   }
 
   if (length(trace) < window || all(is.na(trace))) {
-    return(rep(NA, length(trace)))
+    # Inject low-level noise if trace is unusable
+    return(rnorm(length(trace), mean = 0, sd = 0.001))
   }
 
   baseline <- zoo::rollapply(trace, width = window,
                               FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
                               align = "center", fill = NA, partial = TRUE)
 
-  baseline <- pmax(baseline, 1e-3)  # Avoid division by zero
-  dff <- (trace - baseline) / baseline
-  pmax(dff, 0)  # Clip negatives
-}
+  if (all(is.na(baseline))) {
+    baseline <- rep(1e-3, length(trace))  # fallback: flat baseline
+  } else {
+    min_valid <- min(baseline, na.rm = TRUE)
+    baseline[is.na(baseline)] <- max(min_valid, 1e-3)
+  }
 
+  baseline <- pmax(baseline, 1e-3)
+  dff <- (trace - baseline) / baseline
+  pmax(dff, 0)
+}
 # -----------------------------
 # Helper Function – Noise Filter + dF/F from in-memory data
 # -----------------------------
@@ -381,8 +387,21 @@ process_pair <- function(file_id, intensity_df, centroid_df) {
     mutate(across(all_of(time_cols), ~pmax(.x, filter_thresh)))
 
   traces_dff <- intensity_filtered %>%
-    mutate(across(all_of(time_cols), ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
+    mutate(across(all_of(time_cols), ~calculate_dff(.x, window = baseline_window*0.25, smoothing_k = NULL, percentile = 0.2)))
 
+  # Identify and inject noise into flat ΔF/F traces
+  traces_dff[time_cols] <- traces_dff[time_cols] %>%
+    as.matrix() %>%
+    apply(1, function(row) {
+      if (sd(row, na.rm = TRUE) < 1e-6 || all(row == 0, na.rm = TRUE)) {
+        rnorm(length(row), mean = 0, sd = 0.001)
+      } else {
+        row
+      }
+    }) %>%
+    t() %>%
+    as_tibble(.name_repair = "minimal")
+  
   # Drop duplicated metadata columns from centroid_sub before join
   centroid_meta <- centroid_sub %>%
     select(FileID, ObjectNumber, centroid_x, centroid_y)
@@ -414,6 +433,137 @@ comm_list <- list()
 events_list <- list()
 summary_list <- list()
 ```
+
+
+
+## IId5. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
+```{r}
+# Setup
+trace_dir <- file.path(base_path, "label_traces")
+dir.create(trace_dir, recursive = TRUE, showWarnings = FALSE)
+
+all_sample_ids <- matched_ids
+time_cols <- names(dff_results)[grepl("^[0-9]+$", names(dff_results))]
+
+# Color palettes
+corr_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100)
+node_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(9, "YlGnBu")))(100)
+
+# Helper: binary trace conversion
+binary_thresh <- function(trace, threshold_factor = 2, min_frames = 2, max_frames = 150) {
+  threshold <- threshold_factor * sd(trace, na.rm = TRUE)
+  binary <- as.numeric(trace > threshold)
+  filter_spike_duration(binary, min_frames, max_frames)
+}
+
+# Helper: Filter bursts that are too short or too long
+filter_spike_duration <- function(binary_trace, min_frames = 2, max_frames = 150) {
+  rle_trace <- rle(as.logical(binary_trace))
+  keep <- rle_trace$values & rle_trace$lengths >= min_frames & rle_trace$lengths <= max_frames
+  rle_trace$values <- rle_trace$values & keep
+  as.numeric(inverse.rle(rle_trace))
+}
+
+for (sample_id in all_sample_ids) {
+  clean_sample_id <- gsub("_centroids_valid.csv$", "", basename(sample_id))
+  output_dir <- file.path(base_path, clean_sample_id)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  df_sample <- dff_results %>% filter(FileID == sample_id)
+
+  time_cols <- names(df_sample)[grepl("^[0-9]+$", names(df_sample))]
+
+  # Second dF/F pass
+  df_sample <- df_sample %>%
+    rowwise() %>%
+    mutate(
+      dF_F_second = list({
+        trace <- c_across(all_of(time_cols))
+        calculate_dff(trace, window = baseline_window, smoothing_k = smoothing_k, percentile = 0.1)
+      })
+    ) %>%
+    ungroup()
+
+  dff_mat <- do.call(rbind, df_sample$dF_F_second)
+  stopifnot(nrow(dff_mat) == nrow(df_sample))
+
+  df_sample <- df_sample %>%
+    mutate(
+      dF_F_scaled = apply(dff_mat, 1, function(x) {
+        x_thresh <- ifelse(x < 0.04, 0, x)
+        denom <- max(x_thresh, na.rm = TRUE)
+        if (denom < 1e-3) denom <- 1e-3
+        x_thresh / denom
+      }) %>% split(seq_len(nrow(dff_mat)))
+    )
+
+  # Binary logic added separately
+  dF_F_binary <- lapply(seq_len(nrow(dff_mat)), function(i) {
+    trace <- dff_mat[i, ]
+    binary_thresh(trace, threshold_factor = threshold_factor, min_frames = 5, max_frames = 150)
+  })
+
+  df_sample$dF_F_binary <- dF_F_binary
+
+  dff_scaled <- do.call(rbind, df_sample$dF_F_scaled)
+  dff_binary <- do.call(rbind, df_sample$dF_F_binary)
+
+  rownames(dff_scaled) <- df_sample$ObjectNumber
+  rownames(dff_binary) <- df_sample$ObjectNumber
+
+  # Save individual trace plots
+  for (i in seq_len(nrow(df_sample))) {
+    roi_id <- df_sample$ObjectNumber[i]
+    trace_raw    <- dff_mat[i, ]
+    trace_scaled <- dff_scaled[i, ]
+    trace_bin    <- dff_binary[i, ]
+
+    df_trace <- tibble(
+      frame = as.numeric(time_cols),
+      raw = trace_raw,
+      scaled = trace_scaled,
+      binary = trace_bin
+    )
+
+    p_raw    <- ggplot(df_trace, aes(frame, raw))    + geom_line() + theme_minimal()
+    p_scaled <- ggplot(df_trace, aes(frame, scaled)) + geom_line(color = "dodgerblue") + theme_minimal()
+    p_binary <- ggplot(df_trace, aes(frame, binary)) + geom_step(color = "firebrick2") + theme_minimal()
+
+    ggsave(file.path(trace_dir, paste0(clean_sample_id, "_ROI_", roi_id, ".pdf")),
+           p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
+  }
+
+  # Correlation matrix of binary spike trains
+  cor_mat <- tryCatch({
+    cm <- cor(t(dff_binary), use = "pairwise.complete.obs")
+    cm[!is.finite(cm)] <- 0
+    cm
+  }, error = function(e) {
+    warning(paste("Correlation computation failed for", clean_sample_id, ":", e$message))
+    matrix(0, nrow = nrow(dff_binary), ncol = nrow(dff_binary),
+           dimnames = list(df_sample$ObjectNumber, df_sample$ObjectNumber))
+  })
+  
+  # plot Heatmaps
+  pdf(file.path(output_dir, paste0(clean_sample_id, "_CorrelationMatrix.pdf")), width = 6, height = 6)
+  tryCatch({
+    pheatmap(cor_mat, clustering_method = "complete",
+             main = "Correlation Matrix", border_color = NA, fontsize = 6)
+  }, error = function(e) {
+    message("Skipped heatmap for ", clean_sample_id, ": ", e$message)
+  })
+  dev.off()
+
+  # Continue with: high-corr ROI extraction, firing stats, burst filtering, and network plots
+}
+
+
+
+
+```
+
+
+
 
 
 ## IId. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
@@ -550,19 +700,27 @@ for (sample_id in all_sample_ids) {
 
   # --- Correlation-based network edges
   edge_list <- which(cor_mat > correlation_threshold & upper.tri(cor_mat), arr.ind = TRUE)
+  
   edges <- data.frame(
     from = rownames(cor_mat)[edge_list[, 1]],
     to   = rownames(cor_mat)[edge_list[, 2]],
     corr = cor_mat[edge_list]
   )
-
+  
   valid_corr_vals <- cor_mat[upper.tri(cor_mat) & is.finite(cor_mat)]
   min_corr <- min(valid_corr_vals, na.rm = TRUE)
   max_corr <- 1  # fixed upper bound
-
-  edges$corr_scaled <- scales::rescale(edges$corr, to = c(1, 100), from = c(min_corr, max_corr))
-  edges$corr_scaled <- pmin(pmax(round(edges$corr_scaled), 1), 100)
-  edges$color <- corr_palette[edges$corr_scaled]
+  
+  # Handle degenerate cases
+  if (nrow(edges) == 0 || is.na(min_corr) || min_corr == max_corr) {
+    edges$corr_scaled <- integer(0)
+    edges$color <- character(0)
+  } else {
+    edges$corr_scaled <- scales::rescale(edges$corr, to = c(1, 100), from = c(min_corr, max_corr))
+    edges$corr_scaled <- pmin(pmax(round(edges$corr_scaled), 1), 100)
+    edges$color <- corr_palette[edges$corr_scaled]
+  }
+  
   write.csv(edges, file.path(output_dir, "edge_list_with_colors.csv"), row.names = FALSE)
 
   # --- Coordinates and node coloring
