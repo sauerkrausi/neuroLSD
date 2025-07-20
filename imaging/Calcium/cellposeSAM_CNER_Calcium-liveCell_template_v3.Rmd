@@ -149,6 +149,10 @@ genotype_map <- setNames(sample_keys$SampleLabel,
                          paste(celltype, timepoint, sample_keys$Genotype, sample_keys$Treatment, sep = "_"))
 
 
+set_samplelabel_factor <- function(df) {
+  df %>% mutate(SampleLabel = factor(SampleLabel, levels = unique(SampleLabel)))
+}
+
 # # # Colors auto-generated based on mapping
 # base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
 # stopifnot(length(base_colors) >= length(geno_levels))
