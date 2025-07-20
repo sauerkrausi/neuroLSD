@@ -1,7 +1,7 @@
 ---
-title: "cellposeSAM_CNER_Calcium-liveCell_template_v2"
+title: "cellposeSAM_CNER_Calcium-liveCell_v2_diff138_d21"
 output: html_document
-date: "2025-07-16"
+date: "2025-07-17"
   chunk_output_type: console
 ---
 
@@ -40,6 +40,7 @@ library(CalNetExploreR)
 
 # Signal processing
 #library(signal)
+library(pracma) 
 
 # Plot composition
 library(gridExtra)
@@ -74,8 +75,8 @@ library(dplyr)
 # USER INPUT & OUTDIRS 
 # -----------------------------------------
 # Path to root directory where input data and output folders are/will be stored
-base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/nd2_labels/"
-
+#base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/nd2_labels"
+base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/test"
 
 # Subfolder with merged per-object intensity values from CellProfiler
 input_file <- file.path(base_path, "combined_intensity_df.csv")
@@ -91,6 +92,8 @@ dir.create(ca_results_dir, showWarnings = FALSE, recursive = TRUE)
 ca_results_dataframes <- file.path(base_path, "calcium_analysis_results_dataframes")
 dir.create(ca_results_dataframes, recursive = TRUE, showWarnings = FALSE)
 
+
+
 # -------------------
 # SAMPLE INFO & COLOR MAPPING 
 # -------------------
@@ -101,6 +104,11 @@ timepoint <- "d21"
 genotypes <- c("Ctrl", "ASAH1")
 treatments <- c("Fed_Fluo4", "100mMKCL_Fluo4", "10µMCQNX_Fluo4")
 
+# -- define which treatments are stimulating / inhibitory 
+stim_ref <- "100mMKCL"
+inh_ref  <- "10µMCQNX"
+basal_ref  <- "Fed"
+basal_group <- "Ctrl_Fed_Fluo4"
 
 
 ## Add ordered label factor for consistent plotting
@@ -131,9 +139,8 @@ set_genotype_factor <- function(df) {
 
 # # Colors auto-generated based on mapping
 geno_levels <- unique(unname(genotype_map))
-base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")
-#geno_cols <- setNames(base_colors, geno_levels)
-
+base_colors <- RColorBrewer::brewer.pal(length(geno_levels), "Set2")  
+ 
 # stopifnot(length(base_colors) >= length(geno_levels))
 
 # Manually assign colors based on genotype identity
@@ -153,168 +160,413 @@ geno_cols <- setNames(
 # -------------------
 # ANALYSIS PARAMETERS
 # -------------------
-baseline_window <- 100             # Rolling window size for baseline (frames). should be maybe 10% of frames to get good avg.
+baseline_window <- 50             # Rolling window size for baseline (frames). should be maybe 10% of frames to get good avg.
 frame_rate      <- 10
 smoothing_k     <- NULL            # Optional smoothing over raw intensity traces (frames), set to NULL to disable smoothing
-threshold_factor <- 0.4            # Threshold for binarization (fraction of SD)
-correlation_threshold <- 0.6       # Correlation threshold for network (used in make_network())
+#threshold_factor <- 0.4            # Threshold for binarization (fraction of SD)
+correlation_threshold <- 0.4       # Correlation threshold for network (used in make_network())
 roi_corr_threshold    <- 0.4       # for identifying synchronized ROIs (used in spike rate filtering)
 image_dim <- c(1570, 1140)         # width, height in pixels of image. Need to backmap the roi activity network onto the image coordinats 
 
 ```
 
 
-## IIb. parse through folder, make meta file list, add raw data and save 
+## IIb1. Helper Function – parse through paried intesnitsy / centroids and join in wide format
 ```{r}
 # -----------------------------
-# Helper Function – parse through folder read in files and name file colum
+# Helper Function – parse through paired intensity / centroids and join in wide format
 # -----------------------------
 
-# --- 1. Parse and annotate metadata
-# List all files
-all_files <- list.files(base_path, full.names = TRUE)
-
-# Select files
-intensity_files <- all_files[str_detect(all_files, "_intensity\\.csv$")]
-centroids_files <- all_files[str_detect(all_files, "_centroids_valid\\.csv$")]
-intensity_meta <- parse_metadata(intensity_files)
-centroids_meta <- parse_metadata(centroids_files)
+# define output dirs:
+ca_results_matched <- file.path(base_path, "01_matched_dfs")
+dir.create(ca_results_matched, recursive = TRUE, showWarnings = FALSE)
 
 
-# Metadata parser
-parse_metadata <- function(file_list) {
-  tibble(File = file_list) %>%
-    mutate(
-      Filename  = basename(File),
-      File_base = str_remove(Filename, "_(intensity|centroids_valid)\\.csv$"),
-      parts     = str_split(File_base, "_", simplify = TRUE),
-      nparts    = ncol(parts),
-      Celltype  = parts[, 1],
-      Timepoint = parts[, 2],
-      Genotype  = parts[, 3],
-      Treatment = ifelse(nparts == 5, parts[, 4], paste(parts[, 4], parts[, 5], sep = "_")),
-      Replicate = ifelse(nparts == 6, parts[, 6], ifelse(nparts == 5, parts[, 5], NA_character_)),
-      Sample    = str_c(Celltype, Timepoint, Genotype, Treatment, sep = "_"),
-      FileID    = str_c(Celltype, Timepoint, Genotype, Treatment, Replicate, sep = "_")
-    ) %>%
-    select(File, Sample, FileID, Celltype, Timepoint, Genotype, Treatment, Replicate)
+# Find matching pairs by FileID
+intensity_files <- list.files(base_path, pattern = "_intensity\\.csv$", full.names = TRUE)
+centroid_files  <- list.files(base_path, pattern = "_centroids_valid\\.csv$", full.names = TRUE)
+
+intensity_meta <- tibble(
+  File = intensity_files,
+  FileID = str_remove(basename(File), "_intensity\\.csv$")
+)
+
+centroids_meta <- tibble(
+  File = centroid_files,
+  FileID = str_remove(basename(File), "_centroids_valid\\.csv$")
+)
+
+# Process each matched pair
+matched_ids <- intersect(intensity_meta$FileID, centroids_meta$FileID)
+
+for (file_id in matched_ids) {
+  message("Processing: ", file_id)
+
+  # Load files
+  int_file <- intensity_meta %>% filter(FileID == file_id) %>% pull(File)
+  cen_file <- centroids_meta %>% filter(FileID == file_id) %>% pull(File)
+
+  intensity_df <- read_csv(int_file, show_col_types = FALSE)
+  centroids_df <- read_csv(cen_file, show_col_types = FALSE)
+
+  if ("label" %in% names(centroids_df)) {
+    centroids_df <- centroids_df %>% rename(ObjectNumber = label)
+  }
+
+  # Match ROI labels
+  shared_labels <- intersect(
+    colnames(intensity_df)[grepl("^[0-9]+$", colnames(intensity_df))],
+    as.character(centroids_df$ObjectNumber)
+  )
+  if (length(shared_labels) == 0) next
+
+  # Reshape intensity to wide format (rows = ROI, cols = time)
+  intensity_long <- intensity_df %>%
+    pivot_longer(cols = all_of(shared_labels), names_to = "ObjectNumber", values_to = "intensity") %>%
+    mutate(ObjectNumber = as.integer(ObjectNumber)) %>%
+    pivot_wider(names_from = time, values_from = intensity)
+
+  # Merge and save
+  merged_df <- centroids_df %>%
+    filter(ObjectNumber %in% intensity_long$ObjectNumber) %>%
+    left_join(intensity_long, by = "ObjectNumber") %>%
+    mutate(FileID = file_id) %>%
+    select(FileID, ObjectNumber, centroid_x, centroid_y, everything())
+
+  out_file <- file.path(ca_results_matched, paste0(file_id, "_matched.csv"))
+  write_csv(merged_df, out_file)
 }
 
 
+```
 
-# --- 2. Read and merge metadata with CSVs
-read_and_annotate_csv <- function(meta_df, is_centroid = FALSE) {
-  map_dfr(1:nrow(meta_df), function(i) {
-    df <- readr::read_csv(meta_df$File[i], show_col_types = FALSE)
-    
-    if (is_centroid && "label" %in% names(df)) {
-      df <- df %>% rename(ObjectNumber = label)
-    }
+## IIb2. Helper Function – parse through matched df folder and add metadata
+```{r}
+# -----------------------------
+# Helper Function – parse through matched df folder and add metadata
+# -----------------------------
+# --- Define paths
+matched_dir <- file.path(base_path, "01_matched_dfs")
+annotated_dir <- file.path(base_path, "02_annotated_dfs")
+dir.create(annotated_dir, recursive = TRUE, showWarnings = FALSE)
 
-    meta_info <- meta_df[i, ] %>% select(-File)
-    bind_cols(meta_info[rep(1, nrow(df)), ], df)
-  })
+# Process all matched files
+matched_files <- list.files(matched_dir, full.names = TRUE, pattern = "_matched\\.csv$")
+
+for (file in matched_files) {
+  df <- readr::read_csv(file, show_col_types = FALSE)
+  file_base <- str_remove(basename(file), "_matched\\.csv$")
+  parts <- str_split(file_base, "_", simplify = TRUE)
+
+  # Sanity check
+  if (ncol(parts) < 6) {
+    message("Skipping malformed filename: ", file)
+    next
+  }
+
+  # Parse metadata
+  meta_row <- tibble(
+    FileID    = file_base,
+    Celltype  = parts[, 1],
+    Timepoint = parts[, 2],
+    Genotype  = parts[, 3],
+    Treatment = paste(parts[, 4], parts[, 5], sep = "_"),
+    Replicate = parts[, 6]
+  )
+
+  # Avoid column conflicts
+  meta_clean <- meta_row %>%
+    select(FileID, Celltype, Timepoint, Genotype, Treatment, Replicate) %>%
+    select(-any_of(intersect(names(.), names(df))))
+
+  # Add metadata to each row
+  annotated_df <- bind_cols(meta_clean[rep(1, nrow(df)), ], df)
+
+  # Save
+  out_file <- file.path(annotated_dir, paste0(file_base, "_annotated.csv"))
+  readr::write_csv(annotated_df, out_file)
+}
+```
+
+
+## IIb3. Helper Function - Merge combined_dfs and compute baseline threshold  
+```{r}
+# -----------------------------
+# Helper Function – Merge annotated CSVs, rescale traces, compute threshold, and apply floor
+# -----------------------------
+
+# Define paths
+annotated_dir    <- file.path(base_path, "02_annotated_dfs")
+thresholded_dir  <- file.path(base_path, "03_thresholded_dfs")
+dir.create(thresholded_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Load all annotated CSVs
+annotated_files <- list.files(annotated_dir, full.names = TRUE, pattern = "_annotated\\.csv$")
+stopifnot(length(annotated_files) > 0)
+
+# Merge
+intensity_df <- map_dfr(annotated_files, readr::read_csv, show_col_types = FALSE)
+
+# Optional merged output
+write.csv(intensity_df, file = file.path(ca_results_dataframes, "merged_results.csv"), row.names = FALSE)
+
+# -----------------------------
+# Rescale helper function (rolling min-max per ROI trace)
+rescale_rolling <- function(x, k = 50) {
+  roll_min <- zoo::rollapply(x, width = k, FUN = min, fill = NA, align = "center", partial = TRUE)
+  roll_max <- zoo::rollapply(x, width = k, FUN = max, fill = NA, align = "center", partial = TRUE)
+  rng <- roll_max - roll_min
+  rng[rng < 1e-6] <- NA  # prevent divide by near-zero
+  rescaled <- (x - roll_min) / rng
+  rescaled[is.na(rescaled)] <- 0  # optional: fallback to 0
+  return(rescaled)
 }
 
-# Final annotated data frames
-intensity_df <- read_and_annotate_csv(intensity_meta)
-centroids_df <- read_and_annotate_csv(centroids_meta, is_centroid = TRUE)
-intensity_df <- intensity_df %>%
-  rename(frame = time)
+# -----------------------------
+# Compute ROI means from rescaled traces
+rescaled_df <- intensity_df
 
-write.csv(intensity_df, file = file.path(ca_results_dataframes, "intensity_df.csv"), row.names = FALSE)
-write.csv(centroids_df, file = file.path(ca_results_dataframes, "centroids_df.csv"), row.names = FALSE)
+# Identify time-frame columns
+tf_cols <- grep("^[0-9]+$", colnames(rescaled_df), value = TRUE)
+
+# Rescale each ROI (column-wise)
+rescaled_df[tf_cols] <- lapply(rescaled_df[tf_cols], rescale_rolling, k = baseline_window)
+
+# Pivot to long format and compute per-ROI means (after rescaling)
+roi_means <- rescaled_df %>%
+  pivot_longer(cols = all_of(tf_cols), names_to = "ROI", values_to = "Rescaled_Intensity") %>%
+  mutate(ROI = as.character(ROI)) %>%
+  group_by(FileID, ROI) %>%
+  summarise(ROI_mean = mean(Rescaled_Intensity, na.rm = TRUE), .groups = "drop") %>%
+  left_join(intensity_df %>% distinct(FileID, Genotype, Treatment), by = "FileID")
+
+# Signal summary (rescaled)
+signal_summary <- roi_means %>%
+  group_by(Treatment) %>%
+  summarise(
+    mean_intensity   = mean(ROI_mean, na.rm = TRUE),
+    median_intensity = median(ROI_mean, na.rm = TRUE),
+    min              = min(ROI_mean, na.rm = TRUE),
+    max              = max(ROI_mean, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Compute threshold from specified basal group
+roi_means <- roi_means %>%
+  mutate(TreatmentGroup = paste(Genotype, Treatment, sep = "_"))
+
+threshold_basal <- roi_means %>%
+  filter(TreatmentGroup == basal_group) %>%
+  summarise(threshold_basal = 0.75 * median(ROI_mean, na.rm = TRUE)) %>%
+  pull(threshold_basal)
+
+stopifnot(is.numeric(threshold_basal), length(threshold_basal) == 1)
+
+# Attach threshold to each file
+filter_table <- roi_means %>%
+  distinct(FileID) %>%
+  mutate(filter_thresh = threshold_basal)
+
+# Percent ROIs above threshold
+roi_activity_summary <- roi_means %>%
+  left_join(filter_table, by = "FileID") %>%
+  mutate(above_thresh = ROI_mean > filter_thresh) %>%
+  group_by(FileID) %>%
+  summarise(percent_ROIs_above_thresh = mean(above_thresh, na.rm = TRUE) * 100, .groups = "drop")
+
+# Output summaries
+print(signal_summary)
+print(filter_table)
+print(roi_activity_summary)
+
+# -----------------------------
+# Apply threshold floor to original traces and save
+
+for (file_path in annotated_files) {
+  df <- readr::read_csv(file_path, show_col_types = FALSE)
+  
+  tf_cols <- grep("^[0-9]+$", colnames(df), value = TRUE)
+  df[tf_cols] <- lapply(df[tf_cols], function(col) pmax(col, threshold_basal))
+  
+  base_name <- str_replace(tools::file_path_sans_ext(basename(file_path)), "_annotated$", "")
+  out_name  <- paste0(base_name, "_thresholded.csv")
+  out_path <- file.path(thresholded_dir, out_name)
+  write.csv(df, out_path, row.names = FALSE)
+}
 
 ```
 
 
-## IIc. baseline correction, ∆F/F Processing
+## IIb4. Helper Function - F/F calculation
 ```{r}
 # -----------------------------
-# Helper Function – ΔF/F Calculation
+# Helper Function – dF/F calculation
+# -----------------------------
+
+# Setup paths
+thresholded_dir <- file.path(base_path, "03_thresholded_dfs")
+dFF_dir         <- file.path(base_path, "04_dFF_dfs")
+dir.create(dFF_dir, recursive = TRUE, showWarnings = FALSE)
+
+# -----------------------------
+# ΔF/F Calculation Function
 # -----------------------------
 calculate_dff <- function(trace, window = baseline_window, smoothing_k = NULL, percentile = 0.2) {
   if (!is.null(smoothing_k)) {
     trace <- zoo::rollmean(trace, k = smoothing_k, fill = NA)
   }
+  if (length(trace) < window || all(is.na(trace))) return(rep(NA, length(trace)))
+  baseline <- zoo::rollapply(trace, width = window,
+                             FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
+                             align = "center", fill = NA, partial = TRUE)
+  baseline <- pmax(baseline, 1e-3)
+  dff <- (trace - baseline) / baseline
+  pmax(dff, 0)
+}
 
-  if (length(trace) < window || all(is.na(trace))) {
-    return(rep(NA, length(trace)))
+# -----------------------------
+# Process each thresholded file
+# -----------------------------
+thresholded_files <- list.files(thresholded_dir, full.names = TRUE, pattern = "_thresholded\\.csv$")
+stopifnot(length(thresholded_files) > 0)
+
+for (file_path in thresholded_files) {
+  df <- readr::read_csv(file_path, show_col_types = FALSE)
+
+  roi_cols <- colnames(df) %>%
+    setdiff(c("FileID", "Celltype", "Timepoint", "Genotype", "Treatment", "Replicate",
+              "ObjectNumber", "centroid_x", "centroid_y", "ImageNumber")) %>%
+    .[str_detect(., "^[0-9]+$")]
+
+  if (!"ImageNumber" %in% colnames(df)) {
+    df <- df %>% mutate(ImageNumber = row_number())
   }
 
-  baseline <- zoo::rollapply(trace, width = window,
-                              FUN = function(x) quantile(x, probs = percentile, na.rm = TRUE),
-                              align = "center", fill = NA, partial = TRUE)
+  for (col in roi_cols) {
+    df[[paste0("dF_F_", col)]] <- calculate_dff(df[[col]], window = baseline_window, smoothing_k = smoothing_k)
+  }
 
-  baseline <- pmax(baseline, 1e-3)  # Avoid division by zero
-  dff <- (trace - baseline) / baseline
-  pmax(dff, 0)  # Clip negatives
+  df_clean <- df[, setdiff(colnames(df), roi_cols)]
+  out_name <- str_replace(basename(file_path), "_thresholded\\.csv$", "_dFF.csv")
+  write.csv(df_clean, file.path(dFF_dir, out_name), row.names = FALSE)
 }
 
+```
+
+## IIb5. Processing Loop per dFF Sample 
+```{r}
 # -----------------------------
-# Helper Function – Noise Filter + dF/F from in-memory data
+# Define Input Files
 # -----------------------------
-process_pair <- function(file_id, intensity_df, centroids_df) {
-  intensity_sub <- intensity_df %>% filter(FileID == file_id)
-  centroids_sub <- centroids_df %>% filter(FileID == file_id)
+dff_files <- list.files(dFF_dir, full.names = TRUE, pattern = "_dFF\\.csv$")
 
-  if (nrow(intensity_sub) == 0 || nrow(centroids_sub) == 0) return(NULL)
-
-  intensity_matrix <- intensity_sub %>%
-    select(where(is.numeric), -frame)
-
-  baseline_avg <- median(as.numeric(intensity_matrix[1, ]), na.rm = TRUE)
-  filter_thresh <- 0.3 * baseline_avg
-
-  intensity_filtered <- intensity_sub %>%
-    mutate(across(where(is.numeric) & !matches("frame"), ~pmax(.x, filter_thresh)))
-
-  traces_dff <- intensity_filtered %>%
-    mutate(across(where(is.numeric) & !matches("frame"), ~calculate_dff(.x, window = baseline_window, smoothing_k = smoothing_k)))
-
-  traces_long <- traces_dff %>%
-    mutate(ImageNumber = row_number(), FileID = file_id) %>%
-    pivot_longer(
-      cols = matches("^[0-9]+$"),
-      names_to = "ObjectNumber",
-      values_to = "Intensity_IntegratedIntensity_Fura",
-      values_drop_na = TRUE
-    ) %>%
-    mutate(ObjectNumber = as.integer(ObjectNumber)) %>%
-    left_join(centroids_sub, by = c("ObjectNumber", "FileID"))
-
-  metadata <- distinct(intensity_sub, FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate)
-
-  traces_long <- traces_long %>%
-    left_join(metadata, by = "FileID") %>%
-    select(FileID, Sample, Celltype, Timepoint, Genotype, Treatment, Replicate,
-           frame, ImageNumber, ObjectNumber,
-           Intensity_IntegratedIntensity_Fura, centroid_x, centroid_y)
-
-  return(traces_long)
+# -----------------------------
+# Helper Functions
+# -----------------------------
+zscore_trace <- function(x) {
+  mu <- mean(x, na.rm = TRUE)
+  sd_x <- sd(x, na.rm = TRUE)
+  if (is.na(sd_x) || sd_x < 1e-6) return(rep(0, length(x)))
+  (x - mu) / sd_x
 }
 
-# -----------------------------
-# Run dF/F processing across all samples
-# -----------------------------
-dff_results <- map(unique(intensity_df$FileID), ~process_pair(.x, intensity_df, centroids_df)) %>%
-  compact() %>%
-  bind_rows()
-
-write.csv(dff_results, file = file.path(ca_results_dataframes, "dff_results.csv"), row.names = FALSE)
-
+binarize_peaks <- function(trace, threshold = 1, min_dist = 2) {
+  peaks <- pracma::findpeaks(trace, minpeakheight = threshold, minpeakdistance = min_dist)
+  binary <- rep(0L, length(trace))
+  if (!is.null(peaks)) binary[peaks[, 2]] <- 1L
+  return(binary)
+}
 
 # -----------------------------
 # Initialize Result Lists
 # -----------------------------
-cor_list <- list()
-comm_list <- list()
-events_list <- list()
+cor_list     <- list()
 summary_list <- list()
+
+# -----------------------------
+# Process Each dFF File
+# -----------------------------
+for (file_path in dff_files) {
+  df <- readr::read_csv(file_path, show_col_types = FALSE)
+  dff_cols  <- grep("^dF_F_[0-9]+$", names(df), value = TRUE)
+  roi_ids   <- gsub("^dF_F_", "", dff_cols)
+  meta_cols <- setdiff(names(df), dff_cols)
+  clean_id  <- tools::file_path_sans_ext(basename(file_path))
+
+  # Create output folder for this file
+  sample_dir <- file.path(dFF_dir, clean_id)
+  dir.create(sample_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # --- 1. Binarize
+  binary_df <- df[, meta_cols, drop = FALSE]
+  for (col in dff_cols) {
+    trace_z <- zscore_trace(df[[col]])
+    binary_df[[col]] <- binarize_peaks(trace_z, threshold = 1, min_dist = 2)
+  }
+  write.csv(binary_df, file.path(sample_dir, paste0(clean_id, "_binary.csv")), row.names = FALSE)
+
+  # --- 2. Firing Rate
+  firing_rate <- sapply(binary_df[dff_cols], function(x) sum(x, na.rm = TRUE) / length(x))
+  firing_df <- data.frame(ROI = roi_ids, FiringRate = firing_rate)
+  write.csv(firing_df, file.path(sample_dir, paste0(clean_id, "_firingRate.csv")), row.names = FALSE)
+  summary_list[[clean_id]] <- firing_df
+
+  # --- 3. Correlation Matrix
+  mat_dff <- as.matrix(df[dff_cols])
+  valid_rois <- apply(mat_dff, 1, function(x) sd(x, na.rm = TRUE)) > 1e-3
+  cor_mat_dff <- cor(t(mat_dff[valid_rois, ]), use = "pairwise.complete.obs")
+  cor_mat_dff[!is.finite(cor_mat_dff)] <- 0
+  pdf(file.path(sample_dir, paste0(clean_id, "_CorrelationMatrix_dFF.pdf")), width = 6, height = 6)
+  pheatmap(cor_mat_dff, clustering_method = "complete", main = "dFF Correlation Matrix", fontsize = 6, border_color = NA)
+  dev.off()
+  cor_list[[clean_id]] <- cor_mat_dff
+
+  # --- 4. Trace Plots (first 10 ROIs)
+  trace_roi_idx <- head(roi_ids, 10)
+  for (roi in trace_roi_idx) {
+    col_dff <- paste0("dF_F_", roi)
+    if (!(col_dff %in% names(df)) || !(col_dff %in% names(binary_df))) {
+      message("Skipping ROI ", roi, " - column(s) missing")
+      next
+    }
+
+    trace_len <- min(length(df[[col_dff]]), length(binary_df[[col_dff]]))
+    df_trace <- data.frame(
+      Frame  = seq_len(trace_len),
+      dFF    = df[[col_dff]][1:trace_len],
+      Binary = binary_df[[col_dff]][1:trace_len]
+    )
+
+    p_dff <- ggplot(df_trace, aes(x = Frame, y = dFF)) +
+      geom_line() + ggtitle("ΔF/F") + theme_minimal()
+    p_bin <- ggplot(df_trace, aes(x = Frame, y = Binary)) +
+      geom_step(color = "firebrick2") + ggtitle("Binary") + theme_minimal()
+
+    ggsave(file.path(sample_dir, paste0("ROI_", roi, "_trace.pdf")),
+           p_dff / p_bin, width = 6, height = 5, device = cairo_pdf)
+  }
+}
+
+# -----------------------------
+# Save Global Summary Tables
+# -----------------------------
+all_summary <- bind_rows(summary_list, .id = "SampleID")
+write.csv(all_summary, file.path(dFF_dir, "summary_firing_rates_all.csv"), row.names = FALSE)
+
+all_cor_flat <- lapply(cor_list, function(mat) {
+  if (is.null(rownames(mat))) return(NULL)
+  cor_df <- as.data.frame(as.table(mat))
+  names(cor_df) <- c("ROI1", "ROI2", "Correlation")
+  return(cor_df)
+})
+all_cor_flat <- bind_rows(all_cor_flat, .id = "SampleID")
+write.csv(all_cor_flat, file.path(dFF_dir, "summary_correlations_all.csv"), row.names = FALSE)
 ```
 
 
-## IId. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
+
+
+## ???IId. Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
 ```{r}
 # -------------------------------------------------
 # Trace Plotting (per sample), Correlations, Network plots and Firing Statistics 
@@ -337,20 +589,36 @@ for (sample_id in all_sample_ids) {
   output_dir <- file.path(base_path, clean_sample_id)
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # --- dF/F computation
-  df_sample <- dplyr::filter(dff_results, FileID == sample_id) %>%
-    dplyr::select(-matches("^centroid_")) %>%
-    dplyr::left_join(centroid_df_clean, by = c("FileID", "ObjectNumber")) %>%
-    dplyr::group_by(ObjectNumber) %>%
-    dplyr::arrange(ImageNumber, .by_group = TRUE) %>%
-    dplyr::mutate(
-      dF_F         = calculate_dff(Intensity_IntegratedIntensity_Fura, window = baseline_window, smoothing_k = smoothing_k, percentile = 0.4),
-      dF_F_scaled  = dF_F / max(dF_F, na.rm = TRUE),
-      dF_F_binary  = ifelse(dF_F > threshold_factor * sd(dF_F, na.rm = TRUE), 1, 0),
+  # --- Retrieve scalar threshold
+  bin_thresh_scalar <- filter_table %>%
+    filter(FileID == sample_id) %>%
+    pull(filter_thresh)
+
+  if (length(bin_thresh_scalar) != 1 || is.na(bin_thresh_scalar)) {
+    warning(paste("Skipping", sample_id, "- missing or ambiguous threshold"))
+    next
+  }
+
+  valid_rois <- dff_results %>%
+    filter(FileID == sample_id) %>%
+    group_by(ObjectNumber) %>%
+    summarise(roi_sd = sd(dF_F, na.rm = TRUE)) %>%
+    filter(roi_sd > 0)
+  
+  df_sample <- dff_results %>%
+    filter(FileID == sample_id) %>%
+    inner_join(valid_rois, by = "ObjectNumber") %>%
+    arrange(ObjectNumber, ImageNumber) %>%
+    group_by(ObjectNumber) %>%
+    mutate(
+      dF_F_scaled = dF_F / max(dF_F, na.rm = TRUE),
+      bin_thresh  = 0.5 * bin_thresh_scalar,
+      Treatment   = first(Treatment),
+      dF_F_binary = ifelse(Treatment == inh_ref, 0, ifelse(dF_F > bin_thresh, 1, 0)),
       spike_amplitude = ifelse(dF_F_binary == 1, dF_F_scaled, NA)
     ) %>%
-    dplyr::ungroup()
-
+    ungroup()
+  
   # --- ROI trace plots
   roi_ids <- unique(df_sample$ObjectNumber)
   for (i in seq_along(roi_ids)) {
@@ -371,7 +639,17 @@ for (sample_id in all_sample_ids) {
   rownames(mat_matrix) <- mat$ObjectNumber
   cor_mat <- cor(t(mat_matrix), use = "pairwise.complete.obs")
   cor_mat[!is.finite(cor_mat)] <- 0
-
+  
+  valid_corr_vals <- cor_mat[upper.tri(cor_mat) & is.finite(cor_mat)]
+  min_corr <- min(valid_corr_vals, na.rm = TRUE)
+  max_corr <- max(valid_corr_vals, na.rm = TRUE)
+  
+  # Handle case where all values are equal or NA
+  if (length(valid_corr_vals) == 0 || min_corr == max_corr || !is.finite(min_corr) || !is.finite(max_corr)) {
+    warning(paste("Skipping", sample_id, "- correlation matrix is flat or invalid"))
+    next
+  }
+    
   pdf(file.path(output_dir, paste0(clean_sample_id, "_CorrelationMatrix.pdf")), width = 6, height = 6)
   pheatmap(cor_mat, clustering_method = "complete", main = "Correlation Matrix", border_color = NA, fontsize = 6)
   dev.off()
@@ -456,11 +734,24 @@ for (sample_id in all_sample_ids) {
 
   valid_corr_vals <- cor_mat[upper.tri(cor_mat) & is.finite(cor_mat)]
   min_corr <- min(valid_corr_vals, na.rm = TRUE)
-  max_corr <- 1  # fixed upper bound
-
-  edges$corr_scaled <- scales::rescale(edges$corr, to = c(1, 100), from = c(min_corr, max_corr))
-  edges$corr_scaled <- pmin(pmax(round(edges$corr_scaled), 1), 100)
-  edges$color <- corr_palette[edges$corr_scaled]
+  max_corr <- max(valid_corr_vals, na.rm = TRUE)
+  
+  # Ensure min ≠ max to avoid non-unique breaks
+  if (min_corr == max_corr) {
+    min_corr <- min_corr - 0.01
+    max_corr <- max_corr + 0.01
+  }
+  
+  if (nrow(edges) == 0 || min_corr == max_corr || !is.finite(min_corr) || !is.finite(max_corr)) {
+    # fallback: use fixed color for all edges
+    edges$corr_scaled <- 50
+    edges$color <- rep("grey70", nrow(edges))
+  } else {
+    edges$corr_scaled <- scales::rescale(edges$corr, to = c(1, 100), from = c(min_corr, max_corr))
+    edges$corr_scaled <- pmin(pmax(round(edges$corr_scaled), 1), 100)
+    edges$color <- corr_palette[edges$corr_scaled]
+  }
+  
   write.csv(edges, file.path(output_dir, "edge_list_with_colors.csv"), row.names = FALSE)
 
   # --- Coordinates and node coloring
@@ -560,7 +851,8 @@ for (sample_id in all_sample_ids) {
 ## ---------------------------------------------------------------------------
 ## Plot CellposeSAM / CNER results — incl. events per min⁻¹ (±SEM)
 ## ---------------------------------------------------------------------------
-
+# Aggregate sample-level summaries
+normalised_metrics <- bind_with_sample(summary_list)
 # --------------------------
 # Helpers
 # --------------------------
@@ -574,8 +866,6 @@ bind_with_sample <- function(lst) {
   })
 }
 
-# Aggregate sample-level summaries
-normalised_metrics <- bind_with_sample(summary_list)
 # Standardize sample names for matching
 clean_sample_names <- function(s) {
   s %>%
