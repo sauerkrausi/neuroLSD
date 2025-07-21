@@ -150,7 +150,8 @@ genotype_map <- setNames(sample_keys$SampleLabel,
 
 
 set_samplelabel_factor <- function(df) {
-  df %>% mutate(SampleLabel = factor(SampleLabel, levels = unique(SampleLabel)))
+  df %>%
+    mutate(SampleLabel = factor(SampleLabel, levels = sample_keys$SampleLabel))
 }
 
 # # # Colors auto-generated based on mapping

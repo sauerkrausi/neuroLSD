@@ -1,7 +1,7 @@
 ---
 title: "neuroLSD_CalciumMaster"
 output: html_document
-date: "2025-07-13"
+date: "2025-07-21"
   chunk_output_type: console
 ---
 
@@ -9,29 +9,99 @@ date: "2025-07-13"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Aim
+Create master file that loops through all calcium imaging evals and combines results in master file for stats, plotting and saving.
 
-# I. Background
-create master file that loops through all calcium imaging evals and combines results in master file for stats, plotting and saving.
-
-# II. 
+# I. Load packackes
 ```{r}
-# Define directories
+library(devtools)
+
+# Core data manipulation & visualization
+library(tidyverse)        # ggplot2, dplyr, purrr, readr, tibble, tidyr, stringr
+library(zoo)              # Rolling operations
+library(reshape2)         # Data reshaping
+library(pheatmap)         # Heatmaps
+library(ggdendro)         # Dendrograms
+library(viridis)          # Color palettes
+library(RColorBrewer)
+library(NatParksPalettes)
+library(tidyplots)
+library(ggpubr)           # Publication-ready plots
+library(ggsignif)         # Significance annotations
+library(Cairo)            # For cairo_pdf output
+library(patchwork)        # Plot layouts
+library(cowplot)          # Plot composition
+library(gridExtra)        # Layout utilities
+library(grid)             # Viewports and custom layout
+library(rlang)            # Tidy evaluation tools
+
+# Network analysis
+library(igraph)
+library(ggraph)
+#devtools::install_github("simo-91/CalNetExploreR")
+library(CalNetExploreR)
+
+# Signal processing
+#library(signal)
+
+# Plot composition
+library(gridExtra)
+library(grid)
+library(cowplot)
+
+library(dplyr)
+
+```
+
+
+# II. Metdata input 
+```{r}
+# -------------------
+# DEFINE INPUT DIRS 
+# -------------------
 timepoint_dirs <- list(
-  d21 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250623_diff138_iN_d21_Ctrl-ASAH1_Flou4/cpsam_d21/nd2_labels/calcium_results",
-  d38 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/nd2_labels/calcium_results",
-  d42 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_results"
-  #d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_results"
-  #d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_results"
+  d38 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/nd2_labels/calcium_analysis_results_dataframes",
+  d42 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
+  d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
+  #d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_analysis_results_dataframes"
+  #d60 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_analysis_results_dataframes"
 )
 
-# Define filenames to merge
+# -------------------
+# DEFINE INPUT FILES  
+# -------------------
 filenames <- c(
-  "calcium_metrics_pvals.csv",
-  "combined_cell_community_membership.csv",
-  "combined_cell_pairwise_correlations.csv",
-  "combined_events_per_min_results.csv",
-  "combined_sample_level_normalised_metrics.csv"
+  "combined_cell_community_membership",
+  "combined_events_per_min_results",
+  "combined_sample_level_normalised_metrics"
 )
+
+# -------------------
+# DEFINE OUTPUT DIR  
+# -------------------
+camaster_outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/camaster_outdir"
+dir.create(camaster_outdir, showWarnings = FALSE, recursive = TRUE)
+
+purrr::iwalk(master_list, function(df, name) {
+  write.csv(df, file = file.path(out_dir, paste0("master_", name, ".csv")), row.names = FALSE)
+})
+
+
+
+
+
+
+# Assign names to master data frames
+names(master_list) <- c("metrics_pvals", "community_membership", "correlations",
+                        "events_per_min", "sample_level_metrics")
+
+# Save each master dataframe
+
+```
+
+
+# III. Parse through files and make master file
+```{r}
 
 # Read and combine
 master_list <- lapply(filenames, function(fname) {
@@ -46,17 +116,11 @@ master_list <- lapply(filenames, function(fname) {
   })
   bind_rows(df_list)
 })
-
-# Assign names to master data frames
-names(master_list) <- c("metrics_pvals", "community_membership", "correlations",
-                        "events_per_min", "sample_level_metrics")
-
-# Save each master dataframe
-out_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/neuroLSDgit/imaging/Calcium/master_merged_calcium"
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-
-purrr::iwalk(master_list, function(df, name) {
-  write.csv(df, file = file.path(out_dir, paste0("master_", name, ".csv")), row.names = FALSE)
-})
 ```
+
+
+# IV. Stat test 
+
+
+# V. Vizualiztion
 
