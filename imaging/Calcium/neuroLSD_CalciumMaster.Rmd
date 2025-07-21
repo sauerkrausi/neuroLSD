@@ -62,7 +62,7 @@ library(dplyr)
 timepoint_dirs <- list(
   d38 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/nd2_labels/calcium_analysis_results_dataframes",
   d42 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
-  d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
+  d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes"
   #d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_analysis_results_dataframes"
   #d60 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_analysis_results_dataframes"
 )
@@ -70,7 +70,7 @@ timepoint_dirs <- list(
 # -------------------
 # DEFINE INPUT FILES  
 # -------------------
-filenames <- c(
+ca_filenames <- c(
   "combined_cell_community_membership",
   "combined_events_per_min_results",
   "combined_sample_level_normalised_metrics"
@@ -88,20 +88,103 @@ purrr::iwalk(master_list, function(df, name) {
 
 
 
+# Define naming/color input
+celltype <- "iN"
+timepoint <- c("d38", "d42", "d45", "d50", "d60")
+genotypes <- c("Ctrl", "ASAH1")
+treatments <- c("Fed_Fluo4", "KCL_Fluo4", "Caffeine_Fluo4", "25µMCQNX10µMDAP5_Fluo4")
+
+# Construct sample keys
+sample_keys <- expand.grid(
+  Genotype  = genotypes,
+  Treatment = treatments,
+  stringsAsFactors = FALSE
+) %>%
+  mutate(
+    SampleLabel = str_c(Genotype, Treatment, sep = "_"),
+    PlotOrder = paste(Genotype, match(Treatment, treatments), sep = "_")
+  ) %>%
+  arrange(factor(Genotype, levels = genotypes), match(Treatment, treatments)) %>%
+  mutate(SampleLabel = factor(SampleLabel, levels = SampleLabel))
+
+# Color mapping
+geno_levels <- sample_keys$SampleLabel
+geno_cols <- setNames(
+  sapply(sample_keys$Genotype, function(geno) {
+    if (geno == "Ctrl") "grey70" else if (geno == "ASAH1") "lightblue" else "lightgrey"
+  }),
+  sample_keys$SampleLabel
+)
+
+# Sample key to SampleLabel mapping
+genotype_map <- setNames(
+  sample_keys$SampleLabel,
+  paste(celltype, rep(timepoint, each = nrow(sample_keys)), 
+        rep(sample_keys$Genotype, times = length(timepoint)), 
+        rep(sample_keys$Treatment, times = length(timepoint)), sep = "_")
+)
+
+# Apply SampleLabel factor level
+set_samplelabel_factor <- function(df) {
+  df %>%
+    mutate(SampleLabel = factor(SampleLabel, levels = sample_keys$SampleLabel))
+}
 
 
-
-# Assign names to master data frames
-names(master_list) <- c("metrics_pvals", "community_membership", "correlations",
-                        "events_per_min", "sample_level_metrics")
-
-# Save each master dataframe
 
 ```
 
 
 # III. Parse through files and make master file
 ```{r}
+# -----------------------------
+# Metadata annotation helpers
+# -----------------------------
+extract_match <- function(x, patterns) {
+  str_extract(x, str_c(patterns, collapse = "|"))
+}
+
+annotate_sample_metadata <- function(df) {
+  df %>%
+    mutate(
+      Celltype    = extract_match(Sample, celltype),
+      Timepoint   = extract_match(Sample, timepoint),
+      Genotype    = extract_match(Sample, genotypes),
+      Treatment   = extract_match(Sample, treatments),
+      SampleLabel = str_c(Genotype, Treatment, sep = "_")
+    ) %>%
+    relocate(Sample, Celltype, Timepoint, Genotype, Treatment, SampleLabel)
+}
+
+# -----------------------------
+# Master file creation
+# -----------------------------
+for (fname in filenames) {
+  master_df <- map_dfr(timepoint_dirs, function(dir_path) {
+    file_path <- file.path(dir_path, paste0(fname, ".csv"))
+    if (!file.exists(file_path)) return(NULL)
+
+    df <- read_csv(file_path, show_col_types = FALSE)
+    if (!"Sample" %in% colnames(df)) {
+      warning("Missing 'Sample' column in: ", file_path)
+      return(NULL)
+    }
+
+    annotate_sample_metadata(df)
+  })
+
+  # Assign variable
+  assign(paste0("master_", fname), master_df)
+
+  # Save to output
+  write_csv(master_df, file.path(camaster_outdir, paste0("master_", fname, ".csv")))
+}
+
+
+
+
+
+
 
 # Read and combine
 master_list <- lapply(filenames, function(fname) {
@@ -116,6 +199,11 @@ master_list <- lapply(filenames, function(fname) {
   })
   bind_rows(df_list)
 })
+
+# Assign names to master data frames
+names(master_list) <- c("community_membership",
+                        "events_per_min", "sample_normalized")
+
 ```
 
 
