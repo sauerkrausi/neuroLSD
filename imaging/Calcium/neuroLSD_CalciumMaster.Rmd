@@ -232,6 +232,9 @@ ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySize, fill = Group
     legend.position = "bottom")
 
 
+# -------------------
+# Active frames 
+# -------------------
 
 # summarization assuming values are already in percent (0–100)
 stacked_df <- master_combined_sample_level_normalised_metrics %>%
@@ -263,6 +266,11 @@ stacked_df <- master_combined_sample_level_normalised_metrics %>%
     ))
   )
 
+stacked_df <- stacked_df %>%
+  mutate(
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
+  )
+
 # Color map
 group_colors <- c(
   "Ctrl_active"     = "grey50",
@@ -281,9 +289,89 @@ ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Group)) +
     x = "Timepoint & Treatment"
   ) +
   scale_fill_manual(values = group_colors) +
-  theme_minimal(base_size = 12) +
+  theme_bw(base_size = 12) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+
+
+
+
+
+
+
+
+# -------------------
+# Active frames 
+# -------------------
+
+summary_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+         Timepoint %in% c("d38", "d42", "d45")) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  summarise(
+    FiringEventsPerMin = mean(Firing_events_per_min, na.rm = TRUE),
+    SEM_Firing = sd(Firing_events_per_min, na.rm = TRUE) / sqrt(n()),
+    PropHighCorr = mean(prop_high_corr, na.rm = TRUE),
+    SEM_Prop = sd(prop_high_corr, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Timepoint = factor(Timepoint, levels = c("d38", "d42", "d45")),
+    Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
+  )
+
+summary_df <- summary_df %>%
+  mutate(
+    Group = paste(Genotype, Treatment, sep = "_")
+  )
+group_colors <- c(
+  "Ctrl_Fed_Fluo4"     = "grey50",
+  "Ctrl_KCL_Fluo4"     = "grey70",
+  "ASAH1_Fed_Fluo4"    = "dodgerblue",
+  "ASAH1_KCL_Fluo4"    = "lightblue"
+)
+
+
+
+# Plot Firing Events per Minute
+ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
+  geom_errorbar(aes(ymin = FiringEventsPerMin - SEM_Firing, ymax = FiringEventsPerMin + SEM_Firing),
+                width = 0.2, position = position_dodge(width = 1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Firing Events per Minute",
+    y = "Firing Events / Min",
+    x = "Timepoint"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
+  geom_errorbar(aes(ymin = PropHighCorr - SEM_Prop, ymax = PropHighCorr + SEM_Prop),
+                width = 0.2, position = position_dodge(width = 1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Proportion of Highly Correlated Cells",
+    y = "Proportion High Corr",
+    x = "Timepoint"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
     legend.position = "bottom"
   )
 
