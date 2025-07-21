@@ -233,25 +233,34 @@ ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySize, fill = Group
 
 
 
-# Prepare summarized dataframe
+# summarization assuming values are already in percent (0–100)
 stacked_df <- master_combined_sample_level_normalised_metrics %>%
-  filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-         Timepoint %in% c("d38", "d42", "d45")) %>%
-  group_by(Genotype, Treatment, Timepoint) %>%
+  filter(
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38", "d42", "d45")
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
-    MeanActive = mean(Mean_percent_active_frames, na.rm = TRUE),
+    PercentActive = mean(Mean_percent_active_frames, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
-    MeanNonActive = 1 - MeanActive
+    PercentInactive = 100 - PercentActive
   ) %>%
-  pivot_longer(cols = c(MeanActive, MeanNonActive), names_to = "ActivityState", values_to = "Fraction") %>%
+  pivot_longer(
+    cols = c(PercentActive, PercentInactive),
+    names_to = "ActivityState",
+    values_to = "Percent"
+  ) %>%
   mutate(
-    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
-    ActivityState = ifelse(ActivityState == "MeanActive", "active", "nonactive"),
+    ActivityState = ifelse(ActivityState == "PercentActive", "active", "nonactive"),
     Group = paste(Genotype, ActivityState, sep = "_"),
-    Percent = 100 * Fraction,
-    Time_Treat = interaction(Timepoint, Treatment, sep = "_")
+    BarGroup = paste(Timepoint, Treatment, sep = "_"),
+    ActivityState = factor(ActivityState, levels = c("nonactive", "active")),
+    Group = factor(Group, levels = c(
+      "Ctrl_nonactive", "Ctrl_active",
+      "ASAH1_nonactive", "ASAH1_active"
+    ))
   )
 
 # Color map
@@ -262,18 +271,21 @@ group_colors <- c(
   "ASAH1_nonactive" = "lightblue"
 )
 
-# Plot
-ggplot(stacked_df, aes(x = Timepoint, y = Percent, fill = Group)) +
-  geom_bar(aes(group = Treatment), stat = "identity",
-           position = position_dodge(width = 0.8), color = "black") +
+# Plot: Each bar = one timepoint:treatment, stacked = active/nonactive, facet by genotype
+ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Group)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
   facet_wrap(~ Genotype, nrow = 1) +
-  labs(title = "Mean Percent Active Frames (Fed vs KCL)",
-       y = "Percent of Frames (%)",
-       x = "Timepoint") +
+  labs(
+    title = "Mean Percent Active vs Non-Active Frames",
+    y = "Percent of Frames (%)",
+    x = "Timepoint & Treatment"
+  ) +
   scale_fill_manual(values = group_colors) +
   theme_minimal(base_size = 12) +
-  theme(legend.position = "bottom")
-
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
 
 
 ```
