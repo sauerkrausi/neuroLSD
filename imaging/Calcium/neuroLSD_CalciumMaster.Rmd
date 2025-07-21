@@ -82,10 +82,6 @@ ca_filenames <- c(
 camaster_outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/camaster_outdir"
 dir.create(camaster_outdir, showWarnings = FALSE, recursive = TRUE)
 
-purrr::iwalk(master_list, function(df, name) {
-  write.csv(df, file = file.path(out_dir, paste0("master_", name, ".csv")), row.names = FALSE)
-})
-
 
 
 # Define naming/color input
@@ -159,7 +155,7 @@ annotate_sample_metadata <- function(df) {
 # -----------------------------
 # Master file creation
 # -----------------------------
-for (fname in filenames) {
+for (fname in ca_filenames) {
   master_df <- map_dfr(timepoint_dirs, function(dir_path) {
     file_path <- file.path(dir_path, paste0(fname, ".csv"))
     if (!file.exists(file_path)) return(NULL)
@@ -180,30 +176,12 @@ for (fname in filenames) {
   write_csv(master_df, file.path(camaster_outdir, paste0("master_", fname, ".csv")))
 }
 
-
-
-
-
-
-
-# Read and combine
-master_list <- lapply(filenames, function(fname) {
-  df_list <- purrr::imap(timepoint_dirs, function(path, tp) {
-    fpath <- file.path(path, fname)
-    if (file.exists(fpath)) {
-      readr::read_csv(fpath, show_col_types = FALSE) %>%
-        dplyr::mutate(Timepoint = tp)
-    } else {
-      NULL
-    }
-  })
-  bind_rows(df_list)
-})
-
-# Assign names to master data frames
-names(master_list) <- c("community_membership",
-                        "events_per_min", "sample_normalized")
-
+# -----------------------------
+# List of Master files
+# -----------------------------
+master_combined_cell_community_membership
+master_combined_events_per_min_results
+master_combined_sample_level_normalised_metrics
 ```
 
 
@@ -211,4 +189,46 @@ names(master_list) <- c("community_membership",
 
 
 # V. Vizualiztion
+```{r}
 
+
+community_plot_df
+# Filter and summarize
+community_plot_df <- master_combined_cell_community_membership %>%
+  filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+         Timepoint %in% c("d38", "d42", "d45")) %>%
+  mutate(
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
+    Group = paste(Genotype, Treatment, sep = "_")
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment, Group) %>%
+  summarise(
+    MeanCommunitySize = mean(CommunitySize, na.rm = TRUE),
+    SEM = sd(CommunitySize, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Define fill colors by Group
+group_colors <- c(
+  "Ctrl_Fed_Fluo4"   = "grey50",
+  "Ctrl_KCL_Fluo4"   = "grey70",
+  "ASAH1_Fed_Fluo4"  = "dodgerblue",
+  "ASAH1_KCL_Fluo4"  = "lightblue"
+)
+
+# Plot
+ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySize, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
+  geom_errorbar(aes(ymin = MeanCommunitySize - SEM, ymax = MeanCommunitySize + SEM),
+                width = 0.2, position = position_dodge(width = 1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(title = "Community Size: Fed vs KCL",
+       y = "Mean Community Size",
+       x = "Timepoint") +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom")
+
+```
