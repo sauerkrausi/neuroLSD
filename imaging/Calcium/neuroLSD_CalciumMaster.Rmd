@@ -48,7 +48,7 @@ library(CalNetExploreR)
 library(gridExtra)
 library(grid)
 library(cowplot)
-
+library(Cairo)
 library(dplyr)
 
 ```
@@ -82,51 +82,16 @@ ca_filenames <- c(
 camaster_outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/camaster_outdir"
 dir.create(camaster_outdir, showWarnings = FALSE, recursive = TRUE)
 
+camaster_plot_outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/camaster_outdir/plots"
+dir.create(camaster_plot_outdir, showWarnings = FALSE, recursive = TRUE)
 
-
-# Define naming/color input
+# -------------------
+# DEFINE INPUT METADATA
+# -------------------
 celltype <- "iN"
 timepoint <- c("d38", "d42", "d45", "d50", "d60")
 genotypes <- c("Ctrl", "ASAH1")
 treatments <- c("Fed_Fluo4", "KCL_Fluo4", "Caffeine_Fluo4", "25µMCQNX10µMDAP5_Fluo4")
-
-# Construct sample keys
-sample_keys <- expand.grid(
-  Genotype  = genotypes,
-  Treatment = treatments,
-  stringsAsFactors = FALSE
-) %>%
-  mutate(
-    SampleLabel = str_c(Genotype, Treatment, sep = "_"),
-    PlotOrder = paste(Genotype, match(Treatment, treatments), sep = "_")
-  ) %>%
-  arrange(factor(Genotype, levels = genotypes), match(Treatment, treatments)) %>%
-  mutate(SampleLabel = factor(SampleLabel, levels = SampleLabel))
-
-# Color mapping
-geno_levels <- sample_keys$SampleLabel
-geno_cols <- setNames(
-  sapply(sample_keys$Genotype, function(geno) {
-    if (geno == "Ctrl") "grey70" else if (geno == "ASAH1") "lightblue" else "lightgrey"
-  }),
-  sample_keys$SampleLabel
-)
-
-# Sample key to SampleLabel mapping
-genotype_map <- setNames(
-  sample_keys$SampleLabel,
-  paste(celltype, rep(timepoint, each = nrow(sample_keys)), 
-        rep(sample_keys$Genotype, times = length(timepoint)), 
-        rep(sample_keys$Treatment, times = length(timepoint)), sep = "_")
-)
-
-# Apply SampleLabel factor level
-set_samplelabel_factor <- function(df) {
-  df %>%
-    mutate(SampleLabel = factor(SampleLabel, levels = sample_keys$SampleLabel))
-}
-
-
 
 ```
 
@@ -189,11 +154,13 @@ master_combined_sample_level_normalised_metrics
 
 
 # V. Vizualiztion
+## Va. Community Size 
 ```{r}
+# -------------------
+# Community Size 
+# -------------------
 
-
-community_plot_df
-# Filter and summarize
+# --- Filter and summarize
 community_plot_df <- master_combined_cell_community_membership %>%
   filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
          Timepoint %in% c("d38", "d42", "d45")) %>%
@@ -216,8 +183,8 @@ group_colors <- c(
   "ASAH1_KCL_Fluo4"  = "lightblue"
 )
 
-# Plot
-ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySize, fill = Group)) +
+# --- Plot
+comm_size <- ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySize, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
   geom_errorbar(aes(ymin = MeanCommunitySize - SEM, ymax = MeanCommunitySize + SEM),
                 width = 0.2, position = position_dodge(width = 1)) +
@@ -226,17 +193,22 @@ ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySize, fill = Group
        y = "Mean Community Size",
        x = "Timepoint") +
   scale_fill_manual(values = group_colors) +
-  theme_bw(base_size = 12) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     legend.position = "bottom")
 
+# --- save PDF
+ggsave(filename = file.path(camaster_plot_outdir, "Community_size.pdf"),plot = comm_size, width = 4, height = 4, device = cairo_pdf)
+```
 
+## Vb. Active frames
+```{r}
 # -------------------
 # Active frames 
 # -------------------
 
-# summarization assuming values are already in percent (0–100)
+# --- Summarization assuming values are already in percent (0–100)
 stacked_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
@@ -266,12 +238,13 @@ stacked_df <- master_combined_sample_level_normalised_metrics %>%
     ))
   )
 
+# --- Define sample order 
 stacked_df <- stacked_df %>%
   mutate(
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
   )
 
-# Color map
+# --- Define color map
 group_colors <- c(
   "Ctrl_active"     = "grey50",
   "Ctrl_nonactive"  = "grey70",
@@ -279,8 +252,8 @@ group_colors <- c(
   "ASAH1_nonactive" = "lightblue"
 )
 
-# Plot: Each bar = one timepoint:treatment, stacked = active/nonactive, facet by genotype
-ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Group)) +
+# --- Plot: Each bar = one timepoint:treatment, stacked = active/nonactive, facet by genotype
+perc_active_plot <- ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Group)) +
   geom_bar(stat = "identity", position = "stack", color = "black") +
   facet_wrap(~ Genotype, nrow = 1) +
   labs(
@@ -297,15 +270,15 @@ ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Group)) +
   )
 
 
+# --- save PDF
+ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active.pdf"),plot = perc_active_plot, width = 4, height = 4, device = cairo_pdf)
 
+```
 
-
-
-
-
-
+## Vc. Firing Events per Minute
+```{r}
 # -------------------
-# Active frames 
+# Firing Events per Minute
 # -------------------
 
 summary_df <- master_combined_sample_level_normalised_metrics %>%
@@ -338,7 +311,7 @@ group_colors <- c(
 
 
 
-# Plot Firing Events per Minute
+# --- Plot Firing Events per Minute
 ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
   geom_errorbar(aes(ymin = FiringEventsPerMin - SEM_Firing, ymax = FiringEventsPerMin + SEM_Firing),
