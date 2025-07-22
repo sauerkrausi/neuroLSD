@@ -430,6 +430,7 @@ write_csv(dff_results, file = file.path(ca_results_dataframes, "dff_results.csv"
 # Initialize Result Lists
 # -----------------------------
 cor_list <- list()
+cor_raw_list <- list()
 comm_list <- list()
 events_list <- list()
 summary_list <- list()
@@ -534,7 +535,7 @@ for (sample_id in all_sample_ids) {
     #        p_raw / p_scaled / p_binary, width = 6, height = 6, device = cairo_pdf)
   }
 
-  # Correlation matrix of binary spike trains
+  ## Correlation matrix of binary spike trains
   cor_mat <- tryCatch({
     cm <- cor(t(dff_binary), use = "pairwise.complete.obs")
     cm[!is.finite(cm)] <- 0
@@ -545,6 +546,9 @@ for (sample_id in all_sample_ids) {
            dimnames = list(df_sample$ObjectNumber, df_sample$ObjectNumber))
   })
   
+  # Save to correlation list
+  cor_list[[clean_sample_id]] <- cor_mat
+
   # plot Heatmaps
   pdf(file.path(output_dir, paste0(clean_sample_id, "_CorrelationMatrix.pdf")), width = 6, height = 6)
   tryCatch({
@@ -554,6 +558,31 @@ for (sample_id in all_sample_ids) {
     message("Skipped heatmap for ", clean_sample_id, ": ", e$message)
   })
   dev.off()
+
+  ##  Correlation matrix of raw dF/F traces
+  cor_mat_raw <- tryCatch({
+    cm <- cor(t(dff_mat), use = "pairwise.complete.obs")
+    cm[!is.finite(cm)] <- 0
+    cm
+  }, error = function(e) {
+    warning(paste("Raw trace correlation failed for", clean_sample_id, ":", e$message))
+    matrix(0, nrow = nrow(dff_mat), ncol = nrow(dff_mat),
+           dimnames = list(df_sample$ObjectNumber, df_sample$ObjectNumber))
+  })
+  
+  # Optionally store in another list
+  cor_raw_list[[clean_sample_id]] <- cor_mat_raw
+  
+  # Plot heatmap
+  pdf(file.path(output_dir, paste0(clean_sample_id, "_RawTrace_CorrelationMatrix.pdf")), width = 6, height = 6)
+  tryCatch({
+    pheatmap(cor_mat_raw, clustering_method = "complete",
+             main = "Raw Trace Correlation Matrix", border_color = NA, fontsize = 6)
+  }, error = function(e) {
+    message("Skipped raw trace heatmap for ", clean_sample_id, ": ", e$message)
+  })
+  dev.off()
+  
 
   
   
@@ -738,6 +767,7 @@ clean_sample_names <- function(s) {
 events_df <- bind_with_sample(events_list)
 comm_df   <- bind_with_sample(comm_list)
 comm_df <- comm_df %>% mutate(Label = as.character(ObjectNumber))
+summary_df <- bind_with_sample(summary_list)
 
 # Define normalised_metrics
 if (length(summary_list) > 0) {
@@ -849,6 +879,7 @@ annotate_sample_metadata <- function(df) {
 events_df <- annotate_sample_metadata(events_df)
 comm_df   <- annotate_sample_metadata(comm_df)
 normalised_metrics <- annotate_sample_metadata(normalised_metrics)
+summary_df <- annotate_sample_metadata(summary_df)
 ```
 
 
@@ -969,9 +1000,26 @@ res_active_norm <- plot_genotype_violin_with_stats(normalised_metrics, "Mean_per
 ## IIId. Save combined Outputs & Sample-Level Normalized Outputs
 ```{r}
 # ------------------------------------------------------
+# Convert each corr  matrix to long format and then bind
+# ------------------------------------------------------
+cor_list_long_df <- imap_dfr(cor_list, function(mat, sample_id) {
+  as.data.frame(mat) %>%
+    rownames_to_column("ROI1") %>%
+    pivot_longer(-ROI1, names_to = "ROI2", values_to = "Correlation") %>%
+    mutate(SampleID = sample_id)
+})
+
+cor_raw_long_df <- imap_dfr(cor_raw_list, function(mat, sample_id) {
+  as.data.frame(mat) %>%
+    rownames_to_column("ROI1") %>%
+    pivot_longer(-ROI1, names_to = "ROI2", values_to = "Correlation") %>%
+    mutate(SampleID = sample_id)
+})
+# ------------------------------------------------------
 # Save Combined Outputs (Cell-Pair Correlations, Communities, Events)
 # ------------------------------------------------------
-write.csv(bind_rows(cor_list),    file.path(ca_results_dataframes, "combined_cell_pairwise_correlations.csv"), row.names = FALSE)
+write.csv(cor_list_long_df, file.path(ca_results_dataframes, "combined_cell_pairwise_correlations.csv"), row.names = FALSE)
+write.csv(cor_raw_long_df, file.path(ca_results_dataframes, "combined_cell_pairwise_correlations_traces.csv"), row.names = FALSE)
 write.csv(bind_rows(comm_list),   file.path(ca_results_dataframes, "combined_cell_community_membership.csv"),  row.names = FALSE)
 write.csv(bind_rows(events_list), file.path(ca_results_dataframes, "combined_events_per_min_results.csv"),     row.names = FALSE)
 
