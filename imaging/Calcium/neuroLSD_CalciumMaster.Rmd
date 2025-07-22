@@ -152,9 +152,106 @@ master_combined_sample_level_normalised_metrics
 
 # IV. Stat test 
 
+# V. QC plots Ctrl basal-sitmulation-inhibition
+```{r}
+# -----------------------------
+# QC plots 
+# -----------------------------
 
-# V. Vizualiztion
-## Va. Community Size 
+# --- Filter data
+inhibitor_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Genotype == "Ctrl",
+    Timepoint %in% c("d38", "d42"),
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4", "25µMCQNX10µMDAP5_Fluo4")
+  ) %>%
+  mutate(
+    Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4", "25µMCQNX10µMDAP5_Fluo4")),
+    Timepoint = factor(Timepoint, levels = c("d38", "d42"))
+  )
+
+# --- Define color palette
+inhibitor_colors <- c(
+  "Fed_Fluo4" = "grey50",
+  "KCL_Fluo4" = "grey70",
+  "25µMCQNX10µMDAP5_Fluo4" = "grey90"
+)
+
+
+## --- plot data as is in dataframe ==> firiring rate
+# --- Plot
+inhibitor_plot <- ggplot(inhibitor_df, aes(x = Treatment, y = Firing_events_per_min_norm, fill = Treatment)) +
+  geom_violin(trim = FALSE, scale = "width", color = "black", alpha = 0.8) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white") +
+  geom_jitter(width = 0.1, size = 1.2, shape = 21, stroke = 0.2, color = "black", fill = "black") +
+  facet_wrap(~ Timepoint, nrow = 1) +
+  scale_fill_manual(values = inhibitor_colors) +
+  labs(
+    title = "Normalized Firing Events per Minute under Inhibitors (Ctrl only)",
+    y = "Firing Events / Min (Normalized)",
+    x = "Treatment"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+inhibitor_plot
+
+# --- Save plot
+ggsave(filename = file.path(camaster_plot_outdir, "Inhibitor_Effect_Ctrl.pdf"),
+       plot = inhibitor_plot, width = 5, height = 4, device = cairo_pdf)
+
+
+## --- plot data norm to fed in timepoint
+# --- Normalize each timepoint's data by Fed_Fluo4 mean
+fed_norm_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Genotype == "Ctrl",
+    Timepoint %in% c("d38", "d42"),
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4", "25µMCQNX10µMDAP5_Fluo4")
+  ) %>%
+  group_by(Timepoint) %>%
+  mutate(
+    FedMean = mean(Firing_events_per_min_norm[Treatment == "Fed_Fluo4"], na.rm = TRUE),
+    NormFiring = Firing_events_per_min_norm / FedMean
+  ) %>%
+  ungroup() %>%
+  mutate(
+    Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4", "25µMCQNX10µMDAP5_Fluo4")),
+    Timepoint = factor(Timepoint, levels = c("d38", "d42"))
+  )
+
+# --- Plot norm to fed in timepoint
+inhibitor_plot_norm <- ggplot(fed_norm_df, aes(x = Treatment, y = NormFiring, fill = Treatment)) +
+  geom_violin(trim = FALSE, scale = "width", color = "black", alpha = 0.8) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white") +
+  geom_jitter(width = 0.1, size = 1.2, shape = 21, stroke = 0.2, color = "black", fill = "black") +
+  facet_wrap(~ Timepoint, nrow = 1) +
+  scale_fill_manual(values = inhibitor_colors) +
+  labs(
+    title = "Relative Firing (Ctrl, Normalized to Fed)",
+    y = "Relative Firing (Fed = 1)",
+    x = "Treatment"
+  ) +
+  theme_bw(base_size = 10) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+inhibitor_plot_norm
+
+# --- Save plot
+ggsave(filename = file.path(camaster_plot_outdir, "Inhibitor_Effect_Ctrl_normalized.pdf"),
+       plot = inhibitor_plot_norm, width = 5, height = 4, device = cairo_pdf)
+```
+
+
+# VI. Vizualiztion
+## VIa. Community Size 
 ```{r}
 # -------------------
 # Community Size 
@@ -281,6 +378,7 @@ ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active.pdf"),plot = p
 # Firing Events per Minute
 # -------------------
 
+# --- Prepare data for firing events by sample
 summary_df <- master_combined_sample_level_normalised_metrics %>%
   filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
          Timepoint %in% c("d38", "d42", "d45")) %>%
@@ -298,10 +396,13 @@ summary_df <- master_combined_sample_level_normalised_metrics %>%
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
   )
 
+# --- Define sample order 
 summary_df <- summary_df %>%
   mutate(
     Group = paste(Genotype, Treatment, sep = "_")
   )
+
+# --- Define color map
 group_colors <- c(
   "Ctrl_Fed_Fluo4"     = "grey50",
   "Ctrl_KCL_Fluo4"     = "grey70",
@@ -309,10 +410,8 @@ group_colors <- c(
   "ASAH1_KCL_Fluo4"    = "lightblue"
 )
 
-
-
 # --- Plot Firing Events per Minute
-ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
+firing_events_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
   geom_errorbar(aes(ymin = FiringEventsPerMin - SEM_Firing, ymax = FiringEventsPerMin + SEM_Firing),
                 width = 0.2, position = position_dodge(width = 1)) +
@@ -330,13 +429,14 @@ ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
     legend.position = "bottom"
   )
 
-ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
+# --- Plot Proportion High Corr ROIs 
+prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
   geom_errorbar(aes(ymin = PropHighCorr - SEM_Prop, ymax = PropHighCorr + SEM_Prop),
                 width = 0.2, position = position_dodge(width = 1)) +
   facet_wrap(~ Genotype, nrow = 1) +
   labs(
-    title = "Proportion of Highly Correlated Cells",
+    title = "Proportion of Highly Correlated ROIs",
     y = "Proportion High Corr",
     x = "Timepoint"
   ) +
@@ -348,5 +448,7 @@ ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
     legend.position = "bottom"
   )
 
-
+# --- save PDF
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Proportion_high_corr_ROI.pdf"),plot = prop_high_corr_plot, width = 4, height = 4, device = cairo_pdf)
 ```
