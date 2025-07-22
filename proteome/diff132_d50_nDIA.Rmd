@@ -2355,12 +2355,19 @@ disease_classes <- list(
   Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
   Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5")
 )
+# disease_colors <- c(
+#   Sphigolipidoses = "#D53E4F",
+#   Neuronal.ceroid.lipofucinoses = "#FEE08B",
+#   Integral.membrane.protein.disorders = "#E6F598"
+# )
 disease_colors <- c(
-  Sphigolipidoses = "#D53E4F",
-  Neuronal.ceroid.lipofucinoses = "#FEE08B",
-  Integral.membrane.protein.disorders = "#E6F598"
+  Sphigolipidoses = "dodgerblue3",
+  Neuronal.ceroid.lipofucinoses = "lightblue",
+  Integral.membrane.protein.disorders = "grey70"
 )
 disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
+
+
 
 
 # --- Step 2. Define plotting function (facet wrap by annotation)
