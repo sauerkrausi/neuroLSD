@@ -200,8 +200,8 @@ inhibitor_plot <- ggplot(inhibitor_df, aes(x = Treatment, y = Firing_events_per_
 inhibitor_plot
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Inhibitor_Effect_Ctrl.pdf"),
-       plot = inhibitor_plot, width = 5, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Ctrl_d38-d42_basal_stim_inhib.pdf"),
+       plot = inhibitor_plot, width = 4, height = 4, device = cairo_pdf)
 
 
 ## --- plot data norm to fed in timepoint
@@ -235,7 +235,7 @@ inhibitor_plot_norm <- ggplot(fed_norm_df, aes(x = Treatment, y = NormFiring, fi
     y = "Relative Firing (Fed = 1)",
     x = "Treatment"
   ) +
-  theme_bw(base_size = 10) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     legend.position = "none",
@@ -245,8 +245,8 @@ inhibitor_plot_norm <- ggplot(fed_norm_df, aes(x = Treatment, y = NormFiring, fi
 inhibitor_plot_norm
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Inhibitor_Effect_Ctrl_normalized.pdf"),
-       plot = inhibitor_plot_norm, width = 5, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Ctrl_d38-d42_basal_stim_inhib_norm.pdf"),
+       plot = inhibitor_plot_norm, width = 4, height = 4, device = cairo_pdf)
 ```
 
 
