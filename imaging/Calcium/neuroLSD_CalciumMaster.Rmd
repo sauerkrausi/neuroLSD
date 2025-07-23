@@ -396,6 +396,16 @@ summary_df <- master_combined_sample_level_normalised_metrics %>%
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
   )
 
+# norm option for fed == 100
+summary_df <- summary_df %>%
+  group_by(Genotype, Timepoint) %>%
+  mutate(
+    FedReference = FiringEventsPerMin[Treatment == "Fed_Fluo4"][1],
+    FiringEventsPerMin_norm = (FiringEventsPerMin / FedReference) * 100,
+    SEM_Firing_norm = (SEM_Firing / FedReference) * 100
+  ) %>%
+  ungroup()
+
 # --- Define sample order 
 summary_df <- summary_df %>%
   mutate(
@@ -429,6 +439,28 @@ firing_events_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerM
     legend.position = "bottom"
   )
 
+# ---Norm Plot Firing Events per Minute
+firing_events_norm_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin_norm, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
+  geom_errorbar(aes(
+    ymin = FiringEventsPerMin_norm - SEM_Firing_norm,
+    ymax = FiringEventsPerMin_norm + SEM_Firing_norm
+  ), width = 0.2, position = position_dodge(width = 1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Normalized Firing Rate (Fed = 100%)",
+    y = "Relative Firing (%)",
+    x = "Timepoint"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+
 # --- Plot Proportion High Corr ROIs 
 prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
@@ -450,5 +482,8 @@ prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, f
 
 # --- save PDF
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_norm.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Proportion_high_corr_ROI.pdf"),plot = prop_high_corr_plot, width = 4, height = 4, device = cairo_pdf)
+
+
 ```
