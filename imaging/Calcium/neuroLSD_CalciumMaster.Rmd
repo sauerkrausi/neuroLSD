@@ -266,7 +266,7 @@ community_plot_df <- master_combined_cell_community_membership %>%
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
     Timepoint %in% c("d38", "d45", "d50"),
-    CommunitySize >= 3       # filter out small communities
+    CommunitySize >= 2       # filter out small communities
   ) %>%
   mutate(
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
@@ -420,6 +420,7 @@ ggsave(
 # Mean Active frames 
 # -------------------
 
+## --- 1. % active frames per timepoint and genotype 
 # --- Summarization assuming values are already in percent (0–100)
 stacked_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
@@ -481,7 +482,7 @@ perc_active_plot <- ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Gro
     x = "Timepoint & Treatment"
   ) +
   scale_fill_manual(values = group_colors) +
-  theme_bw(base_size = 12) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
     panel.grid = element_blank(),
@@ -489,17 +490,84 @@ perc_active_plot <- ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Gro
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active_iNonly.pdf"), plot = perc_active_plot, width = 6, height = 6, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_iNonly.pdf"), plot = perc_active_plot, width = 6, height = 6, device = cairo_pdf)
 
 
 
 
+## --- 2. % active frames per timepoint and genotype \\ normalized to Ctrl in each timepoint 
+# Summarize and calculate raw active counts
+active_df_norm <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Celltype == "iN",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38", "d45", "d50")
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  summarise(
+    PercentActive = mean(Mean_percent_active_frames, na.rm = TRUE),
+    SEM_Active = sd(Mean_percent_active_frames, na.rm = TRUE) / sqrt(n()),
+    MeanNTotal = mean(n_total, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ActiveRaw = PercentActive * MeanNTotal / 100,
+    SEM_ActiveRaw = SEM_Active * MeanNTotal / 100  # propagate SEM linearly
+  )
+
+# Get reference (Ctrl + Fed per timepoint)
+norm_refs <- active_df_norm %>%
+  filter(Genotype == "Ctrl", Treatment == "Fed_Fluo4") %>%
+  select(Timepoint, RefActive = ActiveRaw, RefSEM = SEM_ActiveRaw)
+
+# Normalize and propagate error
+active_df_norm <- active_df_norm %>%
+  left_join(norm_refs, by = "Timepoint") %>%
+  mutate(
+    PercentActive_norm = (ActiveRaw / RefActive) * 100,
+    SEM_norm = PercentActive_norm * sqrt((SEM_ActiveRaw / ActiveRaw)^2 + (RefSEM / RefActive)^2),
+    BarGroup = paste(Timepoint, Treatment, sep = "_"),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
+    Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
+    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50"))
+  )
+
+# Plot normalized percent active (relative to Ctrl Fed per timepoint)
+active_only_plot <- ggplot(active_df_norm, aes(x = BarGroup, y = PercentActive_norm, fill = interaction(Genotype, Treatment))) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black", width = 0.95) +
+  geom_errorbar(aes(ymin = PercentActive_norm - SEM_norm, ymax = PercentActive_norm + SEM_norm),
+                width = 0.2, position = position_dodge(width = 0.8)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Normalized Active Frames (iN only, norm per-timepoint Ctrl Fed)",
+    y = "Normalized % Active Frames",
+    x = "Timepoint & Treatment"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Ctrl.Fed_Fluo4" = "grey50",
+      "Ctrl.KCL_Fluo4" = "grey70",
+      "ASAH1.Fed_Fluo4" = "dodgerblue",
+      "ASAH1.KCL_Fluo4" = "lightblue"
+    ),
+    name = "Group"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- Save plot
+ggsave(
+  filename = file.path(camaster_plot_outdir, "Active_frames_normCtrlTime_iNonly.pdf"), plot = active_only_plot, width = 5, height = 5, device = cairo_pdf)
 
 
-```
 
-```{r}
-# --- Summarization assuming values are already in percent (0–100)
+
+## --- 3. Total active ROI over time (how many ROIs were active at least once)
+# --- Summarization assuming values 
 stacked_total_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
@@ -555,12 +623,12 @@ perc_active_total_plot <- ggplot(stacked_total_df, aes(x = BarGroup, y = Percent
   geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
   facet_wrap(~ Genotype, nrow = 1) +
   labs(
-    title = "Percent Active vs Non-Active Frames (iN only)",
+    title = "Percent  Total active ROI over time (iN only)",
     y = "Percent of Frames (%)",
     x = "Timepoint & Treatment"
   ) +
   scale_fill_manual(values = group_colors) +
-  theme_bw(base_size = 12) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
     panel.grid = element_blank(),
@@ -568,7 +636,7 @@ perc_active_total_plot <- ggplot(stacked_total_df, aes(x = BarGroup, y = Percent
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "total Percent_Active_iNonly.pdf"), plot = perc_active_total_plot, width = 6, height = 6, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_total_iNonly.pdf"), plot = perc_active_total_plot, width = 6, height = 6, device = cairo_pdf)
 ```
 
 
@@ -579,6 +647,7 @@ ggsave(filename = file.path(camaster_plot_outdir, "total Percent_Active_iNonly.p
 # Mean Active frames 
 # -------------------
 
+## --- 1. % active frames per timepoint and genotype 
 # --- Summarization assuming values are already in percent (0–100)
 stacked_iDA_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
@@ -648,7 +717,159 @@ perc_active_iDA_plot <- ggplot(stacked_iDA_df, aes(x = BarGroup, y = Percent, fi
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active_iDAonly.pdf"), plot = perc_active_iDA_plot, width = 6, height = 6, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_iDAonly.pdf"), plot = perc_active_iDA_plot, width = 3, height = 6, device = cairo_pdf)
+
+
+
+
+## --- 2. % active frames per timepoint and genotype \\ normalized to Ctrl in each timepoint 
+# Summarize and calculate raw active counts
+# Step 1: Summarize main data
+active_df_iDA_norm <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Celltype == "iDA",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d50", "d60")
+  ) %>%
+  mutate(Timepoint = as.character(Timepoint)) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  summarise(
+    PercentActive = mean(Mean_percent_active_frames, na.rm = TRUE),
+    SEM_Active = sd(Mean_percent_active_frames, na.rm = TRUE) / sqrt(n()),
+    MeanNTotal = mean(n_total, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ActiveRaw = PercentActive * MeanNTotal / 100,
+    SEM_ActiveRaw = SEM_Active * MeanNTotal / 100
+  )
+
+# Step 2: Get Ctrl Fed per timepoint reference
+norm_iDA_refs <- active_df_iDA_norm %>%
+  filter(Genotype == "Ctrl", Treatment == "Fed_Fluo4") %>%
+  select(Timepoint, RefActive = ActiveRaw, RefSEM = SEM_ActiveRaw)
+
+# Step 3: Join and normalize
+active_df_iDA_norm <- active_df_iDA_norm %>%
+  left_join(norm_iDA_refs, by = "Timepoint") %>%
+  mutate(
+    PercentActive_norm = (ActiveRaw / RefActive) * 100,
+    SEM_norm = PercentActive_norm * sqrt((SEM_ActiveRaw / ActiveRaw)^2 + (RefSEM / RefActive)^2),
+    BarGroup = paste(Timepoint, Treatment, sep = "_"),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
+    Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
+    Timepoint = factor(Timepoint, levels = c("d50", "d60"))
+  )
+
+# Optional: restrict to d50 only until d60 data are in
+active_df_iDA_norm <- active_df_iDA_norm %>%
+  filter(Timepoint == "d50")
+
+# Plot normalized percent active (relative to Ctrl Fed per timepoint)
+active_only_iDA_plot <- ggplot(active_df_iDA_norm, aes(x = BarGroup, y = PercentActive_norm, fill = interaction(Genotype, Treatment))) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black", width = 0.95) +
+  geom_errorbar(aes(ymin = PercentActive_norm - SEM_norm, ymax = PercentActive_norm + SEM_norm),
+                width = 0.2, position = position_dodge(width = 0.8)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Normalized Active Frames (iDA only, norm per-timepoint Ctrl Fed)",
+    y = "Normalized % Active Frames",
+    x = "Timepoint & Treatment"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Ctrl.Fed_Fluo4" = "grey50",
+      "Ctrl.KCL_Fluo4" = "grey70",
+      "ASAH1.Fed_Fluo4" = "dodgerblue",
+      "ASAH1.KCL_Fluo4" = "lightblue"
+    ),
+    name = "Group"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- Save plot
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_normCtrlTime_iDAonly.pdf"), plot = active_only_iDA_plot, width = 3, height = 5, device = cairo_pdf)
+
+
+
+
+
+## --- 3. Total active ROI over time (how many ROIs were active at least once)
+# --- Summarization assuming values 
+stacked_total_iDA_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Celltype == "iDA",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint == "d50"
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  summarise(
+    PercentActive = mean(Percent_cells_active, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    PercentInactive = 100 - PercentActive
+  ) %>%
+  pivot_longer(
+    cols = c(PercentActive, PercentInactive),
+    names_to = "ActivityState",
+    values_to = "Percent"
+  ) %>%
+  mutate(
+    ActivityState = ifelse(ActivityState == "PercentActive", "active", "nonactive"),
+    Group = paste(Genotype, ActivityState, sep = "_"),
+    BarGroup = paste(Timepoint, Treatment, sep = "_"),
+    ActivityState = factor(ActivityState, levels = c("active", "nonactive")),
+    Group = factor(Group, levels = c(
+      "Ctrl_nonactive", "Ctrl_active",
+      "ASAH1_nonactive", "ASAH1_active"
+    )),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
+  )
+
+# --- Label position: stack bottom to top
+stacked_total_iDA_df <- stacked_total_iDA_df %>%
+  group_by(Genotype, BarGroup) %>%
+  arrange(ActivityState) %>%
+  mutate(
+    ypos = cumsum(Percent) - Percent / 2,
+    label = paste0(round(Percent), "%")
+  ) %>%
+  ungroup()
+
+# --- Define color map
+group_colors <- c(
+  "Ctrl_active"     = "grey50",
+  "Ctrl_nonactive"  = "grey70",
+  "ASAH1_active"    = "dodgerblue",
+  "ASAH1_nonactive" = "lightblue"
+)
+
+# --- Plot
+perc_active_total_iDA_plot <- ggplot(stacked_total_iDA_df, aes(x = BarGroup, y = Percent, fill = Group)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Percent  Total active ROI over time (iDA only)",
+    y = "Percent of Frames (%)",
+    x = "Timepoint & Treatment"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- Save plot
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_total_iDAonly.pdf"), plot = perc_active_total_iDA_plot, width = 3, height = 6, device = cairo_pdf)
 
 ```
 
@@ -656,11 +877,13 @@ ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active_iDAonly.pdf"),
 
 
 ## Vc. Firing Events per Minute
+### Vc1. iNeurons
 ```{r}
 # -------------------
 # Firing Events per Minute
 # -------------------
 
+## --- 1. Data preparation 
 # --- Prepare data for firing events by sample
 summary_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
@@ -725,7 +948,7 @@ group_colors <- c(
 )
 
 
-
+## --- 2. Plot data 
 # --- Plot Firing Events per Minute
 firing_events_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
@@ -754,7 +977,7 @@ firing_events_norm_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEvent
   ), width = 0.2, position = position_dodge(width = 1)) +
   facet_wrap(~ Genotype, nrow = 1) +
   labs(
-    title = "Normalized Firing Rate (Fed = 100%)",
+    title = "Normalized Firing Rate",
     y = "Relative Firing (%)",
     x = "Timepoint"
   ) +
@@ -788,7 +1011,25 @@ firing_events_norm_time_plot <- ggplot(summary_df, aes(x = Timepoint, y = Firing
   )
 
 
+# --- save PDF
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_norm_iN.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_normtime_iN.pdf"),plot = firing_events_norm_time_plot, width = 4, height = 4, device = cairo_pdf)
+```
 
+
+
+### Vc2. iDA
+```{r}
+
+```
+
+
+
+
+
+## misk
+```{r}
 # --- Plot Proportion High Corr ROIs 
 prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
@@ -808,11 +1049,6 @@ prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, f
     legend.position = "bottom"
   )
 
-# --- save PDF
-ggsave(filename = file.path(camaster_plot_outdir, "Firing_events.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
-ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_norm.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
-ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_normtime.pdf"),plot = firing_events_norm_time_plot, width = 4, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Proportion_high_corr_ROI.pdf"),plot = prop_high_corr_plot, width = 4, height = 4, device = cairo_pdf)
-
-
 ```
+
