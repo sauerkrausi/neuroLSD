@@ -1013,15 +1013,101 @@ firing_events_norm_time_plot <- ggplot(summary_df, aes(x = Timepoint, y = Firing
 
 # --- save PDF
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
-ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_norm_iN.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
-ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_normtime_iN.pdf"),plot = firing_events_norm_time_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN_norm.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN_normtime.pdf"),plot = firing_events_norm_time_plot, width = 4, height = 4, device = cairo_pdf)
 ```
 
 
 
 ### Vc2. iDA
 ```{r}
+# --- 1. Data preparation
+ida_summary_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Celltype == "iDA",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d50") # Extend to d60 later
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  summarise(
+    FiringEventsPerMin = mean(Firing_events_per_min, na.rm = TRUE),
+    SEM_Firing = sd(Firing_events_per_min, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Timepoint = factor(Timepoint, levels = c("d50", "d60")),
+    Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
+  )
 
+# --- Normalize to Ctrl + Fed_Fluo4 at each timepoint
+ida_norm_refs <- ida_summary_df %>%
+  filter(Genotype == "Ctrl", Treatment == "Fed_Fluo4") %>%
+  select(Timepoint, FiringEventsPerMin_ref = FiringEventsPerMin, SEM_Firing_ref = SEM_Firing)
+
+ida_summary_df <- ida_summary_df %>%
+  left_join(ida_norm_refs, by = "Timepoint") %>%
+  mutate(
+    FiringEventsPerMin_norm = (FiringEventsPerMin / FiringEventsPerMin_ref) * 100,
+    SEM_Firing_norm = FiringEventsPerMin_norm * sqrt(
+      (SEM_Firing / FiringEventsPerMin)^2 + (SEM_Firing_ref / FiringEventsPerMin_ref)^2
+    ),
+    Group = paste(Genotype, Treatment, sep = "_")
+  )
+
+# --- Define color map
+group_colors <- c(
+  "Ctrl_Fed_Fluo4"  = "grey50",
+  "Ctrl_KCL_Fluo4"  = "grey70",
+  "ASAH1_Fed_Fluo4" = "dodgerblue",
+  "ASAH1_KCL_Fluo4" = "lightblue"
+)
+
+# --- Plot: raw firing events
+ida_firing_raw_plot <- ggplot(ida_summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(1), color = "black") +
+  geom_errorbar(aes(
+    ymin = FiringEventsPerMin - SEM_Firing,
+    ymax = FiringEventsPerMin + SEM_Firing
+  ), width = 0.2, position = position_dodge(1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Firing Events per Minute (iDA)",
+    y = "Firing Events / Min",
+    x = "Timepoint"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- Plot: normalized firing events
+ida_firing_norm_plot <- ggplot(ida_summary_df, aes(x = Timepoint, y = FiringEventsPerMin_norm, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(1), color = "black") +
+  geom_errorbar(aes(
+    ymin = FiringEventsPerMin_norm - SEM_Firing_norm,
+    ymax = FiringEventsPerMin_norm + SEM_Firing_norm
+  ), width = 0.2, position = position_dodge(1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Normalized Firing Rate (iDA, per-timepoint Ctrl Fed = 100%)",
+    y = "Relative Firing (%)",
+    x = "Timepoint"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- Save
+ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA.pdf"), plot = ida_firing_raw_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA_norm.pdf"), plot = ida_firing_norm_plot, width = 4, height = 4, device = cairo_pdf)
 ```
 
 
