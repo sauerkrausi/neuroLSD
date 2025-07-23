@@ -254,7 +254,7 @@ ggsave(filename = file.path(camaster_plot_outdir, "Ctrl_d38-d42_basal_stim_inhib
 
 
 # VI. Vizualiztion
-## VIa. Community Size 
+## VIa. ?? Community Size 
 ```{r}
 # -------------------
 # Community Size 
@@ -263,9 +263,10 @@ ggsave(filename = file.path(camaster_plot_outdir, "Ctrl_d38-d42_basal_stim_inhib
 # --- Filter and summarize
 community_plot_df <- master_combined_cell_community_membership %>%
   filter(
+    Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d42", "d45"),
-    CommunitySize >= 2       # filter out small communities
+    Timepoint %in% c("d38", "d45", "d50"),
+    CommunitySize >= 3       # filter out small communities
   ) %>%
   mutate(
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
@@ -314,9 +315,10 @@ norm_metrics_df <- master_combined_sample_level_normalised_metrics %>%
 # Join and process community data
 community_plot_df <- master_combined_cell_community_membership %>%
   filter(
+    Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d42", "d45"),
-    CommunitySize >= 4
+    Timepoint %in% c("d38", "d45", "d50"),
+    CommunitySize >= 3
   ) %>%
   left_join(norm_metrics_df, by = "Sample") %>%
   mutate(
@@ -352,7 +354,7 @@ comm_size_norm
 ```
 
 
-## VIb. Community Size (High Correlation)
+## ?? VIb. Community Size (High Correlation)
 ```{r}
 # Filter, summarize, and format
 community_plot_highcorr_df <- master_comunitySize_highcorr %>%
@@ -412,16 +414,18 @@ ggsave(
 ```
 
 ## Vb. Active frames
+### Vb1. iNeuron
 ```{r}
 # -------------------
-# Active frames 
+# Mean Active frames 
 # -------------------
 
 # --- Summarization assuming values are already in percent (0–100)
 stacked_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
+    Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d42", "d45","d50")
+    Timepoint %in% c("d38", "d45", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -444,9 +448,11 @@ stacked_df <- master_combined_sample_level_normalised_metrics %>%
     Group = factor(Group, levels = c(
       "Ctrl_nonactive", "Ctrl_active",
       "ASAH1_nonactive", "ASAH1_active"
-    ))
+    )),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
   )
-# Label position: stack bottom to top
+
+# --- Label position: stack bottom to top
 stacked_df <- stacked_df %>%
   group_by(Genotype, BarGroup) %>%
   arrange(ActivityState) %>%
@@ -456,13 +462,6 @@ stacked_df <- stacked_df %>%
   ) %>%
   ungroup()
 
-
-# --- Define sample order 
-stacked_df <- stacked_df %>%
-  mutate(
-    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
-  )
-
 # --- Define color map
 group_colors <- c(
   "Ctrl_active"     = "grey50",
@@ -471,13 +470,13 @@ group_colors <- c(
   "ASAH1_nonactive" = "lightblue"
 )
 
-# --- Plot: Each bar = one timepoint:treatment, stacked = active/nonactive, facet by genotype
+# --- Plot
 perc_active_plot <- ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Group)) +
   geom_bar(stat = "identity", position = "stack", color = "black") +
   geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
   facet_wrap(~ Genotype, nrow = 1) +
   labs(
-    title = "Mean Percent Active vs Non-Active Frames",
+    title = "Mean Percent Active vs Non-Active Frames (iN only)",
     y = "Percent of Frames (%)",
     x = "Timepoint & Treatment"
   ) +
@@ -489,11 +488,172 @@ perc_active_plot <- ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Gro
     legend.position = "bottom"
   )
 
-perc_active_plot
-# --- save PDF
-ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active.pdf"),plot = perc_active_plot, width = 4, height = 5, device = cairo_pdf)
+# --- Save plot
+ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active_iNonly.pdf"), plot = perc_active_plot, width = 6, height = 6, device = cairo_pdf)
+
+
+
+
+
 
 ```
+
+```{r}
+# --- Summarization assuming values are already in percent (0–100)
+stacked_total_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Celltype == "iN",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38", "d45", "d50")
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  summarise(
+    PercentActive = mean(Percent_cells_active, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    PercentInactive = 100 - PercentActive
+  ) %>%
+  pivot_longer(
+    cols = c(PercentActive, PercentInactive),
+    names_to = "ActivityState",
+    values_to = "Percent"
+  ) %>%
+  mutate(
+    ActivityState = ifelse(ActivityState == "PercentActive", "active", "nonactive"),
+    Group = paste(Genotype, ActivityState, sep = "_"),
+    BarGroup = paste(Timepoint, Treatment, sep = "_"),
+    ActivityState = factor(ActivityState, levels = c("active", "nonactive")),
+    Group = factor(Group, levels = c(
+      "Ctrl_nonactive", "Ctrl_active",
+      "ASAH1_nonactive", "ASAH1_active"
+    )),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
+  )
+
+# --- Label position: stack bottom to top
+stacked_total_df <- stacked_total_df %>%
+  group_by(Genotype, BarGroup) %>%
+  arrange(ActivityState) %>%
+  mutate(
+    ypos = cumsum(Percent) - Percent / 2,
+    label = paste0(round(Percent), "%")
+  ) %>%
+  ungroup()
+
+# --- Define color map
+group_colors <- c(
+  "Ctrl_active"     = "grey50",
+  "Ctrl_nonactive"  = "grey70",
+  "ASAH1_active"    = "dodgerblue",
+  "ASAH1_nonactive" = "lightblue"
+)
+
+# --- Plot
+perc_active_total_plot <- ggplot(stacked_total_df, aes(x = BarGroup, y = Percent, fill = Group)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Percent Active vs Non-Active Frames (iN only)",
+    y = "Percent of Frames (%)",
+    x = "Timepoint & Treatment"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- Save plot
+ggsave(filename = file.path(camaster_plot_outdir, "total Percent_Active_iNonly.pdf"), plot = perc_active_total_plot, width = 6, height = 6, device = cairo_pdf)
+```
+
+
+
+### Vb2. iDA
+```{r}
+# -------------------
+# Mean Active frames 
+# -------------------
+
+# --- Summarization assuming values are already in percent (0–100)
+stacked_iDA_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Celltype == "iDA",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint == "d50"
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  summarise(
+    PercentActive = mean(Mean_percent_active_frames, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    PercentInactive = 100 - PercentActive
+  ) %>%
+  pivot_longer(
+    cols = c(PercentActive, PercentInactive),
+    names_to = "ActivityState",
+    values_to = "Percent"
+  ) %>%
+  mutate(
+    ActivityState = ifelse(ActivityState == "PercentActive", "active", "nonactive"),
+    Group = paste(Genotype, ActivityState, sep = "_"),
+    BarGroup = paste(Timepoint, Treatment, sep = "_"),
+    ActivityState = factor(ActivityState, levels = c("active", "nonactive")),
+    Group = factor(Group, levels = c(
+      "Ctrl_nonactive", "Ctrl_active",
+      "ASAH1_nonactive", "ASAH1_active"
+    )),
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
+  )
+
+# --- Label position: stack bottom to top
+stacked_iDA_df <- stacked_iDA_df %>%
+  group_by(Genotype, BarGroup) %>%
+  arrange(ActivityState) %>%
+  mutate(
+    ypos = cumsum(Percent) - Percent / 2,
+    label = paste0(round(Percent), "%")
+  ) %>%
+  ungroup()
+
+# --- Define color map
+group_colors <- c(
+  "Ctrl_active"     = "grey50",
+  "Ctrl_nonactive"  = "grey70",
+  "ASAH1_active"    = "dodgerblue",
+  "ASAH1_nonactive" = "lightblue"
+)
+
+# --- Plot
+perc_active_iDA_plot <- ggplot(stacked_iDA_df, aes(x = BarGroup, y = Percent, fill = Group)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Mean Percent Active vs Non-Active Frames (iDA only)",
+    y = "Percent of Frames (%)",
+    x = "Timepoint & Treatment"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- Save plot
+ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active_iDAonly.pdf"), plot = perc_active_iDA_plot, width = 6, height = 6, device = cairo_pdf)
+
+```
+
+
+
 
 ## Vc. Firing Events per Minute
 ```{r}
@@ -503,8 +663,11 @@ ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active.pdf"),plot = p
 
 # --- Prepare data for firing events by sample
 summary_df <- master_combined_sample_level_normalised_metrics %>%
-  filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-         Timepoint %in% c("d38", "d42", "d45")) %>%
+  filter(
+    Celltype == "iN",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38", "d45", "d50")
+  ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
     FiringEventsPerMin = mean(Firing_events_per_min, na.rm = TRUE),
@@ -514,20 +677,38 @@ summary_df <- master_combined_sample_level_normalised_metrics %>%
     .groups = "drop"
   ) %>%
   mutate(
-    Timepoint = factor(Timepoint, levels = c("d38", "d42", "d45")),
+    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50")),
     Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
   )
 
-# norm option for fed == 100
+# --- Normalize to d38 Fed within each Genotype
+norm_refs <- summary_df %>%
+  filter(Timepoint == "d38", Treatment == "Fed_Fluo4") %>%
+  select(Genotype, FiringEventsPerMin_ref = FiringEventsPerMin, SEM_Firing_ref = SEM_Firing)
+
 summary_df <- summary_df %>%
-  group_by(Genotype, Timepoint) %>%
+  left_join(norm_refs, by = "Genotype") %>%
   mutate(
-    FedReference = FiringEventsPerMin[Treatment == "Fed_Fluo4"][1],
-    FiringEventsPerMin_norm = (FiringEventsPerMin / FedReference) * 100,
-    SEM_Firing_norm = (SEM_Firing / FedReference) * 100
+    FiringEventsPerMin_norm = (FiringEventsPerMin / FiringEventsPerMin_ref) * 100,
+    SEM_Firing_norm = (SEM_Firing / FiringEventsPerMin_ref) * 100
   ) %>%
-  ungroup()
+  select(-FiringEventsPerMin_ref, -SEM_Firing_ref)
+
+
+# --- Normalize to Ctrl + Fed at each timepoint
+norm_refs <- summary_df %>%
+  filter(Genotype == "Ctrl", Treatment == "Fed_Fluo4") %>%
+  select(Timepoint, FiringEventsPerMin_ref = FiringEventsPerMin, SEM_Firing_ref = SEM_Firing)
+
+summary_df <- summary_df %>%
+  left_join(norm_refs, by = "Timepoint") %>%
+  mutate(
+    FiringEventsPerMin_normtime = (FiringEventsPerMin / FiringEventsPerMin_ref) * 100,
+    SEM_Firing_norm = (SEM_Firing / FiringEventsPerMin_ref) * 100
+  ) %>%
+  select(-FiringEventsPerMin_ref, -SEM_Firing_ref)
+
 
 # --- Define sample order 
 summary_df <- summary_df %>%
@@ -543,6 +724,8 @@ group_colors <- c(
   "ASAH1_KCL_Fluo4"    = "lightblue"
 )
 
+
+
 # --- Plot Firing Events per Minute
 firing_events_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
@@ -555,14 +738,14 @@ firing_events_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerM
     x = "Timepoint"
   ) +
   scale_fill_manual(values = group_colors) +
-  theme_bw(base_size = 12) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
     panel.grid = element_blank(),
     legend.position = "bottom"
   )
 
-# ---Norm Plot Firing Events per Minute
+# --- Plot Norm Firing Events per Minute
 firing_events_norm_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin_norm, fill = Group)) +
   geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
   geom_errorbar(aes(
@@ -576,12 +759,34 @@ firing_events_norm_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEvent
     x = "Timepoint"
   ) +
   scale_fill_manual(values = group_colors) +
-  theme_bw(base_size = 12) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
     panel.grid = element_blank(),
     legend.position = "bottom"
   )
+
+# --- Plot Norm T=fed ctrl Firing Events per Minute
+firing_events_norm_time_plot <- ggplot(summary_df, aes(x = Timepoint, y = FiringEventsPerMin_normtime, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
+  geom_errorbar(aes(
+    ymin = FiringEventsPerMin_normtime - SEM_Firing_norm,
+    ymax = FiringEventsPerMin_normtime + SEM_Firing_norm
+  ), width = 0.2, position = position_dodge(width = 1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Normalized Firing Rate within timepoints",
+    y = "Relative Firing (%)",
+    x = "Timepoint"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
 
 
 # --- Plot Proportion High Corr ROIs 
@@ -606,6 +811,7 @@ prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, f
 # --- save PDF
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_norm.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_normtime.pdf"),plot = firing_events_norm_time_plot, width = 4, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Proportion_high_corr_ROI.pdf"),plot = prop_high_corr_plot, width = 4, height = 4, device = cairo_pdf)
 
 
