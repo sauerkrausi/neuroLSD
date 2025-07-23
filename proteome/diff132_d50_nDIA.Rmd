@@ -25,6 +25,7 @@ library(dplyr)
 library(data.table)
 library(broom)
 library(rlang)
+library(tidyr)
 
 # Visualization: ggplot2 Extensions & Plots
 library(ggplot2)
@@ -112,6 +113,9 @@ dir.create(out_dir_d50_CrossCorr_genoavg, recursive = TRUE, showWarnings = FALSE
 
 out_dir_d50_CrossCorr_bubble <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/bubble"
 dir.create(out_dir_d50_CrossCorr_bubble, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d50_CrossCorr_bubble_ASAH1 <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr/ASAH1_c23d30d50"
+dir.create(out_dir_d50_CrossCorr_bubble_ASAH1, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_corrProtein <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/proteincorr"
 dir.create(out_dir_d50_corrProtein, recursive = TRUE, showWarnings = FALSE)
@@ -2436,7 +2440,7 @@ plot_corr_bubble_by_annotation(
 
 
 # --------------------------------------------------- #
-# Bubble plot by disease class 
+# Bubble plot by annotation 
 # facet wrapped by genotype 
 # --------------------------------------------------- #
 
@@ -3249,6 +3253,109 @@ gridExtra::grid.arrange(
   ncol = 4
 )
 dev.off()
+
+```
+
+
+
+###?? IXc. diff118 (d23) to diff132 (d50) comparison of ASAH1
+```{r}
+# --- Step 1. Load and Inspect Data
+# Define the path to the input CSV file
+input_diff118 <- read.csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/dataframes/diff118_iN-iDA_d23_Ctrl-ASAH1-SMPD1_wholecellproteome_annotated.csv", 
+                                  header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+
+
+# --- Subset: ASAH1 vs Ctrl (day 23, from diff118)
+asah1_genes <- input_diff118 %>%
+  select(Gene.Symbol, SynGO, SynapseSVs, RecyclingEndosome, mtComplexI,
+         log2FC_ASAH1_d23_iN.Ctrl_d23_iN, log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA) %>%
+  rename(Gene = Gene.Symbol,
+         iN_d23 = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
+         iDA_d23 = log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA)
+
+# --- Merge with day 30 and day 50 data by gene
+join_cols <- c("Genes", "Gene")  # Matching column names
+
+day30_subset <- complete_data_annotated_day30 %>%
+  select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
+  rename(Gene = Genes)
+
+day50_subset <- complete_data_annotated_day50 %>%
+  select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
+  rename(Gene = Genes)
+
+# --- Long-format merge
+merged_all <- list(
+  d23 = asah1_genes %>% mutate(Time = "d23"),
+  d30 = day30_subset %>%
+    select(Gene, iN = ASAH1_iN_log2_fold_change, iDA = ASAH1_iDA_log2_fold_change,
+           SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
+    mutate(Time = "d30"),
+  d50 = day50_subset %>%
+    select(Gene, iN = ASAH1_iN_log2_fold_change, iDA = ASAH1_iDA_log2_fold_change,
+           SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
+    mutate(Time = "d50")
+) %>% bind_rows()
+
+# --- Define annotation columns
+annotation_cols <- colnames(complete_data_annotated_day50)
+annotation_cols <- annotation_cols[which(annotation_cols == "Mito"):which(annotation_cols == "vATPase")]
+
+# --- Subset for day 23
+asah1_genes <- input_diff118 %>%
+  select(Gene.Symbol, all_of(annotation_cols),
+         log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
+         log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA) %>%
+  rename(
+    Gene = Gene.Symbol,
+    log2FC_iN_ASAH1vsCtrl = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
+    log2FC_iDA_ASAH1vsCtrl = log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA
+  ) %>%
+  mutate(Time = "d23") %>%
+  select(Gene, log2FC_iN_ASAH1vsCtrl, log2FC_iDA_ASAH1vsCtrl, Time, everything())
+
+# --- Subset for day 30
+day30_subset <- complete_data_annotated_day30 %>%
+  select(Genes, all_of(annotation_cols),
+         ASAH1_iN_log2_fold_change,
+         ASAH1_iDA_log2_fold_change) %>%
+  rename(
+    Gene = Genes,
+    log2FC_iN_ASAH1vsCtrl = ASAH1_iN_log2_fold_change,
+    log2FC_iDA_ASAH1vsCtrl = ASAH1_iDA_log2_fold_change
+  ) %>%
+  mutate(Time = "d30") %>%
+  select(Gene, log2FC_iN_ASAH1vsCtrl, log2FC_iDA_ASAH1vsCtrl, Time, everything())
+
+# --- Subset for day 50
+day50_subset <- complete_data_annotated_day50 %>%
+  select(Genes, all_of(annotation_cols),
+         ASAH1_iN_log2_fold_change,
+         ASAH1_iDA_log2_fold_change) %>%
+  rename(
+    Gene = Genes,
+    log2FC_iN_ASAH1vsCtrl = ASAH1_iN_log2_fold_change,
+    log2FC_iDA_ASAH1vsCtrl = ASAH1_iDA_log2_fold_change
+  ) %>%
+  mutate(Time = "d50") %>%
+  select(Gene, log2FC_iN_ASAH1vsCtrl, log2FC_iDA_ASAH1vsCtrl, Time, everything())
+
+# --- Merge all
+merged_all <- bind_rows(asah1_genes, day30_subset, day50_subset)
+
+# --- Save CSV
+out_file <- file.path(out_dir_d50_dataframes, "merged_ASAH1vsCtrl_log2FC_byTime_allAnnotations.csv")
+write_csv(merged_all, out_file)
+
+
+
+
+
+
+
+
 
 ```
 
@@ -4995,7 +5102,7 @@ ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff13
 
     
 # -------------------------------------------------- 
-# ---------- comparative analysis ----------  
+# -------- nDIA-nMOST comparative analysis ---------  
 # --------------------------------------------------  
 
 
