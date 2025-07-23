@@ -259,8 +259,11 @@ ggsave(filename = file.path(camaster_plot_outdir, "Ctrl_d38-d42_basal_stim_inhib
 
 # --- Filter and summarize
 community_plot_df <- master_combined_cell_community_membership %>%
-  filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-         Timepoint %in% c("d38", "d42", "d45")) %>%
+  filter(
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38", "d42", "d45"),
+    CommunitySize >= 2       # filter out small communities
+  ) %>%
   mutate(
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
     Group = paste(Genotype, Treatment, sep = "_")
@@ -295,9 +298,56 @@ comm_size <- ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySize,
     panel.grid = element_blank(),
     legend.position = "bottom")
 
+comm_size
 # --- save PDF
 ggsave(filename = file.path(camaster_plot_outdir, "Community_size.pdf"),plot = comm_size, width = 4, height = 4, device = cairo_pdf)
+
+
+
+# Read normalized metrics (if not already loaded)
+norm_metrics_df <- master_combined_sample_level_normalised_metrics %>%
+  select(Sample, n_total)
+
+# Join and process community data
+community_plot_df <- master_combined_cell_community_membership %>%
+  filter(
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38", "d42", "d45"),
+    CommunitySize >= 4
+  ) %>%
+  left_join(norm_metrics_df, by = "Sample") %>%
+  mutate(
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
+    Group = paste(Genotype, Treatment, sep = "_"),
+    CommunitySize_norm = CommunitySize / n_total
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment, Group) %>%
+  summarise(
+    MeanCommunitySize = mean(CommunitySize, na.rm = TRUE),
+    MeanCommunitySizeNorm = mean(CommunitySize_norm, na.rm = TRUE),
+    SEM = sd(CommunitySize_norm, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# --- Plot
+comm_size_norm <- ggplot(community_plot_df, aes(x = Timepoint, y = MeanCommunitySizeNorm, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
+  geom_errorbar(aes(ymin = MeanCommunitySizeNorm - SEM, ymax = MeanCommunitySizeNorm + SEM),
+                width = 0.2, position = position_dodge(width = 1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(title = "Community Size: Fed vs KCL",
+       y = "Norm Mean Community Size",
+       x = "Timepoint") +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom")
+
+comm_size_norm
+
 ```
+
 
 ## Vb. Active frames
 ```{r}
@@ -328,12 +378,22 @@ stacked_df <- master_combined_sample_level_normalised_metrics %>%
     ActivityState = ifelse(ActivityState == "PercentActive", "active", "nonactive"),
     Group = paste(Genotype, ActivityState, sep = "_"),
     BarGroup = paste(Timepoint, Treatment, sep = "_"),
-    ActivityState = factor(ActivityState, levels = c("nonactive", "active")),
+    ActivityState = factor(ActivityState, levels = c("active", "nonactive")),
     Group = factor(Group, levels = c(
       "Ctrl_nonactive", "Ctrl_active",
       "ASAH1_nonactive", "ASAH1_active"
     ))
   )
+# Label position: stack bottom to top
+stacked_df <- stacked_df %>%
+  group_by(Genotype, BarGroup) %>%
+  arrange(ActivityState) %>%
+  mutate(
+    ypos = cumsum(Percent) - Percent / 2,
+    label = paste0(round(Percent), "%")
+  ) %>%
+  ungroup()
+
 
 # --- Define sample order 
 stacked_df <- stacked_df %>%
@@ -352,6 +412,7 @@ group_colors <- c(
 # --- Plot: Each bar = one timepoint:treatment, stacked = active/nonactive, facet by genotype
 perc_active_plot <- ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Group)) +
   geom_bar(stat = "identity", position = "stack", color = "black") +
+  geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
   facet_wrap(~ Genotype, nrow = 1) +
   labs(
     title = "Mean Percent Active vs Non-Active Frames",
@@ -366,9 +427,9 @@ perc_active_plot <- ggplot(stacked_df, aes(x = BarGroup, y = Percent, fill = Gro
     legend.position = "bottom"
   )
 
-
+perc_active_plot
 # --- save PDF
-ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active.pdf"),plot = perc_active_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Percent_Active.pdf"),plot = perc_active_plot, width = 4, height = 5, device = cairo_pdf)
 
 ```
 
