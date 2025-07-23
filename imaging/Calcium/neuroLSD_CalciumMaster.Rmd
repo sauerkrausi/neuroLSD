@@ -62,8 +62,9 @@ library(dplyr)
 timepoint_dirs <- list(
   d38 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/nd2_labels/calcium_analysis_results_dataframes",
   d42 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
-  d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes"
-  #d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_analysis_results_dataframes"
+  d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
+  d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250721_diff138_iN_d50_Ctrl-ASAH1_Flou4/nd2iN_labels/calcium_analysis_results_dataframes",
+  d50iDA = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250721_diff138_iN_d50_Ctrl-ASAH1_Flou4/nd2iDA_labels/calcium_analysis_results_dataframes"
   #d60 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_analysis_results_dataframes"
 )
 
@@ -72,6 +73,7 @@ timepoint_dirs <- list(
 # -------------------
 ca_filenames <- c(
   "combined_cell_community_membership",
+  "comunitySize_highcorr",
   "combined_events_per_min_results",
   "combined_sample_level_normalised_metrics"
 )
@@ -88,7 +90,7 @@ dir.create(camaster_plot_outdir, showWarnings = FALSE, recursive = TRUE)
 # -------------------
 # DEFINE INPUT METADATA
 # -------------------
-celltype <- "iN"
+celltype <- c("iN","iDA")
 timepoint <- c("d38", "d42", "d45", "d50", "d60")
 genotypes <- c("Ctrl", "ASAH1")
 treatments <- c("Fed_Fluo4", "KCL_Fluo4", "Caffeine_Fluo4", "25µMCQNX10µMDAP5_Fluo4")
@@ -145,6 +147,7 @@ for (fname in ca_filenames) {
 # List of Master files
 # -----------------------------
 master_combined_cell_community_membership
+master_comunitySize_highcorr
 master_combined_events_per_min_results
 master_combined_sample_level_normalised_metrics
 ```
@@ -349,6 +352,65 @@ comm_size_norm
 ```
 
 
+## VIb. Community Size (High Correlation)
+```{r}
+# Filter, summarize, and format
+community_plot_highcorr_df <- master_comunitySize_highcorr %>%
+  filter(
+    Celltype == "iN",
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38", "d42", "d45", "d50"),
+    CommunitySize >= 4
+  ) %>%
+  mutate(
+    Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
+    Group = paste(Genotype, Treatment, sep = "_")
+  ) %>%
+  group_by(Genotype, Timepoint, Treatment, Group) %>%
+  summarise(
+    MeanCommunitySize = mean(CommunitySize, na.rm = TRUE),
+    SEM = sd(CommunitySize, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Define group colors
+group_colors <- c(
+  "Ctrl_Fed_Fluo4"  = "grey50",
+  "Ctrl_KCL_Fluo4"  = "grey70",
+  "ASAH1_Fed_Fluo4" = "dodgerblue",
+  "ASAH1_KCL_Fluo4" = "lightblue"
+)
+
+# Plot
+comm_size <- ggplot(community_plot_highcorr_df, aes(x = Timepoint, y = MeanCommunitySize, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(1), color = "black") +
+  geom_errorbar(aes(ymin = MeanCommunitySize - SEM, ymax = MeanCommunitySize + SEM),
+                width = 0.2, position = position_dodge(1)) +
+  facet_wrap(~ Genotype, nrow = 1) +
+  labs(
+    title = "Community Size: Fed vs KCL (iN only)",
+    y = "Mean Community Size (Raw)",
+    x = "Timepoint"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# Display
+comm_size
+
+# Save to file
+ggsave(
+  filename = file.path(camaster_plot_outdir, "Community_size_raw_iN.pdf"),
+  plot = comm_size,
+  width = 4, height = 4, device = cairo_pdf
+)
+
+```
+
 ## Vb. Active frames
 ```{r}
 # -------------------
@@ -359,7 +421,7 @@ comm_size_norm
 stacked_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d42", "d45")
+    Timepoint %in% c("d38", "d42", "d45","d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
