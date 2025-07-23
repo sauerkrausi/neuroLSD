@@ -3263,9 +3263,7 @@ dev.off()
 # --- Step 1. Load and Inspect Data
 # Define the path to the input CSV file
 input_diff118 <- read.csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/dataframes/diff118_iN-iDA_d23_Ctrl-ASAH1-SMPD1_wholecellproteome_annotated.csv", 
-                                  header = TRUE, sep = ',', stringsAsFactors = FALSE)
-
-
+                          header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
 # --- Subset: ASAH1 vs Ctrl (day 23, from diff118)
 asah1_genes <- input_diff118 %>%
@@ -3303,6 +3301,7 @@ merged_all <- list(
 annotation_cols <- colnames(complete_data_annotated_day50)
 annotation_cols <- annotation_cols[which(annotation_cols == "Mito"):which(annotation_cols == "vATPase")]
 
+
 # --- Subset for day 23
 asah1_genes <- input_diff118 %>%
   select(Gene.Symbol, all_of(annotation_cols),
@@ -3310,11 +3309,10 @@ asah1_genes <- input_diff118 %>%
          log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA) %>%
   rename(
     Gene = Gene.Symbol,
-    log2FC_iN_ASAH1vsCtrl = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
-    log2FC_iDA_ASAH1vsCtrl = log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA
+    log2FC_iN_ASAH1vsCtrl_d23 = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
+    log2FC_iDA_ASAH1vsCtrl_d23 = log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA
   ) %>%
-  mutate(Time = "d23") %>%
-  select(Gene, log2FC_iN_ASAH1vsCtrl, log2FC_iDA_ASAH1vsCtrl, Time, everything())
+  select(Gene, log2FC_iN_ASAH1vsCtrl_d23, log2FC_iDA_ASAH1vsCtrl_d23, everything())
 
 # --- Subset for day 30
 day30_subset <- complete_data_annotated_day30 %>%
@@ -3323,11 +3321,10 @@ day30_subset <- complete_data_annotated_day30 %>%
          ASAH1_iDA_log2_fold_change) %>%
   rename(
     Gene = Genes,
-    log2FC_iN_ASAH1vsCtrl = ASAH1_iN_log2_fold_change,
-    log2FC_iDA_ASAH1vsCtrl = ASAH1_iDA_log2_fold_change
+    log2FC_iN_ASAH1vsCtrl_d30 = ASAH1_iN_log2_fold_change,
+    log2FC_iDA_ASAH1vsCtrl_d30 = ASAH1_iDA_log2_fold_change
   ) %>%
-  mutate(Time = "d30") %>%
-  select(Gene, log2FC_iN_ASAH1vsCtrl, log2FC_iDA_ASAH1vsCtrl, Time, everything())
+  select(Gene, log2FC_iN_ASAH1vsCtrl_d30, log2FC_iDA_ASAH1vsCtrl_d30, everything())
 
 # --- Subset for day 50
 day50_subset <- complete_data_annotated_day50 %>%
@@ -3336,25 +3333,96 @@ day50_subset <- complete_data_annotated_day50 %>%
          ASAH1_iDA_log2_fold_change) %>%
   rename(
     Gene = Genes,
-    log2FC_iN_ASAH1vsCtrl = ASAH1_iN_log2_fold_change,
-    log2FC_iDA_ASAH1vsCtrl = ASAH1_iDA_log2_fold_change
+    log2FC_iN_ASAH1vsCtrl_d50 = ASAH1_iN_log2_fold_change,
+    log2FC_iDA_ASAH1vsCtrl_d50 = ASAH1_iDA_log2_fold_change
   ) %>%
-  mutate(Time = "d50") %>%
-  select(Gene, log2FC_iN_ASAH1vsCtrl, log2FC_iDA_ASAH1vsCtrl, Time, everything())
-
-# --- Merge all
-merged_all <- bind_rows(asah1_genes, day30_subset, day50_subset)
-
-# --- Save CSV
-out_file <- file.path(out_dir_d50_dataframes, "merged_ASAH1vsCtrl_log2FC_byTime_allAnnotations.csv")
-write_csv(merged_all, out_file)
+  select(Gene, log2FC_iN_ASAH1vsCtrl_d50, log2FC_iDA_ASAH1vsCtrl_d50, everything())
 
 
+# --- Merge all (by Gene and annotations)
+asah1_ctrl_d233050_wide_df <- list(
+  asah1_genes,
+  day30_subset,
+  day50_subset
+) %>%
+  reduce(full_join, by = c("Gene", annotation_cols))
+
+# --- Reorder columns
+asah1_ctrl_d233050_wide_df <- asah1_ctrl_d233050_wide_df %>%
+  select(
+    Gene,
+    log2FC_iN_ASAH1vsCtrl_d23, log2FC_iDA_ASAH1vsCtrl_d23,
+    log2FC_iN_ASAH1vsCtrl_d30, log2FC_iDA_ASAH1vsCtrl_d30,
+    log2FC_iN_ASAH1vsCtrl_d50, log2FC_iDA_ASAH1vsCtrl_d50,
+    all_of(annotation_cols)
+  )
+# --- Save to CSV
+write_csv(asah1_ctrl_d233050_wide_df, file.path(out_dir_d50_dataframes, "diff118_diff132_d23d30d50_merged_ASAH1vsCtrl_cleanWide.csv"))
 
 
 
 
+# ------------------
+# bargaph of annotation abundance 
+# ------------------
 
+# ---  Define annotations of interest
+annotation_cols_all <- c("SynGO","SynapseSVs",
+  "Presynaptic", "Postsynaptic", "EarlyEndosome",
+  "RecyclingEndosome", "Svendocytosis", "Svexocytosis", "vATPase"
+)
+
+# --- Helper function to reshape and summarize
+prep_plot_data <- function(df, celltype) {
+  df %>%
+    select(Gene, starts_with(paste0("log2FC_", celltype)), all_of(annotation_cols_all)) %>%
+    pivot_longer(cols = starts_with(paste0("log2FC_", celltype)), names_to = "Time", values_to = "log2FC") %>%
+    mutate(Time = str_extract(Time, "d\\d+")) %>%
+    pivot_longer(cols = all_of(annotation_cols_all), names_to = "Annotation", values_to = "in_group") %>%
+    filter(in_group == TRUE) %>%
+    group_by(Time, Annotation) %>%
+    summarise(
+      mean_log2FC = mean(log2FC, na.rm = TRUE),
+      sem_log2FC = sd(log2FC, na.rm = TRUE) / sqrt(n()),
+      .groups = "drop"
+    )
+}
+
+# --- Prepare data for iN and iDA
+plot_data_iN <- prep_plot_data(asah1_ctrl_d233050_wide_df, "iN")
+plot_data_iDA <- prep_plot_data(asah1_ctrl_d233050_wide_df, "iDA")
+
+# --- Color mapping
+timeline_colors <- c(d50 = "dodgerblue3", d30 = "lightblue", d23 = "grey70")
+
+# --- Plot function
+plot_bar <- function(data, title) {
+  ggplot(data, aes(x = Time, y = mean_log2FC, fill = Time)) +
+    geom_bar(stat = "identity", color = "black", width = 0.7) +
+    geom_errorbar(aes(ymin = mean_log2FC - sem_log2FC, ymax = mean_log2FC + sem_log2FC),
+                  width = 0.2) +
+    facet_wrap(~Annotation, scales = "free_y") +
+    scale_fill_manual(values = timeline_colors) +
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom"
+    ) +
+    labs(title = title, x = "Timepoint", y = "Mean log2FC")
+}
+
+# --- Plot iN and iDA separately
+plot_iN_ASAH1Timecomp <- plot_bar(plot_data_iN, "ASAH1 vs Ctrl – iN Neurons")
+plot_iDA_ASAH1Timecomp  <- plot_bar(plot_data_iDA, "ASAH1 vs Ctrl – iDA Neurons")
+
+# --- Show plots
+print(plot_iN_ASAH1Timecomp)
+print(plot_iDA_ASAH1Timecomp)
+
+# --- Save PDF
+ggsave(file.path(out_dir_d50_CrossCorr_bubble_ASAH1, "diff118_132_ASAH1vsCtrl_d23d30d50organelleAnnotation_iN_bar.pdf"),  plot_iN_ASAH1Timecomp,  width = 8, height = 8, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_CrossCorr_bubble_ASAH1, "diff118_132_ASAH1vsCtrl_d23d30d50organelleAnnotation_iDA_bar.pdf"),  plot_iDA_ASAH1Timecomp,  width = 8, height = 8, device = cairo_pdf)
 
 
 ```
