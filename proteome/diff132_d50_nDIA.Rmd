@@ -2349,7 +2349,7 @@ plot_bar_corr_per_annotation_multi(
 ### VIIIg. Bubble plot of annotation corr of iN vs iDA neuron by genotype or annotation
 ```{r}
 # --------------------------------------------------- #
-# Bubble plot by disease class 
+# Scatter plot by disease class 
 # facet wrapped by annotation
 # --------------------------------------------------- #
 
@@ -2381,8 +2381,6 @@ disease_colors = c(Sphigolipidoses= "#1874CD",
 #   Integral.membrane.protein.disorders = "grey70"
 # )
 disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
-
-
 
 
 # --- Step 2. Define plotting function (facet wrap by annotation)
@@ -2486,6 +2484,69 @@ plot_corr_bubble_by_annotation(
 )
 
 
+# --------------------------------------------------- #
+# Scatter plot of within-annotation variance of iN - iDA corr
+#  annotations show the most biologically meaningful variation
+# --------------------------------------------------- #
+
+# --- Prepare data (same structure as before)
+genos_iN <- grep("_iN$", rownames(org_corr_mat), value = TRUE)
+genos_iDA <- sub("_iN$", "_iDA", genos_iN)
+
+bubble_df <- map_dfr(seq_along(genos_iN), function(i) {
+  tibble(
+    KO = sub("_iN$", "", genos_iN[i]),
+    Annotation = colnames(org_corr_mat),
+    Cor_iN = org_corr_mat[genos_iN[i], ],
+    Cor_iDA = org_corr_mat[genos_iDA[i], ]
+  )
+}) %>%
+  left_join(disease_class_df, by = "KO") %>%
+  pivot_longer(cols = c(Cor_iN, Cor_iDA), names_to = "Celltype", values_to = "Correlation") %>%
+  mutate(Celltype = recode(Celltype, Cor_iN = "iN", Cor_iDA = "iDA"),
+         DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
+
+# --- Summary: Mean and SD of correlation per Annotation × Celltype × DiseaseClass
+summary_df <- bubble_df %>%
+  group_by(Annotation, Celltype, DiseaseClass) %>%
+  summarise(
+    MeanCor = mean(Correlation, na.rm = TRUE),
+    SDCor = sd(Correlation, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# --- Plotting function
+plot_corr_line_per_celltype <- function(celltype_label) {
+  ggplot(filter(summary_df, Celltype == celltype_label),
+         aes(x = Annotation, y = MeanCor, color = DiseaseClass, group = DiseaseClass)) +
+    geom_hline(yintercept = 0,  linetype = "dashed", color = "black", linewidth = 0.3)+
+    geom_line(linewidth = 0.75) +
+    geom_ribbon(aes(ymin = MeanCor - SDCor, ymax = MeanCor + SDCor, fill = DiseaseClass),
+                alpha = 0.2, color = NA) +
+    scale_color_manual(values = disease_colors, drop = FALSE) +
+    scale_fill_manual(values = disease_colors, drop = FALSE) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom") +
+    labs(
+      title = paste("Mean ± SD Correlation –", celltype_label),
+      x = "Annotation", y = "Correlation"
+    )
+}
+
+# --- Generate plots
+p_iN <- plot_corr_line_per_celltype("iN")
+p_iDA <- plot_corr_line_per_celltype("iDA")
+
+# --- Show plots
+print(p_iN)
+print(p_iDA)
+
+# --- Save PDFs
+ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iN.pdf"), p_iN, width = 3, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iDA.pdf"), p_iDA, width = 3, height = 4, device = cairo_pdf)
 
 # --------------------------------------------------- #
 # Bubble plot by annotation 
@@ -4157,9 +4218,9 @@ lm_results <- lm_results_gx2 %>%
     model = map(data, ~ tryCatch(
       lm(fold_change ~ genotype * neuron + day, data = .x),
       error = function(e) NULL
-    )),
-    tidy = map(model, ~ if (!is.null(.x)) broom::tidy(.x) else tibble())
-  ) %>%
+    ))),
+    tidy = map(model, ~ if (!is.null(.x)) broom::tidy(.x) else tibble()
+   %>%
   unnest(tidy) %>%
   filter(!is.na(p.value))
 
