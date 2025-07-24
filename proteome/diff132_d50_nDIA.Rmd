@@ -141,6 +141,9 @@ dir.create(out_dir_d50_nMOST_nDIAcorrelationS_single, recursive = TRUE, showWarn
 out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/HeLa_Neuron_SelectAnnotation_comparisons"
 dir.create(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d50_nMOST_nDIAcorrelationS_Circos <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/HeLa_Neuron_SelectAnnotation_comparisons"
+dir.create(out_dir_d50_nMOST_nDIAcorrelationS_Circos, recursive = TRUE, showWarnings = FALSE)
+
 
 ```
 
@@ -2545,8 +2548,8 @@ print(p_iN)
 print(p_iDA)
 
 # --- Save PDFs
-ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iN.pdf"), p_iN, width = 3, height = 4, device = cairo_pdf)
-ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iDA.pdf"), p_iDA, width = 3, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iN.pdf"), p_iN, width = 6, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iDA.pdf"), p_iDA, width = 6, height = 4, device = cairo_pdf)
 
 # --------------------------------------------------- #
 # Bubble plot by annotation 
@@ -5565,7 +5568,7 @@ sample_colors <- setNames(group_colors, names(group_colors))
 plot_dual_layer_circos <- function(link_df, title_text, output_path) {
   involved_samples <- unique(c(link_df$from, link_df$to))
   ordered_samples_local <- ordered_samples[ordered_samples %in% involved_samples]
-
+  
   # KO class colors
   ko_labels <- str_extract(ordered_samples_local, "^[^_]+")
   sector_classes_local <- tibble(sample = ordered_samples_local, KO = ko_labels) %>%
@@ -5841,27 +5844,139 @@ selected_annotations = c("Mito","OXPHOS",
 
 ## ─────────────────────────────────────────────────────────────
 ## 3.   Function to calculate correlation for select annotation 
+##      plots in circos plot
+## ─────────────────────────────────────────────────────────────
+plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
+  # Sector names (row and column sample IDs)
+  sector_names <- union(rownames(cor_mat), colnames(cor_mat))
+
+  # Define sample metadata
+  sample_meta <- tibble(sample = sector_names) %>%
+    mutate(geno_membership = case_when(
+      str_detect(sample, "_iN") ~ "iN",
+      str_detect(sample, "_iDA") ~ "iDA",
+      str_detect(sample, "\\.KO$") ~ "HeLa",
+      TRUE ~ "Other"
+    ))
+
+  # Define color mapping
+  celltype_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F", "HeLa" = "grey76")
+
+  # Ordered list of samples
+  ordered_sample_meta <- sample_meta %>%
+    arrange(geno_membership, sample)
+
+  ordered_samples <- ordered_sample_meta$sample
+  ordered_membership <- ordered_sample_meta$geno_membership
+
+  # Named vector of colors by sample
+  sector_colors <- setNames(celltype_colors[ordered_membership], ordered_samples)
+  celltype_ring_colors <- sector_colors
+
+  # Link data from correlation matrix
+  link_df <- as.data.frame(as.table(cor_mat)) %>%
+    rename(from = Var1, to = Var2, correlation = Freq) %>%
+    mutate(from = as.character(from), to = as.character(to)) %>%
+    filter(from != to) %>%
+    mutate(pair_id = map2_chr(from, to, ~ paste(sort(c(.x, .y)), collapse = "_"))) %>%
+    distinct(pair_id, .keep_all = TRUE) %>%
+    select(-pair_id)
+
+  # Color ramp for correlation strength
+  #col_fun <- colorRamp2(c(-0.25, 0, 0.25), c("blue", "white", "red"))
+  # Define color palette and values
+  corr_palette <- rev(RColorBrewer::brewer.pal(11, "RdYlBu"))
+  corr_values  <- seq(-0.1, 0.4, length.out = 11)
+  col_fun <- colorRamp2(corr_values, corr_palette)
+
+  # Define spacing between sectors and between groups
+  group_counts <- ordered_sample_meta %>%
+    dplyr::count(geno_membership, name = "n") %>%
+    pull(n)
+
+  gap_between_sectors <- 1
+  gap_between_groups  <- 10
+
+  gap_after <- unlist(lapply(group_counts, function(n) {
+    c(rep(gap_between_sectors, n - 1), gap_between_groups)
+  }))
+  gap_after[length(gap_after)] <- 0
+
+  # Plot circos
+  pdf(output_path, width = 10, height = 12)
+  circos.clear()
+  circos.par(start.degree = 90, gap.after = gap_after)
+  chordDiagram(
+    #x = link_df %>% filter(abs(correlation) > 0.05),
+    x = link_df %>% filter(correlation < 0.4 | correlation > 0.6), # select mid range not to plot to highlight low / high corr
+    grid.col = sector_colors,
+    col = col_fun(link_df$correlation),
+    annotationTrack = "grid",
+    transparency = 0.1,
+    preAllocateTracks = list(
+      list(track.height = 0.05),  # sector labels
+      list(track.height = 0.03)   # outer ring
+    ),
+    order = ordered_samples
+  )
+
+  # Add labels
+  circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
+    circos.text(CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
+                CELL_META$sector.index,
+                facing = "clockwise", niceFacing = TRUE,
+                adj = c(0, 0.5), cex = 0.6)
+  }, bg.border = NA)
+
+  # Cell type ring
+  circos.trackPlotRegion(track.index = 2, bg.col = celltype_ring_colors,
+                         panel.fun = function(x, y) {}, bg.border = NA)
+
+  # Legends
+  draw(Legend(
+    at = c(-0.1, 0, 0.2, 0.4),
+    col_fun = col_fun,
+    title = "Pearson r",
+    direction = "horizontal",
+    legend_width = unit(3, "cm")
+  ), x = unit(0.5, "npc"), y = unit(0.02, "npc"), just = c("center", "bottom"))
+
+  draw(Legend(
+    labels = names(celltype_colors),
+    legend_gp = gpar(fill = celltype_colors),
+    title = "Cell Type",
+    ncol = 1
+  ), x = unit(1, "npc"), y = unit(0.02, "npc"), just = c("right", "bottom"))
+
+  dev.off()
+}
+
+
+## ─────────────────────────────────────────────────────────────
+## 4.   Function to calculate correlation for select annotation 
 ##      plots in pheatmap and saves as csv
 ## ─────────────────────────────────────────────────────────────
 calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_df) {
   # Filter for genes in annotation
-  genes <- neuron_df %>% filter(!!sym(annot_name) == TRUE) %>% pull(Genes)
-  genes <- intersect(genes, hela_df$Genes)
-  
-  # Filter and prepare wide matrices
-   neuron_mat <- neuron_df %>%
-      filter(Genes %in% genes) %>%
-      select(Genes, matches("^.*log2_fold_change.*")) %>%
-      group_by(Genes) %>%
-      summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
-      column_to_rownames("Genes")
-  
-    hela_mat <- hela_df %>%
-      filter(Genes %in% genes) %>%
-      select(Genes, matches("\\.KO$")) %>%
-      group_by(Genes) %>%
-      summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
-      column_to_rownames("Genes")
+  genes <- neuron_df %>%
+    filter(!!sym(annot_name) == TRUE) %>%
+    pull(Genes) %>%
+    intersect(hela_df$Genes)
+
+  # Prepare matrices
+  neuron_mat <- neuron_df %>%
+    filter(Genes %in% genes) %>%
+    select(Genes, matches("^.*log2_fold_change.*")) %>%
+    group_by(Genes) %>%
+    summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
+    column_to_rownames("Genes")
+
+  hela_mat <- hela_df %>%
+    filter(Genes %in% genes) %>%
+    select(Genes, matches("\\.KO$")) %>%
+    group_by(Genes) %>%
+    summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
+    column_to_rownames("Genes")
 
   # Keep only common genes
   common_genes <- intersect(rownames(neuron_mat), rownames(hela_mat))
@@ -5871,23 +5986,26 @@ calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_
   }
 
   neuron_mat <- neuron_mat[common_genes, ]
-  hela_mat   <- hela_mat[common_genes, ]
+  hela_mat <- hela_mat[common_genes, ]
 
   # Pearson correlation
   cor_mat <- cor(neuron_mat, hela_mat, method = "pearson", use = "pairwise.complete.obs")
-  
+
   # Save CSV
-  write.csv(cor_mat, file = file.path(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, paste0("cor_", annot_name, ".csv")), quote = FALSE)
-  
-  ### Annotation for neuron columns
+  write.csv(
+    cor_mat,
+    file = file.path(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, paste0("cor_", annot_name, ".csv")),
+    quote = FALSE
+  )
+
+  # Prepare annotation for heatmap rows
   celltype_vec <- ifelse(grepl("iN", rownames(cor_mat)), "iN",
-                    ifelse(grepl("iDA", rownames(cor_mat)), "iDA", NA))
+                         ifelse(grepl("iDA", rownames(cor_mat)), "iDA", NA))
   annotation_row <- data.frame(CellType = factor(celltype_vec, levels = c("iN", "iDA")))
   rownames(annotation_row) <- rownames(cor_mat)
   annotation_colors <- list(CellType = c(iN = "grey40", iDA = "grey80"))
-  
-    
-    # plot heatmaps 
+
+  # Plot heatmap
   pheatmap::pheatmap(
     cor_mat,
     cluster_rows = TRUE,
@@ -5896,26 +6014,57 @@ calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_
     annotation_row = annotation_row,
     annotation_colors = annotation_colors,
     color = rev(RColorBrewer::brewer.pal(11, "RdYlBu")),
-    fontsize     = 6,
+    fontsize = 6,
     border_color = NA,
     cellheight = 8,
-    cellwidth  = 8,
+    cellwidth = 8,
     filename = file.path(out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp, paste0("cor_", annot_name, ".pdf")),
-    width = 8, height = 8
+    width = 8,
+    height = 8
   )
-  
-    return(cor_mat)
+
+  return(cor_mat)
 }
 
 
 ## ─────────────────────────────────────────────────────────────
-## 4.   call function and execute  
+## 5.   Call function and plot heatmaps + csv files   
 ## ─────────────────────────────────────────────────────────────
 all_corrs <- lapply(selected_annotations, function(ann) {
   message("Processing: ", ann)
   calculate_annotation_correlation_matrix(ann, complete_data_annotated_day50, HeLaWCnMOST_df_annotated)
 })
-names(all_corrs) <- selected_annotations
+# names(all_corrs) <- selected_annotations
+
+
+
+## ─────────────────────────────────────────────────────────────
+## 6.   Call circos function 
+## ─────────────────────────────────────────────────────────────
+# Batch circos plot loop
+in_dir <- out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp
+
+for (ann in selected_annotations) {
+  message("Plotting circos for: ", ann)
+  
+  cor_path <- file.path(in_dir, paste0("cor_", ann, ".csv"))
+  if (!file.exists(cor_path)) {
+    warning("Correlation file not found for: ", ann)
+    next
+  }
+
+  cor_mat <- read.csv(cor_path, row.names = 1, check.names = FALSE)
+  cor_mat <- as.matrix(cor_mat)
+
+  circos_out <- file.path(out_dir_d50_nMOST_nDIAcorrelationS_Circos, paste0("circos_", ann, ".pdf"))
+  plot_annotation_circos(
+    cor_mat = cor_mat,
+    annot_name = ann,
+    output_path = circos_out
+  )
+}
+
+
 
 ```
 
