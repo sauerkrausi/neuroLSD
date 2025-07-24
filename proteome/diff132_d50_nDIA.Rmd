@@ -5847,10 +5847,15 @@ selected_annotations = c("Mito","OXPHOS",
 ##      plots in circos plot
 ## ─────────────────────────────────────────────────────────────
 plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
-  # Sector names (row and column sample IDs)
+
+  ## ─────────────────────────────────────────────────────────────
+  ## 1. Prepare sample metadata
+  ## ─────────────────────────────────────────────────────────────
+
+  # Extract all sample names from the correlation matrix
   sector_names <- union(rownames(cor_mat), colnames(cor_mat))
 
-  # Define sample metadata
+  # Assign each sample to a cell type or origin
   sample_meta <- tibble(sample = sector_names) %>%
     mutate(geno_membership = case_when(
       str_detect(sample, "_iN") ~ "iN",
@@ -5859,21 +5864,13 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
       TRUE ~ "Other"
     ))
 
-  # Define color mapping
+  # Define color scheme for sample types
   celltype_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F", "HeLa" = "grey76")
 
-  # Ordered list of samples
-  ordered_sample_meta <- sample_meta %>%
-    arrange(geno_membership, sample)
+  ## ─────────────────────────────────────────────────────────────
+  ## 2. Create edge list from correlation matrix
+  ## ─────────────────────────────────────────────────────────────
 
-  ordered_samples <- ordered_sample_meta$sample
-  ordered_membership <- ordered_sample_meta$geno_membership
-
-  # Named vector of colors by sample
-  sector_colors <- setNames(celltype_colors[ordered_membership], ordered_samples)
-  celltype_ring_colors <- sector_colors
-
-  # Link data from correlation matrix
   link_df <- as.data.frame(as.table(cor_mat)) %>%
     rename(from = Var1, to = Var2, correlation = Freq) %>%
     mutate(from = as.character(from), to = as.character(to)) %>%
@@ -5882,59 +5879,99 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
     distinct(pair_id, .keep_all = TRUE) %>%
     select(-pair_id)
 
-  # Color ramp for correlation strength
-  #col_fun <- colorRamp2(c(-0.25, 0, 0.25), c("blue", "white", "red"))
-  # Define color palette and values
+  ## ─────────────────────────────────────────────────────────────
+  ## 3. Define color gradient for correlation strength
+  ## ─────────────────────────────────────────────────────────────
+
   corr_palette <- rev(RColorBrewer::brewer.pal(11, "RdYlBu"))
-  corr_values  <- seq(-0.1, 0.4, length.out = 11)
+  corr_values  <- seq(-0.6, 0.6, length.out = 11)
   col_fun <- colorRamp2(corr_values, corr_palette)
 
-  # Define spacing between sectors and between groups
-  group_counts <- ordered_sample_meta %>%
-    dplyr::count(geno_membership, name = "n") %>%
-    pull(n)
+  ## ─────────────────────────────────────────────────────────────
+  ## 4. Filter edges by threshold and prepare sample order
+  ## ─────────────────────────────────────────────────────────────
+
+  # Keep only strong correlations
+  plot_links <- link_df %>%
+    filter(correlation < -0.3 | correlation > 0.3)
+
+  if (nrow(plot_links) == 0) {
+  message("No correlations pass threshold for annotation: ", annot_name)
+  return(invisible(NULL))
+  }
+  
+  # Collect samples participating in selected edges
+  samples_in_plot <- union(plot_links$from, plot_links$to)
+
+  # Filter and order metadata for plotting
+  ordered_sample_meta <- sample_meta %>%
+    filter(sample %in% samples_in_plot) %>%
+    arrange(geno_membership, sample)
+
+  ordered_samples <- ordered_sample_meta$sample
+  ordered_membership <- ordered_sample_meta$geno_membership
+  sector_colors <- setNames(celltype_colors[ordered_membership], ordered_samples)
+  celltype_ring_colors <- sector_colors
+  
+  ## ─────────────────────────────────────────────────────────────
+  ## 5. Compute spacing between sectors
+  ## ─────────────────────────────────────────────────────────────
 
   gap_between_sectors <- 1
   gap_between_groups  <- 10
 
+  group_counts <- ordered_sample_meta %>%
+    dplyr::count(geno_membership, name = "n") %>%
+    pull(n)
+
   gap_after <- unlist(lapply(group_counts, function(n) {
     c(rep(gap_between_sectors, n - 1), gap_between_groups)
   }))
-  gap_after[length(gap_after)] <- 0
+  gap_after[length(gap_after)] <- 0  # no trailing gap
 
-  # Plot circos
+  ## ─────────────────────────────────────────────────────────────
+  ## 6. Draw circos plot
+  ## ─────────────────────────────────────────────────────────────
+
   pdf(output_path, width = 10, height = 12)
   circos.clear()
   circos.par(start.degree = 90, gap.after = gap_after)
+
   chordDiagram(
-    #x = link_df %>% filter(abs(correlation) > 0.05),
-    x = link_df %>% filter(correlation < 0.4 | correlation > 0.6), # select mid range not to plot to highlight low / high corr
+    x = plot_links,
     grid.col = sector_colors,
-    col = col_fun(link_df$correlation),
+    col = col_fun(plot_links$correlation),
     annotationTrack = "grid",
     transparency = 0.1,
     preAllocateTracks = list(
-      list(track.height = 0.05),  # sector labels
-      list(track.height = 0.03)   # outer ring
+      list(track.height = 0.05),  # sector label track
+      list(track.height = 0.03)   # outer ring track
     ),
     order = ordered_samples
   )
 
-  # Add labels
+  # Track 1: Sample labels
   circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
-    circos.text(CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
-                CELL_META$sector.index,
-                facing = "clockwise", niceFacing = TRUE,
-                adj = c(0, 0.5), cex = 0.6)
+    tryCatch({
+      circos.text(
+        CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
+        CELL_META$sector.index,
+        facing = "clockwise", niceFacing = TRUE,
+        adj = c(0, 0.5), cex = 0.6
+      )
+    }, error = function(e) {})
   }, bg.border = NA)
 
-  # Cell type ring
+  # Track 2: Cell type color ring
   circos.trackPlotRegion(track.index = 2, bg.col = celltype_ring_colors,
                          panel.fun = function(x, y) {}, bg.border = NA)
 
-  # Legends
+  ## ─────────────────────────────────────────────────────────────
+  ## 7. Add legends
+  ## ─────────────────────────────────────────────────────────────
+
   draw(Legend(
-    at = c(-0.1, 0, 0.2, 0.4),
+    at = c(-0.6, 0, 0.6),
     col_fun = col_fun,
     title = "Pearson r",
     direction = "horizontal",
@@ -5951,9 +5988,41 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
   dev.off()
 }
 
+## ─────────────────────────────────────────────────────────────
+## 4.   Call circos function 
+## ─────────────────────────────────────────────────────────────
+in_dir <- out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp
+
+for (ann in selected_annotations) {
+  message("Plotting circos for: ", ann)
+
+  cor_path <- file.path(in_dir, paste0("cor_", ann, ".csv"))
+  if (!file.exists(cor_path)) {
+    warning("Correlation file not found for: ", ann)
+    next
+  }
+
+  # Load correlation matrix
+  cor_mat <- read.csv(cor_path, row.names = 1, check.names = FALSE)
+  cor_mat <- as.matrix(cor_mat)
+
+  # Define output path
+  circos_out <- file.path(
+    out_dir_d50_nMOST_nDIAcorrelationS_Circos,
+    paste0("circos_", ann, ".pdf")
+  )
+
+  # Generate circos plot
+  plot_annotation_circos(
+    cor_mat = cor_mat,
+    annot_name = ann,
+    output_path = circos_out
+  )
+}
+
 
 ## ─────────────────────────────────────────────────────────────
-## 4.   Function to calculate correlation for select annotation 
+## 5.   Function to calculate correlation for select annotation 
 ##      plots in pheatmap and saves as csv
 ## ─────────────────────────────────────────────────────────────
 calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_df) {
@@ -6028,41 +6097,13 @@ calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_
 
 
 ## ─────────────────────────────────────────────────────────────
-## 5.   Call function and plot heatmaps + csv files   
+## 6.   Call function and plot heatmaps + csv files   
 ## ─────────────────────────────────────────────────────────────
 all_corrs <- lapply(selected_annotations, function(ann) {
   message("Processing: ", ann)
   calculate_annotation_correlation_matrix(ann, complete_data_annotated_day50, HeLaWCnMOST_df_annotated)
 })
 # names(all_corrs) <- selected_annotations
-
-
-
-## ─────────────────────────────────────────────────────────────
-## 6.   Call circos function 
-## ─────────────────────────────────────────────────────────────
-# Batch circos plot loop
-in_dir <- out_dir_d50_nMOST_nDIAcorrelationS_OrganelleComp
-
-for (ann in selected_annotations) {
-  message("Plotting circos for: ", ann)
-  
-  cor_path <- file.path(in_dir, paste0("cor_", ann, ".csv"))
-  if (!file.exists(cor_path)) {
-    warning("Correlation file not found for: ", ann)
-    next
-  }
-
-  cor_mat <- read.csv(cor_path, row.names = 1, check.names = FALSE)
-  cor_mat <- as.matrix(cor_mat)
-
-  circos_out <- file.path(out_dir_d50_nMOST_nDIAcorrelationS_Circos, paste0("circos_", ann, ".pdf"))
-  plot_annotation_circos(
-    cor_mat = cor_mat,
-    annot_name = ann,
-    output_path = circos_out
-  )
-}
 
 
 
