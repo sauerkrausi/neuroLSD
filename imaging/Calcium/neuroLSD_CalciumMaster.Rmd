@@ -717,7 +717,7 @@ perc_active_iDA_plot <- ggplot(stacked_iDA_df, aes(x = BarGroup, y = Percent, fi
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_iDAonly.pdf"), plot = perc_active_iDA_plot, width = 3, height = 6, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_iDAonly.pdf"), plot = perc_active_iDA_plot, width = 2, height = 6, device = cairo_pdf)
 
 
 
@@ -793,7 +793,7 @@ active_only_iDA_plot <- ggplot(active_df_iDA_norm, aes(x = BarGroup, y = Percent
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_normCtrlTime_iDAonly.pdf"), plot = active_only_iDA_plot, width = 3, height = 5, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_normCtrlTime_iDAonly.pdf"), plot = active_only_iDA_plot, width = 2, height = 5, device = cairo_pdf)
 
 
 
@@ -869,7 +869,7 @@ perc_active_total_iDA_plot <- ggplot(stacked_total_iDA_df, aes(x = BarGroup, y =
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_total_iDAonly.pdf"), plot = perc_active_total_iDA_plot, width = 3, height = 6, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_total_iDAonly.pdf"), plot = perc_active_total_iDA_plot, width = 2, height = 6, device = cairo_pdf)
 
 ```
 
@@ -1106,8 +1106,8 @@ ida_firing_norm_plot <- ggplot(ida_summary_df, aes(x = Timepoint, y = FiringEven
   )
 
 # --- Save
-ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA.pdf"), plot = ida_firing_raw_plot, width = 4, height = 4, device = cairo_pdf)
-ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA_norm.pdf"), plot = ida_firing_norm_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA.pdf"), plot = ida_firing_raw_plot, width = 2, height = 4, device = cairo_pdf)
+ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA_norm.pdf"), plot = ida_firing_norm_plot, width = 2, height = 4, device = cairo_pdf)
 ```
 
 
