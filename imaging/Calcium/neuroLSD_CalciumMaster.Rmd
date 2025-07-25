@@ -60,6 +60,7 @@ library(dplyr)
 # DEFINE INPUT DIRS 
 # -------------------
 timepoint_dirs <- list(
+  d33iDA = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20241127_diff129_iN-iDA_Ctrl-ASAH1_Calcium-liveCell/cpsamWF/nd2_labels/calcium_analysis_results_dataframes",
   d38 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/nd2_labels/calcium_analysis_results_dataframes",
   d42 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
   d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
@@ -91,7 +92,7 @@ dir.create(camaster_plot_outdir, showWarnings = FALSE, recursive = TRUE)
 # DEFINE INPUT METADATA
 # -------------------
 celltype <- c("iN","iDA")
-timepoint <- c("d38", "d42", "d45", "d50", "d60")
+timepoint <- c("d33", "d38", "d42", "d45", "d50", "d60")
 genotypes <- c("Ctrl", "ASAH1")
 treatments <- c("Fed_Fluo4", "KCL_Fluo4", "Caffeine_Fluo4", "25µMCQNX10µMDAP5_Fluo4")
 
@@ -653,7 +654,7 @@ stacked_iDA_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iDA",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint == "d50"
+    Timepoint == c("d33", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -717,7 +718,7 @@ perc_active_iDA_plot <- ggplot(stacked_iDA_df, aes(x = BarGroup, y = Percent, fi
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_iDAonly.pdf"), plot = perc_active_iDA_plot, width = 2, height = 6, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_iDAonly.pdf"), plot = perc_active_iDA_plot, width = 4, height = 6, device = cairo_pdf)
 
 
 
@@ -729,7 +730,7 @@ active_df_iDA_norm <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iDA",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d50", "d60")
+    Timepoint %in% c("d33", "d50")
   ) %>%
   mutate(Timepoint = as.character(Timepoint)) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
@@ -763,7 +764,7 @@ active_df_iDA_norm <- active_df_iDA_norm %>%
 
 # Optional: restrict to d50 only until d60 data are in
 active_df_iDA_norm <- active_df_iDA_norm %>%
-  filter(Timepoint == "d50")
+  filter(Timepoint %in% c("d33", "d50"))
 
 # Plot normalized percent active (relative to Ctrl Fed per timepoint)
 active_only_iDA_plot <- ggplot(active_df_iDA_norm, aes(x = BarGroup, y = PercentActive_norm, fill = interaction(Genotype, Treatment))) +
@@ -793,7 +794,7 @@ active_only_iDA_plot <- ggplot(active_df_iDA_norm, aes(x = BarGroup, y = Percent
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_normCtrlTime_iDAonly.pdf"), plot = active_only_iDA_plot, width = 2, height = 5, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_normCtrlTime_iDAonly.pdf"), plot = active_only_iDA_plot, width = 4, height = 5, device = cairo_pdf)
 
 
 
@@ -805,7 +806,7 @@ stacked_total_iDA_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iDA",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint == "d50"
+    Timepoint == c("d33", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -869,7 +870,7 @@ perc_active_total_iDA_plot <- ggplot(stacked_total_iDA_df, aes(x = BarGroup, y =
   )
 
 # --- Save plot
-ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_total_iDAonly.pdf"), plot = perc_active_total_iDA_plot, width = 2, height = 6, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_total_iDAonly.pdf"), plot = perc_active_total_iDA_plot, width = 4, height = 6, device = cairo_pdf)
 
 ```
 
@@ -1026,7 +1027,7 @@ ida_summary_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iDA",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d50") # Extend to d60 later
+    Timepoint %in% c("d33", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
