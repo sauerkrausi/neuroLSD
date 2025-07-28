@@ -4197,12 +4197,17 @@ plot_annotation_correlation <- function(annot_df, annotation_cols, out_dir, cell
 
 
 # --- Step 5. Define annotations of interest and run function
-custom_annotation_cols <- c("RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+#custom_annotation_cols <- c("RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
 # custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
 #                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
 #                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
 #                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
 #                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+custom_annotation_cols <- c("SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic","EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
 plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir_d50_DisClass)
 
@@ -4241,6 +4246,9 @@ custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM
                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
+# custom_annotation_cols <- c("Golgi", "Lysosome", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic", "Postsynaptic","EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
 min_genes_per_genotype <- 5
 cor_threshold <- 0.5
@@ -4420,7 +4428,7 @@ plot_annotation_genotype_chorddiagram <- function(annot_df, annotation_cols, dis
 
     # Legends
     draw(Legend(
-      at = c(-0.5, 0, 0.5),
+      at = c(-1, 0, 1),
       col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
       title = "Pearson r",
       direction = "horizontal",
