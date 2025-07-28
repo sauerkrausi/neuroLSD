@@ -261,6 +261,7 @@ inhibitor_plot_norm <- ggplot(fed_norm_df, aes(x = Treatment, y = NormFiring, fi
     y = "Relative Firing (Fed = 1)",
     x = "Treatment"
   ) +
+  coord_cartesian(ylim = c(0.6, 1.5)) +   # set y-axis limits
   theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
