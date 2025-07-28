@@ -2286,6 +2286,7 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 # Plot average correlation per annotation across genotypes
 # color by disease class color 
 # can facet wrap 
+# split into graph for iN and iDA
 # --------------------------------------------------- #
 
 # --- Step 1. Define colors for boxplots
@@ -2321,67 +2322,81 @@ col_boxplots_corr_expanded <- unlist(lapply(names(col_boxplots_corr), function(g
 }))
 
 # --- Step 2. Bargraph function of average correlation per annotation and genotype ---
-plot_bar_corr_per_genotype <- function(corr_mat, annotations, color_map, out_path = NULL) {
-  # Step 1: Filter annotations
+plot_bar_corr_split_neurons <- function(corr_mat, annotations, color_map, out_path = NULL) {
+  # Step 1. Filter annotations
   valid_annotations <- annotations[annotations %in% colnames(corr_mat)]
   if (length(valid_annotations) == 0) stop("None of the annotations found in matrix.")
-
-  # Step 2: Filter genotypes & color map
+  
+  # Step 2. Prepare data
   present_genotypes <- rownames(corr_mat)
   filtered_colors <- color_map[names(color_map) %in% present_genotypes]
-
-  # Step 3: Melt and summarize
+  
   corr_long <- as.data.frame(corr_mat[, valid_annotations, drop = FALSE]) %>%
     rownames_to_column("Genotype") %>%
     pivot_longer(-Genotype, names_to = "Annotation", values_to = "Correlation") %>%
     filter(Genotype %in% names(filtered_colors)) %>%
-    group_by(Genotype, Annotation) %>%
+    mutate(
+      neuron_type = ifelse(str_detect(Genotype, "_iN$"), "iN",
+                     ifelse(str_detect(Genotype, "_iDA$"), "iDA", "Other")),
+      base_genotype = str_remove(Genotype, "_iN$|_iDA$")
+    ) %>%
+    group_by(Genotype, base_genotype, neuron_type, Annotation) %>%
     summarise(
       mean_corr = mean(Correlation, na.rm = TRUE),
       sem_corr = sd(Correlation, na.rm = TRUE) / sqrt(n()),
       .groups = "drop"
     )
-
-  # Label
+  
   ann2_label <- paste(valid_annotations, collapse = "_")
   ann2_title <- paste(valid_annotations, collapse = ", ")
-
-  # Step 4: Plot barplot with error bars
-  p <- ggplot(corr_long, aes(x = reorder(Genotype, mean_corr), y = mean_corr, fill = Genotype)) +
-    geom_bar(stat = "identity", color = "black", width = 0.6, linewidth = 0.2) +
-    geom_errorbar(aes(ymin = mean_corr - sem_corr, ymax = mean_corr + sem_corr), width = 0.2) +
-    scale_fill_manual(values = filtered_colors) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
-    facet_wrap(~ Annotation, scales = "free_y") +
-    labs(
-      title = paste("Average Organelle Correlation per Genotype -", ann2_title),
-      x = "Genotype", y = "Mean Correlation (±SEM)"
-    ) +
-    theme_bw(base_size = 7) +
-    theme(
-      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
-      legend.position = "none",
-      panel.grid = element_blank()
-    )
-
-  if (!is.null(out_path)) {
-    ggsave(
-      file.path(out_path, paste0("barplot_corr_per_genotype_", ann2_label, ".pdf")),
-      plot = p, width = 4, height = 4, device = cairo_pdf
-    )
+  
+  # Helper to plot one neuron type
+  plot_one <- function(df_sub, neuron_type) {
+    df_sub <- df_sub %>% arrange(mean_corr) %>%
+      mutate(base_genotype = factor(base_genotype, levels = unique(base_genotype)))
+    
+    ggplot(df_sub, aes(x = base_genotype, y = mean_corr, fill = Genotype)) +
+      geom_bar(stat = "identity", color = "black", width = 0.6, linewidth = 0.2) +
+      geom_errorbar(aes(ymin = mean_corr - sem_corr, ymax = mean_corr + sem_corr), width = 0.2) +
+      scale_fill_manual(values = filtered_colors) +
+      geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+      labs(
+        title = paste("Average Organelle Correlation per Genotype –", neuron_type, "-", ann2_title),
+        x = "Genotype", y = "Mean Correlation (±SEM)"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "none",
+        panel.grid = element_blank()
+      )
   }
-
-  return(p)
+  
+  # Generate iN and iDA plots separately
+  p_iN <- plot_one(filter(corr_long, neuron_type == "iN"), "iN")
+  p_iDA <- plot_one(filter(corr_long, neuron_type == "iDA"), "iDA")
+  
+  # Save if output path given
+  if (!is.null(out_path)) {
+    ggsave(file.path(out_path, paste0("barplot_corr_per_genotype_", ann2_label, "_iN.pdf")),
+           plot = p_iN, width = 2, height = 2, device = cairo_pdf)
+    ggsave(file.path(out_path, paste0("barplot_corr_per_genotype_", ann2_label, "_iDA.pdf")),
+           plot = p_iDA, width = 2, height = 2, device = cairo_pdf)
+  }
+  
+  return(list(iN = p_iN, iDA = p_iDA))
 }
 
-
 # --- Step 3. Call plotting function & define input annotations 
-plot_bar_corr_per_genotype(
+plots <- plot_bar_corr_split_neurons(
   corr_mat = org_corr_mat,
-  annotations = c("vATPase"),
-  color_map = col_boxplots_corr_expanded,  
+  annotations = c("EarlyEndosome"),
+  color_map = col_boxplots_corr_expanded,
   out_path = out_dir_d50_CrossCorr_annotavg
 )
+
+
+
 
 
  # all_ann <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
