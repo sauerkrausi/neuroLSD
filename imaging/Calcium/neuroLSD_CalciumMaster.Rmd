@@ -182,14 +182,28 @@ inhibitor_colors <- c(
 )
 
 
+# Define pairwise comparisons
+pairwise_comparisons <- list(
+  c("Fed_Fluo4", "KCL_Fluo4"),               # basal vs stimulated
+  c("Fed_Fluo4", "25µMCQNX10µMDAP5_Fluo4")   # basal vs inhibited
+)
+
+
+
 ## --- plot data as is in dataframe ==> firiring rate
-# --- Plot
+# Plot with p-values
 inhibitor_plot <- ggplot(inhibitor_df, aes(x = Treatment, y = Firing_events_per_min_norm, fill = Treatment)) +
   geom_violin(trim = FALSE, scale = "width", color = "black", alpha = 0.8) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white") +
   geom_jitter(width = 0.1, size = 1.2, shape = 21, stroke = 0.2, color = "black", fill = "black") +
   facet_wrap(~ Timepoint, nrow = 1) +
   scale_fill_manual(values = inhibitor_colors) +
+  stat_compare_means(
+    comparisons = pairwise_comparisons,
+    method = "t.test",
+    label = "p.signif",     # shows *, **, *** instead of raw p-values
+    hide.ns = TRUE
+  ) +
   labs(
     title = "Normalized Firing Events per Minute under Inhibitors (Ctrl only)",
     y = "Firing Events / Min (Normalized)",
@@ -201,11 +215,13 @@ inhibitor_plot <- ggplot(inhibitor_df, aes(x = Treatment, y = Firing_events_per_
     legend.position = "none",
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
+
 inhibitor_plot
 
-# --- Save plot
 ggsave(filename = file.path(camaster_plot_outdir, "Ctrl_d38-d42_basal_stim_inhib.pdf"),
        plot = inhibitor_plot, width = 4, height = 4, device = cairo_pdf)
+
+
 
 
 ## --- plot data norm to fed in timepoint
@@ -227,13 +243,19 @@ fed_norm_df <- master_combined_sample_level_normalised_metrics %>%
     Timepoint = factor(Timepoint, levels = c("d38", "d42"))
   )
 
-# --- Plot norm to fed in timepoint
+# --- Plot norm to fed in timepoint with p-values
 inhibitor_plot_norm <- ggplot(fed_norm_df, aes(x = Treatment, y = NormFiring, fill = Treatment)) +
   geom_violin(trim = FALSE, scale = "width", color = "black", alpha = 0.8) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white") +
   geom_jitter(width = 0.1, size = 1.2, shape = 21, stroke = 0.2, color = "black", fill = "black") +
   facet_wrap(~ Timepoint, nrow = 1) +
   scale_fill_manual(values = inhibitor_colors) +
+  stat_compare_means(
+    comparisons = pairwise_comparisons,
+    method = "t.test",
+    label = "p.signif",     # change to "p.format" for exact p-values
+    hide.ns = TRUE
+  ) +
   labs(
     title = "Relative Firing (Ctrl, Normalized to Fed)",
     y = "Relative Firing (Fed = 1)",
@@ -248,7 +270,6 @@ inhibitor_plot_norm <- ggplot(fed_norm_df, aes(x = Treatment, y = NormFiring, fi
 
 inhibitor_plot_norm
 
-# --- Save plot
 ggsave(filename = file.path(camaster_plot_outdir, "Ctrl_d38-d42_basal_stim_inhib_norm.pdf"),
        plot = inhibitor_plot_norm, width = 4, height = 4, device = cairo_pdf)
 ```
