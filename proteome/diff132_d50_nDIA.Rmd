@@ -4094,7 +4094,7 @@ ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_topHits.pdf"),  day305
 
 
 
-# XI. ??Disease-class-based comparison day50
+# XI. Disease-class-based comparison day50
 Focus on disease classes with good coverage 
 1. Sphigolipidoses
 2. Neuronal.ceroid.lipofucinoses
@@ -5847,23 +5847,25 @@ plot_dual_layer_circos <- function(link_df, title_text, output_path) {
   involved_samples <- unique(c(link_df$from, link_df$to))
   ordered_samples_local <- ordered_samples[ordered_samples %in% involved_samples]
   
-  # KO class colors
+  # Build disease class mapping aligned to ordered_samples_local
   ko_labels <- str_extract(ordered_samples_local, "^[^_]+")
   sector_classes_local <- tibble(sample = ordered_samples_local, KO = ko_labels) %>%
     left_join(ko_to_class, by = "KO") %>%
     mutate(disease_color = disease_colors[class]) %>%
     replace_na(list(disease_color = "grey90"))
-
-  disease_track_colors <- setNames(sector_classes_local$disease_color, sector_classes_local$sample)
-
-  # Sample color mapping
+  
+  # ensure correct alignment
+  disease_track_colors <- setNames(sector_classes_local$disease_color,
+                                   sector_classes_local$sample)
+  
+  # Sample group mapping
   sample_colors_local <- setNames(group_colors[sample_groups$group[match(ordered_samples_local, sample_groups$sample)]],
                                   ordered_samples_local)
-
+  
   pdf(output_path, width = 10, height = 12)
   circos.clear()
   circos.par(start.degree = 90, gap.degree = 4)
-
+  
   chordDiagram(
     x = link_df,
     grid.col = sample_colors_local,
@@ -5871,48 +5873,50 @@ plot_dual_layer_circos <- function(link_df, title_text, output_path) {
     annotationTrack = "grid",
     transparency = 0,
     preAllocateTracks = list(
-      list(track.height = 0.05),
-      list(track.height = 0.03)
+      #list(track.height = 0.05), # labels
+      list(track.height = 0.03), # group colors
+      list(track.height = 0.03)  # disease class colors
     ),
     order = ordered_samples_local
   )
-
+  
+  # Track 1: labels
   circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
     circos.text(CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
                 CELL_META$sector.index,
                 facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5), cex = 0.6)
   }, bg.border = NA)
-
-  circos.trackPlotRegion(track.index = 2, bg.col = sample_colors_local, panel.fun = function(x, y) {}, bg.border = NA)
-  #circos.trackPlotRegion(track.index = 3, bg.col = disease_track_colors, panel.fun = function(x, y) {}, bg.border = NA)
-
+  
+  # Track 2: group colors
+  circos.trackPlotRegion(track.index = 2, bg.col = sample_colors_local,panel.fun = function(x, y) {}, bg.border = NA)
+  
+  # Track 3: disease class colors
+  circos.trackPlotRegion(track.index = 3, bg.col = disease_track_colors, panel.fun = function(x, y) {}, bg.border = NA)
+  
+  # Title
   grid.text(title_text, x = 0.5, y = 0.98, gp = gpar(fontsize = 12, fontface = "bold"))
   
-  
   # Add correlation legend
-cor_legend <- Legend(
-  at = c(-0.5, -0.25, 0, 0.25, 0.5),
-  col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
-  title = "Pearson r",
-  direction = "horizontal",
-  legend_width = unit(3, "cm")
-)
-
-draw(cor_legend, x = unit(0.5, "npc"), y = unit(0.02, "npc"), just = c("center", "bottom"))
-
-  # Add celltype / diseaseclass legend
-disease_legend <- Legend(
-  labels = names(disease_colors),
-  legend_gp = gpar(fill = disease_colors),
-  title = "Disease Class",
-  ncol = 2
-)
-
-draw(disease_legend, x = unit(1, "npc"), y = unit(0.02, "npc"), just = c("right", "bottom"))
-
+  cor_legend <- Legend(
+    at = c(-0.5, -0.25, 0, 0.25, 0.5),
+    col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+    title = "Pearson r",
+    direction = "horizontal",
+    legend_width = unit(3, "cm")
+  )
+  draw(cor_legend, x = unit(0.5, "npc"), y = unit(0.02, "npc"), just = c("center", "bottom"))
+  
+  # Add disease class legend
+  disease_legend <- Legend(
+    labels = names(disease_colors),
+    legend_gp = gpar(fill = disease_colors),
+    title = "Disease Class",
+    ncol = 2
+  )
+  draw(disease_legend, x = unit(1, "npc"), y = unit(0.02, "npc"), just = c("right", "bottom"))
+  
   dev.off()
 }
-
 # -----------------------------
 # V. Call Circos 
 # -----------------------------
@@ -5960,7 +5964,7 @@ plot_dual_layer_circos(
   title_text = "Inter-Group Neuron–HeLa Proteome Correlation",
   output_path = "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/neuron_hela_circos_interonly.pdf"
 )
-dev.off()
+#dev.off()
 ```
 
 
