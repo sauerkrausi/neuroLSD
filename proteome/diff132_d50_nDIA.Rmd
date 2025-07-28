@@ -1095,7 +1095,68 @@ ggsave(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap.pdf"),lsdkoheatmap,
 
 ```
 
+### VIc. Sorted Heatmap of average neuro-releated annotations
+```{r}
+loc_ann <- c("Lysosome","RecyclingEndosome", "Endo_iN_curated_Hundley","EarlyEndosome",
+             "SynapseSVs","Presynaptic","Postsynaptic",
+             "SVfusion","Svendocytosis","Svexocytosis","vATPase")
 
+# --- helper function for one neuron type ---
+make_ann_heatmap <- function(df, neuron_type, loc_ann, out_file) {
+  
+  long_df <- df %>%
+    pivot_longer(
+      cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
+      names_to = "Condition",
+      values_to = "log2FC"
+    ) %>%
+    mutate(genotype = sub("_.*", "", Condition)) %>%
+    pivot_longer(cols = all_of(loc_ann),
+                 names_to = "Annotation", values_to = "is_annotated") %>%
+    filter(is_annotated == 1)
+  
+  ann_matrix <- long_df %>%
+    group_by(genotype, Annotation) %>%
+    summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = Annotation, values_from = mean_log2FC) %>%
+    column_to_rownames("genotype")
+  
+  ann_mat <- as.matrix(ann_matrix)
+  ann_mat <- ann_mat[, loc_ann, drop = FALSE]
+  ann_mat[!is.finite(ann_mat)] <- NA
+  ann_mat <- ann_mat[rowSums(!is.na(ann_mat)) > 0, ]
+  
+  pheatmap(
+    mat = ann_mat,
+    scale = "row",
+    color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+    cluster_rows = TRUE,
+    cluster_cols = FALSE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    border_color = NA,
+    fontsize = 6,
+    cellheight = 8,
+    cellwidth = 8,
+    main = paste("Mean log2FC per Genotype –", neuron_type),
+    filename = out_file 
+  )
+}
+
+# Call the function
+make_ann_heatmap(
+  complete_data_annotated_day50, 
+  "iN", loc_ann,
+  file.path(out_dir_d50_ascd_avg, "heatmap_d50_iN_rowZ_byGenotype.pdf")
+)
+
+make_ann_heatmap(
+  complete_data_annotated_day50, 
+  "iDA", loc_ann,
+  file.path(out_dir_d50_ascd_avg, "heatmap_d50_iDA_rowZ_byGenotype.pdf")
+)
+
+```
 
 
 # VII. Neuro QC plots
@@ -1173,7 +1234,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_
 #              "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
 #              "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
-all_ann <- c("SVfusion")
+all_ann <- c("Presynaptic")
 
 # --- 1. Reshape log2FC data into long format ---
 ascd_ann_long_df <- complete_data_annotated_day50 %>%
@@ -1231,7 +1292,7 @@ d50_ascd_ann_plot <- ggplot(ascd_ann_long_df, aes(x = group, y = log2FC, group =
 d50_ascd_ann_plot
 
 # --- 6. Save PDF ---
-ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_ascending_Avg_SVfusion.pdf"), d50_ascd_ann_plot, width = 4, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_ascending_Avg_PreSyn.pdf"), d50_ascd_ann_plot, width = 4, height = 3, device = cairo_pdf)
 
 
 
@@ -1269,7 +1330,7 @@ d50_ascd_ann_plot_top10 <- ggplot(ascd_top10_long_df, aes(x = group, y = log2FC,
   )
 
 # --- 9. Save second PDF ---
-ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_SVfusion.pdf"), d50_ascd_ann_plot_top10, width = 2, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_PreSyn.pdf"), d50_ascd_ann_plot_top10, width = 2, height = 3, device = cairo_pdf)
 
 ```
 
