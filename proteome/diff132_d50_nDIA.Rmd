@@ -1097,6 +1097,10 @@ ggsave(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap.pdf"),lsdkoheatmap,
 
 ### VIc. Sorted Heatmap of average neuro-releated annotations
 ```{r}
+# --------------------------------------------------- #
+# Heatmap of neuro-related annotations
+# plot by genotype and split for iN and iDA
+# --------------------------------------------------- #
 loc_ann <- c("Lysosome","RecyclingEndosome", "Endo_iN_curated_Hundley","EarlyEndosome",
              "SynapseSVs","Presynaptic","Postsynaptic",
              "SVfusion","Svendocytosis","Svexocytosis","vATPase")
@@ -1155,6 +1159,93 @@ make_ann_heatmap(
   "iDA", loc_ann,
   file.path(out_dir_d50_ascd_avg, "heatmap_d50_iDA_rowZ_byGenotype.pdf")
 )
+
+
+
+
+# --------------------------------------------------- #
+# Line plots of Sph mutants of interest 
+# plot by genotype and split for iN and iDA
+# --------------------------------------------------- #
+highlight_blue <- c("SMPD1","ASAH1","GBA1","PSAP","HEXA","HEXB")
+highlight_thick <- c("SMPD1","ASAH1","GBA1","CTSD","CLN6","ATP13A2","PPT1")
+
+make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
+  
+  # 1. reshape to long
+  long_df <- df %>%
+    pivot_longer(
+      cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
+      names_to = "Condition",
+      values_to = "log2FC"
+    ) %>%
+    mutate(genotype = sub("_.*", "", Condition))
+  
+  # 2. attach annotations
+  long_df <- long_df %>%
+    pivot_longer(cols = all_of(loc_ann),
+                 names_to = "Annotation", values_to = "is_annotated") %>%
+    filter(is_annotated == 1)
+  
+  # 3. summarise mean log2FC per genotype × annotation
+  plot_df <- long_df %>%
+    group_by(genotype, Annotation) %>%
+    summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Annotation = factor(Annotation, levels = loc_ann))
+  
+  # 4. flag highlight sets
+  plot_df <- plot_df %>%
+    mutate(
+      highlight_color = case_when(
+        genotype %in% highlight_blue ~ "dodgerblue",
+        TRUE ~ "grey80"
+      ),
+      highlight_size = case_when(
+        genotype %in% highlight_thick ~ 1.2,
+        TRUE ~ 0.4
+      ),
+      highlight_label = ifelse(genotype %in% union(highlight_blue, highlight_thick),
+                               genotype, NA)
+    )
+  
+  # 5. plot
+  p <- ggplot(plot_df, aes(x = Annotation, y = mean_log2FC, group = genotype)) +
+    geom_line(aes(color = highlight_color, size = highlight_size)) +
+    scale_color_identity() +
+    scale_size_identity() +
+    geom_text_repel(
+      data = plot_df %>% filter(!is.na(highlight_label)) %>% group_by(genotype) %>% slice_tail(n = 1),
+      aes(label = highlight_label, color = highlight_color),
+      size = 2, nudge_x = 0.5, direction = "y", hjust = 0
+    ) +
+    theme_bw(base_size = 7) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    ) +
+    labs(
+      title = paste("Mean log2FC across annotations –", neuron_type),
+      x = "Annotation",
+      y = expression("Mean log"[2]*"(KO / Ctrl)")
+    )
+  
+  ggsave(out_file, p, width = 7, height = 4, device = cairo_pdf)
+  
+  return(p)
+}
+
+# Run for iN and iDA
+p_iN <- make_lineplot_all(
+  complete_data_annotated_day50, "iN", loc_ann,
+  file.path(out_dir_d50_ascd_avg, "lineplot_allGenotypes_iN.pdf")
+)
+
+p_iDA <- make_lineplot_all(
+  complete_data_annotated_day50, "iDA", loc_ann,
+  file.path(out_dir_d50_ascd_avg, "lineplot_allGenotypes_iDA.pdf")
+)
+
+
 
 ```
 
