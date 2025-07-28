@@ -1156,7 +1156,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_
 ```
 
 
-### VIIb. Plot vATPase across genotypes 
+### VIIb. Plot vATPase by neuon x genotype; ascending order 
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -1216,7 +1216,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_vATPase.pdf"), d50_vATPase_p
 
 ```
 
-### VIIc. SV & SNARE plots
+### VIIc. SV & SNARE plot by neuon x genotype; ascending order 
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -1272,6 +1272,82 @@ d50_svsnare_plot
 ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_svsnare_plot, width = 4, height = 3, device = cairo_pdf)
 
 
+
+
+
+# --------------------------------------------------- #
+# neuro QC plots
+# Function for all annotations. By neuron type, in ascending order  
+# --------------------------------------------------- #
+
+
+# --- Define annotation list ---
+all_ann <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+             "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+             "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+             "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+             "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+all_ann <- c("vATPase")
+
+# --- 1. Reshape log2FC data into long format ---
+ann_long_df <- complete_data_annotated_day50 %>%
+  pivot_longer(
+    cols = matches("_log2_fold_change$"),
+    names_to = "Condition",
+    values_to = "log2FC"
+  ) %>%
+  mutate(
+    neuron = ifelse(grepl("_iDA_", Condition), "iDA", "iN"),
+    genotype = sub("_.*", "", Condition),  # everything before first "_" is genotype
+    group = paste(genotype, neuron, sep = "_")
+  ) %>%
+  # pivot annotations
+  pivot_longer(cols = all_of(all_ann), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1)
+
+# --- 2. Compute average log2FC per annotation per group ---
+avg_ann_fc_summary <- ann_long_df %>%
+  group_by(group, neuron, Annotation) %>%
+  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+
+# --- 3. Order groups within each neuron ---
+avg_ann_fc_summary <- avg_ann_fc_summary %>%
+  arrange(neuron, avg_log2FC) %>%
+  group_by(neuron) %>%
+  mutate(group = factor(group, levels = unique(group)))
+
+# --- 4. Merge ordering back into main df ---
+ann_long_df <- ann_long_df %>%
+  inner_join(avg_ann_fc_summary %>% select(group, neuron), 
+             by = c("group", "neuron")) %>%
+  mutate(group = factor(group, levels = levels(avg_ann_fc_summary$group)))
+
+# --- 5. Plot ---
+d50_ann_plot <- ggplot(ann_long_df, aes(x = group, y = log2FC, group = Genes)) +
+  geom_line(color = "grey70", size = 0.3, alpha = 0.6) +
+  geom_point(color = "grey70", size = 0.5, alpha = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_line(data = avg_ann_fc_summary,
+            aes(x = group, y = avg_log2FC, group = Annotation),
+            color = "red", size = 1.2, inherit.aes = FALSE) +
+  facet_wrap(~neuron, scales = "free_x") +
+  theme_bw(base_size = 8) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    title = "Functional Annotations: log2FC Summary by Genotype × Neuron",
+    x = "Genotype × Neuron (sorted by mean log2FC)",
+    y = expression(log[2]*"(KO / Ctrl)")
+  )
+
+d50_ann_plot
+
+# --- 6. Save PDF ---
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_Annotations.pdf"),
+       d50_ann_plot, width = 6, height = 4, device = cairo_pdf)
 
 ```
 
