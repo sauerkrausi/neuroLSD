@@ -1,0 +1,132 @@
+---
+title: "diff118_THeval"
+output: html_document
+date: "2025-07-29"
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# I. Load packackes
+```{r}
+library(devtools)
+
+# Core data manipulation & visualization
+library(tidyverse)        # ggplot2, dplyr, purrr, readr, tibble, tidyr, stringr
+library(zoo)              # Rolling operations
+library(reshape2)         # Data reshaping
+library(pheatmap)         # Heatmaps
+library(ggdendro)         # Dendrograms
+library(viridis)          # Color palettes
+library(RColorBrewer)
+library(NatParksPalettes)
+library(tidyplots)
+library(ggpubr)           # Publication-ready plots
+library(ggsignif)         # Significance annotations
+library(Cairo)            # For cairo_pdf output
+library(patchwork)        # Plot layouts
+library(cowplot)          # Plot composition
+library(gridExtra)        # Layout utilities
+library(grid)             # Viewports and custom layout
+library(rlang)            # Tidy evaluation tools
+
+# Signal processing
+#library(signal)
+
+# Plot composition
+library(gridExtra)
+library(grid)
+library(cowplot)
+library(Cairo)
+library(dplyr)
+
+```
+
+
+
+# II. Data input & output dir 
+```{r}
+# -------------------
+# DEFINE INPUT  
+# -------------------
+th_summary <- read.csv("/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/results/TH_quantification_summary.csv")
+
+# -------------------
+# DEFINE OUTPUT DIR  
+# -------------------
+theval_outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/eval"
+dir.create(theval_outdir, showWarnings = FALSE, recursive = TRUE)
+
+```
+
+
+
+# III. plot data and save as pdf
+```{r}
+# --- 2. Filter for genotypes of interest
+genotypes_keep <- c("Ctrl", "ASAH1", "SMPD1")
+
+stacked_df <- th_summary %>%
+  filter(genotype %in% genotypes_keep) %>%
+  mutate(
+    PercentNeg = 100 - percent_th
+  ) %>%
+  pivot_longer(
+    cols = c(percent_th, PercentNeg),
+    names_to = "THstatus",
+    values_to = "Percent"
+  ) %>%
+  mutate(
+    THstatus = ifelse(THstatus == "percent_th", "TH+", "TH−"),
+    Group = paste(genotype, THstatus, sep = "_"),
+    THstatus = factor(THstatus, levels = c("TH+", "TH−")),
+    genotype = factor(genotype, levels = genotypes_keep)
+  )
+
+# --- 3. Compute label positions
+stacked_df <- stacked_df %>%
+  group_by(genotype, neurontype) %>%
+  arrange(desc(THstatus)) %>%   # so TH+ is stacked on top
+  mutate(
+    ypos = cumsum(Percent) - Percent / 2,
+    label = paste0(round(Percent), "%")
+  ) %>%
+  ungroup()
+
+# --- 4. Define colors
+group_colors <- c(
+  "Ctrl_TH+" = "grey50",
+  "Ctrl_TH−" = "grey70",
+  "ASAH1_TH+" = "dodgerblue",
+  "ASAH1_TH−" = "lightblue",
+  "SMPD1_TH+" = "steelblue",
+  "SMPD1_TH−" = "lightskyblue"
+)
+
+# --- 5. Plot
+th_stacked_plot <- ggplot(stacked_df, aes(x = genotype, y = Percent, fill = Group)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
+  facet_wrap(~ neurontype, nrow = 1) +
+  labs(
+    title = "% TH+ vs TH− Cells by Genotype",
+    y = "Percent of Cells",
+    x = "Genotype"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +  # force 0–100
+  theme_bw(base_size = 7) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+
+# --- 6. Save
+ggsave(filename = file.path(theval_outdir, "TH_positive_vs_negative_stacked.pdf"),
+       plot = th_stacked_plot, width = 6, height = 4, device = cairo_pdf)
+
+
+```
