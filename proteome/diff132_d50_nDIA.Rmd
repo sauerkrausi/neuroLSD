@@ -1995,7 +1995,7 @@ correlate_log2fc_annotations <- function(data, annotations, basedir, prefix = "d
   print(head(annotation_df))
 
   # Step 8: Plot heatmap and save as PDF
-  pdf(pdf_path, width = 8, height = 7)  # adjust to square if needed
+  pdf(pdf_path, width = 8, height = 7)  
   pheatmap(
     mat = correlation_matrix,
     color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
@@ -2039,6 +2039,88 @@ correlate_log2fc_annotations(
 
 
 ```
+
+
+### VIII???? Disease-impact scoring
+```{r}
+# Function to compute impact scoring
+impact_score_from_corr <- function(corr_mat, neuron_type) {
+  
+  # Filter for the chosen neuron type
+  neuron_cols <- grep(paste0("_", neuron_type, "$"), colnames(corr_mat), value = TRUE)
+  corr_sub <- corr_mat[neuron_cols, neuron_cols, drop = FALSE]
+  
+  # Compute mean correlation per genotype across all other genotypes
+  mean_corr <- rowMeans(corr_sub, na.rm = TRUE)
+  
+  # Rank: lowest mean correlation = rank 1 (highest impact)
+  ranks <- rank(mean_corr, ties.method = "average")
+  
+  tibble(
+    Genotype = gsub(paste0("_", neuron_type), "", names(mean_corr)),
+    Neuron = neuron_type,
+    MeanCorr = mean_corr,
+    Rank = ranks
+  )
+}
+
+# Example: run on correlation matrix from your function
+corr_mat <- correlate_log2fc_annotations(
+  data = log2FC_d50_annotated,
+  annotations = c("EndoLyso","Presynaptic","Postsynaptic","SynGO",
+                  "SynapseSVs","SVfusion","Svendocytosis","Svexocytosis"),
+  basedir = out_dir_d50_CrossCorr
+)
+
+# Compute impact scores separately for iN and iDA
+impact_scores_iN <- impact_score_from_corr(corr_mat, "iN")
+impact_scores_iDA <- impact_score_from_corr(corr_mat, "iDA")
+
+# Combine results
+impact_scores <- bind_rows(impact_scores_iN, impact_scores_iDA)
+
+
+# Helper function to save impact heatmap for a neuron type
+plot_impact_heatmap <- function(impact_scores, neuron_type, out_dir) {
+  
+  # Filter for this neuron type
+  df_sub <- impact_scores %>% filter(Neuron == neuron_type)
+  
+  # Order genotypes from low rank (high impact) to high rank
+  df_sub <- df_sub %>% arrange(Rank)
+  
+  # Build matrix (rows = Genotypes, col = Rank)
+  impact_mat <- df_sub %>%
+    select(Genotype, Rank) %>%
+    column_to_rownames("Genotype") %>%
+    as.matrix()
+  
+  # Save as PDF with square cells
+  pdf(file.path(out_dir, paste0("disease_impact_scoring_", neuron_type, ".pdf")), width = 4, height = 5)
+  pheatmap(
+    impact_mat,
+    color = colorRampPalette(c("red","white"))(100),
+    cluster_rows = FALSE,     # no clustering, preserve order
+    cluster_cols = FALSE,
+    main = paste("Disease Impact Scoring –", neuron_type),
+    fontsize = 7,
+    border_color = "grey80",
+    legend = FALSE,
+    display_numbers = TRUE,   # show rank numbers in cells
+    cellwidth = 15,
+    cellheight = 15,
+    #angle_col = 0
+  )
+  dev.off()
+}
+
+# ---- Generate both plots
+plot_impact_heatmap(impact_scores, "iN", out_dir_d50_CrossCorr)
+plot_impact_heatmap(impact_scores, "iDA", out_dir_d50_CrossCorr)
+
+
+```
+
 
 ### VIIIb. Correlation: All organelle annotations
 ```{r}
@@ -2390,7 +2472,7 @@ plot_bar_corr_split_neurons <- function(corr_mat, annotations, color_map, out_pa
 # --- Step 3. Call plotting function & define input annotations 
 plots <- plot_bar_corr_split_neurons(
   corr_mat = org_corr_mat,
-  annotations = c("EarlyEndosome"),
+  annotations = c("SynapseSVs"),
   color_map = col_boxplots_corr_expanded,
   out_path = out_dir_d50_CrossCorr_annotavg
 )
