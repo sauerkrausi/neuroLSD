@@ -2041,7 +2041,7 @@ correlate_log2fc_annotations(
 ```
 
 
-### VIII???? Disease Impact Scoring from Correlation Analysis
+### VIIIb. Disease Impact Scoring from Correlation Analysis
 ```{r}
 ###########################################################
 # Disease Impact Scoring from Correlation Analysis
@@ -2136,7 +2136,7 @@ dev.off()
 ```
 
 
-### VIIIb. Correlation: All organelle annotations
+### VIIIc. Correlation: All organelle annotations
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -2304,7 +2304,7 @@ dev.off()
 
 
 
-### VIIIc. Average correlation per annotation across genotypes
+### VIIId. Average correlation per annotation across genotypes
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -2375,7 +2375,7 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 ```
 
 
-### VIIId. Average correlation per annotation across genotypes (disease class color)
+### VIIIe. Average correlation per annotation across genotypes (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -2506,7 +2506,7 @@ plots <- plot_bar_corr_split_neurons(
 ```
 
 
-### VIIIe. Average correlation per nMOST GO cluster across genotypes (disease class color)
+### VIIIf. Average correlation per nMOST GO cluster across genotypes (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # nMOST LSD GO signatures of select Clusters (Neurons)
@@ -2631,7 +2631,7 @@ NeuroClusterBarplot(log2FC_iDA_df, cluster_name = plot_cluster, cell_type = "iDA
 
 
 
-### VIIIf. Average correlation per genotype across annotation (disease class color)
+### VIIIg. Average correlation per genotype across annotation (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # For a selected genotype (e.g. GBA1_iN), plot mean 
@@ -2730,7 +2730,7 @@ plot_bar_corr_per_annotation_multi(
 ```
 
 
-### VIIIg. Bubble plot of annotation corr of iN vs iDA neuron by genotype or annotation
+### VIIIh. Bubble plot of annotation corr of iN vs iDA neuron by genotype or annotation
 ```{r}
 # --------------------------------------------------- #
 # Scatter plot by disease class 
