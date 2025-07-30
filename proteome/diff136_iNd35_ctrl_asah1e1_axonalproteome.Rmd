@@ -668,6 +668,42 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_sele
 
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# barplots of mean(log2FC) of each organelle annotations across all sample comparisons
+# selected annotations  
+# sorted in decreaseing manner 
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 8a. Define order based on Axon comparison
+axon_order <- mean2_log2fc_subset_df %>%
+  filter(Log2FC == "log2FC_ASAH1_Axon.Ctrl_Axon") %>%
+  arrange(mean_log2FC) %>%
+  pull(Annotation)
+
+# --- Step 8b. Apply this order as factor levels for all comparisons
+mean2_log2fc_subset_df <- mean2_log2fc_subset_df %>%
+  mutate(Annotation = factor(Annotation, levels = axon_order))
+
+# --- Step 8c. Plot with consistent order
+loc_dist_overview_subset3 <- ggplot(
+  mean2_log2fc_subset_df,
+  aes(x = Annotation, y = mean_log2FC)
+) +
+  geom_col(fill = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip() +
+  facet_wrap(~ Log2FC, ncol = 2) +
+  labs(x = NULL, y = "Mean log2FC",
+       title = "Mean log2FC per Organelle Annotation\n(Prioritized by Axon Order)") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank())
+
+
+# --- Step 9. Save to PDF
+ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directComp_decs.pdf"),
+  loc_dist_overview_subset3,
+  width = 3, height = 4, device = cairo_pdf
+)
 
 ```
 
