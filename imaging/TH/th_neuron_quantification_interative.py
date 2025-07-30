@@ -19,6 +19,7 @@ import seaborn as sns
 # %% Define paths and device
 # --- Set paths
 input_root = Path("tiff_channels")
+#input_root = Path("test_channels")
 output_dir = Path("/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/results")
 output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -136,126 +137,119 @@ for group_name, file_info in file_groups.items():
     th_img = tiff.imread(file_info['th_file'])
     map2_img = tiff.imread(file_info['map2_file'])
     nuclei_img = tiff.imread(file_info['nuclei_file'])
-    
-    # Ensure images are 2D
-    if th_img.ndim > 2:
-        th_img = th_img.squeeze()
-    if map2_img.ndim > 2:
-        map2_img = map2_img.squeeze()
-    if nuclei_img.ndim > 2:
-        nuclei_img = nuclei_img.squeeze()
+
     
     # %% Preprocess images
     print(f"  Preprocessing images...")
     # Different preprocessing parameters for different channels
-    th_img_processed = preprocess_image(th_img, sigma=1.0, background_method='white_tophat', disk_size=30)
-    map2_img_processed = preprocess_image(map2_img, sigma=1.0, background_method='white_tophat', disk_size=30)
+    th_img_processed = preprocess_image(th_img, sigma=1.0, background_method='rolling_ball', disk_size=20)
+    map2_img_processed = map2_img
     nuclei_img_processed = preprocess_image(nuclei_img, sigma=0.8, background_method='white_tophat', disk_size=20)
     
     condition = file_info['condition']
 
-    # %% Create cell mask
-    # --- Create broad cell boundary mask from MAP2 + TH
-    # Use MAP2 alone first to get broad cell boundaries
-    masks_map2_broad, _, _ = model_map2.eval(map2_img_processed, diameter=None)
-    
-    # Add TH signal to expand mask to include TH+ processes/terminals
-    masks_th_broad, _, _ = model_th.eval(th_img_processed, diameter=None)
-    
-    # Combine MAP2 and TH masks - include areas that are either MAP2+ or TH+
-    from skimage.morphology import binary_dilation, disk
-    cell_mask_map2 = masks_map2_broad > 0
-    cell_mask_th = masks_th_broad > 0
-    combined_cell_mask = cell_mask_map2 | cell_mask_th  # Union of both masks
-    
-    # Dilate the combined mask to ensure we capture full cell extent
-    cell_mask_dilated = binary_dilation(combined_cell_mask, disk(3))  # Small dilation
-    
-    # Apply the dilated cell mask to clean images (remove debris outside cells)
-    map2_clean = np.where(cell_mask_dilated, map2_img_processed, 0)
-    th_clean = np.where(cell_mask_dilated, th_img_processed, 0)
-    nuclei_clean = np.where(cell_mask_dilated, nuclei_img_processed, 0)
+    # %% Segment MAP2 and TH directly with Cellpose SAM
+    masks_map2, _, _ = model_map2.eval(map2_img_processed, diameter=None)
+    masks_th, _, _ = model_th.eval(th_img_processed, diameter=None)
+    # Filter out small TH signals (<50 px)
+    masks_th = remove_small_objects(masks_th.astype(bool), min_size=50).astype(int)
 
-    # %% Segment cleaned channels
-    # Now segment the cleaned channels with more precise models
-    masks_map2, _, _ = model_map2.eval(map2_clean, diameter=None, channels=None)
-    masks_th, _, _ = model_th.eval(th_clean, diameter=None, channels=None)
-    masks_nuclei, _, _ = model_nuclei.eval(nuclei_clean, diameter=None, channels=None)
+    # Segment nuclei
+    masks_nuclei, _, _ = model_nuclei.eval(nuclei_img_processed, diameter=None)
 
-    # %% Save masks and QC overlays
+    # %% Create combined cell mask and filter nuclei
+    combined_cell_mask = (masks_map2 > 0) | (masks_th > 0)
 
-    # Visualization: overlay masks on original MAP2+TH image
-    import matplotlib.pyplot as plt
-    from skimage.color import label2rgb
-
-    base_image = np.clip(map2_img + th_img, 0, 65535)
-    #base_image_norm = (base_image / base_image.max()) if base_image.max() > 0 else base_image
+    # Keep only nuclei whose centroid falls inside the combined cell mask and area >= min_area
+    labeled_nuclei = label(masks_nuclei > 0)
+    regions = regionprops(labeled_nuclei, intensity_image=nuclei_img)
+    valid_nuclei = []
+    min_area = 50
+    for r in regions:
+        cy, cx = [int(c) for c in r.centroid]
+        if combined_cell_mask[cy, cx] and r.area >= min_area:
+            valid_nuclei.append(r)
     
-    # Create visualization overlays
+    # Merge nuclei closer than 100 pixels
+    merged_labels = np.zeros_like(labeled_nuclei)
+    used = set()
+    merged_nuclei = []
+    distance_thresh = 300
+
+    for i, r1 in enumerate(valid_nuclei):
+        if r1.label in used:
+            continue
+        cy1, cx1 = r1.centroid
+        group = [r1]
+        used.add(r1.label)
+        for j, r2 in enumerate(valid_nuclei):
+            if r2.label in used:
+                continue
+            cy2, cx2 = r2.centroid
+            dist = np.sqrt((cy1 - cy2)**2 + (cx1 - cx2)**2)
+            if dist < distance_thresh:
+                group.append(r2)
+                used.add(r2.label)
+        # Create a merged region mask
+        merged_mask = np.isin(labeled_nuclei, [r.label for r in group])
+        merged_label = len(merged_nuclei) + 1
+        merged_labels[merged_mask] = merged_label
+        merged_nuclei.append((merged_label, merged_mask))
+
+    total_nuclei = len(merged_nuclei)
+
+    # Recompute TH positive using merged nuclei
+    th_positive = 0
+    for label_id, nucleus_mask in merged_nuclei:
+        overlap_ratio = np.sum((masks_th > 0) & nucleus_mask) / np.sum(nucleus_mask)
+        if overlap_ratio > 0.05:
+            th_positive += 1
+
+    percent_th_positive = 100 * th_positive / total_nuclei if total_nuclei > 0 else 0
+
+    # %% Visualization overlays
     base_image_norm = exposure.rescale_intensity(map2_img, out_range=(0, 1))
-    
-    # Use the correct variable names from your updated code
-    overlay_cellmask = label2rgb(combined_cell_mask.astype(int), image=base_image_norm, bg_label=0, alpha=0.3)
     overlay_map2 = label2rgb(masks_map2, image=base_image_norm, bg_label=0, alpha=0.3)
     overlay_th = label2rgb(masks_th, image=base_image_norm, bg_label=0, alpha=0.3)
-    overlay_nuclei = label2rgb(masks_nuclei, image=base_image_norm, bg_label=0, alpha=0.3)
+    overlay_cellmask = label2rgb(combined_cell_mask.astype(int), image=base_image_norm, bg_label=0, alpha=0.3)
+
+    # Build nuclei overlay only for valid nuclei
+    filtered_nuclei_mask = np.zeros_like(labeled_nuclei)
+    for r in valid_nuclei:
+        filtered_nuclei_mask[labeled_nuclei == r.label] = r.label
+    overlay_nuclei = label2rgb(filtered_nuclei_mask, image=base_image_norm, bg_label=0, alpha=0.3)
 
     # Plot and save
-    fig, axs = plt.subplots(1, 4, figsize=(16, 4))
-    axs[0].imshow(base_image_norm, cmap='gray')
-    axs[0].set_title("MAP2 + TH (raw)")
-    axs[1].imshow(overlay_cellmask)
-    axs[1].set_title("Cell mask")
-    axs[2].imshow(overlay_th)
-    axs[2].set_title("TH mask")
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+    axs[0].imshow(overlay_map2)
+    axs[0].set_title("MAP2 mask")
+    axs[1].imshow(overlay_th)
+    axs[1].set_title("TH mask")
+    axs[2].imshow(overlay_cellmask)
+    axs[2].set_title("Cell mask")
     axs[3].imshow(overlay_nuclei)
-    axs[3].set_title("Nuclei mask")
+    axs[3].set_title("Filtered nuclei")
     for ax in axs:
         ax.axis('off')
     plt.tight_layout()
-    plt.savefig(output_dir / f"{group_name}_QC_overlay.png", dpi=200)
+    plt.savefig(output_dir / f"{group_name}_MAP2_TH_CellMask_Nuclei.png", dpi=200)
     plt.close()
 
-    # %% Analyze nuclei
-    labeled_nuclei = label(masks_nuclei > 0)
-    regions = regionprops(labeled_nuclei, intensity_image=nuclei_clean)
-    
-    # Area filter based on diameter threshold (e.g. 50px)
-    diameter_thresh_px = 50
-    area_thresh = np.pi * (diameter_thresh_px / 2) ** 2
-
-    # Combine MAP2 and TH masks into a final cell mask
-    final_cell_mask = (masks_map2 > 0) | (masks_th > 0)
-
-    # Filter nuclei based on area and location inside combined cell mask
-    valid_nuclei = [
-        r for r in regions
-        if r.area >= area_thresh and final_cell_mask[int(r.centroid[0]), int(r.centroid[1])]
-    ]
-
-    total_nuclei = len(valid_nuclei)
-    th_positive = 0
-
-    for r in valid_nuclei:
-        y, x = map(int, r.centroid)
-        if masks_th[y, x] > 0:
-            th_positive += 1
-
-    percent_th = 100 * th_positive / total_nuclei if total_nuclei > 0 else 0
     summary_data.append({
         "file": file_info['th_file'].name,
         "condition": condition,
         "total_nuclei": total_nuclei,
         "th_positive": th_positive,
-        "percent_th": percent_th
+        "percent_th_positive": percent_th_positive
     })
 
-    # Save summary
+    # Save summary for this file
     with open(output_dir / f"{group_name}_{condition}_summary.txt", "w") as f:
         f.write(f"Condition: {condition}\n")
+        f.write(f"File: {file_info['th_file'].name}\n")
         f.write(f"Total nuclei: {total_nuclei}\n")
         f.write(f"TH+ nuclei: {th_positive}\n")
-        f.write(f"Percent TH+: {percent_th:.2f}\n")
+        f.write(f"Percent TH+: {percent_th_positive:.2f}\n")
 
 # %% Save summary CSV
 summary_df = pd.DataFrame(summary_data)
