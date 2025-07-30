@@ -661,7 +661,7 @@ loc_dist_overview_subset2 <- ggplot(mean2_log2fc_subset_df, aes(x = reorder(Anno
 
 
 # --- Step 7. Save to PDF
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directCamp.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directComp.pdf"),
   loc_dist_overview_subset2,
   width = 3, height = 4, device = cairo_pdf
 )
@@ -685,6 +685,9 @@ fill_colors <- c("ASAH1" = "dodgerblue", "Ctrl" = "grey70")
 selected_annotations <- c("SVfusion", "Svendocytosis", "Svexocytosis", 
                           "SynapseSVs", "Presynaptic", "Postsynaptic","vATPase")
 
+vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
+                   "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
+                   "SYP", "DMXL1", "DMXL2", "PODXL", "PODXL2")
 
 
 # --- Step 2. Prepare data
