@@ -65,47 +65,59 @@ dir.create(theval_outdir, showWarnings = FALSE, recursive = TRUE)
 
 # III. plot data and save as pdf
 ```{r}
-# --- 2. Filter for genotypes of interest
-genotypes_keep <- c("Ctrl", "ASAH1", "SMPD1")
-
-stacked_df <- th_summary %>%
-  filter(genotype %in% genotypes_keep) %>%
+# --- 1. Add genotype and neurontype columns by parsing `file`
+th_summary <- th_summary %>%
   mutate(
-    PercentNeg = 100 - percent_th
+    neurontype = case_when(
+      str_detect(file, "iN")  ~ "iN",
+      str_detect(file, "iDA") ~ "iDA",
+      TRUE ~ NA_character_
+    ),
+    genotype = case_when(
+      str_detect(file, "Ctrl")  ~ "Ctrl",
+      TRUE ~ NA_character_
+    )
+  )
+
+# --- 2. Aggregate per genotype × neurontype
+agg_df <- th_summary %>%
+  group_by(genotype, neurontype) %>%
+  summarise(
+    PercentPos = mean(percent_th_positive, na.rm = TRUE),
+    .groups = "drop"
   ) %>%
+  mutate(PercentNeg = 100 - PercentPos)
+
+# --- 3. Pivot longer for plotting
+stacked_df <- agg_df %>%
   pivot_longer(
-    cols = c(percent_th, PercentNeg),
+    cols = c(PercentPos, PercentNeg),
     names_to = "THstatus",
     values_to = "Percent"
   ) %>%
   mutate(
-    THstatus = ifelse(THstatus == "percent_th", "TH+", "TH−"),
+    THstatus = ifelse(THstatus == "PercentPos", "TH+", "TH−"),
     Group = paste(genotype, THstatus, sep = "_"),
-    THstatus = factor(THstatus, levels = c("TH+", "TH−")),
-    genotype = factor(genotype, levels = genotypes_keep)
+    THstatus = factor(THstatus, levels = c("TH+", "TH−"))
   )
 
-# --- 3. Compute label positions
+# --- 4. Compute label positions
 stacked_df <- stacked_df %>%
   group_by(genotype, neurontype) %>%
-  arrange(desc(THstatus)) %>%   # so TH+ is stacked on top
+  arrange(desc(THstatus)) %>%
   mutate(
     ypos = cumsum(Percent) - Percent / 2,
     label = paste0(round(Percent), "%")
   ) %>%
   ungroup()
 
-# --- 4. Define colors
+# --- 5. Define colors
 group_colors <- c(
   "Ctrl_TH+" = "grey50",
-  "Ctrl_TH−" = "grey70",
-  "ASAH1_TH+" = "dodgerblue",
-  "ASAH1_TH−" = "lightblue",
-  "SMPD1_TH+" = "steelblue",
-  "SMPD1_TH−" = "lightskyblue"
+  "Ctrl_TH−" = "grey70"
 )
 
-# --- 5. Plot
+# --- 6. Plot
 th_stacked_plot <- ggplot(stacked_df, aes(x = genotype, y = Percent, fill = Group)) +
   geom_bar(stat = "identity", position = "stack", color = "black") +
   geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
@@ -116,7 +128,7 @@ th_stacked_plot <- ggplot(stacked_df, aes(x = genotype, y = Percent, fill = Grou
     x = "Genotype"
   ) +
   scale_fill_manual(values = group_colors) +
-  scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +  # force 0–100
+  scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +
   theme_bw(base_size = 7) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -124,9 +136,7 @@ th_stacked_plot <- ggplot(stacked_df, aes(x = genotype, y = Percent, fill = Grou
     legend.position = "bottom"
   )
 
-# --- 6. Save
+# --- 7. Save
 ggsave(filename = file.path(theval_outdir, "TH_positive_vs_negative_stacked.pdf"),
-       plot = th_stacked_plot, width = 6, height = 4, device = cairo_pdf)
-
-
+       plot = th_stacked_plot, width = 2, height = 4, device = cairo_pdf)
 ```
