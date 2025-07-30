@@ -65,7 +65,7 @@ dir.create(theval_outdir, showWarnings = FALSE, recursive = TRUE)
 
 # III. plot data and save as pdf
 ```{r}
-# --- 1. Add genotype and neurontype columns by parsing `file`
+# --- 1. Add genotype and neurontype columns
 th_summary <- th_summary %>%
   mutate(
     neurontype = case_when(
@@ -76,27 +76,29 @@ th_summary <- th_summary %>%
     genotype = case_when(
       str_detect(file, "Ctrl")  ~ "Ctrl",
       TRUE ~ NA_character_
-    )
+    ),
+    neurontype = factor(neurontype, levels = c("iN", "iDA"))
   )
 
-# --- 2. Aggregate per genotype × neurontype
+# --- 2. Aggregate with mean & SD
 agg_df <- th_summary %>%
   group_by(genotype, neurontype) %>%
   summarise(
-    PercentPos = mean(percent_th_positive, na.rm = TRUE),
+    PercentPos_mean = mean(percent_th_positive, na.rm = TRUE),
+    PercentPos_sd   = sd(percent_th_positive, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  mutate(PercentNeg = 100 - PercentPos)
+  mutate(PercentNeg_mean = 100 - PercentPos_mean)
 
 # --- 3. Pivot longer for plotting
 stacked_df <- agg_df %>%
   pivot_longer(
-    cols = c(PercentPos, PercentNeg),
+    cols = c(PercentPos_mean, PercentNeg_mean),
     names_to = "THstatus",
     values_to = "Percent"
   ) %>%
   mutate(
-    THstatus = ifelse(THstatus == "PercentPos", "TH+", "TH−"),
+    THstatus = ifelse(THstatus == "PercentPos_mean", "TH+", "TH−"),
     Group = paste(genotype, THstatus, sep = "_"),
     THstatus = factor(THstatus, levels = c("TH+", "TH−"))
   )
@@ -117,9 +119,30 @@ group_colors <- c(
   "Ctrl_TH−" = "grey70"
 )
 
-# --- 6. Plot
+# --- Build errorbar data (only TH+ rows, includes SD)
+errorbar_df <- agg_df %>%
+  transmute(
+    genotype,
+    neurontype,
+    Percent = PercentPos_mean,
+    PercentPos_sd
+  )
+
+# --- 6. Plot with error bars for TH+
 th_stacked_plot <- ggplot(stacked_df, aes(x = genotype, y = Percent, fill = Group)) +
   geom_bar(stat = "identity", position = "stack", color = "black") +
+  geom_errorbar(
+    data = errorbar_df,
+    aes(
+      x = genotype,
+      y = Percent,
+      ymin = Percent - PercentPos_sd,
+      ymax = Percent + PercentPos_sd
+    ),
+    inherit.aes = FALSE,
+    width = 0.2,
+    color = "black"
+  ) +
   geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
   facet_wrap(~ neurontype, nrow = 1) +
   labs(
