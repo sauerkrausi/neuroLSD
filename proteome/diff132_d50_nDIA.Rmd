@@ -1073,25 +1073,21 @@ heatmap_matrix_abundance <- all_rows %>%
   column_to_rownames("RowID") %>%
   as.matrix()
 
-# --- 4. Plot heatmap
-lsdkoheatmap <- pheatmap(
+# --- 4. Plot heatmap & save
+pdf(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_RdYlBu.pdf"),
+    width = 8, height = 6)
+pheatmap(
   heatmap_matrix_abundance,
-  color = colorRampPalette(c("white", "firebrick"))(100),
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
   cluster_rows = FALSE,
   cluster_cols = FALSE,
-  na_col = "grey70",  # marks undetected proteins
+  na_col = "grey70",
   cellheight = 15,
   cellwidth = 15,
   border_color = "black",
-  lwd = 0.25,
   main = "LSD Protein Abundance (Control vs KO) at Day 50"
 )
-
-  
-# --- 3. Save heatmap
-ggsave(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap.pdf"),lsdkoheatmap,
-       width = 8, height = 6, device = cairo_pdf)
-
+dev.off()
 
 ```
 
