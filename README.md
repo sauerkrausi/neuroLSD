@@ -1,6 +1,9 @@
 ![ProjectLogo](/logoNeuroLSD.jpg)
 # neuroLSD
 The folder contains scripts and evaluations realated to the neuroLSD project.\
+
+The **neuroLSD** project investigates how lysosomal storage disorder–associated pathways contribute to neurodegeneration using **stem-cell–derived neuronal models**. We integrate **quantitative proteomics** and **calcium imaging** to profile functional and molecular changes in cortical-like iNeurons (iN) and dopaminergic-like iDA neurons.
+
 🚧 work in progress 🚧
 
 ## 🔬 imaging
@@ -28,3 +31,15 @@ Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons a
 
 A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome/readmePROTEOME.md).
 
+
+
+## ⚙️ Requirements
+- **R ≥ 4.3.0** with: `tidyverse`, `ComplexHeatmap`, `circlize`, `pheatmap`, `ggpubr`, `cowplot`  
+- **Python ≥ 3.10** with: `cellpose`, `torch`, `numpy`, `pandas`, `scikit-image`  
+
+
+## ▶️ Usage
+- **Proteomics:**  
+  Run Rmd scripts in RStudio. Input: processed TMTpro/nDIA data.  
+- **Calcium Imaging:**  
+  Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: TIFF stacks.  
