@@ -8,8 +8,8 @@ The **neuroLSD** project investigates how lysosomal storage disorder–associate
 
 ## 🔬 Imaging
 Analysis workflows for calcium imaging and TH-positive neuron quantification.  
-- **Calcium/**: Cellpose-SAM–based segmentation (Python) and R Markdown pipelines for ΔF/F signal extraction, trace binarization, and network-level analysis, including a master pipeline for multi-dataset integration.  
-- **TH/**: R and Python scripts for quantifying TH-positive neurons in iN/iDA cultures.  
+- **Calcium**: Cellpose-SAM–based segmentation (Python) and R Markdown pipelines for ΔF/F signal extraction, trace binarization, and network-level analysis, including a master pipeline for multi-dataset integration.  
+- **TH**: R and Python scripts for quantifying TH-positive neurons in iN/iDA cultures.  
 
 See [`imagingREADME.md`](imagingREADME.md) for details on workflow steps, input formats, and outputs.
 
