@@ -18,6 +18,7 @@ Install via:
 pip install -r requirements.txt
 # For Apple Silicon (MPS):
 pip install -r requirements_MPS.txt
+```
 
 
 
