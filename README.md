@@ -33,12 +33,12 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
 
 
 
-## ⚙️ Requirements
+## Requirements
 - **R ≥ 4.3.0** with: `tidyverse`, `ComplexHeatmap`, `circlize`, `pheatmap`, `ggpubr`, `cowplot`  
 - **Python ≥ 3.10** with: `cellpose`, `torch`, `numpy`, `pandas`, `scikit-image`  
 
 
-## ▶️ Usage
+## Usage
 - **Proteomics:**  
   Run Rmd scripts in RStudio. Input: processed TMTpro/nDIA data.  
 - **Calcium Imaging:**  
