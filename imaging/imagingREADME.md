@@ -24,7 +24,7 @@ pip install -r requirements_MPS.txt
 
 ## 2. Calcium Signal Processing
 
-**Scripts:** `cellposeSAM_CNER_Calcium-liveCell_template*.Rmd, neuroLSD_CalciumMaster.Rmd`
+**Scripts:** `cellposeSAM_CNER_Calcium-liveCell_template.Rmd, neuroLSD_CalciumMaster.Rmd`
 - Load segmentation masks and extract per-ROI fluorescence traces
 - Compute ΔF/F normalization, apply adaptive thresholding, and binarize events
 - Quantify neuronal activity: spike timing, synchrony, coactivity, and burst frequency
