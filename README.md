@@ -3,6 +3,19 @@
 The folder contains scripts and evaluations realated to the neuroLSD project.\
 🚧 work in progress 🚧
 
+## 🔬 imaging
+- `run_cellpose_calcium_remoteHDD.py`: Python script for batch segmentation of time-lapse calcium imaging using Cellpose-SAM models.
+- `cellposeSAM_CNER_Calcium-liveCell.Rmd`: R Markdown pipeline for ΔF/F signal extraction, trace binarization, and network-level calcium event analysis.
+- `neuroLSD_CalciumMaster.Rmd`: Master analysis pipeline integrating multiple datasets for per-cell event correlation and group-level network dynamics.
+
+See [`imaging/README.md`](imaging/imagingREADME.md) for a detailed explanation of the workflow, input formats, and output structure.
+
+
+
+## 🧬 Lipidomics
+Lipidomic profiling of HeLa and day‑21 iNeurons (Ctrl vs ASAH1‑/‑) across whole‑cell and organelle‑IP fractions, with outputs including class‑level barplots, volcano plots, and per‑lipid log2FC tables.
+
+
 
 ## 🧪 proteomics
 Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons at day 50 of in-vitro differentiation.
@@ -15,9 +28,3 @@ Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons a
 
 A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome/readmePROTEOME.md).
 
-## 🔬 imaging
-- `run_cellpose_calcium_remoteHDD.py`: Python script for batch segmentation of time-lapse calcium imaging using Cellpose-SAM models.
-- `cellposeSAM_CNER_Calcium-liveCell.Rmd`: R Markdown pipeline for ΔF/F signal extraction, trace binarization, and network-level calcium event analysis.
-- `neuroLSD_CalciumMaster.Rmd`: Master analysis pipeline integrating multiple datasets for per-cell event correlation and group-level network dynamics.
-
-See [`imaging/README.md`](imaging/imagingREADME.md) for a detailed explanation of the workflow, input formats, and output structure.
