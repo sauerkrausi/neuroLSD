@@ -1304,6 +1304,9 @@ Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "SYP", "SYN1", "SNCA", "NEFH", 
 ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_Proteins, width = 12, height = 12, device = cairo_pdf)
 
 
+Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "CDNF","KCNJ6"))
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_QC_Proteins, width = 4, height = 4, device = cairo_pdf)
+
 ```
 
 
