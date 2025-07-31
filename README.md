@@ -6,12 +6,12 @@ The **neuroLSD** project investigates how lysosomal storage disorder–associate
 
 🚧 work in progress 🚧
 
-## 🔬 imaging
-- `run_cellpose_calcium_remoteHDD.py`: Python script for batch segmentation of time-lapse calcium imaging using Cellpose-SAM models.
-- `cellposeSAM_CNER_Calcium-liveCell.Rmd`: R Markdown pipeline for ΔF/F signal extraction, trace binarization, and network-level calcium event analysis.
-- `neuroLSD_CalciumMaster.Rmd`: Master analysis pipeline integrating multiple datasets for per-cell event correlation and group-level network dynamics.
+## 🔬 Imaging
+Analysis workflows for calcium imaging and TH-positive neuron quantification.  
+- **Calcium/**: Cellpose-SAM–based segmentation (Python) and R Markdown pipelines for ΔF/F signal extraction, trace binarization, and network-level analysis, including a master pipeline for multi-dataset integration.  
+- **TH/**: R and Python scripts for quantifying TH-positive neurons in iN/iDA cultures.  
 
-See [`imaging/README.md`](imaging/imagingREADME.md) for a detailed explanation of the workflow, input formats, and output structure.
+See [`imagingREADME.md`](imagingREADME.md) for details on workflow steps, input formats, and outputs.
 
 
 
