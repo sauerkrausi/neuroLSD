@@ -1,6 +1,6 @@
 ![ProjectLogo](/logoNeuroLSD.jpg)
 # neuroLSD
-The folder contains scripts and evaluations realated to the neuroLSD project.\
+This repository contains scripts and evaluation-pipelines related to the **neuroLSD** project.
 
 The **neuroLSD** project investigates how lysosomal storage disorder–associated pathways contribute to neurodegeneration using **stem-cell–derived neuronal models**. We integrate **quantitative proteomics** and **calcium imaging** to profile functional and molecular changes in cortical-like iNeurons (iN) and dopaminergic-like iDA neurons.
 
