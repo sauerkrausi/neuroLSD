@@ -42,4 +42,4 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
 - **Proteomics:**  
   Run Rmd scripts in RStudio. Input: processed TMTpro/nDIA data.  
 - **Calcium Imaging:**  
-  Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: TIFF stacks.  
+  Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files.  
