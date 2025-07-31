@@ -1305,7 +1305,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_
 
 
 Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "CDNF","KCNJ6"))
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_QC_Proteins, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_QC_Proteins, width = 8, height = 4, device = cairo_pdf)
 
 ```
 
@@ -4361,7 +4361,7 @@ custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM
 #                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
 min_genes_per_genotype <- 5
-cor_threshold <- 0.5
+#cor_threshold <- 0.7
 
 
 
@@ -4420,7 +4420,15 @@ for (annot in custom_annotation_cols) {
 
 
 # --- Step 4. Define plotting function for Circos plot of Disease mutant correlations
-plot_annotation_genotype_chorddiagram <- function(annot_df, annotation_cols, disease_class_df, out_dir, min_gene_n = min_genes_per_genotype, corr_thresh = cor_threshold) {
+plot_annotation_genotype_chorddiagram <- function(
+  annot_df,
+  annotation_cols,
+  disease_class_df,
+  out_dir,
+  min_gene_n = min_genes_per_genotype,
+  pos_thresh = 0.5,
+  neg_thresh = -0.5
+) {
   for (annot in annotation_cols) {
     message("Processing annotation: ", annot)
     
@@ -4458,10 +4466,10 @@ plot_annotation_genotype_chorddiagram <- function(annot_df, annotation_cols, dis
       mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
       distinct(pair_id, .keep_all = TRUE) %>%
       mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to)) %>%
-      filter(abs(correlation) >= corr_thresh)
+      filter(correlation >= pos_thresh | correlation <= neg_thresh)
 
     if (nrow(link_df) == 0) {
-      warning("Skipping: No high-correlation links for ", annot)
+      warning("Skipping: No links pass thresholds for ", annot)
       next
     }
 
@@ -4558,22 +4566,20 @@ plot_annotation_genotype_chorddiagram <- function(annot_df, annotation_cols, dis
 
 
 # --- Step 5. Call function and save in outdir 
+# define lower and upper threshold for plotting
 plot_annotation_genotype_chorddiagram(
   annot_df = annotated_log2fc_df,
   annotation_cols = custom_annotation_cols,
   disease_class_df = disease_class_df,
   out_dir = out_dir_d50_DisClass_chord,
-  min_gene_n = min_genes_per_genotype,
-  corr_thresh = cor_threshold
+  pos_thresh = 0.7,
+  neg_thresh = -0.3
 )
 
 
 # detach Compelxhatmap, since it masks pheatmap for later 
 detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 ```
-
-
-
 
 
 # XII. Linear regression on neuro nDIA dataset
