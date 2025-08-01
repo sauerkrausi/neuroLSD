@@ -67,7 +67,8 @@ timepoint_dirs <- list(
   d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
   d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250721_diff138_iN_d50_Ctrl-ASAH1_Flou4/nd2iN_labels/calcium_analysis_results_dataframes",
   d50iDA = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250721_diff138_iN_d50_Ctrl-ASAH1_Flou4/nd2iDA_labels/calcium_analysis_results_dataframes",
-  d60 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250731_diff138_iN_d60_Ctrl-ASAH1_Flou4/nd2iN_labels/calcium_analysis_results_dataframes"
+  d60 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250731_diff138_iN_d60_Ctrl-ASAH1_Flou4/nd2iN_labels/calcium_analysis_results_dataframes",
+  d60iDA = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250731_diff138_iN_d60_Ctrl-ASAH1_Flou4/nd2iDA_labels/calcium_analysis_results_dataframes"
 )
 
 # -------------------
@@ -902,7 +903,7 @@ active_df_iDA_norm <- active_df_iDA_norm %>%
     BarGroup = paste(Timepoint, Treatment, sep = "_"),
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
     Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
-    Timepoint = factor(Timepoint, levels = c("d33", "d50"))
+    Timepoint = factor(Timepoint, levels = c("d33", "d50","d60"))
   )
 
 # Optional: restrict to d50 only until d60 data are in
