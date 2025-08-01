@@ -1020,7 +1020,84 @@ ggsave(filename = file.path(camaster_plot_outdir, "Active_frames_total_iDAonly.p
 
 
 ## Vc. Firing Events per Minute
-### Vc1. iNeurons
+### Vc1. iNeurons QC over time
+```{r}
+# -----------------------------
+# Supplement: Maturation Fed-only, Ctrl 
+# -----------------------------
+
+# Filter Fed only, Ctrl
+fed_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Genotype %in% c("Ctrl"),
+    Celltype == "iN",   # or "iDA" if preferred
+    Treatment == "Fed_Fluo4",
+    Timepoint %in% c("d38", "d45", "d50", "d60")
+  ) %>%
+  mutate(
+    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50", "d60")),
+    Genotype = factor(Genotype, levels = c("Ctrl"))
+  )
+
+# Pairwise comparisons for timepoints
+timepoint_comparisons <- list(
+  c("d38", "d45"),
+  c("d45", "d50"),
+  c("d50", "d60"),
+  c("d38", "d60")
+)
+
+# Define color palettes for Ctrl
+ctrl_colors  <- c("d38" = "grey70", "d45" = "grey60", "d50" = "grey50", "d60" = "grey40")
+
+# Plotting function
+plot_genotype_maturation <- function(df, geno, colorset, outfile) {
+  plot_df <- df %>% filter(Genotype == geno)
+  
+  p <- ggplot(plot_df, aes(x = Timepoint, y = Firing_events_per_min, fill = Timepoint)) +
+    geom_violin(trim = FALSE, scale = "width", color = "black", alpha = 0.8) +
+    geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white") +
+    geom_jitter(width = 0.1, size = 1.2, shape = 21, stroke = 0.2,
+                color = "black", fill = "black") +
+    scale_fill_manual(values = colorset) +
+    stat_compare_means(
+      comparisons = timepoint_comparisons,
+      method = "wilcox.test",
+      label = "p.signif",
+      hide.ns = TRUE
+    ) +
+    labs(
+      title = paste("Firing Events During Maturation (", geno, ", Fed)", sep = ""),
+      y = "Firing Events / Min",
+      x = "Timepoint"
+    ) +
+    coord_cartesian(ylim = c(50, 200)) +   # set y-axis limits
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "none",
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  
+  ggsave(
+    filename = file.path(camaster_plot_outdir, outfile),
+    plot = p, width = 3, height = 4, device = cairo_pdf
+  )
+  
+  return(p)
+}
+
+# Generate Ctrl and ASAH1 plots
+ctrl_fed_plot  <- plot_genotype_maturation(fed_df, "Ctrl", ctrl_colors, "Ctrl_Fed_maturation.pdf")
+
+
+
+```
+
+
+
+
+### Vc2. iNeurons
 ```{r}
 # -------------------
 # Firing Events per Minute
@@ -1032,7 +1109,7 @@ summary_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50","d60")
+    Timepoint %in% c("d38", "d45", "d50", "d60")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -1154,15 +1231,93 @@ firing_events_norm_time_plot <- ggplot(summary_df, aes(x = Timepoint, y = Firing
   )
 
 
+
+
+## -- 3. Violin plot
+# --- Prep data for Ctrl and ASAH1 separately ---
+fedkcl_norm_raw_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(
+    Genotype %in% c("Ctrl", "ASAH1"),
+    Celltype == "iN", 
+    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
+    Timepoint %in% c("d38","d45","d50","d60")
+  ) %>%
+  group_by(Genotype, Timepoint) %>%
+  mutate(
+    FedMean = mean(Firing_events_per_min[Treatment == "Fed_Fluo4"], na.rm = TRUE),
+    FiringEventsPerMin_normtime = Firing_events_per_min / FedMean * 100
+  ) %>%
+  ungroup() %>%
+  mutate(
+    Timepoint = factor(Timepoint, levels = c("d38","d45","d50","d60")),
+    Group = paste(Genotype, Treatment, sep = "_")
+  )
+
+fedkcl_trimmed <- fedkcl_norm_raw_df %>%
+  group_by(Genotype, Timepoint, Treatment) %>%
+  mutate(
+    lower = quantile(FiringEventsPerMin_normtime, 0.05, na.rm = TRUE),
+    upper = quantile(FiringEventsPerMin_normtime, 0.95, na.rm = TRUE)
+  ) %>%
+  filter(FiringEventsPerMin_normtime >= lower & FiringEventsPerMin_normtime <= upper) %>%
+  ungroup()
+
+
+plot_genotype_violin <- function(df, geno, outfile) {
+  plot_df <- df %>% filter(Genotype == geno)
+  
+  p <- ggplot(plot_df, aes(x = Timepoint, y = FiringEventsPerMin_normtime, fill = Group)) +
+    # Violin plots
+    geom_violin(trim = FALSE, scale = "width", color = "black", alpha = 0.8,
+                position = position_dodge(width = 0.8)) +
+    # Boxplots inside violins (grouped by Timepoint + Treatment)
+    geom_boxplot(aes(group = interaction(Timepoint, Group)),
+                 width = 0.15, outlier.shape = NA, color = "black", fill = "white",
+                 position = position_dodge(width = 0.8)) +
+    # Jittered points (dodge by Group)
+    geom_jitter(aes(color = Group),
+                size = 0.9, shape = 21, stroke = 0.2,
+                position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
+                show.legend = FALSE) +
+    # Use global group_colors
+    scale_fill_manual(values = group_colors) +
+    scale_color_manual(values = rep("black", length(unique(plot_df$Group)))) +
+    labs(
+      title = paste0("Normalized Firing Events (", geno, ")"),
+      y = "Relative Firing (%) (Fed = 100 per timepoint)",
+      x = "Timepoint"
+    ) +
+    theme_bw(base_size = 6) +
+    coord_cartesian(ylim = c(0, 170)) +   # set y-axis limits
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid = element_blank(),
+      legend.position = "bottom"
+    )
+  
+  ggsave(file.path(camaster_plot_outdir, outfile),
+         plot = p, width = 2, height = 4, device = cairo_pdf)
+  
+  return(p)
+}
+# Generate Ctrl and ASAH1 violin plots separately
+ctrl_violin  <- plot_genotype_violin(fedkcl_trimmed, "Ctrl",  "FiringEvents_normtime_violin_Ctrl.pdf")
+asah1_violin <- plot_genotype_violin(fedkcl_trimmed, "ASAH1", "FiringEvents_normtime_violin_ASAH1.pdf")
+
+
+
+
+
 # --- save PDF
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN_norm.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_normtime_violin.pdf"),plot = firing_events_norm_time_violin,width = 5, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN_normtime.pdf"),plot = firing_events_norm_time_plot, width = 4, height = 4, device = cairo_pdf)
 ```
 
 
 
-### Vc2. iDA
+### Vc3. iDA
 ```{r}
 # --- 1. Data preparation
 ida_summary_df <- master_combined_sample_level_normalised_metrics %>%
