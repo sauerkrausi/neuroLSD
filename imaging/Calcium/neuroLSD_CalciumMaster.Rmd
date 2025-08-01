@@ -155,6 +155,113 @@ master_combined_sample_level_normalised_metrics
 
 
 # IV. Stat test 
+```{r}
+# -----------------------------
+# Stats: Active Frames & Firing Events
+# Tiered Comparisons: Treatments, Timepoints, Genotypes
+# -----------------------------
+
+run_pairwise_test <- function(df, metric_col, group_col, group1, group2) {
+  data_sub <- df %>%
+    filter(!!sym(group_col) %in% c(group1, group2)) %>%
+    select(!!sym(group_col), !!sym(metric_col)) %>%
+    drop_na()
+
+  if (n_distinct(data_sub[[group_col]]) < 2) return(NULL)
+
+  test_res <- wilcox.test(
+    formula = as.formula(paste(metric_col, "~", group_col)),
+    data = data_sub
+  )
+
+  tibble(
+    Metric = metric_col,
+    GroupVar = group_col,
+    Group1 = group1,
+    Group2 = group2,
+    Statistic = test_res$statistic,
+    P_Value = test_res$p.value,
+    Method = "Wilcoxon rank-sum"
+  )
+}
+
+# Add combined labels
+stats_df <- master_combined_sample_level_normalised_metrics %>%
+  filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4", "25µMCQNX10µMDAP5_Fluo4")) %>%
+  mutate(
+    GroupID = paste(Genotype, Treatment, Timepoint, sep = "_"),
+    GenotypeTreatment = paste(Genotype, Treatment, sep = "_")
+  )
+
+# ---- 1. Within-genotype treatment comparisons
+within_treatment_stats <- stats_df %>%
+  group_by(Celltype, Timepoint, Genotype) %>%
+  group_modify(~ {
+    groups <- unique(.x$Treatment)
+    comp_pairs <- combn(groups, 2, simplify = FALSE)
+
+    bind_rows(lapply(comp_pairs, function(comp) {
+      bind_rows(
+        run_pairwise_test(.x, "Mean_percent_active_frames", "Treatment", comp[1], comp[2]),
+        run_pairwise_test(.x, "Firing_events_per_min", "Treatment", comp[1], comp[2])
+      ) %>%
+        mutate(ComparisonType = "WithinGenotype_Treatment", Genotype = unique(.x$Genotype))
+    }))
+  }) %>%
+  ungroup()
+
+# ---- 2. Within-genotype across timepoints (same treatment)
+across_time_stats <- stats_df %>%
+  group_by(Celltype, Genotype, Treatment, .drop = TRUE) %>%
+  group_modify(~ {
+    groups <- unique(.x$Timepoint)
+    if (length(groups) < 2) return(NULL)
+    comp_pairs <- combn(groups, 2, simplify = FALSE)
+
+    bind_rows(lapply(comp_pairs, function(comp) {
+      bind_rows(
+        run_pairwise_test(.x, "Mean_percent_active_frames", "Timepoint", comp[1], comp[2]),
+        run_pairwise_test(.x, "Firing_events_per_min", "Timepoint", comp[1], comp[2])
+      ) %>%
+        mutate(
+          ComparisonType = "WithinGenotype_Timepoint",
+          Celltype = unique(.x$Celltype),
+          Genotype = unique(.x$Genotype),
+          Treatment = unique(.x$Treatment)
+        )
+    }))
+  }) %>%
+  ungroup()
+
+# ---- 3. Between-genotype (same timepoint & treatment)
+between_genotype_stats <- stats_df %>%
+  group_by(Celltype, Timepoint, Treatment) %>%
+  group_modify(~ {
+    if (n_distinct(.x$Genotype) < 2) return(NULL)
+    bind_rows(
+      run_pairwise_test(.x, "Mean_percent_active_frames", "Genotype", "Ctrl", "ASAH1"),
+      run_pairwise_test(.x, "Firing_events_per_min", "Genotype", "Ctrl", "ASAH1")
+    ) %>%
+      mutate(ComparisonType = "BetweenGenotype", Treatment = unique(.x$Treatment))
+  }) %>%
+  ungroup()
+
+# ---- Combine all tiers
+all_stats <- bind_rows(within_treatment_stats, across_time_stats, between_genotype_stats)
+
+# Add TestType and FDR
+all_stats <- all_stats %>%
+  mutate(
+    TestType = ifelse(Metric == "Mean_percent_active_frames", "ActiveFrames", "FiringEvents"),
+    P_Adjusted_FDR = p.adjust(P_Value, method = "BH")
+  )
+
+# Save
+stats_outfile <- file.path(camaster_outdir, "calcium_stats_tests_alltiers.csv")
+write_csv(all_stats, stats_outfile)
+
+```
+
 
 # V. QC plots Ctrl basal-sitmulation-inhibition
 ```{r}
@@ -288,7 +395,7 @@ community_plot_df <- master_combined_cell_community_membership %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50"),
+    Timepoint %in% c("d38", "d45", "d50","d60"),
     CommunitySize >= 2       # filter out small communities
   ) %>%
   mutate(
@@ -340,7 +447,7 @@ community_plot_df <- master_combined_cell_community_membership %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50"),
+    Timepoint %in% c("d38", "d45", "d50","d60"),
     CommunitySize >= 3
   ) %>%
   left_join(norm_metrics_df, by = "Sample") %>%
@@ -1137,7 +1244,7 @@ ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA_norm.pdf"), plot = ida
 
 
 
-## misk
+## misc
 ```{r}
 # --- Plot Proportion High Corr ROIs 
 prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
