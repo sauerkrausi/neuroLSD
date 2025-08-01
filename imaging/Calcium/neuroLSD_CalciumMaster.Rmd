@@ -50,6 +50,7 @@ library(grid)
 library(cowplot)
 library(Cairo)
 library(dplyr)
+library(ggsignif)
 
 ```
 
@@ -1231,79 +1232,29 @@ firing_events_norm_time_plot <- ggplot(summary_df, aes(x = Timepoint, y = Firing
   )
 
 
-
-
-## -- 3. Violin plot
-# --- Prep data for Ctrl and ASAH1 separately ---
-fedkcl_norm_raw_df <- master_combined_sample_level_normalised_metrics %>%
-  filter(
-    Genotype %in% c("Ctrl", "ASAH1"),
-    Celltype == "iN", 
-    Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38","d45","d50","d60")
-  ) %>%
-  group_by(Genotype, Timepoint) %>%
-  mutate(
-    FedMean = mean(Firing_events_per_min[Treatment == "Fed_Fluo4"], na.rm = TRUE),
-    FiringEventsPerMin_normtime = Firing_events_per_min / FedMean * 100
-  ) %>%
-  ungroup() %>%
-  mutate(
-    Timepoint = factor(Timepoint, levels = c("d38","d45","d50","d60")),
-    Group = paste(Genotype, Treatment, sep = "_")
+# --- Facet by timepoint: Plot Norm T=fed ctrl Firing Events per Minute
+firing_events_norm_time_plot_days<- ggplot(summary_df, aes(x = Genotype, 
+                                                      y = FiringEventsPerMin_normtime, 
+                                                      fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
+  geom_errorbar(aes(
+    ymin = FiringEventsPerMin_normtime - SEM_Firing_norm,
+    ymax = FiringEventsPerMin_normtime + SEM_Firing_norm
+  ), width = 0.2, position = position_dodge(width = 1)) +
+  facet_wrap(~ Timepoint, nrow = 1) +
+  labs(
+    title = "Normalized Firing Rate within timepoints",
+    y = "Relative Firing (%)",
+    x = "Genotype"
+  ) +
+  scale_fill_manual(values = group_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    panel.grid = element_blank(),
+    legend.position = "bottom"
   )
-
-fedkcl_trimmed <- fedkcl_norm_raw_df %>%
-  group_by(Genotype, Timepoint, Treatment) %>%
-  mutate(
-    lower = quantile(FiringEventsPerMin_normtime, 0.05, na.rm = TRUE),
-    upper = quantile(FiringEventsPerMin_normtime, 0.95, na.rm = TRUE)
-  ) %>%
-  filter(FiringEventsPerMin_normtime >= lower & FiringEventsPerMin_normtime <= upper) %>%
-  ungroup()
-
-
-plot_genotype_violin <- function(df, geno, outfile) {
-  plot_df <- df %>% filter(Genotype == geno)
-  
-  p <- ggplot(plot_df, aes(x = Timepoint, y = FiringEventsPerMin_normtime, fill = Group)) +
-    # Violin plots
-    geom_violin(trim = FALSE, scale = "width", color = "black", alpha = 0.8,
-                position = position_dodge(width = 0.8)) +
-    # Boxplots inside violins (grouped by Timepoint + Treatment)
-    geom_boxplot(aes(group = interaction(Timepoint, Group)),
-                 width = 0.15, outlier.shape = NA, color = "black", fill = "white",
-                 position = position_dodge(width = 0.8)) +
-    # Jittered points (dodge by Group)
-    geom_jitter(aes(color = Group),
-                size = 0.9, shape = 21, stroke = 0.2,
-                position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
-                show.legend = FALSE) +
-    # Use global group_colors
-    scale_fill_manual(values = group_colors) +
-    scale_color_manual(values = rep("black", length(unique(plot_df$Group)))) +
-    labs(
-      title = paste0("Normalized Firing Events (", geno, ")"),
-      y = "Relative Firing (%) (Fed = 100 per timepoint)",
-      x = "Timepoint"
-    ) +
-    theme_bw(base_size = 6) +
-    coord_cartesian(ylim = c(0, 170)) +   # set y-axis limits
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      panel.grid = element_blank(),
-      legend.position = "bottom"
-    )
-  
-  ggsave(file.path(camaster_plot_outdir, outfile),
-         plot = p, width = 2, height = 4, device = cairo_pdf)
-  
-  return(p)
-}
-# Generate Ctrl and ASAH1 violin plots separately
-ctrl_violin  <- plot_genotype_violin(fedkcl_trimmed, "Ctrl",  "FiringEvents_normtime_violin_Ctrl.pdf")
-asah1_violin <- plot_genotype_violin(fedkcl_trimmed, "ASAH1", "FiringEvents_normtime_violin_ASAH1.pdf")
-
+firing_events_norm_time_plot_days
 
 
 
@@ -1311,8 +1262,8 @@ asah1_violin <- plot_genotype_violin(fedkcl_trimmed, "ASAH1", "FiringEvents_norm
 # --- save PDF
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN.pdf"),plot = firing_events_plot, width = 4, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN_norm.pdf"),plot = firing_events_norm_plot, width = 4, height = 4, device = cairo_pdf)
-ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_normtime_violin.pdf"),plot = firing_events_norm_time_violin,width = 5, height = 4, device = cairo_pdf)
 ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN_normtime.pdf"),plot = firing_events_norm_time_plot, width = 4, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(camaster_plot_outdir, "Firing_events_iN_normtime_byDay.pdf"),plot = firing_events_norm_time_plot_days, width = 4, height = 4, device = cairo_pdf)
 ```
 
 
