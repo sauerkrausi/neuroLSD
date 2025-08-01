@@ -249,14 +249,27 @@ between_genotype_stats <- stats_df %>%
 # ---- Combine all tiers
 all_stats <- bind_rows(within_treatment_stats, across_time_stats, between_genotype_stats)
 
-# Add TestType and FDR
+# Helper to convert p-values to significance stars
+p_to_stars <- function(pval) {
+  case_when(
+    is.na(pval) ~ "",
+    pval <= 0.001 ~ "***",
+    pval <= 0.01  ~ "**",
+    pval <= 0.05  ~ "*",
+    TRUE ~ "ns"
+  )
+}
+
+# Add TestType, FDR, and significance stars
 all_stats <- all_stats %>%
   mutate(
     TestType = ifelse(Metric == "Mean_percent_active_frames", "ActiveFrames", "FiringEvents"),
-    P_Adjusted_FDR = p.adjust(P_Value, method = "BH")
+    P_Adjusted_FDR = p.adjust(P_Value, method = "BH"),
+    Signif_raw = p_to_stars(P_Value),
+    Signif_FDR = p_to_stars(P_Adjusted_FDR)
   )
 
-# Save
+# Save with stars
 stats_outfile <- file.path(camaster_outdir, "calcium_stats_tests_alltiers.csv")
 write_csv(all_stats, stats_outfile)
 
