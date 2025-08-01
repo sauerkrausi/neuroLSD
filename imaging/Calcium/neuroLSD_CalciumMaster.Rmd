@@ -65,8 +65,8 @@ timepoint_dirs <- list(
   d42 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
   d45 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250717_diff138_iN_d45_Ctrl-ASAH1_Flou4/nd2_labels/calcium_analysis_results_dataframes",
   d50 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250721_diff138_iN_d50_Ctrl-ASAH1_Flou4/nd2iN_labels/calcium_analysis_results_dataframes",
-  d50iDA = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250721_diff138_iN_d50_Ctrl-ASAH1_Flou4/nd2iDA_labels/calcium_analysis_results_dataframes"
-  #d60 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250714_diff138_iN_d42_Ctrl-ASAH1_Flou4/cpsam_d42/nd2_labels/calcium_analysis_results_dataframes"
+  d50iDA = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250721_diff138_iN_d50_Ctrl-ASAH1_Flou4/nd2iDA_labels/calcium_analysis_results_dataframes",
+  d60 = "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250731_diff138_iN_d60_Ctrl-ASAH1_Flou4/nd2iN_labels/calcium_analysis_results_dataframes"
 )
 
 # -------------------
@@ -449,7 +449,7 @@ stacked_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50")
+    Timepoint %in% c("d38", "d45", "d50","d60")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -524,7 +524,7 @@ active_df_norm <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50")
+    Timepoint %in% c("d38", "d45", "d50","d60")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -552,7 +552,7 @@ active_df_norm <- active_df_norm %>%
     BarGroup = paste(Timepoint, Treatment, sep = "_"),
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
     Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
-    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50"))
+    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50","d60"))
   )
 
 # Plot normalized percent active (relative to Ctrl Fed per timepoint)
@@ -595,7 +595,7 @@ stacked_total_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50")
+    Timepoint %in% c("d38", "d45", "d50","d60")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -912,7 +912,7 @@ summary_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50")
+    Timepoint %in% c("d38", "d45", "d50","d60")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -923,7 +923,7 @@ summary_df <- master_combined_sample_level_normalised_metrics %>%
     .groups = "drop"
   ) %>%
   mutate(
-    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50")),
+    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50","d60")),
     Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1"))
   )
