@@ -513,10 +513,10 @@ ggsave(file.path(out_dir_d50_QC,"diff132_d50_noQC_PCA_byDay.pdf"), d50plot3_noQC
 
 
 
-### IVb. QC plots for supplements
+### IVb. QC plot - Protein ID per sample x neuron 
 ``` {r}
 # --------------------------------------------------- #
-# QC plots for supplements  
+# QC plot - Protein ID per sample x neuron 
 # --------------------------------------------------- #
 
 # --- Step 1. Average number of ProteinIDs per type on neuron
@@ -670,6 +670,71 @@ combined_plot_QC
 # Save as PDF
 ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_combined_plot.pdf"), combined_plot_QC, width = 12, height = 12, device = cairo_pdf)
 ggsave(file.path(out_dir_d50_QC,"diff132_d50_combined_plot.pdf"), combined_plot, width = 12, height = 12, device = cairo_pdf)
+
+
+```
+
+
+### IVc. QC plot - RSD plot 
+```{r}
+
+# Load the RData file
+load("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/DataFormated.RData")
+
+# Compute IQR-based error bars
+rsd_filtered <- rsd_q1_to_q3 %>%
+  filter(Day %in% c("30", "50")) %>%
+  mutate(
+    IQR = Q3 - Q1,
+    lower = medianRSD - (IQR / 2),
+    upper = medianRSD + (IQR / 2)
+  )
+
+# Function for single day plot
+make_day_plot <- function(df, neuron_type, day_label) {
+  df_day <- df %>% filter(Neuron == neuron_type, Day == day_label)
+  
+  ggplot(df_day, aes(x = Genotype)) +
+    # Fill between lower and upper around the median
+    geom_ribbon(aes(ymin = lower, ymax = upper, group = 1),
+                fill = "skyblue", alpha = 0.3) +
+    # Lower and Upper dashed lines
+    geom_line(aes(y = lower, group = 1), 
+              color = "dodgerblue", size = 0.8, linetype = "dashed") +
+    geom_line(aes(y = upper, group = 1), 
+              color = "dodgerblue", size = 0.8, linetype = "dashed") +
+    # Median solid line
+    geom_line(aes(y = medianRSD, group = 1), 
+              color = "dodgerblue", size = 1.2, linetype = "solid") +
+    geom_point(aes(y = medianRSD), 
+               color = "dodgerblue", size = 2) +
+    labs(title = paste("Day", day_label),
+         x = "Genotype", y = "RSD (%)") +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+
+# Function for combined iN or iDA row
+plot_qc_rsd <- function(neuron_type, data) {
+  p30 <- make_day_plot(data, neuron_type, "30")
+  p50 <- make_day_plot(data, neuron_type, "50")
+  
+  plot_grid(p30, p50, nrow = 1, rel_widths = c(1, 4))
+}
+
+# Make iN and iDA rows
+plot_iN  <- plot_qc_rsd("iN", rsd_filtered)
+plot_iDA <- plot_qc_rsd("iDA", rsd_filtered)
+
+# Combine top (iN) and bottom (iDA)
+combined_plot_QC <- plot_grid(plot_iN, plot_iDA, ncol = 1, labels = c("iN", "iDA"))
+
+# Save combined output
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_combined_plot.pdf"),
+       combined_plot_QC, width = 10, height = 5, device = cairo_pdf)
 
 
 ```
