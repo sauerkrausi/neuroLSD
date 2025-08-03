@@ -744,7 +744,7 @@ plot_iDA <- plot_qc_rsd("iDA", rsd_filtered)
 combined_plot_QC <- plot_grid(plot_iN, plot_iDA, ncol = 1, labels = c("iN", "iDA"))
 
 # --- 5. Save the combined QC plot as a PDF
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_combined_plot.pdf"), combined_plot_QC, width = 10, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_combined_plot.pdf"), combined_plot_QC, width = 12, height = 4, device = cairo_pdf)
 
 ```
 
