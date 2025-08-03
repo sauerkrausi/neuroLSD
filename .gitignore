@@ -3,3 +3,5 @@
 .RData
 .Ruserdata
 .DS_Store
+imaging/models/*
+!imaging/models/MODEL_INDEX.txt
