@@ -1035,10 +1035,11 @@ plan is to plot a heatmap of all LSD proteins of interest across the dataset -> 
 # --------------------------------------------------- #
 
 # ---- Define LSD Gene List ----
-LSDgenes <- c("ASAH1", "PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "TPP1", "CLN3", 
-              "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8", "CTNS", "GAA", "GALNS", 
-              "GBA1", "GLB1", "HEXA", "HEXB", "LIPA", "MCOLN1", "NPC1", "NPC2", 
-              "PSAP", "SMPD1")
+LSDgenes <- c(
+  "ASAH1", "ATP13A2", "CLN3", "CLN5", "CLN6", "CLN8", "CTSD", "CTSF",
+  "DNAJC5", "GAA", "GBA1", "GRN", "HEXA", "HEXB", "LIPA", "MCOLN1",
+  "MFSD8", "NPC1", "NPC2", "PPT1", "PSAP", "SMPD1", "TPP1"
+)
 
 # ---- Prepare Long Format Data ----
 # Filter for LSD genes and pivot to long format
@@ -1118,10 +1119,10 @@ write.csv(
 # heatmaps
 # --------------------------------------------------- #
 # --- 0. Define expected genotype list (from your LSD gene list)
-expected_genes <- c("ASAH1", "PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "TPP1", "CLN3", 
-                    "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8", "CTNS", "GAA", "GALNS", 
-                    "GBA1", "GLB1", "HEXA", "HEXB", "LIPA", "MCOLN1", "NPC1", "NPC2", 
-                    "PSAP", "SMPD1")
+expected_genes <- c(  "ASAH1", "ATP13A2", "CLN3", "CLN5", "CLN6", "CLN8", "CTSD", "CTSF",
+  "DNAJC5", "GAA", "GBA1", "GRN", "HEXA", "HEXB", "LIPA", "MCOLN1",
+  "MFSD8", "NPC1", "NPC2", "PPT1", "PSAP", "SMPD1", "TPP1")
+
 
 # --- 1. Construct all combinations of neuron × condition × gene
 all_rows <- expand.grid(
@@ -1231,8 +1232,10 @@ make_ann_heatmap(
 )
 
 
+```
 
-
+### VId. Sorted lineplots of average neuro-releated annotations
+```{r}
 # --------------------------------------------------- #
 # Line plots of Sph mutants of interest 
 # plot by genotype and split for iN and iDA
