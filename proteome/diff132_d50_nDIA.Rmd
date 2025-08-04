@@ -1830,7 +1830,7 @@ SynapseTrajectoryPlot <- function(df) {
 Synaptic_Marker_Abundance <- SynapseTrajectoryPlot(long_with_direction)
 Synaptic_Marker_Abundance
 
-ggsave(file.path(out_dir_d50_QC,"diff132_SynapticMarkers_ctrl_d30_d50.pdf"), Synaptic_Marker_Abundance, width = 4, height = 8, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC,"diff132_SynapticMarkers_ctrl_d30_d50.pdf"), Synaptic_Marker_Abundance, width = 4, height = 5, device = cairo_pdf)
 
 
 
@@ -2036,6 +2036,19 @@ ggsave(file.path(out_dir_d50_violins,
   width = 12, height = 9, device = cairo_pdf)
 ```
 
+
+
+### VIIh. Volcano plot for select genotypes
+```{r}
+
+
+
+```
+
+
+# -------------------------------------------------- 
+# -------- Organelle Correlations & bubble
+# --------------------------------------------------  
 
 
 # VIII. Organelle Cross-DF correlations
@@ -5813,7 +5826,7 @@ ggsave("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff13
 
     
 # -------------------------------------------------- 
-# -------- nDIA-nMOST comparative analysis ---------  
+# -------- nDIA-nMOST comparative analysis
 # --------------------------------------------------  
 
 
