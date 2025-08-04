@@ -183,10 +183,10 @@ chordDiagram(data)
 # set colors for disease groups
 col = c(Sphigolipidoses="#D53E4F",	Mucopolysaccharidoses="#F46D43",	Glycoproteinoses="#FDAE61", Neuronal.ceroid.lipofucinoses="#FEE08B",	
         Integral.membrane.protein.disorders="#E6F598",	PTM.defects="#ABDDA4",	Lipid.storage.diseases= "#66C2A5", 
-        
-        AGA= "grey76", ARSA= "grey76", ARSB= "grey76", ASAH1="#D53E4F", CLN1.PPT1= "#FEE08B", CLN10.CTSD="#FEE08B", CLN11.GRN="#FEE08B", CLN12.ATP13A2="#FEE08B", CLN12.ATP13A2="#E6F598", CLN13.CTSF="#FEE08B", CLN14.KCTD7="grey76", CLN2.TPP1="#FEE08B", CLN3="#FEE08B", CLN3="#E6F598", CLN4.DNAJC5="#FEE08B", CLN5="#FEE08B", CLN6="#FEE08B", CLN7.MFSD8="#FEE08B", CLN8="#FEE08B", CTNS="#E6F598", CTSA="grey76", FUCA="grey76", GAA="#66C2A5", GALC="grey76", GALNS="#F46D43", GBA="#D53E4F", GLA="grey76", GLB1="#D53E4F", GM2A="grey76", GNPTAB="grey76", GNPTG="grey76", GNS="grey76", GUSB="grey76", HEXA="#D53E4F", HEXB="#D53E4F", HGSNAT="grey76", HYAL1="grey76",       IDS="grey76", IDUA="grey76", LAMP2="grey76", LIPA="#66C2A5", MAN2B1="grey76", MANBA="grey76", MCOLN1="#E6F598", NAGA="grey76", NAGLU="grey76", NEU1="grey76", NPC1="#E6F598", NPC2="#E6F598", PSAP="#D53E4F", SCARB2="grey76", SGSH="grey76", SLC17A5="grey76",SMPD1="#D53E4F", SUMF1="grey76")
-
-
+AGA="grey76", ARSA="grey76", ARSB="grey76", ASAH1="#D53E4F", CLN1.PPT1="#FEE08B", CLN10.CTSD="#FEE08B", CLN11.GRN="#FEE08B", CLN12.ATP13A2="#FEE08B",CLN12.ATP13A2="#E6F598",  CLN13.CTSF="#FEE08B", CLN14.KCTD7="grey76", CLN2.TPP1="#FEE08B", CLN3="#FEE08B", CLN4.DNAJC5="#FEE08B", CLN5="#FEE08B", CLN6="#FEE08B", CLN7.MFSD8="#FEE08B", CLN8="#FEE08B", CTNS="grey76", CTSA="grey76", FUCA="grey76", GAA="#66C2A5", GALC="grey76", GALNS="grey76", GBA1="#D53E4F", GLA="grey76", GLB1="grey76", GM2A="grey76", GNPTAB="grey76", GNPTG="grey76", GNS="grey76", GUSB="grey76", HEXA="#D53E4F", HEXB="#D53E4F", HGSNAT="grey76", HYAL1="grey76", IDS="grey76", IDUA="grey76", LAMP2="grey76", LIPA="#66C2A5", MAN2B1="grey76", MANBA="grey76", MCOLN1="#E6F598", NAGA="grey76", NAGLU="grey76", NEU1="grey76", NPC1="#E6F598", NPC2="#E6F598", PSAP="#D53E4F", SCARB2="grey76", SGSH="grey76", SLC17A5="grey76", SMPD1="#D53E4F", SUMF1="grey76")
+  
+  
+  
 # Set output path and size
 pdf("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/LSD_circos_plot_confirmed_KOs.pdf", width = 10, height = 10)  # adjust size as needed
 
@@ -1673,12 +1673,76 @@ ggsave(file.path(out_dir_d50_QC,
   Dev_Marker_Abundance,
   width = 12, height = 12, device = cairo_pdf
 )
+
+
+
+# --------------------------------------------------- #
+# Neuro QC plots
+# Abundance of neuromarkers (lineplot, normalized to day 30)
+# --------------------------------------------------- #
+
+# --- Step 1. Define Marker Gene List of Interest
+marker_genes_line <- c("BSN", "NCAM1", "GAP43", "SYN1", "SYN3", "NEFL", "SYP")
+
+# --- Step 2. Define function: plots Ctrl trajectories normalized to Day 30
+plot_ctrl_markers_norm <- function(data, out_dir, genes = marker_genes_line) {
+  
+  # Filter the dataset for Ctrl, iN/iDA, Day 30 & 50, and selected genes
+  ctrl_df <- data %>%
+    filter(Genes %in% genes,
+           genotype == "ctrl",
+           neuron %in% c("iN", "iDA"),
+           day %in% c(30, 50)) %>%
+    mutate(day = factor(day, levels = c(30, 50)))
+  
+  # Normalize quan to Day 30 mean within each neuron × gene group
+  ctrl_norm <- ctrl_df %>%
+    group_by(Genes, neuron) %>%
+    mutate(norm_quan = quan / mean(quan[day == 30], na.rm = TRUE)) %>%
+    ungroup()
+  
+  # Compute mean normalized intensity for each group
+  ctrl_means <- ctrl_norm %>%
+    group_by(Genes, neuron, day) %>%
+    summarise(mean_norm = mean(norm_quan, na.rm = TRUE), .groups = "drop")
+  
+  # Get Day 50 values for end-of-line labels
+  labels_df <- ctrl_means %>% filter(day == 50)
+  
+  # Create the line plot
+  p <- ggplot(ctrl_means,aes(x = day, y = mean_norm, group = interaction(Genes, neuron), color = neuron)) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 2) +
+    ggrepel::geom_text_repel(data = labels_df,
+                             aes(label = Genes),
+                             nudge_x = 0.25, hjust = 0,
+                             segment.color = NA, size = 3,
+                             show.legend = FALSE) +
+    facet_wrap(~neuron, ncol = 2) +
+    scale_color_manual(values = c("iN" = "grey70", "iDA" = "dodgerblue3")) +
+    scale_x_discrete(labels = c("30" = "Day 30", "50" = "Day 50")) +
+    labs(title = "Ctrl NeuroDev Markers Normalized to Day 30",
+         x = "Day", y = "Normalized Intensity (Day 30 = 1)") +
+    theme_bw() +
+    theme(panel.grid = element_blank(),
+          strip.text = element_text(face = "bold"),
+          legend.position = "none")
+  
+  # Save as PDF
+  ggsave(file.path(out_dir, "ctrl_d30d50_Neuro_QC_Markers_norm_facet.pdf"),
+         p, width = 6, height = 6, device = cairo_pdf)
+  
+  return(p)
+}
+
+# --- Step 3. Call function and Save
+Neuro_QC_Lineplot_norm <- plot_ctrl_markers_norm(cleaned_df, out_dir_d50_QC)
 ```
 
 
 ### VIIe. Abundance of Pre/Post Synaptic Markers in Ctrl iN/iDA day 30 & day 50
 ``` {r}
-# --------------------------------------------------- #
+# --------------------------------------------------- #dev_plot_line_df
 # neuro QC plots
 # Abundance of Pre/Post Synaptic Markers in Ctrl day 30 & day 50
 # --------------------------------------------------- #
@@ -1874,10 +1938,7 @@ NeuoDevd30d50
 
 
 # --- Step 6. Save
-ggsave(file.path(out_dir_d50_QC,
-  "diff132_NeuoDevd30d50.pdf"),
-  NeuoDevd30d50,
-  width = 8, height = 6, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_NeuoDevd30d50.pdf"), NeuoDevd30d50, width = 8, height = 6, device = cairo_pdf)
 
 ```
 
