@@ -2046,73 +2046,55 @@ ggsave(file.path(out_dir_d50_violins,
 # --------------------------------------------------- #
 # Volcano Plot Function for LSD Organelle Proteomics 
 # This function creates Volcano plots of genotype of choice => both iN and iDA as separate plots
+# Also plots iN vs iDA and maintains the TOP highlights and annotations form the volcano plot for direct comprison 
 # User defined genotype and annotations to highlight
 # --------------------------------------------------- #
 
-# --- 1. Define plotting function for volano plot
+# --- 1. Define plotting function for volano plot. Also pushes the iN and iDA plots into a corr plot and highlights the same TOP his in the corr plot 
 plot_volcano <- function(df, genotype, annotation_cols, out_dir = out_dir_d50_volcano,
                          fc_cutoff = 1, q_cutoff = 1.3) {
   
-  # Build colnames
   fc_iDA <- paste0(genotype, "_iDA_log2_fold_change")
   q_iDA  <- paste0(genotype, "_iDA_neg_log10_p_value")
   fc_iN  <- paste0(genotype, "_iN_log2_fold_change")
   q_iN   <- paste0(genotype, "_iN_neg_log10_p_value")
   
-  # Prep data helper
+  # Prep data
   prep_data <- function(fc_col, q_col) {
     data <- df %>%
       select(Genes, all_of(fc_col), all_of(q_col), all_of(annotation_cols))
     colnames(data)[2:3] <- c("log2FC", "negLogQ")
-    
-    # Remove NA/0 q-values
     data <- filter(data, !is.na(negLogQ) & negLogQ > 0)
-    
-    # Single annotation assignment
     data$annotation <- apply(data[, annotation_cols], 1, function(x) {
       annos <- names(which(x == 1))
       annos <- intersect(annos, annotation_cols)
       if (length(annos) == 0) return(NA)
       return(annos[1])
     })
-    
-    # Significance flag
     data$signif <- ifelse(abs(data$log2FC) >= fc_cutoff & data$negLogQ >= q_cutoff,
                           "sig", "nonsig")
-    
     return(data)
   }
   
-  # Volcano plot generator
-  make_plot <- function(data, celltype) {
-    
-    # Palette: Set2 if ≤8 cats, else Paired
+  # Make volcano and also return top_hits
+  make_volcano <- function(data, celltype) {
     palette_choice <- if (length(unique(na.omit(data$annotation))) <= 8) "Set2" else "Paired"
-    
-    # Table of significant annotated hits
     sig_annots <- filter(data, signif == "sig" & !is.na(annotation))
-    sig_outfile <- file.path(out_dir, paste0(genotype, "_", celltype, "_sig_annotated.csv"))
-    write.csv(sig_annots, sig_outfile, row.names = FALSE)
+    write.csv(sig_annots,
+              file.path(out_dir, paste0(genotype, "_", celltype, "_sig_annotated.csv")),
+              row.names = FALSE)
+    top_hits <- sig_annots %>% arrange(desc(negLogQ)) %>% head(30)
     
-    # Top 10 significant hits by q-value
-    top_hits <- sig_annots %>% arrange(desc(negLogQ)) %>% head(25)
-    
-    ggplot(data, aes(x = log2FC, y = negLogQ)) +
-      # Background nonsig (faded triangles)
+    plot <- ggplot(data, aes(x = log2FC, y = negLogQ)) +
       geom_point(data = subset(data, signif == "nonsig"),
                  shape = 17, size = 0.5, color = "grey80", alpha = 0.3) +
-      # Background sig (solid triangles)
       geom_point(data = subset(data, signif == "sig" & is.na(annotation)),
                  shape = 17, size = 0.5, color = "grey50", alpha = 0.7) +
-      # Annotated hits (colored circles)
       geom_point(data = subset(data, !is.na(annotation)),
                  aes(color = annotation), shape = 16, size = 1, alpha = 1) +
-      # Label top 10 sig hits
-      geom_text_repel(data = top_hits,
-                      aes(label = Genes),
+      geom_text_repel(data = top_hits, aes(label = Genes),
                       size = 1.5, max.overlaps = 20, box.padding = 0.3) +
       scale_color_brewer(palette = palette_choice) +
-      # Cutoff lines
       geom_vline(xintercept = c(-fc_cutoff, fc_cutoff), linetype = "dashed", color = "black", size = 0.3) +
       geom_hline(yintercept = q_cutoff, linetype = "dashed", color = "black", size = 0.3) +
       coord_fixed(ratio = 1) +
@@ -2124,17 +2106,64 @@ plot_volcano <- function(df, genotype, annotation_cols, out_dir = out_dir_d50_vo
            x = "log2 Fold Change",
            y = "-log10 q-value",
            color = "Annotation")
+    
+    return(list(plot = plot, top_hits = top_hits))
   }
   
-  # Run & save plots
-  plot_iDA <- make_plot(prep_data(fc_iDA, q_iDA), "iDA")
-  plot_iN  <- make_plot(prep_data(fc_iN,  q_iN),  "iN")
+  # Correlation plot
+  make_corr <- function(top_hits) {
+  data_corr <- df %>%
+    select(Genes, all_of(fc_iN), all_of(fc_iDA), all_of(annotation_cols))
+  colnames(data_corr)[2:3] <- c("log2FC_iN", "log2FC_iDA")
   
-  ggsave(file.path(out_dir, paste0(genotype, "_iDA_volcano.pdf")), plot_iDA, width = 5, height = 5, units = "in")
-  ggsave(file.path(out_dir, paste0(genotype, "_iN_volcano.pdf")),  plot_iN,  width = 5, height = 5, units = "in")
+  # Assign annotations
+  data_corr$annotation <- apply(data_corr[, annotation_cols], 1, function(x) {
+    annos <- names(which(x == 1))
+    annos <- intersect(annos, annotation_cols)
+    if (length(annos) == 0) return(NA)
+    return(annos[1])
+  })
+  
+  # Flag neutral zone
+  data_corr$neutral <- ifelse(abs(data_corr$log2FC_iN) < 1 & abs(data_corr$log2FC_iDA) < 1, "neutral", "other")
+  
+  palette_choice <- if (length(unique(na.omit(data_corr$annotation))) <= 8) "Set2" else "Paired"
+  
+  ggplot(data_corr, aes(x = log2FC_iN, y = log2FC_iDA)) +
+    geom_point(aes(color = annotation, alpha = neutral), shape = 16, size = 1) +
+    geom_text_repel(data = subset(data_corr, Genes %in% top_hits$Genes),
+                    aes(label = Genes),
+                    size = 1.5, max.overlaps = 20, box.padding = 0.3) +
+    scale_color_brewer(palette = palette_choice, na.value = "grey70") +
+    scale_alpha_manual(values = c("neutral" = 0.2, "other" = 1)) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", size = 0.3) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.3) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.3) +
+    #coord_fixed(ratio = 1) +
+    theme_bw() +
+    theme(panel.grid = element_blank(),
+          text = element_text(size = 6),
+          legend.position = "bottom") +
+    labs(title = paste("Correlation -", genotype, "iN vs iDA"),
+         x = "log2FC iN",
+         y = "log2FC iDA",
+         color = "Annotation")
 }
-
-
+  
+  # Run volcano plots and get top hits
+  res_iDA <- make_volcano(prep_data(fc_iDA, q_iDA), "iDA")
+  res_iN  <- make_volcano(prep_data(fc_iN,  q_iN),  "iN")
+  
+  # Use combined top hits (union of both)
+  top_hits_all <- bind_rows(res_iDA$top_hits, res_iN$top_hits) %>% distinct(Genes, .keep_all = TRUE)
+  
+  plot_corr <- make_corr(top_hits_all)
+  
+  # Save
+  ggsave(file.path(out_dir, paste0(genotype, "_iDA_volcano.pdf")), res_iDA$plot, width = 5, height = 5, units = "in")
+  ggsave(file.path(out_dir, paste0(genotype, "_iN_volcano.pdf")),  res_iN$plot,  width = 5, height = 5, units = "in")
+  ggsave(file.path(out_dir, paste0(genotype, "_iN_vs_iDA_corr.pdf")), plot_corr, width = 5, height = 5, units = "in")
+}
 
 
 # --- 2. Set annotations of interest 
@@ -2145,7 +2174,7 @@ plot_volcano <- function(df, genotype, annotation_cols, out_dir = out_dir_d50_vo
 #                      "Svendocytosis","Svexocytosis","vATPase")
 
 annotation_cols <- c("Svexocytosis","vATPase","Endo_iN_curated_Hundley","RecyclingEndosome","EarlyEndosome","SynapseSVs", "SynGO")
-
+annotation_cols <- c("MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","SynapseSVs", "SynGO")
 
 # --- 3. Call function, name genotype 
 plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols)
