@@ -158,7 +158,7 @@ dir.create(out_dir_d50_nMOST_nDIAcorrelationS_Circos, recursive = TRUE, showWarn
 Genotypes: Ctrl, ASAH1, CLN11.GRN, GBA1, SMPD1
 
 - day 50 of in vitro differentiation of iN and iDA:
-Genotypes: Ctrl, ASAH1, CLN1.PPT1, CLN10.CTSD, CLN11.GRN, CLN12.ATP13A2, CLN12.ATP13A2, CLN13.CTSF,CLN2.TPP1, CLN3, CLN4.DNAJC5, CLN5, CLN6, CLN7.MFSD8, CLN8, CTNS, GAA, GBA, GLB1, HEXA, HEXB,LIPA, MCOLN1.TRPML1, NPC1, NPC2, PSAP, SMPD1
+Genotypes: Ctrl, ASAH1, CLN1.PPT1, CLN3, CLN4.DNAJC5, CLN5, CLN6, CLN7.MFSD8, CLN8, CLN10.CTSD, CLN11.GRN, CLN12.ATP13A2, CLN13.CTSF, CTNS, GAA, GBA1, GLB1, HEXA, HEXB, LIPA, MCOLN1.TRPML1, NPC1, NPC2, PSAP, SMPD1
 
 run on Thermo Orbitrap Astral, nDIA, hrMS2 
         
@@ -183,6 +183,7 @@ chordDiagram(data)
 # set colors for disease groups
 col = c(Sphigolipidoses="#D53E4F",	Mucopolysaccharidoses="#F46D43",	Glycoproteinoses="#FDAE61", Neuronal.ceroid.lipofucinoses="#FEE08B",	
         Integral.membrane.protein.disorders="#E6F598",	PTM.defects="#ABDDA4",	Lipid.storage.diseases= "#66C2A5", 
+        
         AGA= "grey76", ARSA= "grey76", ARSB= "grey76", ASAH1="#D53E4F", CLN1.PPT1= "#FEE08B", CLN10.CTSD="#FEE08B", CLN11.GRN="#FEE08B", CLN12.ATP13A2="#FEE08B", CLN12.ATP13A2="#E6F598", CLN13.CTSF="#FEE08B", CLN14.KCTD7="grey76", CLN2.TPP1="#FEE08B", CLN3="#FEE08B", CLN3="#E6F598", CLN4.DNAJC5="#FEE08B", CLN5="#FEE08B", CLN6="#FEE08B", CLN7.MFSD8="#FEE08B", CLN8="#FEE08B", CTNS="#E6F598", CTSA="grey76", FUCA="grey76", GAA="#66C2A5", GALC="grey76", GALNS="#F46D43", GBA="#D53E4F", GLA="grey76", GLB1="#D53E4F", GM2A="grey76", GNPTAB="grey76", GNPTG="grey76", GNS="grey76", GUSB="grey76", HEXA="#D53E4F", HEXB="#D53E4F", HGSNAT="grey76", HYAL1="grey76",       IDS="grey76", IDUA="grey76", LAMP2="grey76", LIPA="#66C2A5", MAN2B1="grey76", MANBA="grey76", MCOLN1="#E6F598", NAGA="grey76", NAGLU="grey76", NEU1="grey76", NPC1="#E6F598", NPC2="#E6F598", PSAP="#D53E4F", SCARB2="grey76", SGSH="grey76", SLC17A5="grey76",SMPD1="#D53E4F", SUMF1="grey76")
 
 
