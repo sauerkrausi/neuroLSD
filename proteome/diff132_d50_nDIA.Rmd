@@ -1401,7 +1401,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_
 #              "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
 #              "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
-all_ann <- c("Svendocytosis")
+all_ann <- c("SVfusion")
 
 # --- 1. Reshape log2FC data into long format ---
 ascd_ann_long_df <- complete_data_annotated_day50 %>%
@@ -1459,7 +1459,7 @@ d50_ascd_ann_plot <- ggplot(ascd_ann_long_df, aes(x = group, y = log2FC, group =
 d50_ascd_ann_plot
 
 # --- 6. Save PDF ---
-ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_ascending_Avg_SVendo.pdf"), d50_ascd_ann_plot, width = 4, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_ascending_Avg_SVfusion.pdf"), d50_ascd_ann_plot, width = 4, height = 3, device = cairo_pdf)
 
 
 
@@ -1497,7 +1497,7 @@ d50_ascd_ann_plot_top10 <- ggplot(ascd_top10_long_df, aes(x = group, y = log2FC,
   )
 
 # --- 9. Save second PDF ---
-ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_SVendo.pdf"), d50_ascd_ann_plot_top10, width = 2, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_SVfusion.pdf"), d50_ascd_ann_plot_top10, width = 2, height = 3, device = cairo_pdf)
 
 ```
 
