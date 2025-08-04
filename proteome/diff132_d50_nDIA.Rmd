@@ -1730,7 +1730,7 @@ plot_ctrl_markers_norm <- function(data, out_dir, genes = marker_genes_line) {
   
   # Save as PDF
   ggsave(file.path(out_dir, "ctrl_d30d50_Neuro_QC_Markers_norm_facet.pdf"),
-         p, width = 6, height = 6, device = cairo_pdf)
+         p, width = 4, height = 4, device = cairo_pdf)
   
   return(p)
 }
@@ -1788,7 +1788,6 @@ delta_df <- synapse_long %>%
   filter(!is.na(`Day 30`) & !is.na(`Day 50`)) %>%
   mutate(direction = ifelse(`Day 50` > `Day 30`, "up", "down"))
 
-
 # --- Step 5. Reshape back to long format for plotting ---
 long_with_direction <- delta_df %>%
   pivot_longer(cols = c(`Day 30`, `Day 50`), names_to = "day", values_to = "log2_abundance") %>%
@@ -1831,11 +1830,10 @@ SynapseTrajectoryPlot <- function(df) {
 Synaptic_Marker_Abundance <- SynapseTrajectoryPlot(long_with_direction)
 Synaptic_Marker_Abundance
 
-ggsave(file.path(out_dir_d50_QC, 
-  "diff132_SynapticMarkers_ctrl_d30_d50.pdf"),
-  Synaptic_Marker_Abundance,
-  width = 4, height = 8, device = cairo_pdf
-)
+ggsave(file.path(out_dir_d50_QC,"diff132_SynapticMarkers_ctrl_d30_d50.pdf"), Synaptic_Marker_Abundance, width = 4, height = 8, device = cairo_pdf)
+
+
+
 
 ```
 
