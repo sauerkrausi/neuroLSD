@@ -2183,7 +2183,7 @@ plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols
 
 
 # -------------------------------------------------- 
-# -------- Organelle Correlations & bubble
+# -------- Organelle Correlations Analysis
 # --------------------------------------------------  
 
 
@@ -2589,7 +2589,7 @@ dev.off()
 
 
 
-### VIIId. Average correlation per annotation across genotypes
+### VIIId. Avg. correlation per annotation across genotypes
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -2660,7 +2660,7 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 ```
 
 
-### VIIIe. Average correlation per annotation across genotypes (disease class color)
+### VIIIe. Avg. correlation per annotation across genotypes (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -2791,7 +2791,7 @@ plots <- plot_bar_corr_split_neurons(
 ```
 
 
-### VIIIf. Average correlation per nMOST GO cluster across genotypes (disease class color)
+### VIIIf. Avg. correlation per nMOST GO cluster across genotypes (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # nMOST LSD GO signatures of select Clusters (Neurons)
@@ -2916,7 +2916,7 @@ NeuroClusterBarplot(log2FC_iDA_df, cluster_name = plot_cluster, cell_type = "iDA
 
 
 
-### VIIIg. Average correlation per genotype across annotation (disease class color)
+### VIIIg. Avg. correlation per genotype across annotation (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # For a selected genotype (e.g. GBA1_iN), plot mean 
