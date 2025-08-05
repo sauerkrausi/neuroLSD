@@ -4705,11 +4705,8 @@ for (annot in custom_annotation_cols) {
 
 
 
-
-
-
 # --- Step 4. Define plotting function for Circos plot of Disease mutant correlations
-plot_annotation_genotype_chorddiagram <- function(
+plot_annotation_genotype_circos <- function(
   annot_df,
   annotation_cols,
   disease_class_df,
@@ -4790,7 +4787,7 @@ plot_annotation_genotype_chorddiagram <- function(
     disease_colors_local <- setNames(disease_df$DiseaseColor, disease_df$sample)
 
     # Start PDF
-    pdf(file.path(out_dir, paste0("ChordDiagram_", annot, ".pdf")), width = 10, height = 10)
+    pdf(file.path(out_dir, paste0("Circos_", annot, ".pdf")), width = 10, height = 10)
 
     # Track colors
     neuron_type_colors <- setNames(neuron_colors[sector_meta_df$CellType], sector_meta_df$sample)
@@ -4800,7 +4797,7 @@ plot_annotation_genotype_chorddiagram <- function(
     circos.clear()
     circos.par(start.degree = 90, gap.degree = 1)
     
-    # Chord Diagram
+    # Circos Plot
     chordDiagram(
       link_df,
       order = sectors,
@@ -4856,7 +4853,7 @@ plot_annotation_genotype_chorddiagram <- function(
 
 # --- Step 5. Call function and save in outdir 
 # define lower and upper threshold for plotting
-plot_annotation_genotype_chorddiagram(
+plot_annotation_genotype_circos(
   annot_df = annotated_log2fc_df,
   annotation_cols = custom_annotation_cols,
   disease_class_df = disease_class_df,
@@ -4868,6 +4865,144 @@ plot_annotation_genotype_chorddiagram(
 
 # detach Compelxhatmap, since it masks pheatmap for later 
 detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
+```
+
+
+
+### XIc. Split Annotation-based Circos of correlations
+```{r}
+# --------------------------------------------------- #
+# New Function: Split Circos by Positive/Negative Correlations
+# --------------------------------------------------- #
+
+# --- 1. create new subfolder for split corr outputs
+splitcorr_dir <- file.path(out_dir_d50_DisClass_chord, "splitcorr")
+if (!dir.exists(splitcorr_dir)) dir.create(splitcorr_dir, recursive = TRUE)
+
+# --- 2. Define Circos function 
+plot_annotation_genotype_circos_split <- function(
+  annot_df,
+  annotation_cols,
+  disease_class_df,
+  out_dir,
+  min_gene_n = 5,
+  pos_thresh = 0.7,
+  neg_thresh = -0.3
+) {
+  for (annot in annotation_cols) {
+    message("Processing split circos for annotation: ", annot)
+    
+    genes <- annot_df %>% filter(.data[[annot]] == 1) %>% pull(Genes) %>% unique()
+    sub_df <- annot_df %>% filter(Genes %in% genes)
+    
+    mat_long <- sub_df %>%
+      select(Genes, matches("_(iN|iDA)$")) %>%
+      pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
+      filter(!is.na(log2fc)) %>%
+      group_by(sample) %>%
+      filter(n() >= min_gene_n) %>%
+      ungroup()
+    
+    mat_wide <- mat_long %>%
+      pivot_wider(names_from = sample, values_from = log2fc) %>%
+      column_to_rownames("Genes")
+    
+    if (ncol(mat_wide) < 2) {
+      warning("Skipping: Not enough valid samples for ", annot)
+      next
+    }
+    
+    cor_mat <- cor(mat_wide, use = "pairwise.complete.obs", method = "pearson")
+    
+    make_link_df <- function(thresh, sign) {
+      df <- expand.grid(from = colnames(cor_mat), to = colnames(cor_mat), stringsAsFactors = FALSE) %>%
+        filter(from != to) %>%
+        mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+        distinct(pair_id, .keep_all = TRUE) %>%
+        mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to))
+      
+      if (sign == "pos") {
+        df <- df %>% filter(correlation >= thresh)
+      } else {
+        df <- df %>% filter(correlation <= thresh)
+      }
+      return(df)
+    }
+    
+    link_df_pos <- make_link_df(pos_thresh, "pos")
+    link_df_neg <- make_link_df(neg_thresh, "neg")
+    
+    if (nrow(link_df_pos) == 0 & nrow(link_df_neg) == 0) {
+      warning("Skipping: No links pass thresholds for ", annot)
+      next
+    }
+    
+    sector_meta_df <- tibble(sample = colnames(cor_mat)) %>%
+      mutate(
+        KO = str_extract(sample, "^[^_]+"),
+        CellType = str_extract(sample, "iN|iDA")
+      ) %>%
+      left_join(disease_class_df, by = "KO") %>%
+      mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors))) %>%
+      arrange(DiseaseClass, KO, CellType)
+    
+    sectors <- sector_meta_df$sample
+    neuron_type_colors <- setNames(neuron_colors[sector_meta_df$CellType], sector_meta_df$sample)
+    disease_class_colors <- setNames(disease_colors[sector_meta_df$DiseaseClass], sector_meta_df$sample)
+    
+    make_chord <- function(link_df, suffix) {
+      if (nrow(link_df) == 0) return(NULL)
+      
+      pdf(file.path(out_dir, paste0("Circos_", annot, "_", suffix, ".pdf")), width = 10, height = 10)
+      circos.clear()
+      circos.par(start.degree = 90, gap.degree = 1)
+      
+      chordDiagram(
+        link_df,
+        order = sectors,
+        grid.col = neuron_type_colors,
+        col = alpha(colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))(link_df$correlation), 0.6),
+        annotationTrack = "grid",
+        transparency = 0,
+        preAllocateTracks = list(
+          list(track.height = 0.03),
+          list(track.height = 0.03)
+        )
+      )
+      
+      circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
+        circos.text(CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
+                    CELL_META$sector.index,
+                    facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5), cex = 0.5)
+      }, bg.border = NA)
+      
+      circos.trackPlotRegion(track.index = 2, bg.col = disease_class_colors, panel.fun = function(x, y) {}, bg.border = NA)
+      circos.trackPlotRegion(track.index = 3, bg.col = neuron_type_colors, panel.fun = function(x, y) {}, bg.border = NA)
+      
+      grid.text(paste0("Genotype Correlation | ", annot, " | ", suffix),
+                x = 0.5, y = 0.98, gp = gpar(fontsize = 12, fontface = "bold"))
+      
+      dev.off()
+    }
+    
+    make_chord(link_df_pos, "PositiveCorr")
+    make_chord(link_df_neg, "NegativeCorr")
+  }
+}
+
+
+
+# --- 3. Call function and define corr thresholds
+plot_annotation_genotype_circos_split(
+  annot_df = annotated_log2fc_df,
+  annotation_cols = custom_annotation_cols,
+  disease_class_df = disease_class_df,
+  out_dir = splitcorr_dir,
+  pos_thresh = 0.7,
+  neg_thresh = -0.3
+)
+
+
 ```
 
 
