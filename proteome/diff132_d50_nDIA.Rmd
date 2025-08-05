@@ -3774,6 +3774,10 @@ ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
 
 
 
+# -------------------------------------------------- 
+# -------- Disease Class Analysis Neuron
+# --------------------------------------------------  
+
 
 # IX. Sph mutant investigation
 To achieve in this section:
@@ -4610,7 +4614,7 @@ plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir
 ```
 
 
-### XIb.  Annotation-based ChordDiagrams of correlations
+### XIb.  Annotation-based Circos of correlations
 ```{r}
 # --------------------------------------------------- #
 # Disease-class-based comparison day50  
