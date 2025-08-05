@@ -4880,7 +4880,7 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 library(ComplexHeatmap)
 
 # --- 1. create new subfolder for split corr outputs
-splitcorr_dir <- file.path(out_dir_d50_DisClass_chord, "splitcorr")
+splitcorr_dir <- file.path(out_dir_d50_DisClass_circos, "splitcorr")
 if (!dir.exists(splitcorr_dir)) dir.create(splitcorr_dir, recursive = TRUE)
 
 # --- 2. Define Circos function 
@@ -5014,7 +5014,7 @@ plot_annotation_genotype_circos_split(
   annotation_cols = custom_annotation_cols,
   disease_class_df = disease_class_df,
   out_dir = splitcorr_dir,
-  pos_thresh = 0.5,
+  pos_thresh = 0.7,
   neg_thresh = -0.3
 )
 
