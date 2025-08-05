@@ -4615,7 +4615,6 @@ plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir
 
 ```
 
-
 ### XIb.  Annotation-based Circos of correlations
 ```{r}
 # --------------------------------------------------- #
@@ -4623,7 +4622,6 @@ plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir
 # Sphigolipidoses, NCL, Integral.membrane.protein.disorders
 # Correlations between KO conditions
 # --------------------------------------------------- #
-
 library(circlize)
 library(ComplexHeatmap)
 library(tidyverse)
@@ -4632,16 +4630,22 @@ library(grid)
 
 # --- Step 1. Define color mappings for plotting
 neuron_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F")
-disease_colors <- c(
-  Sphigolipidoses = "#D53E4F",
-  Neuronal.ceroid.lipofucinoses = "#FEE08B",
-  Integral.membrane.protein.disorders = "#E6F598",
-  Lipid.storage.diseases = "#66C2A5"
-)
+# disease_colors <- c(
+#   Sphigolipidoses = "#D53E4F",
+#   Neuronal.ceroid.lipofucinoses = "#FEE08B",
+#   Integral.membrane.protein.disorders = "#E6F598",
+#   Lipid.storage.diseases = "#66C2A5"
+# )
 
+# Step 1. Expand to sample-level keys
+disease_class_df <- enframe(disease_classes, name = "DiseaseClass", value = "KO") %>%
+  unnest(KO) %>%
+  mutate(DiseaseColor = disease_colors[DiseaseClass]) %>%
+  crossing(CellType = c("iN", "iDA")) %>%
+  mutate(sample = paste0(KO, "_", CellType))
 
 # --- Step 2. Set Annotations of interest, can corr threshold 
-#custom_annotation_cols <- c("EarlyEndosome","RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+#custom_annotation_cols <- c("Mito", "EarlyEndosome","RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
@@ -4653,7 +4657,7 @@ custom_annotation_cols <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM
 #                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
 min_genes_per_genotype <- 5
-#cor_threshold <- 0.7
+
 
 
 
@@ -4692,7 +4696,7 @@ for (annot in custom_annotation_cols) {
   corr_mat <- cor(log2fc_mat, use = "pairwise.complete.obs", method = "pearson")
 
   # Step 3.5: Save matrix
-  write.csv(corr_mat, file = file.path(out_dir_d50_DisClass_chord, paste0("CorrMatrix_", annot, ".csv")))
+  write.csv(corr_mat, file = file.path(out_dir_d50_DisClass_circos, paste0("CorrMatrix_", annot, ".csv")))
 
   # Step 3.6: Link table for circos
   corr_links <- expand.grid(from = rownames(corr_mat), to = colnames(corr_mat), stringsAsFactors = FALSE) %>%
@@ -4703,9 +4707,8 @@ for (annot in custom_annotation_cols) {
     filter(abs(correlation) > cor_threshold)
 
   # Step 3.7: Save link table
-  write.csv(corr_links, file = file.path(out_dir_d50_DisClass_chord, paste0("LinkTable_", annot, "_absCorr", cor_threshold, ".csv")), row.names = FALSE)
+  write.csv(corr_links, file = file.path(out_dir_d50_DisClass_circos, paste0("LinkTable_", annot, "_absCorr", cor_threshold, ".csv")), row.names = FALSE)
 }
-
 
 
 # --- Step 4. Define plotting function for Circos plot of Disease mutant correlations
@@ -4762,78 +4765,86 @@ plot_annotation_genotype_circos <- function(
       next
     }
 
-    # Group sector ordering by DiseaseClass
+    # Build sector metadata with deduplication
     sector_meta_df <- tibble(sample = colnames(cor_mat)) %>%
+      left_join(disease_class_df, by = "sample") %>%
       mutate(
-        KO = str_extract(sample, "^[^_]+"),
-        CellType = str_extract(sample, "iN|iDA")
+        DiseaseClass = replace_na(DiseaseClass, "Unassigned"),
+        DiseaseColor = replace_na(DiseaseColor, "grey90")
       ) %>%
-      left_join(disease_class_df, by = "KO") %>%
-      mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors))) %>%
-      arrange(DiseaseClass, KO, CellType)  # cluster by DiseaseClass
+      distinct(sample, .keep_all = TRUE)
     
-    # Use this as the sector order
+    # Lock sector order
     sectors <- sector_meta_df$sample
+    
+    # Build colors in strict sector order
+    disease_class_colors <- setNames(sector_meta_df$DiseaseColor, sectors)[sectors]
+    neuron_type_colors   <- setNames(neuron_colors[sector_meta_df$CellType], sectors)[sectors]
+    
+    # sanity check
+    if (any(is.na(disease_class_colors))) {
+      stop("Error: some sectors have no DiseaseColor mapping.")
+    }
+
+        # Save sectors and colors for debugging
+        sector_colors_df <- tibble(sample = sectors, DiseaseColor = disease_class_colors[sectors],NeuronColor  = neuron_type_colors[sectors])
+
+      write.csv(
+        sector_colors_df,
+        file = file.path(out_dir, paste0("SectorColors_", annot, ".csv")),
+        row.names = FALSE
+      )
 
     
-    # Celltype layer
-    celltype_df <- tibble(sample = sectors) %>%
-      mutate(celltype = str_extract(sample, "iN|iDA"))
-    celltype_colors <- setNames(neuron_colors[celltype_df$celltype], celltype_df$sample)
-
-    # Disease class layer
-    ko_labels <- str_extract(sectors, "^[^_]+")
-    disease_df <- tibble(KO = ko_labels, sample = sectors) %>%
-      left_join(disease_class_df, by = "KO") %>%
-      mutate(DiseaseColor = disease_colors[DiseaseClass]) %>%
-      replace_na(list(DiseaseColor = "grey90"))
-    disease_colors_local <- setNames(disease_df$DiseaseColor, disease_df$sample)
-
+    # PlotCircos plot
     # Start PDF
     pdf(file.path(out_dir, paste0("Circos_", annot, ".pdf")), width = 10, height = 10)
 
-    # Track colors
-    neuron_type_colors <- setNames(neuron_colors[sector_meta_df$CellType], sector_meta_df$sample)
-    disease_class_colors <- setNames(disease_colors[sector_meta_df$DiseaseClass], sector_meta_df$sample)
-    
-    # Clear and configure
     circos.clear()
     circos.par(start.degree = 90, gap.degree = 1)
-    
-    # Circos Plot
+
     chordDiagram(
       link_df,
-      order = sectors,
-      grid.col = neuron_type_colors,  # Grid = inner = neuron type
-      col = alpha(colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))(link_df$correlation), 0.6),
+      order = as.character(sectors),
+      grid.col = neuron_type_colors,
+      col = alpha(colorRamp2(c(-1, 0, 1),
+                             c("blue", "white", "red"))(link_df$correlation), 0.6),
       annotationTrack = "grid",
       transparency = 0,
       preAllocateTracks = list(
-        #list(track.height = 0.05),  # Labels
-        list(track.height = 0.03),  # Outer: disease type
-        list(track.height = 0.03)   # Iner: neuron class
+       # list(track.height = 0.05),  # Track 1: labels
+        list(track.height = 0.03),  # Track 2: disease
+        list(track.height = 0.03)   # Track 3: neuron
       )
     )
     
-    # Track 1: Labels
+    # Labels
     circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
+      sector_name <- get.cell.meta.data("sector.index")
       circos.text(CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
-                  CELL_META$sector.index,
-                  facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5), cex = 0.5)
+                  labels = sector_name,
+                  facing = "clockwise", niceFacing = TRUE,
+                  adj = c(0, 0.5), cex = 0.5)
     }, bg.border = NA)
     
-    # Track 2: Outer = disease class
-    circos.trackPlotRegion(track.index = 2, bg.col = disease_class_colors, panel.fun = function(x, y) {}, bg.border = NA)
+   # after chordDiagram()
+    actual_order <- get.all.sector.index()
     
-    # Track 3: Inner = neuron type
-    circos.trackPlotRegion(track.index = 3, bg.col = neuron_type_colors, panel.fun = function(x, y) {}, bg.border = NA)
+    # Outer: disease
+    circos.trackPlotRegion(
+      track.index = 2,
+      bg.col = disease_class_colors[match(actual_order, names(disease_class_colors))],
+      panel.fun = function(x, y) {}, bg.border = NA
+    )
     
+    # Inner: neuron
+    circos.trackPlotRegion(
+      track.index = 3,
+      bg.col = neuron_type_colors[match(actual_order, names(neuron_type_colors))],
+      panel.fun = function(x, y) {}, bg.border = NA
+    )
 
-
-    # Title
-    grid.text(paste0("Genotype Correlation | ", annot), x = 0.5, y = 0.98, gp = gpar(fontsize = 12, fontface = "bold"))
-
-    # Legends
+    # add legend
     draw(Legend(
       at = c(-1, 0, 1),
       col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
@@ -4842,34 +4853,30 @@ plot_annotation_genotype_circos <- function(
       legend_width = unit(3, "cm")
     ), x = unit(0.5, "npc"), y = unit(0.02, "npc"), just = c("center", "bottom"))
 
-    draw(Legend(labels = names(neuron_colors), legend_gp = gpar(fill = neuron_colors), title = "Neuron Type"),
+    draw(Legend(labels = names(neuron_colors), legend_gp = gpar(fill = neuron_colors),
+                title = "Neuron Type"),
          x = unit(0.02, "npc"), y = unit(0.02, "npc"), just = c("left", "bottom"))
 
-    draw(Legend(labels = names(disease_colors), legend_gp = gpar(fill = disease_colors), title = "Disease Class"),
-         x = unit(1, "npc"), y = unit(0.02, "npc"), just = c("right", "bottom"))
+   draw(Legend(labels = names(disease_colors), legend_gp = gpar(fill = disease_colors),
+            title = "Disease Class"),
+     x = unit(1, "npc"), y = unit(0.02, "npc"), just = c("right", "bottom"))
 
     dev.off()
   }
 }
 
-
-
-# --- Step 5. Call function and save in outdir 
-# define lower and upper threshold for plotting
+# --- Step 5. Call function
 plot_annotation_genotype_circos(
   annot_df = annotated_log2fc_df,
   annotation_cols = custom_annotation_cols,
-  disease_class_df = disease_class_df,
+  disease_class_df = disease_class_df,   
   out_dir = out_dir_d50_DisClass_circos,
   pos_thresh = 0.7,
-  neg_thresh = -0.3
+  neg_thresh = -0.2
 )
 
 
-# detach Compelxhatmap, since it masks pheatmap for later 
-detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 ```
-
 
 
 ### XIc. Split Annotation-based Circos of correlations
@@ -4941,14 +4948,17 @@ plot_annotation_genotype_circos_split <- function(
       next
     }
     
-    sector_meta_df <- tibble(sample = colnames(cor_mat)) %>%
-      mutate(
-        KO = str_extract(sample, "^[^_]+"),
-        CellType = str_extract(sample, "iN|iDA")
-      ) %>%
-      left_join(disease_class_df, by = "KO") %>%
+    # Pull metadata for DiseaseClass color from annotated_log2fc_df directly
+    sector_meta_df <- annotated_log2fc_df %>%
+      select(KO, DiseaseClass) %>%
+      distinct() %>%
+      right_join(tibble(sample = colnames(cor_mat)) %>%
+                   mutate(KO = str_extract(sample, "^[^_]+"),
+                          CellType = str_extract(sample, "iN|iDA")),
+                 by = "KO") %>%
       mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors))) %>%
       arrange(DiseaseClass, KO, CellType)
+  
     
     sectors <- sector_meta_df$sample
     neuron_type_colors <- setNames(neuron_colors[sector_meta_df$CellType], sector_meta_df$sample)
@@ -5006,6 +5016,159 @@ plot_annotation_genotype_circos_split <- function(
   }
 }
 
+############
+############
+
+
+# Make a copy
+annotated_log2fc_colored <- annotated_log2fc_df %>%
+  mutate(
+    DiseaseClass = replace_na(DiseaseClass, "Unassigned"),
+    DiseaseColor = case_when(
+      DiseaseClass %in% names(disease_colors) ~ disease_colors[DiseaseClass],
+      TRUE ~ "grey90"
+    )
+  )
+
+annotated_log2fc_colored %>%
+  select(KO, DiseaseClass, DiseaseColor) %>%
+  distinct() %>%
+  arrange(DiseaseClass) %>%
+  head(20)
+
+
+
+plot_split_circos <- function(
+  annot_df,
+  annotation_cols,
+  out_dir,
+  pos_thresh = 0.7,
+  neg_thresh = -0.3,
+  min_gene_n = 5
+) {
+  for (annot in annotation_cols) {
+    message("Processing: ", annot)
+
+    # 1. Filter to annotated genes
+    genes <- annot_df %>% filter(.data[[annot]] == 1) %>% pull(Genes)
+    sub_df <- annot_df %>% filter(Genes %in% genes)
+
+    # 2. Build long-format for valid samples
+    mat_long <- sub_df %>%
+      select(Genes, matches("_(iN|iDA)$")) %>%
+      pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
+      filter(!is.na(log2fc)) %>%
+      group_by(sample) %>%
+      filter(n() >= min_gene_n) %>%
+      ungroup()
+
+    if (n_distinct(mat_long$sample) < 2) {
+      warning("Skipping ", annot, ": not enough valid samples")
+      next
+    }
+
+    # 3. Pivot to wide matrix
+    mat_wide <- mat_long %>%
+      pivot_wider(names_from = sample, values_from = log2fc) %>%
+      column_to_rownames("Genes")
+
+    # 4. Correlation matrix
+    cor_mat <- cor(mat_wide, use = "pairwise.complete.obs", method = "pearson")
+
+    # 5. Link table maker
+    make_link_df <- function(thresh, sign = "pos") {
+      expand.grid(from = colnames(cor_mat), to = colnames(cor_mat), stringsAsFactors = FALSE) %>%
+        filter(from != to) %>%
+        mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+        distinct(pair_id, .keep_all = TRUE) %>%
+        mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to)) %>%
+        { if (sign == "pos") filter(., correlation >= thresh) else filter(., correlation <= thresh) }
+    }
+
+    link_df_pos <- make_link_df(pos_thresh, "pos")
+    link_df_neg <- make_link_df(neg_thresh, "neg")
+
+    if (nrow(link_df_pos) == 0 & nrow(link_df_neg) == 0) {
+      warning("Skipping ", annot, ": no correlations above threshold")
+      next
+    }
+
+    # 6. Metadata from annot_df
+# KO → DiseaseColor lookup
+ko_color_map <- annotated_log2fc_colored %>%
+  select(KO, DiseaseColor) %>%
+  distinct()
+
+meta_df <- tibble(sample = colnames(cor_mat)) %>%
+  mutate(
+    KO = str_remove(sample, "_(iN|iDA)$"),
+    CellType = str_extract(sample, "iN|iDA")
+  ) %>%
+  left_join(ko_color_map, by = "KO")
+
+sectors <- meta_df$sample
+neuron_type_colors <- setNames(neuron_colors[meta_df$CellType], meta_df$sample)
+
+# assign outer colors based on KO, not sample
+disease_class_colors <- setNames(meta_df$DiseaseColor, meta_df$sample)
+
+
+    # 7. Plotting function
+    plot_chord <- function(link_df, suffix) {
+      if (nrow(link_df) == 0) return()
+      pdf(file.path(out_dir, paste0("Circos_", annot, "_", suffix, ".pdf")), width = 10, height = 10)
+      circos.clear()
+      circos.par(start.degree = 90, gap.degree = 1)
+
+      chordDiagram(
+        link_df,
+        order = sectors,
+        grid.col = neuron_type_colors,
+        col = alpha(colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))(link_df$correlation), 0.6),
+        annotationTrack = "grid",
+        transparency = 0,
+        preAllocateTracks = list(
+          list(track.height = 0.03),  # outer: disease
+          list(track.height = 0.03)   # inner: celltype
+        )
+      )
+
+      circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
+        circos.text(CELL_META$xcenter, CELL_META$ylim[1] + mm_y(1),
+                    CELL_META$sector.index,
+                    facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5), cex = 0.5)
+      }, bg.border = NA)
+
+      circos.trackPlotRegion(track.index = 2, bg.col = disease_class_colors, panel.fun = function(x, y) {}, bg.border = NA)
+      circos.trackPlotRegion(track.index = 3, bg.col = neuron_type_colors, panel.fun = function(x, y) {}, bg.border = NA)
+
+      grid.text(paste0("Genotype Correlation | ", annot, " | ", suffix),
+                x = 0.5, y = 0.98, gp = gpar(fontsize = 12, fontface = "bold"))
+
+      draw(Legend(
+        at = c(-1, -0.5, 0, 0.5, 1),
+        col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+        title = "Pearson r", direction = "horizontal",
+        legend_width = unit(4, "cm")
+      ), x = unit(0.5, "npc"), y = unit(0.02, "npc"), just = c("center", "bottom"))
+
+      dev.off()
+    }
+
+    # 8. Run plotting
+    plot_chord(link_df_pos, "PositiveCorr")
+    plot_chord(link_df_neg, "NegativeCorr")
+  }
+}
+
+
+plot_split_circos(
+  annot_df = annotated_log2fc_df,
+  annotation_cols = custom_annotation_cols,
+  out_dir = splitcorr_dir,
+  pos_thresh = 0.7,
+  neg_thresh = -0.3
+)
 
 
 # --- 3. Call function and define corr thresholds
@@ -5015,7 +5178,7 @@ plot_annotation_genotype_circos_split(
   disease_class_df = disease_class_df,
   out_dir = splitcorr_dir,
   pos_thresh = 0.7,
-  neg_thresh = -0.3
+  neg_thresh = -0.2
 )
 
 
@@ -5023,6 +5186,9 @@ plot_annotation_genotype_circos_split(
 detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 
 ```
+
+
+
 
 
 # XII. Linear regression on neuro nDIA dataset
