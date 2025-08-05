@@ -99,8 +99,8 @@ dir.create(out_dir_d50_SphMut, recursive = TRUE, showWarnings = FALSE)
 out_dir_d50_DisClass <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/DisClass"
 dir.create(out_dir_d50_DisClass, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_d50_DisClass_chord <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/DisClass/chorddiagram"
-dir.create(out_dir_d50_DisClass_chord, recursive = TRUE, showWarnings = FALSE)
+out_dir_d50_DisClass_circos <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/DisClass/Cirosdiagram"
+dir.create(out_dir_d50_DisClass_circos, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_GRN <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
 dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
@@ -176,7 +176,7 @@ LSD <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD/Proteomics_Lipi
 #convert the table to a martix
 data <- as.matrix(LSD)
 
-#create a chord diagram
+#create a Ciros diagram
 chordDiagram(data)
 
 ############## CIRCOS Plot with confirmed KOs #####################
@@ -4511,12 +4511,14 @@ Focus on disease classes with good coverage
 disease_classes <- list(
   Sphigolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
   Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
-  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5")
+  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
+  Lipid.storage.diseases = c("GAA", "LIPA")
 )
 disease_colors <- c(
   Sphigolipidoses = "#D53E4F",
   Neuronal.ceroid.lipofucinoses = "#FEE08B",
-  Integral.membrane.protein.disorders = "#E6F598"
+  Integral.membrane.protein.disorders = "#E6F598",
+  Lipid.storage.diseases = "#66C2A5"
 )
 disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
 
@@ -4633,7 +4635,8 @@ neuron_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F")
 disease_colors <- c(
   Sphigolipidoses = "#D53E4F",
   Neuronal.ceroid.lipofucinoses = "#FEE08B",
-  Integral.membrane.protein.disorders = "#E6F598"
+  Integral.membrane.protein.disorders = "#E6F598",
+  Lipid.storage.diseases = "#66C2A5"
 )
 
 
@@ -4857,7 +4860,7 @@ plot_annotation_genotype_circos(
   annot_df = annotated_log2fc_df,
   annotation_cols = custom_annotation_cols,
   disease_class_df = disease_class_df,
-  out_dir = out_dir_d50_DisClass_chord,
+  out_dir = out_dir_d50_DisClass_circos,
   pos_thresh = 0.7,
   neg_thresh = -0.3
 )
@@ -4874,6 +4877,7 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 # --------------------------------------------------- #
 # New Function: Split Circos by Positive/Negative Correlations
 # --------------------------------------------------- #
+library(ComplexHeatmap)
 
 # --- 1. create new subfolder for split corr outputs
 splitcorr_dir <- file.path(out_dir_d50_DisClass_chord, "splitcorr")
@@ -4982,6 +4986,18 @@ plot_annotation_genotype_circos_split <- function(
       grid.text(paste0("Genotype Correlation | ", annot, " | ", suffix),
                 x = 0.5, y = 0.98, gp = gpar(fontsize = 12, fontface = "bold"))
       
+      # Add correlation legend
+      lgd_corr <- Legend(
+        at = c(-1, -0.5, 0, 0.5, 1),
+        col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+        title = "Pearson r",
+        direction = "horizontal",
+        legend_width = unit(4, "cm")
+      )
+      
+      draw(lgd_corr, x = unit(0.5, "npc"), y = unit(0.02, "npc"),
+           just = c("center", "bottom"))
+
       dev.off()
     }
     
@@ -4998,10 +5014,13 @@ plot_annotation_genotype_circos_split(
   annotation_cols = custom_annotation_cols,
   disease_class_df = disease_class_df,
   out_dir = splitcorr_dir,
-  pos_thresh = 0.7,
+  pos_thresh = 0.5,
   neg_thresh = -0.3
 )
 
+
+# detach Compelxhatmap, since it masks pheatmap for later 
+detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 
 ```
 
