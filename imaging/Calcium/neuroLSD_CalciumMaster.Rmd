@@ -571,7 +571,7 @@ stacked_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50","d60")
+    Timepoint %in% c("d38", "d45", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -646,7 +646,7 @@ active_df_norm <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50","d60")
+    Timepoint %in% c("d38", "d45", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -674,7 +674,7 @@ active_df_norm <- active_df_norm %>%
     BarGroup = paste(Timepoint, Treatment, sep = "_"),
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
     Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
-    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50","d60"))
+    Timepoint = factor(Timepoint, levels = c("d38", "d45", "d50"))
   )
 
 # Plot normalized percent active (relative to Ctrl Fed per timepoint)
@@ -717,7 +717,7 @@ stacked_total_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50","d60")
+    Timepoint %in% c("d38", "d45", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -903,7 +903,7 @@ active_df_iDA_norm <- active_df_iDA_norm %>%
     BarGroup = paste(Timepoint, Treatment, sep = "_"),
     Genotype = factor(Genotype, levels = c("Ctrl", "ASAH1")),
     Treatment = factor(Treatment, levels = c("Fed_Fluo4", "KCL_Fluo4")),
-    Timepoint = factor(Timepoint, levels = c("d33", "d50","d60"))
+    Timepoint = factor(Timepoint, levels = c("d33", "d50"))
   )
 
 # Optional: restrict to d50 only until d60 data are in
