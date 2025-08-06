@@ -79,6 +79,9 @@ library(lintr)
 out_dir_d50_QC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC"
 dir.create(out_dir_d50_QC, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d50_euler <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC/euler_annotations"
+dir.create(out_dir_d50_euler, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_d50_ascd_avg <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/ascendingAvg"
 dir.create(out_dir_d50_ascd_avg, recursive = TRUE, showWarnings = FALSE)
 
@@ -932,7 +935,7 @@ dev.off()
 
 
 # VI. Day 30 & Day 50 base eval
-### VIa. Add Subcell annotation to dataset & plot overlap annotation 
+### VIa. Add Subcell annotation to dataset
 add subcell annotation to df and save
 sub sub-matrix for d30 and d50
 export heatmap as csv file
@@ -985,92 +988,7 @@ binary_matrix <- long_subcell_df %>%
   )
 
 
-
-# --- Step 3: Euler plot of Vesicular annotations to see overlap ---
-#library(eulerr)  #--> load library if not alraedy done so 
-
-# Step 1: Extract gene sets per included category
-included_terms <- setdiff(names(subcell_df), c(
-  "Nucleus", "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", 
-  "Golgi", "Lysosome", "EndoLyso", "ER", "Cytoplasm", "Autophagy", "NeuroDev","EndoDetailLoac"))
-
-# Create named list of gene sets
-gene_sets <- subcell_df %>%
-  select(all_of(included_terms)) %>%
-  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
-  filter(!is.na(Gene) & Gene != "") %>%
-  mutate(Gene = trimws(Gene)) %>%
-  group_by(Category) %>%
-  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
-  deframe()
-
-# Optional: Limit to top 6 categories by size for performance
-top_terms <- sort(sapply(gene_sets, length), decreasing = TRUE)[1:10]
-gene_sets_top <- gene_sets[names(top_terms)]
-
-# Step 2: Fit and plot Euler diagram
-fit <- euler(gene_sets_top)
-
-pdf(file.path(out_dir_d50_dataframes, "subcell_eulerdiagram_top10.pdf"), width = 8, height = 8)
-plot(fit,
-     fills = list(fill = "dodgerblue3", alpha = 0.2),
-     labels = list(font = 1),
-     main = "Euler Diagram: Top 10 Subcellular Categories")
-dev.off()
-
-
-# set one for endo compartment 
-# Build gene_sets_endo from subcell_df
-endo_terms <- c("Endo_iN_curated_Hundley","Lysosome", 
-                "EarlyEndosome", "RecyclingEndosome")
-
-# Create named list of gene sets
-gene_sets_endo <- subcell_df %>%
-  select(all_of(endo_terms)) %>%
-  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
-  filter(!is.na(Gene) & Gene != "") %>%
-  mutate(Gene = trimws(Gene)) %>%
-  group_by(Category) %>%
-  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
-  deframe()
-
-# Construct and plot endosomal Euler
-#fit_endo <- euler(gene_sets_endo, shape = "ellipse")
-fit_endo <- euler(gene_sets_endo)
-pdf(file.path(out_dir_d50_dataframes, "subcell_eulerdiagram_endo-lysosome.pdf"))
-plot(fit_endo, 
-     fills = list(fill = "dodgerblue3", alpha = 0.5),  
-     labels = list(font = 1),
-     main = "Endosomal Lysosomal Categories")
-dev.off()
-
-
-
-synaptic_terms <- c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic", 
-                    "SVfusion", "Svexocytosis", "Svendocytosis")
-
-# Create named list of gene sets
-gene_sets_synaptic <- subcell_df %>%
-  select(all_of(synaptic_terms)) %>%
-  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
-  filter(!is.na(Gene) & Gene != "") %>%
-  mutate(Gene = trimws(Gene)) %>%
-  group_by(Category) %>%
-  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
-  deframe()
-
-# Construct and plot synaptic Euler
-#fit_syn <- euler(gene_sets_synaptic, shape = "ellipse")
-fit_syn <- euler(gene_sets_synaptic)
-pdf(file.path(out_dir_d50_dataframes, "subcell_eulerdiagram_synaptic.pdf"))
-plot(fit_syn,
-     fills = list(fill = "firebrick", alpha = 0.5),
-     labels = list(font = 1),
-     main = "Synaptic Categories")
-dev.off()
-
-
-# --- Step 4: Function to process each day independently
+# --- Step 3: Function to process each day independently
 process_day_data <- function(df, day_value, save_path) {
   df_day <- df %>% filter(day == day_value)
 
@@ -1115,8 +1033,101 @@ complete_data_annotated_day50 <- process_day_data(
 ```
 
 
+### VIb. Euler plots for overlap annotation 
+```{r}
+# --------------------------------------------------- #
+#  Euler plots of Subcellular Annotation Overlap 
+# --------------------------------------------------- #
+# Load eulerr if not already loaded
+# library(eulerr)
 
-### VIb. Plot LSD protein abundnace across genotypes
+# -- 1.1: Euler Diagram for Top 10 Vesicular Categories --
+
+# Define terms to exclude from the top-N plot (housekeeping or broad compartments)
+excluded_terms <- c("Nucleus", "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", 
+                    "Golgi", "Lysosome", "EndoLyso", "ER", "Cytoplasm", "Autophagy", "NeuroDev", 
+                    "EndoDetailLoac", "RecyclingEndosome", "EarlyEndosome", "Autophagy_det")
+
+# Select all included terms
+included_terms <- setdiff(names(subcell_df), excluded_terms)
+
+# Create named list of gene sets from annotations
+gene_sets <- subcell_df %>%
+  select(all_of(included_terms)) %>%
+  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  filter(!is.na(Gene) & Gene != "") %>%
+  mutate(Gene = trimws(Gene)) %>%
+  group_by(Category) %>%
+  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
+  deframe()
+
+# Limit to top 10 categories by set size
+top_terms <- names(sort(sapply(gene_sets, length), decreasing = TRUE))[1:10]
+gene_sets_top <- gene_sets[top_terms]
+gene_sets_top <- gene_sets_top[!is.na(names(gene_sets_top)) & names(gene_sets_top) != ""]
+
+# Fit and plot Euler diagram for top vesicular categories
+fit <- euler(gene_sets_top)
+pdf(file.path(out_dir_d50_euler, "subcell_eulerdiagram_top10.pdf"), width = 8, height = 8)
+plot(fit,
+     fills = list(fill = "dodgerblue3", alpha = 0.2),
+     labels = list(font = 1),
+     main = "Euler Diagram: Top 10 Subcellular Categories")
+dev.off()
+
+
+# -- 3.2: Euler Diagram for Endosomal/Lysosomal Categories --
+
+endo_terms <- c("Endo_iN_curated_Hundley", "Lysosome", "EarlyEndosome", "RecyclingEndosome")
+
+# Create named list of gene sets
+gene_sets_endo <- subcell_df %>%
+  select(all_of(endo_terms)) %>%
+  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  filter(!is.na(Gene) & Gene != "") %>%
+  mutate(Gene = trimws(Gene)) %>%
+  group_by(Category) %>%
+  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
+  deframe()
+
+# Fit and plot Euler diagram for endosomal/lysosomal terms
+fit_endo <- euler(gene_sets_endo)
+pdf(file.path(out_dir_d50_euler, "subcell_eulerdiagram_endo-lysosome.pdf"), width = 8, height = 8)
+plot(fit_endo, 
+     fills = list(fill = "firebrick", alpha = 0.5),  
+     labels = list(font = 1),
+     main = "Endosomal/Lysosomal Categories")
+dev.off()
+
+
+# -- 3.3: Euler Diagram for Synaptic Categories --
+
+synaptic_terms <- c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic", 
+                    "SVfusion", "Svexocytosis", "Svendocytosis")
+
+# Create named list of gene sets
+gene_sets_synaptic <- subcell_df %>%
+  select(all_of(synaptic_terms)) %>%
+  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  filter(!is.na(Gene) & Gene != "") %>%
+  mutate(Gene = trimws(Gene)) %>%
+  group_by(Category) %>%
+  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
+  deframe()
+
+# Fit and plot Euler diagram for synaptic annotations
+fit_syn <- euler(gene_sets_synaptic)
+pdf(file.path(out_dir_d50_euler, "subcell_eulerdiagram_synaptic.pdf"), width = 8, height = 8)
+plot(fit_syn,
+     fills = list(fill = "dodgerblue3", alpha = 0.5),
+     labels = list(font = 1),
+     main = "Synaptic Categories")
+dev.off()
+```
+
+
+
+### VIc. Plot LSD protein abundnace across genotypes
 plan is to plot a heatmap of all LSD proteins of interest across the dataset -> check that these are KOs
 ```{r}
 # --------------------------------------------------- #
@@ -1256,7 +1267,7 @@ dev.off()
 
 ```
 
-### VIc. Sorted Heatmap of average neuro-releated annotations
+### VId. Sorted Heatmap of average neuro-releated annotations
 ```{r}
 # --------------------------------------------------- #
 # Heatmap of neuro-related annotations
@@ -1324,7 +1335,7 @@ make_ann_heatmap(
 
 ```
 
-### VId. Sorted lineplots of average neuro-releated annotations
+### VIe. Sorted lineplots of average neuro-releated annotations
 ```{r}
 # --------------------------------------------------- #
 # Line plots of Sph mutants of interest 
