@@ -3907,12 +3907,16 @@ dev.off()
 selected_annotations <- c("EndoLyso", "SynGO", "Endo_iN_curated_Hundley",
                           "Lysosome", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis")
 
+selected_annotations <- c("SynGO", "Endo_iN_curated_Hundley",
+                          "Lysosome", "Presynaptic", "Postsynaptic","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion","Svendocytosis", "Svexocytosis","Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS","mtComplexI")
+
+
 # selected_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
-                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
-                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
-                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
-                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")     
-   
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
 
 log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
 
@@ -3963,6 +3967,40 @@ pheatmap(
   main = "SphMut Organelle Correlation"
 )
 dev.off()
+
+
+# --- Step 6. Split correlation matrix and plot separately for iN and iDA
+
+# iN-only
+SphMut_corr_mat_iN <- SphMut_corr_mat[rownames(SphMut_ko_type)[SphMut_ko_type$CellType == "iN"], , drop = FALSE]
+pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap_selected_iN.pdf"), width = 10, height = 12, useDingbats = FALSE)
+pheatmap(
+  SphMut_corr_mat_iN,
+  color = rev(brewer.pal(11, "RdYlBu")),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  border_color = NA,
+  cellheight = 15,
+  cellwidth  = 15,
+  main = "SphMut Organelle Correlation – iN only"
+)
+dev.off()
+
+# iDA-only
+SphMut_corr_mat_iDA <- SphMut_corr_mat[rownames(SphMut_ko_type)[SphMut_ko_type$CellType == "iDA"], , drop = FALSE]
+pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap_selected_iDA.pdf"), width = 10, height = 12, useDingbats = FALSE)
+pheatmap(
+  SphMut_corr_mat_iDA,
+  color = rev(brewer.pal(11, "RdYlBu")),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  border_color = NA,
+  cellheight = 15,
+  cellwidth  = 15,
+  main = "SphMut Organelle Correlation – iDA only"
+)
+dev.off()
+
 
 ```
 
