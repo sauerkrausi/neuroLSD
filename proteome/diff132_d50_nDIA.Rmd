@@ -985,14 +985,14 @@ binary_matrix <- long_subcell_df %>%
   )
 
 
+
 # --- Step 3: Euler plot of Vesicular annotations to see overlap ---
 #library(eulerr)  #--> load library if not alraedy done so 
-
 
 # Step 1: Extract gene sets per included category
 included_terms <- setdiff(names(subcell_df), c(
   "Nucleus", "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", 
-  "Golgi", "Lysosome", "EndoLyso", "ER", "Cytoplasm", "Autophagy", "NeuroDev"))
+  "Golgi", "Lysosome", "EndoLyso", "ER", "Cytoplasm", "Autophagy", "NeuroDev","EndoDetailLoac"))
 
 # Create named list of gene sets
 gene_sets <- subcell_df %>%
@@ -1019,6 +1019,55 @@ plot(fit,
 dev.off()
 
 
+# set one for endo compartment 
+# Build gene_sets_endo from subcell_df
+endo_terms <- c("Endo_iN_curated_Hundley","Lysosome", 
+                "EarlyEndosome", "RecyclingEndosome")
+
+# Create named list of gene sets
+gene_sets_endo <- subcell_df %>%
+  select(all_of(endo_terms)) %>%
+  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  filter(!is.na(Gene) & Gene != "") %>%
+  mutate(Gene = trimws(Gene)) %>%
+  group_by(Category) %>%
+  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
+  deframe()
+
+# Construct and plot endosomal Euler
+#fit_endo <- euler(gene_sets_endo, shape = "ellipse")
+fit_endo <- euler(gene_sets_endo)
+pdf(file.path(out_dir_d50_dataframes, "subcell_eulerdiagram_endo-lysosome.pdf"))
+plot(fit_endo, 
+     fills = list(fill = "dodgerblue3", alpha = 0.5),  
+     labels = list(font = 1),
+     main = "Endosomal Lysosomal Categories")
+dev.off()
+
+
+
+synaptic_terms <- c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic", 
+                    "SVfusion", "Svexocytosis", "Svendocytosis")
+
+# Create named list of gene sets
+gene_sets_synaptic <- subcell_df %>%
+  select(all_of(synaptic_terms)) %>%
+  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  filter(!is.na(Gene) & Gene != "") %>%
+  mutate(Gene = trimws(Gene)) %>%
+  group_by(Category) %>%
+  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
+  deframe()
+
+# Construct and plot synaptic Euler
+#fit_syn <- euler(gene_sets_synaptic, shape = "ellipse")
+fit_syn <- euler(gene_sets_synaptic)
+pdf(file.path(out_dir_d50_dataframes, "subcell_eulerdiagram_synaptic.pdf"))
+plot(fit_syn,
+     fills = list(fill = "firebrick", alpha = 0.5),
+     labels = list(font = 1),
+     main = "Synaptic Categories")
+dev.off()
 
 
 # --- Step 4: Function to process each day independently
