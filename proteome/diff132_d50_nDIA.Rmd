@@ -3971,18 +3971,24 @@ dev.off()
 
 # --- Step 6. Split correlation matrix and plot separately for iN and iDA
 
+# Define fixed color scale breaks
+# define color palette to match breaks
+breaks_fixed <- seq(-0.2, 0.2, length.out = 101)  # 100 bins
+colors_fixed <- colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100)
+
 # iN-only
 SphMut_corr_mat_iN <- SphMut_corr_mat[rownames(SphMut_ko_type)[SphMut_ko_type$CellType == "iN"], , drop = FALSE]
 pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap_selected_iN.pdf"), width = 10, height = 12, useDingbats = FALSE)
 pheatmap(
   SphMut_corr_mat_iN,
-  color = rev(brewer.pal(11, "RdYlBu")),
+  color = colors_fixed,
+  breaks = breaks_fixed,
   cluster_rows = TRUE,
   cluster_cols = TRUE,
   border_color = NA,
-  cellheight = 15,
-  cellwidth  = 15,
-  main = "SphMut Organelle Correlation – iN only"
+  cellheight = 8,
+  cellwidth  = 8,
+  main = "SphMut Organelle Correlation - iN only"
 )
 dev.off()
 
@@ -3991,13 +3997,14 @@ SphMut_corr_mat_iDA <- SphMut_corr_mat[rownames(SphMut_ko_type)[SphMut_ko_type$C
 pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap_selected_iDA.pdf"), width = 10, height = 12, useDingbats = FALSE)
 pheatmap(
   SphMut_corr_mat_iDA,
-  color = rev(brewer.pal(11, "RdYlBu")),
+  color = colors_fixed,
+  breaks = breaks_fixed,
   cluster_rows = TRUE,
   cluster_cols = TRUE,
   border_color = NA,
-  cellheight = 15,
-  cellwidth  = 15,
-  main = "SphMut Organelle Correlation – iDA only"
+  cellheight = 8,
+  cellwidth  = 8,
+  main = "SphMut Organelle Correlation - iDA only"
 )
 dev.off()
 
