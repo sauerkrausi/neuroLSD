@@ -40,6 +40,7 @@ library(superheat)
 library(ggVennDiagram)
 library(UpSetR)
 library(ComplexUpset)
+library(eulerr)
 
 # Heatmaps & Clustering
 library(pheatmap)
@@ -931,7 +932,7 @@ dev.off()
 
 
 # VI. Day 30 & Day 50 base eval
-### VIa. Add Subcell annotation to dataset
+### VIa. Add Subcell annotation to dataset & plot overlap annotation 
 add subcell annotation to df and save
 sub sub-matrix for d30 and d50
 export heatmap as csv file
@@ -984,46 +985,43 @@ binary_matrix <- long_subcell_df %>%
   )
 
 
-# --- Step 3: Upsetplot of annotations to see overlap 
-# Convert wide-format subcell_df to long format binary matrix
-long_upset_df <- subcell_df %>%
-  pivot_longer(
-    everything(),
-    names_to = "Localization",
-    values_to = "Genes"
-  ) %>%
-  filter(!is.na(Genes) & Genes != "") %>%
-  mutate(Genes = trimws(Genes)) %>%
-  distinct() %>%
-  mutate(value = TRUE) %>%
-  pivot_wider(
-    names_from = Localization,
-    values_from = value,
-    values_fill = list(value = FALSE)
-  )
+# --- Step 3: Euler plot of Vesicular annotations to see overlap ---
+#library(eulerr)  #--> load library if not alraedy done so 
 
-# Define output path
-pdf_file <- file.path(out_dir_d50_dataframes, "subcell_annotation_upsetplot.pdf")
 
-# UpSet plot: include only categories with substantial overlap & save as pdf
-pdf(pdf_file, width = 12, height = 12)
-ComplexUpset::upset(
-  long_upset_df,
-  intersect = setdiff(names(long_upset_df)[-1], c("Nucleus", "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", 
-    "Golgi", "Lysosome", "EndoLyso", "ER", "Cytoplasm", "Autophagy","NeuroDev")),
-  min_size = 6,
-  base_annotations = list(
-    'Intersection size' = intersection_size()
-  )
-)
+# Step 1: Extract gene sets per included category
+included_terms <- setdiff(names(subcell_df), c(
+  "Nucleus", "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", 
+  "Golgi", "Lysosome", "EndoLyso", "ER", "Cytoplasm", "Autophagy", "NeuroDev"))
+
+# Create named list of gene sets
+gene_sets <- subcell_df %>%
+  select(all_of(included_terms)) %>%
+  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  filter(!is.na(Gene) & Gene != "") %>%
+  mutate(Gene = trimws(Gene)) %>%
+  group_by(Category) %>%
+  summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
+  deframe()
+
+# Optional: Limit to top 6 categories by size for performance
+top_terms <- sort(sapply(gene_sets, length), decreasing = TRUE)[1:10]
+gene_sets_top <- gene_sets[names(top_terms)]
+
+# Step 2: Fit and plot Euler diagram
+fit <- euler(gene_sets_top)
+
+pdf(file.path(out_dir_d50_dataframes, "subcell_eulerdiagram_top10.pdf"), width = 8, height = 8)
+plot(fit,
+     fills = list(fill = "dodgerblue3", alpha = 0.2),
+     labels = list(font = 1),
+     main = "Euler Diagram: Top 10 Subcellular Categories")
 dev.off()
 
 
 
 
-
-
-# --- Step 3: Function to process each day independently
+# --- Step 4: Function to process each day independently
 process_day_data <- function(df, day_value, save_path) {
   df_day <- df %>% filter(day == day_value)
 
