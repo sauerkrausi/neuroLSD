@@ -1111,7 +1111,7 @@ summary_df <- master_combined_sample_level_normalised_metrics %>%
   filter(
     Celltype == "iN",
     Treatment %in% c("Fed_Fluo4", "KCL_Fluo4"),
-    Timepoint %in% c("d38", "d45", "d50", "d60")
+    Timepoint %in% c("d38", "d45", "d50")
   ) %>%
   group_by(Genotype, Timepoint, Treatment) %>%
   summarise(
@@ -1359,32 +1359,3 @@ ida_firing_norm_plot <- ggplot(ida_summary_df, aes(x = Timepoint, y = FiringEven
 ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA.pdf"), plot = ida_firing_raw_plot, width = 4, height = 4, device = cairo_pdf)
 ggsave(file.path(camaster_plot_outdir, "Firing_events_iDA_norm.pdf"), plot = ida_firing_norm_plot, width = 4, height = 4, device = cairo_pdf)
 ```
-
-
-
-
-
-## misc
-```{r}
-# --- Plot Proportion High Corr ROIs 
-prop_high_corr_plot <- ggplot(summary_df, aes(x = Timepoint, y = PropHighCorr, fill = Group)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 1), color = "black") +
-  geom_errorbar(aes(ymin = PropHighCorr - SEM_Prop, ymax = PropHighCorr + SEM_Prop),
-                width = 0.2, position = position_dodge(width = 1)) +
-  facet_wrap(~ Genotype, nrow = 1) +
-  labs(
-    title = "Proportion of Highly Correlated ROIs",
-    y = "Proportion High Corr",
-    x = "Timepoint"
-  ) +
-  scale_fill_manual(values = group_colors) +
-  theme_bw(base_size = 12) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid = element_blank(),
-    legend.position = "bottom"
-  )
-
-ggsave(filename = file.path(camaster_plot_outdir, "Proportion_high_corr_ROI.pdf"),plot = prop_high_corr_plot, width = 4, height = 4, device = cairo_pdf)
-```
-
