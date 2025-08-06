@@ -159,10 +159,11 @@ master_combined_sample_level_normalised_metrics
 # IV. Stat test 
 ```{r}
 # -----------------------------
-# Stats: Active Frames & Firing Events
+# Stats: Active Frames, Firing Events, Total Active ROIs
 # Tiered Comparisons: Treatments, Timepoints, Genotypes
 # -----------------------------
 
+# --- Helper function
 run_pairwise_test <- function(df, metric_col, group_col, group1, group2) {
   data_sub <- df %>%
     filter(!!sym(group_col) %in% c(group1, group2)) %>%
@@ -187,7 +188,13 @@ run_pairwise_test <- function(df, metric_col, group_col, group1, group2) {
   )
 }
 
-# Add combined labels
+# --- Safe wrapper to always return tibble
+safe_run_pairwise_test <- function(df, metric_col, group_col, group1, group2) {
+  res <- run_pairwise_test(df, metric_col, group_col, group1, group2)
+  if (is.null(res)) tibble() else res
+}
+
+# --- Input data
 stats_df <- master_combined_sample_level_normalised_metrics %>%
   filter(Treatment %in% c("Fed_Fluo4", "KCL_Fluo4", "25µMCQNX10µMDAP5_Fluo4")) %>%
   mutate(
@@ -195,63 +202,74 @@ stats_df <- master_combined_sample_level_normalised_metrics %>%
     GenotypeTreatment = paste(Genotype, Treatment, sep = "_")
   )
 
-# ---- 1. Within-genotype treatment comparisons
+# --- 1. Within-genotype treatment comparisons
 within_treatment_stats <- stats_df %>%
   group_by(Celltype, Timepoint, Genotype) %>%
   group_modify(~ {
     groups <- unique(.x$Treatment)
+    if (length(groups) < 2) return(tibble())
     comp_pairs <- combn(groups, 2, simplify = FALSE)
 
     bind_rows(lapply(comp_pairs, function(comp) {
       bind_rows(
-        run_pairwise_test(.x, "Mean_percent_active_frames", "Treatment", comp[1], comp[2]),
-        run_pairwise_test(.x, "Firing_events_per_min", "Treatment", comp[1], comp[2])
-      ) %>%
-        mutate(ComparisonType = "WithinGenotype_Treatment", Genotype = unique(.x$Genotype))
+        safe_run_pairwise_test(.x, "Mean_percent_active_frames", "Treatment", comp[1], comp[2]),
+        safe_run_pairwise_test(.x, "Firing_events_per_min", "Treatment", comp[1], comp[2]),
+        safe_run_pairwise_test(.x, "Percent_cells_active", "Treatment", comp[1], comp[2])
+      ) %>% mutate(
+        ComparisonType = "WithinGenotype_Treatment",
+        Genotype = unique(.x$Genotype),
+        Timepoint = unique(.x$Timepoint),
+        Celltype = unique(.x$Celltype)
+      )
     }))
   }) %>%
   ungroup()
 
-# ---- 2. Within-genotype across timepoints (same treatment)
+# --- 2. Within-genotype across timepoints
 across_time_stats <- stats_df %>%
-  group_by(Celltype, Genotype, Treatment, .drop = TRUE) %>%
+  group_by(Celltype, Genotype, Treatment) %>%
   group_modify(~ {
     groups <- unique(.x$Timepoint)
-    if (length(groups) < 2) return(NULL)
+    if (length(groups) < 2) return(tibble())
     comp_pairs <- combn(groups, 2, simplify = FALSE)
 
     bind_rows(lapply(comp_pairs, function(comp) {
       bind_rows(
-        run_pairwise_test(.x, "Mean_percent_active_frames", "Timepoint", comp[1], comp[2]),
-        run_pairwise_test(.x, "Firing_events_per_min", "Timepoint", comp[1], comp[2])
-      ) %>%
-        mutate(
-          ComparisonType = "WithinGenotype_Timepoint",
-          Celltype = unique(.x$Celltype),
-          Genotype = unique(.x$Genotype),
-          Treatment = unique(.x$Treatment)
-        )
+        safe_run_pairwise_test(.x, "Mean_percent_active_frames", "Timepoint", comp[1], comp[2]),
+        safe_run_pairwise_test(.x, "Firing_events_per_min", "Timepoint", comp[1], comp[2]),
+        safe_run_pairwise_test(.x, "Percent_cells_active", "Timepoint", comp[1], comp[2])
+      ) %>% mutate(
+        ComparisonType = "WithinGenotype_Timepoint",
+        Genotype = unique(.x$Genotype),
+        Treatment = unique(.x$Treatment),
+        Celltype = unique(.x$Celltype)
+      )
     }))
   }) %>%
   ungroup()
 
-# ---- 3. Between-genotype (same timepoint & treatment)
+# --- 3. Between-genotype (same timepoint & treatment)
 between_genotype_stats <- stats_df %>%
   group_by(Celltype, Timepoint, Treatment) %>%
   group_modify(~ {
-    if (n_distinct(.x$Genotype) < 2) return(NULL)
+    if (n_distinct(.x$Genotype) < 2) return(tibble())
     bind_rows(
-      run_pairwise_test(.x, "Mean_percent_active_frames", "Genotype", "Ctrl", "ASAH1"),
-      run_pairwise_test(.x, "Firing_events_per_min", "Genotype", "Ctrl", "ASAH1")
-    ) %>%
-      mutate(ComparisonType = "BetweenGenotype", Treatment = unique(.x$Treatment))
+      safe_run_pairwise_test(.x, "Mean_percent_active_frames", "Genotype", "Ctrl", "ASAH1"),
+      safe_run_pairwise_test(.x, "Firing_events_per_min", "Genotype", "Ctrl", "ASAH1"),
+      safe_run_pairwise_test(.x, "Percent_cells_active", "Genotype", "Ctrl", "ASAH1")
+    ) %>% mutate(
+      ComparisonType = "BetweenGenotype",
+      Treatment = unique(.x$Treatment),
+      Timepoint = unique(.x$Timepoint),
+      Celltype = unique(.x$Celltype)
+    )
   }) %>%
   ungroup()
 
-# ---- Combine all tiers
+# --- Combine all tiers
 all_stats <- bind_rows(within_treatment_stats, across_time_stats, between_genotype_stats)
 
-# Helper to convert p-values to significance stars
+# --- Helper: p-value stars
 p_to_stars <- function(pval) {
   case_when(
     is.na(pval) ~ "",
@@ -262,16 +280,21 @@ p_to_stars <- function(pval) {
   )
 }
 
-# Add TestType, FDR, and significance stars
+# --- Label test types and adjust p-values
 all_stats <- all_stats %>%
   mutate(
-    TestType = ifelse(Metric == "Mean_percent_active_frames", "ActiveFrames", "FiringEvents"),
+    TestType = case_when(
+      Metric == "Mean_percent_active_frames" ~ "ActiveFrames",
+      Metric == "Firing_events_per_min"      ~ "FiringEvents",
+      Metric == "Percent_cells_active"       ~ "TotalActiveROIs",
+      TRUE ~ Metric
+    ),
     P_Adjusted_FDR = p.adjust(P_Value, method = "BH"),
     Signif_raw = p_to_stars(P_Value),
     Signif_FDR = p_to_stars(P_Adjusted_FDR)
   )
 
-# Save with stars
+# --- Save results
 stats_outfile <- file.path(camaster_outdir, "calcium_stats_tests_alltiers.csv")
 write_csv(all_stats, stats_outfile)
 
