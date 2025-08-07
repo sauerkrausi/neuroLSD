@@ -1072,7 +1072,7 @@ pdf(file.path(out_dir_d50_euler, "subcell_eulerdiagram_top10.pdf"), width = 8, h
 plot(fit,
      fills = list(fill = "dodgerblue3", alpha = 0.2),
      labels = list(font = 1),
-     main = "Euler Diagram: Top 10 Subcellular Categories")
+     main = "Euler Diagram: Top 10 Subcellular Annotations")
 dev.off()
 
 
@@ -1096,7 +1096,7 @@ pdf(file.path(out_dir_d50_euler, "subcell_eulerdiagram_endo-lysosome.pdf"), widt
 plot(fit_endo, 
      fills = list(fill = "firebrick", alpha = 0.5),  
      labels = list(font = 1),
-     main = "Endosomal/Lysosomal Categories")
+     main = "Endosomal/Lysosomal Annotations")
 dev.off()
 
 
@@ -1121,7 +1121,7 @@ pdf(file.path(out_dir_d50_euler, "subcell_eulerdiagram_synaptic.pdf"), width = 8
 plot(fit_syn,
      fills = list(fill = "dodgerblue3", alpha = 0.5),
      labels = list(font = 1),
-     main = "Synaptic Categories")
+     main = "Synaptic Annotations")
 dev.off()
 ```
 
@@ -4349,6 +4349,106 @@ ggsave(file.path(out_dir_d50_CrossCorr_bubble_ASAH1, "diff118_132_ASAH1vsCtrl_d2
 
 
 ```
+
+
+
+
+### IXd. linear model for deciphering drivers of GBA1 / ASAH1 differences in iDA to the rest of the Sph cohort
+```{r}
+# ------------------
+# PCA plot of Sph mutants
+# ------------------
+
+sph_colors = c(GBA1 = "dodgerblue3", ASAH1 = "dodgerblue2", SMPD1 = "dodgerblue", HEXA = "grey40", HEXB = "grey70", PSAP = "grey80")
+
+# --- 1. Prepare Input Matrix
+# Replace non-finite values
+SphMut_mat_pca <- SphMut_mat_filtered
+SphMut_mat_pca[!is.finite(SphMut_mat_pca)] <- 0
+
+# Optional: mean center and scale genes (rows)
+SphMut_mat_pca <- t(scale(t(SphMut_mat_pca), center = TRUE, scale = TRUE))
+
+# --- 2. Run PCA
+pca_res <- prcomp(t(SphMut_mat_pca), center = TRUE, scale. = TRUE)
+
+# --- 3. Annotate PCA Scores
+pca_scores <- as.data.frame(pca_res$x)
+pca_scores$Sample <- rownames(pca_scores)
+
+pca_scores <- pca_scores %>%
+  mutate(
+    Genotype = str_extract(Sample, "^[^_]+"),
+    Neuron = case_when(
+      grepl("_iDA_", Sample) ~ "iDA",
+      grepl("_iN_", Sample) ~ "iN",
+      TRUE ~ NA_character_
+    )
+  )
+
+# --- 4. Plot PCA
+pca_sph <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = Genotype, shape = Neuron)) +
+  geom_point(size = 3) +
+  geom_text_repel(aes(label = Genotype), size = 2.5, max.overlaps = 50, box.padding = 0.4, show.legend = FALSE) +
+  scale_color_manual(values = sph_colors) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  ) +
+  labs(title = "PCA: Sph Mutants Day 50 (Log2FC)", x = "PC1", y = "PC2")
+
+# --- 5. Display & save
+print(pca_sph)
+ggsave(file.path(out_dir_d50_SphMut, "diff132_day50_SphMut_iNDA_PCA.pdf"),  pca_sph,  width = 4, height = 4.5, device = cairo_pdf)
+
+# --- 6. Inspect Loadings
+pca_sph 
+loadings <- as.data.frame(pca_res$rotation)
+loadings$Gene <- rownames(loadings)
+top_pc1_genes <- loadings %>% arrange(desc(abs(PC1))) %>% head(50)
+
+# Get PCA loadings (genes × PCs)
+loadings <- as.data.frame(pca_res$rotation)
+loadings$Gene <- rownames(loadings)
+
+# Top genes driving PC1 and PC2 (by absolute loading)
+top_PC1 <- loadings %>% arrange(desc(abs(PC1))) %>% slice(1:30)
+top_PC2 <- loadings %>% arrange(desc(abs(PC2))) %>% slice(1:30)
+
+# Save to CSV if needed
+write_csv(top_PC1, file.path(out_dir_d50_SphMut, "TopLoadings_PC1.csv"))
+write_csv(top_PC2, file.path(out_dir_d50_SphMut, "TopLoadings_PC2.csv"))
+
+
+## lin model 
+sample_info <- tibble(Sample = colnames(SphMut_mat)) %>%
+  mutate(
+    Genotype = str_extract(Sample, "^[^_]+"),
+    Neuron = str_extract(Sample, "_i[DN]A") %>% str_remove("^_"),
+    Group = case_when(
+      Genotype %in% c("GBA1", "ASAH1") ~ "Driver",
+      Genotype %in% c("HEXA", "HEXB", "SMPD1") ~ "Other",
+      TRUE ~ "Ctrl"
+    )
+  )
+
+design <- model.matrix(~ 0 + Group * Neuron, data = sample_info)
+colnames(design) <- make.names(colnames(design))
+
+library(limma)
+fit <- lmFit(SphMut_mat, design)
+fit <- eBayes(fit)
+
+# Example: get interaction effect of Driver × iDA
+top_interaction <- topTable(fit, coef = "GroupDriver:NeuroniDA", number = Inf)
+
+
+```
+
+
+
+
 
 
 # X. GRN d30/50 DA neuron investigation
