@@ -657,9 +657,9 @@ ProteinID_avg_neuron <- ggplot(avg_IDs_by_neuron, aes(x = neuron, y = mean_IDs, 
   geom_text(aes(label = round(mean_IDs, 0)), vjust = -0.5, size = 3)
 
 # --- Step 4. Save QC plots as PDFs in homedir of the project
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_neuronquant.pdf"), neuronquant,width =15, height = 15, units = "cm", dpi=600)
+ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_neuronquant.pdf"), neuronquant,width = 12, height = 6, units = "cm", dpi=600)
 ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_ProteinID_genotype_neurontypee.pdf"), ProteinID_genotype_neurontype, width =25, height = 10, units = "cm", dpi=600)
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_ProteinID_avg_by_neuron.pdf"),ProteinID_avg_neuron, width = , height = 8, units = "cm", dpi = 600)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_ProteinID_avg_by_neuron.pdf"),ProteinID_avg_neuron, width =12 , height = 6, units = "cm", dpi = 600)
 
 
 
