@@ -534,6 +534,7 @@ gene_counts_neuron <- cleaned_df %>%
 
 neuronquant <- ggplot(gene_counts_neuron, aes(x = neuron, y = quantified_genes, fill = neuron)) +
   geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = quantified_genes), vjust = -0.5, size = 3) +
   scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80", "QC" = "grey30")) +
   labs(
     title = "Total Number of Quantified ProteinIDs per Neuron Type",
@@ -620,6 +621,8 @@ gene_counts_genotype <- gene_counts_summary %>%
 gene_counts_genotype <- gene_counts_genotype %>%
   mutate(genotype = replace_na(genotype, "QC"))
 
+
+
 # Plot with SD error bars
 ProteinID_genotype_neurontype <- ggplot(gene_counts_genotype, aes(x = group, y = total_genes, fill = neuron)) +
   geom_bar(stat = "identity", width = 0.6) +
@@ -638,9 +641,25 @@ ProteinID_genotype_neurontype <- ggplot(gene_counts_genotype, aes(x = group, y =
 ProteinID_genotype_neurontype
 
 
+# Compute average IDs per neuron type
+avg_IDs_by_neuron <- gene_counts_summary %>%
+  group_by(neuron) %>%
+  summarise(mean_IDs = mean(quantified_genes, na.rm = TRUE)) %>%
+  arrange(desc(mean_IDs))
+
+# Plot the average per neuron type
+ProteinID_avg_neuron <- ggplot(avg_IDs_by_neuron, aes(x = neuron, y = mean_IDs, fill = neuron)) +
+  geom_col(width = 0.6) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  labs(title = "Avg. Protein IDs per Neuron Type", y = "Mean # Protein IDs", x = "") +
+  scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80", "QC" = "grey30")) +
+  geom_text(aes(label = round(mean_IDs, 0)), vjust = -0.5, size = 3)
+
 # --- Step 4. Save QC plots as PDFs in homedir of the project
 ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_neuronquant.pdf"), neuronquant,width =15, height = 15, units = "cm", dpi=600)
 ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_ProteinID_genotype_neurontypee.pdf"), ProteinID_genotype_neurontype, width =25, height = 10, units = "cm", dpi=600)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_ProteinID_avg_by_neuron.pdf"),ProteinID_avg_neuron, width = , height = 8, units = "cm", dpi = 600)
 
 
 
@@ -3937,7 +3956,8 @@ write_csv(SphMut_annotated_df, file.path(out_dir_d50_SphMut, "SphMut_log2FC_day5
 
 
 # --- Step 5. Prepare variables for plotting  
-log2fc_cols <- grep("_d50_log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
+#log2fc_cols <- grep("_d50_log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
+log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
 
 SphMut_mat <- SphMut_annotated_df %>%
   select(all_of(log2fc_cols)) %>%
@@ -4403,11 +4423,6 @@ print(pca_sph)
 ggsave(file.path(out_dir_d50_SphMut, "diff132_day50_SphMut_iNDA_PCA.pdf"),  pca_sph,  width = 4, height = 4.5, device = cairo_pdf)
 
 # --- 6. Inspect Loadings
-pca_sph 
-loadings <- as.data.frame(pca_res$rotation)
-loadings$Gene <- rownames(loadings)
-top_pc1_genes <- loadings %>% arrange(desc(abs(PC1))) %>% head(50)
-
 # Get PCA loadings (genes × PCs)
 loadings <- as.data.frame(pca_res$rotation)
 loadings$Gene <- rownames(loadings)
@@ -4421,29 +4436,193 @@ write_csv(top_PC1, file.path(out_dir_d50_SphMut, "TopLoadings_PC1.csv"))
 write_csv(top_PC2, file.path(out_dir_d50_SphMut, "TopLoadings_PC2.csv"))
 
 
-## lin model 
-sample_info <- tibble(Sample = colnames(SphMut_mat)) %>%
-  mutate(
-    Genotype = str_extract(Sample, "^[^_]+"),
-    Neuron = str_extract(Sample, "_i[DN]A") %>% str_remove("^_"),
-    Group = case_when(
-      Genotype %in% c("GBA1", "ASAH1") ~ "Driver",
-      Genotype %in% c("HEXA", "HEXB", "SMPD1") ~ "Other",
-      TRUE ~ "Ctrl"
-    )
-  )
-
-design <- model.matrix(~ 0 + Group * Neuron, data = sample_info)
-colnames(design) <- make.names(colnames(design))
-
+# ------------------
+# Linear model of Sph mutants
+# ------------------
 library(limma)
-fit <- lmFit(SphMut_mat, design)
-fit <- eBayes(fit)
+#B-value: Log-odds that the gene is truly differentially expressed (DE)
+# check matrix 
+# table(sample_info$Group)
+# table(sample_info$Neuron)
 
-# Example: get interaction effect of Driver × iDA
+
+# 1. Subset sample info to matching samples
+# comparing iN vs iDA gene drives
+# SphMut_sample_info <- tibble(sample_id = colnames(SphMut_mat)) %>%
+#   mutate(
+#     Genotype = str_extract(sample_id, "^[^_]+"),
+#     Neuron = case_when(
+#       grepl("_iDA_", sample_id) ~ "iDA",
+#       grepl("_iN_", sample_id) ~ "iN",
+#       TRUE ~ NA_character_
+#     )
+#   ) %>%
+#   filter(!is.na(Neuron)) %>%
+#   mutate(Neuron = factor(Neuron, levels = c("iN", "iDA"))) %>%
+#   column_to_rownames("sample_id")
+
+
+SphMut_sample_info <- tibble(sample_id = colnames(SphMut_mat)) %>%
+  mutate(
+    Genotype = str_extract(sample_id, "^[^_]+")
+  ) %>%
+  filter(Genotype %in% c("GBA1", "ASAH1", "SMPD1", "HEXA", "HEXB", "PSAP")) %>%
+  mutate(Genotype = factor(Genotype)) %>%
+  column_to_rownames("sample_id")
+
+
+# 2. Align matrix columns to sample info rows
+SphMut_mat_model <- SphMut_mat[, rownames(SphMut_sample_info)]
+
+# 3. Build design matrix (now rownames = sample names)
+# design <- model.matrix(~ 0 + Neuron, data = SphMut_sample_info)
+# colnames(design) <- c("iN", "iDA")
+design <- model.matrix(~ 0 + Genotype, data = SphMut_sample_info)
+colnames(design) <- levels(SphMut_sample_info$Genotype)
+
+# 4. run checks 
+# on matrix dimensions and design file, should match 
+dim(SphMut_mat_model)  # genes x samples
+nrow(design)           # samples in design
+
+# Check sample name alignment ==> should have same output 
+colnames(SphMut_mat_model)
+rownames(design)
+
+# 4. Fit model first
+fit <- lmFit(SphMut_mat_model, design)
+
+# Run limma
+# contrast <- makeContrasts(iDA_vs_iN = iDA - iN, levels = design)
+# fit2 <- contrasts.fit(fit, contrast)
+# fit2 <- eBayes(fit2)
+contrast <- makeContrasts(GBA1_vs_ASAH1 = GBA1 - ASAH1, levels = design)
+fit2 <- contrasts.fit(fit, contrast)
+fit2 <- eBayes(fit2)
+
+
+# 6. Extract top genes
+top_genotype <- topTable(fit2, coef = "GBA1_vs_ASAH1", number = Inf)
+
+top_neuron <- topTable(fit2, coef = "iDA_vs_iN", number = Inf)
+top_neuron_out <- top_neuron %>%
+  rownames_to_column("Gene")
+write_csv(top_neuron_out, file.path(out_dir_d50_SphMut, "limma_interaction_GroupDriver_betweeniN_iDA.csv"))
+
+
+# --- Extract interaction: Driver-specific effect in iDA vs iN ---
 top_interaction <- topTable(fit, coef = "GroupDriver:NeuroniDA", number = Inf)
+top_interaction_out <- top_interaction %>%
+  rownames_to_column("Gene")
+write_csv(top_interaction_out, file.path(out_dir_d50_SphMut, "limma_interaction_GroupDriver_NeuroniDA.csv"))
+
+# main driver between iN and iDA
+top_neuron_effect <- topTable(fit, coef = "NeuroniDA", number = Inf)
 
 
+
+
+### ----  Full Linear Model: ~ 0 + Genotype + Neuron
+# 1. Sample metadata
+SphMut_sample_info <- tibble(sample_id = colnames(SphMut_mat)) %>%
+  mutate(
+    Genotype = str_extract(sample_id, "^[^_]+"),
+    Neuron = case_when(
+      grepl("_iDA_", sample_id) ~ "iDA",
+      grepl("_iN_", sample_id) ~ "iN",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(Genotype %in% c("GBA1", "ASAH1", "SMPD1", "HEXA", "HEXB", "PSAP"),
+         !is.na(Neuron)) %>%
+  mutate(
+    Genotype = factor(Genotype),
+    Neuron = factor(Neuron, levels = c("iN", "iDA"))
+  ) %>%
+  column_to_rownames("sample_id")
+
+# 2. Align expression matrix
+SphMut_mat_model <- SphMut_mat[, rownames(SphMut_sample_info)]
+
+# 3. Design matrix: genotype + neuron as additive terms (no intercept)
+design <- model.matrix(~ 0 + Genotype + Neuron, data = SphMut_sample_info)
+colnames(design)  # should include GenotypeGBA1, GenotypeASAH1, ..., NeuroniDA
+
+# 4. Fit model
+library(limma)
+fit <- lmFit(SphMut_mat_model, design)
+
+# 5. Define contrast: GBA1 vs ASAH1 (adjusting for neuron)
+contrast <- makeContrasts(GBA1_vs_ASAH1 = GenotypeGBA1 - GenotypeHEXA, levels = design)
+fit2 <- contrasts.fit(fit, contrast)
+fit2 <- eBayes(fit2)
+
+# 6. Extract top hits
+top_genotype <- topTable(fit2, coef = "GBA1_vs_HEXA", number = Inf)
+
+# 7. (Optional) Save
+top_genotype_out <- top_genotype %>% rownames_to_column("Gene")
+write_csv(top_genotype_out, file.path(out_dir_d50_SphMut, "limma_GBA1_vs_HEXA_adjusted_for_neuron.csv"))
+
+
+
+
+## -- loop function 
+library(tidyverse)
+library(limma)
+
+# Define genotypes of interest
+genotype_set <- c("GBA1", "ASAH1", "HEXA", "HEXB", "SMPD1", "PSAP")
+
+# Initialize results list
+pairwise_results <- list()
+
+# Extract iDA-only metadata
+sample_info_iDA <- tibble(sample_id = colnames(SphMut_mat)) %>%
+  mutate(
+    Genotype = str_extract(sample_id, "^[^_]+"),
+    Neuron = case_when(
+      grepl("_iDA_", sample_id) ~ "iDA",
+      grepl("_iN_", sample_id) ~ "iN",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(Neuron), Neuron == "iDA", Genotype %in% genotype_set)
+
+# Loop over all genotype pairs
+for (pair in combn(genotype_set, 2, simplify = FALSE)) {
+  g1 <- pair[1]
+  g2 <- pair[2]
+  label <- paste0(g1, "_vs_", g2)
+
+  # Subset metadata
+  sub_info <- sample_info_iDA %>%
+    filter(Genotype %in% c(g1, g2)) %>%
+    mutate(Genotype = factor(Genotype, levels = c(g2, g1)))  # g2 is baseline
+
+  # Subset matrix
+  sub_mat <- SphMut_mat[, sub_info$sample_id]
+
+  # Design and model
+  design <- model.matrix(~ 0 + Genotype, data = sub_info)
+  colnames(design) <- levels(sub_info$Genotype)
+
+  fit <- lmFit(sub_mat, design)
+  contrast <- makeContrasts(contrast = paste0(g1, "-", g2), levels = design)
+  fit2 <- contrasts.fit(fit, contrast)
+  fit2 <- eBayes(fit2)
+
+  # Extract top genes
+  top_genes <- topTable(fit2, coef = "contrast", number = Inf) %>%
+    rownames_to_column("Gene") %>%
+    mutate(Comparison = label)
+
+  # Store
+  pairwise_results[[label]] <- top_genes
+}
+
+# Combine all results into a single dataframe
+all_pairwise_df <- bind_rows(pairwise_results)
 ```
 
 
@@ -6483,12 +6662,12 @@ HeLaClusterCorr <- function(df_long, cluster_name = "Cluster 7", plot_type = "me
 # Cluster18:  Membrane, golgi, late endosome, PM
   
 # --- Step 6. Call function to plot cluster # of interest 
-HeLaClusterCorrplot <- HeLaClusterCorr(HeLaCrossOmeCorrProt_df_long, "Cluster 2", plot_type = "box")
+HeLaClusterCorrplot <- HeLaClusterCorr(HeLaCrossOmeCorrProt_df_long, "Cluster 8", plot_type = "box")
 HeLaClusterCorrplot
 
 
 # --- Step 7. Save as PDF
-ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation,"nMOST_LSD_Corr_GOCluster2.pdf"), HeLaClusterCorrplot, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation,"nMOST_LSD_Corr_GOCluster8.pdf"), HeLaClusterCorrplot, width = 4, height = 4, device = cairo_pdf)
 
 ```
 
