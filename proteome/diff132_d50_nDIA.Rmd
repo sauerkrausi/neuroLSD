@@ -4378,16 +4378,24 @@ ggsave(file.path(out_dir_d50_CrossCorr_bubble_ASAH1, "diff118_132_ASAH1vsCtrl_d2
 
 ### IXe. Euler plot for overlap of annotations of genotypes  
 ```{r}
+# --------------------------------------------------------- #
+# Euler plot of downregulated genes across genotypes
+# within user-defined subcellular annotations (e.g. MitoMatrix).
+# --------------------------------------------------------- #
 library(tidyverse)
 library(eulerr)
 
-# --- Parameters ---
-annotations_to_check <- c("Mito", "OXPHOS","MitoMatrix")
-annotations_to_check <- c("OXPHOS")
-logfc_thresh <- -0.75
-genotypes <- c("ASAH1", "GBA1", "SMPD1", "HEXA", "HEXB", "PSAP")
+# --- 1. Define Parameters
+annotations_to_check <- c("MitoMatrix")       # Subcellular annotations to include
+logfc_thresh <- -0.75                         # Threshold for downregulation (log2FC < threshold)
+genotypes <- c("ASAH1", "GBA1", "SMPD1", 
+               "HEXA", "HEXB", "PSAP")        # Genotypes to include
 
-# --- Function to get downregulated gene sets per genotype and cell type ---
+
+# --- 2. Function to extract downregulated gene sets
+# For each genotype and cell type (iN or iDA), extract genes that are:
+# (a) downregulated below threshold, AND
+# (b) annotated with at least one of the selected annotations
 get_down_genes_by_annotation <- function(celltype, df, annotations, fc_thresh) {
   gene_sets <- list()
   for (g in genotypes) {
@@ -4397,7 +4405,6 @@ get_down_genes_by_annotation <- function(celltype, df, annotations, fc_thresh) {
     down_genes <- df %>%
       filter(!!sym(fc_col) < fc_thresh)
 
-    # Union of genes in the selected annotations
     gene_set <- annotations %>%
       map(~ filter(down_genes, !!sym(.x) == 1) %>% pull(Genes)) %>%
       unlist() %>%
@@ -4408,45 +4415,58 @@ get_down_genes_by_annotation <- function(celltype, df, annotations, fc_thresh) {
   return(gene_sets)
 }
 
-# --- Extract gene sets for iN and iDA ---
-gene_sets_iN <- get_down_genes_by_annotation("iN", SphMut_annotated_df, annotations_to_check, logfc_thresh)
+
+# --- 3. Extract gene sets for iN and iDA 
+gene_sets_iN  <- get_down_genes_by_annotation("iN",  SphMut_annotated_df, annotations_to_check, logfc_thresh)
 gene_sets_iDA <- get_down_genes_by_annotation("iDA", SphMut_annotated_df, annotations_to_check, logfc_thresh)
 
-# --- Fit Euler diagrams ---
-fit_iN <- euler(gene_sets_iN)
+
+# --- 4. Fit and plot Euler diagrams 
+fit_iN  <- euler(gene_sets_iN)
 fit_iDA <- euler(gene_sets_iDA)
 
-# --- Plot and save ---
-pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iN_downregulated_all_OXPHOS.pdf"), width = 8, height = 8)
-plot(fit_iN, fills = list(fill = "steelblue", alpha = 0.4), labels = list(font = 1),
-     main = "iN: Overlap of Downregulated Genes in OXPHOS")
+# Save iN plot
+pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iN_downregulated_all_MitoMatrix.pdf"), width = 8, height = 8)
+plot(fit_iN,
+     fills = list(fill = "steelblue", alpha = 0.4),
+     labels = list(font = 1),
+     main = "iN: Overlap of Downregulated Genes in MitoMatrix")
 dev.off()
 
-pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iDA_downregulated_all_OXPHOS.pdf"), width = 8, height = 8)
-plot(fit_iDA, fills = list(fill = "firebrick", alpha = 0.4), labels = list(font = 1),
-     main = "iDA: Overlap of Downregulated Genes in OXPHOS")
+# Save iDA plot
+pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iDA_downregulated_all_MitoMatrix.pdf"), width = 8, height = 8)
+plot(fit_iDA,
+     fills = list(fill = "firebrick", alpha = 0.4),
+     labels = list(font = 1),
+     main = "iDA: Overlap of Downregulated Genes in MitoMatrix")
 dev.off()
 
 
-# --- Prepare long-format data for export ---
+# --- 5. Export list of hits as long-format CSV 
+# Convert gene set list to tidy long table
 make_hit_table <- function(gene_sets_list, celltype) {
   enframe(gene_sets_list, name = "Label", value = "Genes") %>%
     unnest(Genes) %>%
     mutate(
-      Genotype = str_extract(Label, "^[^_]+"),
-      CellType = celltype,
+      Genotype  = str_extract(Label, "^[^_]+"),
+      CellType  = celltype,
       Annotation = paste(annotations_to_check, collapse = ";")
     ) %>%
     select(Gene = Genes, Annotation, CellType, Genotype)
 }
 
-# Combine iN and iDA
-hits_iN <- make_hit_table(gene_sets_iN, "iN")
+hits_iN  <- make_hit_table(gene_sets_iN, "iN")
 hits_iDA <- make_hit_table(gene_sets_iDA, "iDA")
 hits_all <- bind_rows(hits_iN, hits_iDA)
 
-# --- Write CSV ---
-write_csv(hits_all, file.path(out_dir_d50_SphMuteuler, "Downregulated_OXPHOS_hits_by_genotype.csv"))
+# --- 6. Write to CSV
+write_csv(hits_all, file.path(out_dir_d50_SphMuteuler, "Downregulated_MitoMatrix_hits_by_genotype.csv"))
+
+
+
+
+
+
 ```
 
 
