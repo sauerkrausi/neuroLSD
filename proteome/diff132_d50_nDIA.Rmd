@@ -651,7 +651,9 @@ avg_IDs_by_neuron <- gene_counts_summary %>%
 ProteinID_avg_neuron <- ggplot(avg_IDs_by_neuron, aes(x = neuron, y = mean_IDs, fill = neuron)) +
   geom_col(width = 0.6) +
   theme_bw() +
-  theme(panel.grid = element_blank()) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",) +
   labs(title = "Avg. Protein IDs per Neuron Type", y = "Mean # Protein IDs", x = "") +
   scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80", "QC" = "grey30")) +
   geom_text(aes(label = round(mean_IDs, 0)), vjust = -0.5, size = 3)
