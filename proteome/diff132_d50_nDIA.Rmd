@@ -4386,8 +4386,9 @@ library(tidyverse)
 library(eulerr)
 
 # --- 1. Define Parameters
-annotations_to_check <- c("MitoMatrix")       # Subcellular annotations to include
-logfc_thresh <- -0.75                         # Threshold for downregulation (log2FC < threshold)
+#annotations_to_check <- c("MitoMatrix","OXPHOS","Mito") 
+annotations_to_check <- c("Mito")       
+logfc_thresh <- -0.75                         
 genotypes <- c("ASAH1", "GBA1", "SMPD1", 
                "HEXA", "HEXB", "PSAP")        # Genotypes to include
 
@@ -4426,19 +4427,19 @@ fit_iN  <- euler(gene_sets_iN)
 fit_iDA <- euler(gene_sets_iDA)
 
 # Save iN plot
-pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iN_downregulated_all_MitoMatrix.pdf"), width = 8, height = 8)
+pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iN_downregulated_all_Mito.pdf"), width = 8, height = 8)
 plot(fit_iN,
      fills = list(fill = "steelblue", alpha = 0.4),
      labels = list(font = 1),
-     main = "iN: Overlap of Downregulated Genes in MitoMatrix")
+     main = "iN: Overlap of Downregulated Genes in Mito")
 dev.off()
 
 # Save iDA plot
-pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iDA_downregulated_all_MitoMatrix.pdf"), width = 8, height = 8)
+pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iDA_downregulated_all_Mito.pdf"), width = 8, height = 8)
 plot(fit_iDA,
      fills = list(fill = "firebrick", alpha = 0.4),
      labels = list(font = 1),
-     main = "iDA: Overlap of Downregulated Genes in MitoMatrix")
+     main = "iDA: Overlap of Downregulated Genes in Mito")
 dev.off()
 
 
@@ -4460,9 +4461,26 @@ hits_iDA <- make_hit_table(gene_sets_iDA, "iDA")
 hits_all <- bind_rows(hits_iN, hits_iDA)
 
 # --- 6. Write to CSV
-write_csv(hits_all, file.path(out_dir_d50_SphMuteuler, "Downregulated_MitoMatrix_hits_by_genotype.csv"))
+write_csv(hits_all, file.path(out_dir_d50_SphMuteuler, "Downregulated_Mito_hits_by_genotype.csv"))
 
+# --- 7. Pairwise overlap matrix (gene counts)
+all_sets <- c(gene_sets_iN, gene_sets_iDA)
+set_names <- names(all_sets)
 
+overlap_matrix <- matrix(0, nrow = length(all_sets), ncol = length(all_sets),
+                         dimnames = list(set_names, set_names))
+
+for (i in seq_along(all_sets)) {
+  for (j in seq_along(all_sets)) {
+    overlap_matrix[i, j] <- length(intersect(all_sets[[i]], all_sets[[j]]))
+  }
+}
+
+# Convert to dataframe and write
+overlap_df <- as.data.frame(overlap_matrix) %>%
+  rownames_to_column("Genotype")
+
+write_csv(overlap_df, file.path(out_dir_d50_SphMuteuler, "Pairwise_overlap_counts_Mito.csv"))
 
 
 
