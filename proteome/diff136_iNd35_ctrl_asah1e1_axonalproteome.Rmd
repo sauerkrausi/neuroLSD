@@ -1124,6 +1124,145 @@ readr::write_csv(go_manifest,
 ```
 
 
+### IVbd. Sensitivity ranking with normalized comparisons (delta, Cohen's d, RoR)
+```{r}
+# • Δ mean log2FC – difference in normalized mean log2 fold-change between ASAH1 and Ctrl (\bar{x}{ASAH1} - \bar{x}{Ctrl}).
+# • Cohen’s d – standardized effect size, Δ mean log2FC divided by pooled standard deviation across genes in the annotation.
+#   => Positive Cohen’s d → mean log2FC in ASAH1 KO is higher than in Ctrl (effect skewed toward KO).
+#   => Negative Cohen’s d → mean log2FC in Ctrl is higher than in ASAH1 KO (effect skewed toward control).
+# • RoR – ratio-of-ratios from earlier analysis, magnitude of normalized fold-change difference relative to baseline.
+# • Composite percentile rank – average of the percentile ranks for |Δ mean|, |Cohen’s d|, and |RoR|, giving a weighted consensus ranking.
+
+# --- 1. Input setup
+norm_cols_vec <- c("log2FC_ASAH1_Axon.ASAH1", "log2FC_Ctrl_Axon.Ctrl")
+stopifnot(all(norm_cols_vec %in% colnames(diff136_df_annotated)))
+
+# --- 2. Identify binary annotation columns
+all_log2fc_cols <- grep("^log2FC_", colnames(diff136_df_annotated), value = TRUE)
+annotation_cols_norm <- setdiff(colnames(diff136_df_annotated), all_log2fc_cols)
+annotation_cols_norm <- annotation_cols_norm[
+  sapply(diff136_df_annotated[, annotation_cols_norm], function(x) all(x %in% c(0,1,NA)))
+]
+annotation_cols_norm <- setdiff(annotation_cols_norm, c("Autophagy_det","EndoDetailLoac","Nucleus"))
+
+# --- 3. Helper function to compute delta mean and Cohen's d per annotation
+.compute_ann_stats <- function(ann) {
+  sub <- diff136_df_annotated[diff136_df_annotated[[ann]] == 1, , drop = FALSE]
+  a <- sub[[norm_cols_vec[1]]]; a <- a[is.finite(a)]
+  c <- sub[[norm_cols_vec[2]]]; c <- c[is.finite(c)]
+  n_a <- length(a); n_c <- length(c)
+
+  m_a <- if (n_a) mean(a) else NA_real_
+  m_c <- if (n_c) mean(c) else NA_real_
+  sd_a <- if (n_a > 1) sd(a) else NA_real_
+  sd_c <- if (n_c > 1) sd(c) else NA_real_
+
+  delta_mean <- m_a - m_c
+
+  # --- 3a. Cohen's d (pooled SD); NA if not enough genes
+  d_val <- NA_real_
+  if (n_a > 1 && n_c > 1) {
+    s_pooled <- sqrt( ((n_a - 1)*sd_a^2 + (n_c - 1)*sd_c^2) / (n_a + n_c - 2) )
+    if (is.finite(s_pooled) && s_pooled > 0) d_val <- delta_mean / s_pooled
+  }
+
+  tibble(
+    Annotation = ann,
+    n_genes = nrow(sub),
+    mean_ASAH1_norm = m_a,
+    mean_Ctrl_norm  = m_c,
+    delta_mean      = delta_mean,
+    cohen_d         = d_val
+  )
+}
+
+# --- 4. Compute annotation stats for all annotations
+ann_stats_tbl <- purrr::map_dfr(annotation_cols_norm, .compute_ann_stats)
+
+# --- 5. Merge with RoR values from upstream
+ror_tbl <- ratio_df %>%
+  dplyr::filter(Log2FC == "RatioOfRatios") %>%
+  dplyr::select(Annotation, ror_mean = mean_log2FC)
+
+ann_stats_tbl <- ann_stats_tbl %>%
+  left_join(ror_tbl, by = "Annotation")
+
+# --- 6. Compute percentile ranks
+rank_tbl <- ann_stats_tbl %>%
+  mutate(
+    abs_delta = abs(delta_mean),
+    abs_d     = abs(cohen_d),
+    abs_ror   = abs(ror_mean),
+
+    pr_delta  = dplyr::percent_rank(replace_na(abs_delta, -Inf)),
+    pr_d      = dplyr::percent_rank(replace_na(abs_d, -Inf)),
+    pr_ror    = dplyr::percent_rank(replace_na(abs_ror, -Inf))
+  )
+
+# --- 7. Compute composite rank (mean of component percentiles)
+rank_tbl <- rank_tbl %>%
+  rowwise() %>%
+  mutate(
+    composite_pr = mean(c(pr_delta, pr_d, pr_ror)[is.finite(c(pr_delta, pr_d, pr_ror))])
+  ) %>%
+  ungroup() %>%
+  arrange(desc(composite_pr))
+
+# --- 8. Save ranking table
+out_rank_dir <- file.path(out_dir_diff136_organelle_dist_barnorm, "ranking_sensitivity")
+dir.create(out_rank_dir, showWarnings = FALSE, recursive = TRUE)
+readr::write_csv(rank_tbl, file.path(out_rank_dir, "RankTable_annotation_ranking_norm_delta_d_ror.csv"))
+
+# --- 9. Plot delta and Cohen's d using ascending composite order
+ord_levels <- rev(rank_tbl$Annotation)
+
+p_delta <- ggplot(rank_tbl, aes(x = factor(Annotation, levels = ord_levels), y = delta_mean)) +
+  geom_col(fill = "grey60") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(x = NULL, y = "Δ mean log2FC (ASAH1−Ctrl)",
+       title = "Annotation ranking by composite percentile (ascending)") +
+  theme_bw(base_size = 6) + theme(panel.grid = element_blank())
+
+p_d <- ggplot(rank_tbl, aes(x = factor(Annotation, levels = ord_levels), y = cohen_d)) +
+  geom_col(fill = "dodgerblue3") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(x = NULL, y = "Cohen's d",
+       title = "Annotation ranking by composite percentile (ascending)") +
+  theme_bw(base_size = 6) + theme(panel.grid = element_blank())
+
+ggsave(file.path(out_rank_dir, "ranking_delta_compositeOrder_asc.pdf"), p_delta, width = 4, height = 5, device = cairo_pdf)
+ggsave(file.path(out_rank_dir, "ranking_cohensd_compositeOrder_asc.pdf"), p_d, width = 4, height = 5, device = cairo_pdf)
+
+# --- 10. Save top-5 lists for concordance check
+topk <- 5
+top_by_delta <- rank_tbl %>% arrange(desc(abs_delta)) %>% slice_head(n = topk) %>% pull(Annotation)
+top_by_d     <- rank_tbl %>% arrange(desc(abs_d))     %>% slice_head(n = topk) %>% pull(Annotation)
+top_by_ror   <- rank_tbl %>% arrange(desc(abs_ror))   %>% slice_head(n = topk) %>% pull(Annotation)
+top_by_comp  <- rank_tbl %>% slice_head(n = topk) %>% pull(Annotation)
+
+concordance_tbl <- tibble(
+  rank = 1:topk,
+  by_delta = top_by_delta,
+  by_cohens_d = top_by_d,
+  by_ror = top_by_ror,
+  by_composite = top_by_comp
+)
+readr::write_csv(concordance_tbl, file.path(out_rank_dir, "top5_concordance_delta_d_ror_composite.csv"))
+
+# --- 11. Replot loc_dist_overview with ascending composite order
+loc_dist_overview_internalNorm_compAsc <- loc_dist_overview_internalNorm_rorSorted +
+  scale_x_discrete(limits = ord_levels)
+
+ggsave(
+  file.path(out_dir_diff136_organelle_dist_barnorm,
+            "diff136_loc_dist_overview_selected_directComp_internalNorm_clamped_compAsc.pdf"),
+  loc_dist_overview_internalNorm_compAsc,
+  width = 5, height = 4, device = cairo_pdf
+)
+```
+
 
 
 ## IIIc. Barplots of mean(log2FC) of synaptic annotations
