@@ -67,6 +67,8 @@ dir.create(out_dir_diff136_organelle_dist_bar, recursive = TRUE, showWarnings = 
 out_dir_diff136_organelle_dist_barnorm <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm"
 dir.create(out_dir_diff136_organelle_dist_barnorm, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_diff136_organelle_dist_euler_top5_byRoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/euler_top5_byRoR"
+dir.create(out_dir_diff136_organelle_dist_euler_top5_byRoR, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_diff136_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
 dir.create(out_dir_diff136_rainbow, recursive = TRUE, showWarnings = FALSE)
@@ -1033,19 +1035,74 @@ csv_top5_genes_path <- file.path(out_dir_diff136_organelle_dist_barnorm, "top5_b
 write.csv(top5_gene_overlap_tbl, csv_top5_genes_path, row.names = FALSE)
 
 
-# -- 3: Create & save Euler plots per annotation
-euler_out_dir_top5 <- file.path(out_dir_diff136_organelle_dist_barnorm, "euler_top5_byRoR")
-dir.create(euler_out_dir_top5, showWarnings = FALSE, recursive = TRUE)
-
+# --- 3: Create & save Euler plots per annotation
 invisible(lapply(top5_annotations_by_ror, function(ann_term) {
   gs <- get_internal_norm_gene_sets(ann_term, diff136_df_annotated)
   fit2 <- eulerr::euler(list(ASAH1 = gs$ASAH1_all, Ctrl = gs$Ctrl_all))
   p_euler <- plot(fit2, labels = TRUE, quantities = TRUE)
-  grDevices::cairo_pdf(file.path(euler_out_dir_top5, paste0("euler_", ann_term, "_ASAH1_vs_Ctrl.pdf")),
+  grDevices::cairo_pdf(file.path(out_dir_diff136_organelle_dist_euler_top5_byRoR, paste0("euler_", ann_term, "_ASAH1_vs_Ctrl.pdf")),
                        width = 3.5, height = 3.0)
   print(p_euler)
   dev.off()
 }))
+
+
+# --- 4. GO on Euler overlap sets (Top5 RoR; only if set size >= 10)
+# use in-memory overlap table if present, else read the saved CSV
+go_overlap_tbl <- if (exists("top5_gene_overlap_tbl")) {
+  message("Using in-memory top5_gene_overlap_tbl")
+  top5_gene_overlap_tbl
+} else {
+  message("Loading top5_gene_overlap_tbl from CSV")
+  read.csv(csv_top5_genes_path, stringsAsFactors = FALSE)
+}
+
+# make long table of unique genes per Annotation×Set
+go_overlap_long <- go_overlap_tbl %>%
+  mutate(Genes = ifelse(is.na(Genes), "", Genes)) %>%
+  separate_rows(Genes, sep = ";") %>%
+  mutate(Genes = trimws(Genes)) %>%
+  filter(nzchar(Genes)) %>%
+  distinct(Annotation, Set, Genes)
+
+# manifest with counts, saved into the Euler outdir
+go_overlap_counts <- go_overlap_long %>%
+  count(Annotation, Set, name = "n_genes") %>%
+  arrange(match(Annotation, top5_annotations_by_ror), Set)
+
+write_csv(go_overlap_counts,
+          file.path(out_dir_diff136_organelle_dist_euler_top5_byRoR, "GO_inputs_top5RoR_overlap_manifest_counts.csv"))
+
+# helper to run GO for a given set if size >= 10, and save input CSV
+.run_go_for_set <- function(ann_term, set_label) {
+  genes_vec <- go_overlap_long %>%
+    filter(Annotation == ann_term, Set == set_label) %>%
+    pull(Genes) %>% unique()
+
+  if (length(genes_vec) < 10) return(invisible(NULL))
+
+  # save the exact gene input used
+  write_csv(tibble(GeneSymbol = genes_vec),
+            file.path(out_dir_diff136_organelle_dist_euler_top5_byRoR,
+                      paste0("GO_inputs_Top5RoR_", ann_term, "_", set_label, ".csv")))
+
+  # run GO; function is assumed pre-defined upstream
+  plot_topGO_for_geneset(
+    gene_set = genes_vec,
+    background_genes = unique(diff136_df_annotated$Gene.Symbol),
+    tag = paste0("Top5RoR_", ann_term, "_", set_label),
+    out_dir = out_dir_diff136_organelle_dist_euler_top5_byRoR
+  )
+
+  invisible(NULL)
+}
+
+# run per-annotation and per-overlap set
+sets_to_eval <- c("ASAH1_only", "Ctrl_only", "Common")
+invisible(lapply(top5_annotations_by_ror, function(ann_term) {
+  lapply(sets_to_eval, function(set_lab) .run_go_for_set(ann_term, set_lab))
+}))
+
 
 ```
 
