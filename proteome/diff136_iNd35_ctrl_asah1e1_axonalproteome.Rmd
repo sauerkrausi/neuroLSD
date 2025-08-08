@@ -58,6 +58,7 @@ dir.create(out_dir_diff136_heatmap, recursive = TRUE, showWarnings = FALSE)
 out_dir_diff136_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
 dir.create(out_dir_diff136_corrplots, recursive = TRUE, showWarnings = FALSE)
 
+
 out_dir_diff136_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
 dir.create(out_dir_diff136_organelle_dist, recursive = TRUE, showWarnings = FALSE)
 
@@ -67,14 +68,23 @@ dir.create(out_dir_diff136_organelle_dist_bar, recursive = TRUE, showWarnings = 
 out_dir_diff136_organelle_dist_barnorm <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm"
 dir.create(out_dir_diff136_organelle_dist_barnorm, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_organelle_dist_euler_top5_byRoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/euler_top5_byRoR"
-dir.create(out_dir_diff136_organelle_dist_euler_top5_byRoR, recursive = TRUE, showWarnings = FALSE)
+out_dir_diff136_organelle_dist_norm_ranked <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked"
+dir.create(out_dir_diff136_organelle_dist_norm_ranked, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_diff136_organelle_dist_norm_composite <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked_composite"
+dir.create(out_dir_diff136_organelle_dist_norm_composite, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_diff136_organelle_dist_norm_composite_euler <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked_composite/euer_plots"
+dir.create(out_dir_diff136_organelle_dist_norm_composite_euler, recursive = TRUE, showWarnings = FALSE)
+
 
 out_dir_diff136_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
 dir.create(out_dir_diff136_rainbow, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_diff136_rainbow_RoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/ror"
 dir.create(out_dir_diff136_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
+
+
 
 out_dir_diff136_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
 dir.create(out_dir_diff136_GO, recursive = TRUE, showWarnings = FALSE)
@@ -1040,7 +1050,7 @@ invisible(lapply(top5_annotations_by_ror, function(ann_term) {
   gs <- get_internal_norm_gene_sets(ann_term, diff136_df_annotated)
   fit2 <- eulerr::euler(list(ASAH1 = gs$ASAH1_all, Ctrl = gs$Ctrl_all))
   p_euler <- plot(fit2, labels = TRUE, quantities = TRUE)
-  grDevices::cairo_pdf(file.path(out_dir_diff136_organelle_dist_euler_top5_byRoR, paste0("euler_", ann_term, "_ASAH1_vs_Ctrl.pdf")),
+  grDevices::cairo_pdf(file.path(out_dir_diff136_organelle_dist_norm_ranked, paste0("euler_", ann_term, "_ASAH1_vs_Ctrl.pdf")),
                        width = 3.5, height = 3.0)
   print(p_euler)
   dev.off()
@@ -1071,7 +1081,7 @@ go_overlap_counts <- go_overlap_long %>%
   arrange(match(Annotation, top5_annotations_by_ror), Set)
 
 write_csv(go_overlap_counts,
-          file.path(out_dir_diff136_organelle_dist_euler_top5_byRoR, "GO_inputs_top5RoR_overlap_manifest_counts.csv"))
+          file.path(out_dir_diff136_organelle_dist_norm_ranked, "GO_inputs_top5RoR_overlap_manifest_counts.csv"))
 
 # helper to run GO for a given set if size >= 10, and save input CSV
 .run_go_for_set <- function(ann_term, set_label) {
@@ -1083,7 +1093,7 @@ write_csv(go_overlap_counts,
 
   # save the exact gene input used
   write_csv(tibble(GeneSymbol = genes_vec),
-            file.path(out_dir_diff136_organelle_dist_euler_top5_byRoR,
+            file.path(out_dir_diff136_organelle_dist_norm_ranked,
                       paste0("GO_inputs_Top5RoR_", ann_term, "_", set_label, ".csv")))
 
   # run GO; function is assumed pre-defined upstream
@@ -1091,7 +1101,7 @@ write_csv(go_overlap_counts,
     gene_set = genes_vec,
     background_genes = unique(diff136_df_annotated$Gene.Symbol),
     tag = paste0("Top5RoR_", ann_term, "_", set_label),
-    out_dir = out_dir_diff136_organelle_dist_euler_top5_byRoR
+    out_dir = out_dir_diff136_organelle_dist_norm_ranked
   )
 
   invisible(NULL)
@@ -1191,7 +1201,7 @@ rank_tbl <- rank_tbl %>%
   arrange(desc(composite_pr))
 
 # --- 8. Save ranking table
-out_rank_dir <- file.path(out_dir_diff136_organelle_dist_barnorm, "ranking_sensitivity")
+out_rank_dir <- file.path(out_dir_diff136_organelle_dist_norm_composite, "ranking_sensitivity")
 dir.create(out_rank_dir, showWarnings = FALSE, recursive = TRUE)
 readr::write_csv(rank_tbl, file.path(out_rank_dir, "RankTable_annotation_ranking_norm_delta_d_ror.csv"))
 
@@ -1269,7 +1279,7 @@ loc_dist_overview_internalNorm_compAsc <- loc_dist_overview_internalNorm_rorSort
   scale_x_discrete(limits = ord_levels)
 
 ggsave(
-  file.path(out_dir_diff136_organelle_dist_barnorm,
+  file.path(out_dir_diff136_organelle_dist_norm_composite,
             "diff136_loc_dist_overview_selected_directComp_internalNorm_clamped_compAsc.pdf"),
   loc_dist_overview_internalNorm_compAsc,
   width = 5, height = 4, device = cairo_pdf
@@ -1319,14 +1329,14 @@ sig_hits_top5_comp_long <- sig_hits_top5_comp %>%
   dplyr::filter(nzchar(GeneSymbol)) %>%
   dplyr::distinct(Annotation, SigStatus, GeneSymbol)
 
-readr::write_csv(sig_hits_top5_comp_long, file.path(out_dir_diff136_GOranked, "GO_inputs_top5Composite_up_down_long.csv"))
+readr::write_csv(sig_hits_top5_comp_long, file.path(out_dir_diff136_organelle_dist_norm_composite, "GO_inputs_top5Composite_up_down_long.csv"))
 
 sig_hits_top5_comp_wide <- sig_hits_top5_comp_long %>%
   dplyr::group_by(Annotation, SigStatus) %>%
   dplyr::summarise(GeneList = paste(sort(unique(GeneSymbol)), collapse = ";"), .groups = "drop") %>%
   tidyr::pivot_wider(names_from = SigStatus, values_from = GeneList)
 
-readr::write_csv(sig_hits_top5_comp_wide, file.path(out_dir_diff136_GOranked, "GO_inputs_top5Composite_up_down_wide.csv"))
+readr::write_csv(sig_hits_top5_comp_wide, file.path(out_dir_diff136_organelle_dist_norm_composite, "GO_inputs_top5Composite_up_down_wide.csv"))
 
 # --- 5. Run GO per annotation × direction (writes plots + GO_results_Top5Comp_<ann>_<dir>.csv)
 invisible(lapply(go_ann_to_use_comp, function(ann_term) {
@@ -1340,7 +1350,7 @@ invisible(lapply(go_ann_to_use_comp, function(ann_term) {
         gene_set = gene_vec,
         background_genes = unique(diff136_df_annotated$Gene.Symbol),
         tag = paste0("Top5Comp_", ann_term, "_", dir_flag),
-        out_dir = out_dir_diff136_GOranked
+        out_dir = out_dir_diff136_organelle_dist_norm_composite
       )
     }
     NULL
@@ -1358,7 +1368,7 @@ invisible(lapply(go_ann_to_use_comp, function(ann_term) {
       gene_set = gene_vec,
       background_genes = unique(diff136_df_annotated$Gene.Symbol),
       tag = paste0("Top5Comp_", ann_term, "_combined"),
-      out_dir = out_dir_diff136_GOranked
+      out_dir = out_dir_diff136_organelle_dist_norm_composite
     )
   }
   NULL
@@ -1370,11 +1380,116 @@ go_manifest_comp <- sig_hits_top5_comp_long %>%
   tidyr::complete(Annotation = top5_annotations_by_comp, SigStatus = c("up","down"), fill = list(n_genes = 0)) %>%
   dplyr::arrange(match(Annotation, top5_annotations_by_comp), SigStatus)
 
-readr::write_csv(go_manifest_comp, file.path(out_dir_diff136_GOranked, "GO_inputs_top5Composite_manifest_counts.csv"))
+readr::write_csv(go_manifest_comp, file.path(out_dir_diff136_organelle_dist_norm_composite, "GO_inputs_top5Composite_manifest_counts.csv"))
 ```
 
 
-## IIIc. Barplots of mean(log2FC) of synaptic annotations
+### IVbe. Top5 COMPOSITE — Euler overlaps + GO on unique/common
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Euler analysis & GO for top-5 annotations by composite rank 
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Top-5 by composite rank
+top5_annotations_by_comp <- rank_tbl %>%
+  arrange(desc(composite_pr)) %>%
+  slice_head(n = 5) %>%
+  pull(Annotation) %>%
+  as.character()
+
+# --- 2. Helper to get gene sets for internal-norm comparisons (reuse from above if already defined)
+get_internal_norm_gene_sets <- function(ann_term, df) {
+  sub_df <- df %>% filter(.data[[ann_term]] == 1)
+  asah1_pos <- sub_df %>%
+    filter(is.finite(log2FC_ASAH1_Axon.ASAH1) & log2FC_ASAH1_Axon.ASAH1 > 0) %>%
+    pull(Gene.Symbol) %>% unique()
+  ctrl_pos <- sub_df %>%
+    filter(is.finite(log2FC_Ctrl_Axon.Ctrl) & log2FC_Ctrl_Axon.Ctrl > 0) %>%
+    pull(Gene.Symbol) %>% unique()
+  list(
+    ASAH1_only = setdiff(asah1_pos, ctrl_pos),
+    Ctrl_only  = setdiff(ctrl_pos, asah1_pos),
+    Common     = intersect(asah1_pos, ctrl_pos),
+    ASAH1_all  = asah1_pos,
+    Ctrl_all   = ctrl_pos
+  )
+}
+
+# --- 3. Build overlap table for composite top-5
+top5_comp_gene_overlap_tbl <- purrr::map_dfr(top5_annotations_by_comp, function(ann_term) {
+  gs <- get_internal_norm_gene_sets(ann_term, diff136_df_annotated)
+  tibble(
+    Annotation = ann_term,
+    Set        = c("ASAH1_only", "Ctrl_only", "Common"),
+    N          = c(length(gs$ASAH1_only), length(gs$Ctrl_only), length(gs$Common)),
+    Genes      = c(paste(gs$ASAH1_only, collapse = ";"),
+                   paste(gs$Ctrl_only,  collapse = ";"),
+                   paste(gs$Common,     collapse = ";"))
+  )
+})
+
+# --- 4. Save the composite overlap CSV
+write.csv(top5_comp_gene_overlap_tbl,file = file.path(out_dir_diff136_organelle_dist_norm_composite_euler, "top5_byComposite_gene_overlap_ASAH1_vs_Ctrl.csv"),row.names = FALSE)
+
+# --- 5. Euler plots per annotation
+invisible(lapply(top5_annotations_by_comp, function(ann_term) {
+  gs <- get_internal_norm_gene_sets(ann_term, diff136_df_annotated)
+  fit2 <- eulerr::euler(list(ASAH1 = gs$ASAH1_all, Ctrl = gs$Ctrl_all))
+  p_euler <- plot(fit2, labels = TRUE, quantities = TRUE)
+  grDevices::cairo_pdf(file.path(out_dir_diff136_organelle_dist_norm_composite_euler, paste0("eulerComposite_", ann_term, "_ASAH1_vs_Ctrl.pdf")),
+                       width = 3.5, height = 3.0)
+  print(p_euler)
+  dev.off()
+}))
+
+# --- 6. GO on Euler overlap sets (only if set size ≥ 10); inputs also saved in same dir
+go_overlap_tbl_comp <- top5_comp_gene_overlap_tbl
+
+go_overlap_long_comp <- go_overlap_tbl_comp %>%
+  mutate(Genes = ifelse(is.na(Genes), "", Genes)) %>%
+  separate_rows(Genes, sep = ";") %>%
+  mutate(Genes = trimws(Genes)) %>%
+  filter(nzchar(Genes)) %>%
+  distinct(Annotation, Set, Genes)
+
+# manifest for QC
+go_overlap_counts_comp <- go_overlap_long_comp %>%
+  count(Annotation, Set, name = "n_genes") %>%
+  arrange(match(Annotation, top5_annotations_by_comp), Set)
+
+write_csv(go_overlap_counts_comp,
+          file.path(out_dir_diff136_organelle_dist_norm_composite_euler, "GO_inputs_top5Composite_overlap_manifest_counts.csv"))
+
+.run_go_for_set_comp <- function(ann_term, set_label) {
+  genes_vec <- go_overlap_long_comp %>%
+    filter(Annotation == ann_term, Set == set_label) %>%
+    pull(Genes) %>% unique()
+
+  if (length(genes_vec) < 10) return(invisible(NULL))
+
+  # save inputs actually used
+  write_csv(tibble(GeneSymbol = genes_vec),
+            file.path(out_dir_diff136_organelle_dist_norm_composite_euler, paste0("GO_inputs_Top5Composite_", ann_term, "_", set_label, ".csv")))
+
+  plot_topGO_for_geneset(
+    gene_set = genes_vec,
+    background_genes = unique(diff136_df_annotated$Gene.Symbol),
+    tag = paste0("Top5Composite_", ann_term, "_", set_label),
+    out_dir = out_dir_diff136_organelle_dist_norm_composite_euler
+  )
+  invisible(NULL)
+}
+
+sets_to_eval <- c("ASAH1_only", "Ctrl_only", "Common")
+invisible(lapply(top5_annotations_by_comp, function(ann_term) {
+  lapply(sets_to_eval, function(set_lab) .run_go_for_set_comp(ann_term, set_lab))
+}))
+
+```
+
+
+
+## IVc. Barplots of mean(log2FC) of synaptic annotations
 ```{r}
 # --- Step 1. Define columns and color mapping
 plot_cols <- c("log2FC_ASAH1_Axon.ASAH1_Soma", "log2FC_Ctrl_Axon.Ctrl_Soma")
@@ -1435,7 +1550,7 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_vatpase_synaptic_barpl
 ```
 
 
-## IIIe.  Absolute & RoR comparison of Axonal Proteome 
+## IVd.  Absolute & RoR comparison of Axonal Proteome 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Analysis of axonal proteome in Ctrl & ASAH1-/- neurons 
@@ -1554,11 +1669,7 @@ sig_gene_summary <- sig_long_df %>%
     .groups = "drop"
   )
 
-write.csv(
-  sig_gene_summary,
-  file = file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv"),
-  row.names = FALSE
-)
+write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv"),row.names = FALSE)
 ```
 
 
