@@ -61,6 +61,13 @@ dir.create(out_dir_diff136_corrplots, recursive = TRUE, showWarnings = FALSE)
 out_dir_diff136_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
 dir.create(out_dir_diff136_organelle_dist, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_diff136_organelle_dist_bar <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_general"
+dir.create(out_dir_diff136_organelle_dist_bar, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_diff136_organelle_dist_barnorm <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm"
+dir.create(out_dir_diff136_organelle_dist_barnorm, recursive = TRUE, showWarnings = FALSE)
+
+
 out_dir_diff136_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
 dir.create(out_dir_diff136_rainbow, recursive = TRUE, showWarnings = FALSE)
 
@@ -292,7 +299,6 @@ sample_cols <- c(
   "log2FC_ASAH1_Axon.ASAH1"
 )
 
-
 # --- 2. Drop cluster 0 and NA
 violin_df <- diff136_df_annotated %>%
   filter(!is.na(cluster) & cluster != 0) %>%
@@ -333,10 +339,11 @@ ggsave(file.path(out_dir_diff136_heatmap,
   diff136_clusterPlot, width = 6, height = 6, device = cairo_pdf)
 ```
 
+
 ## IIc. GO analysis of clusters of interest 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# GO term analysis based on clusters 
+# GO term analysis based on heatmap clusters
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- Step 1. Define function for GO Term analysis 
@@ -345,11 +352,11 @@ plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX",
   library(org.Hs.eg.db)
   library(tidyverse)
 
-  # Step 1: Create geneList for topGO
+  # Step 1.1: Create geneList for topGO
   geneList <- factor(as.integer(background_genes %in% gene_set))
   names(geneList) <- background_genes
 
-  # Step 2: Run topGO Fisher test (BP)
+  # Step 1.2: Run topGO Fisher test (BP)
   GOdata <- new("topGOdata",
                 ontology = "BP",
                 allGenes = geneList,
@@ -360,7 +367,7 @@ plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX",
 
   resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
 
-  # Step 3: Generate GO table and extract raw p-values
+  # Step 1.3: Generate GO table and extract raw p-values
   # calculate 30 top hits, but only plot top 10 
   go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30)
 
@@ -376,16 +383,16 @@ plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX",
     arrange(raw_pval) %>%
     slice_head(n = 10)
 
-  # Step 4: Get associated genes per GO term
+  # Step 1.4: Get associated genes per GO term
   go_genes <- genesInTerm(GOdata)
   go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
     intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
   })
 
-  # Step 5: Save GO term table + gene associations
+  # Step 1.5: Save GO term table + gene associations
   write_csv(go_table, file = file.path(out_dir, paste0("GO_results_", tag, ".csv")))
 
-  # Step 6: Plot dot plot
+  # Step 1.6: Plot dot plot
   p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
     geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
     scale_fill_gradient(low = "white", high = "firebrick") +
@@ -415,7 +422,6 @@ genes_interest <- diff136_df_annotated %>%
 
 # Background genes
 background_genes <- unique(diff136_df_annotated$Gene.Symbol)
-
 
 
 # --- Step 3. Run function 
@@ -656,7 +662,8 @@ dev.off()
 
 
 # IV. Fraction comparisons (WC/SOMA/PROJECTION)
-## IV. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+## IVa. Barplots: General comparison annotation [mean(log2FC)]
+### IVaa. Comparison across ALL sample permutations
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
@@ -677,7 +684,7 @@ annotation_cols <- setdiff(annotation_cols, c("Autophagy_det", "EndoDetailLoac")
 
 # --- Step 2. Reshape to long format for annotation × log2FC mapping
 long_df <- diff136_df_annotated %>%
-  select(all_of(c("Gene.Symbol", log2fc_cols, annotation_cols))) %>%
+  dplyr::select(all_of(c("Gene.Symbol", log2fc_cols, annotation_cols))) %>%
   pivot_longer(cols = all_of(log2fc_cols), names_to = "Log2FC", values_to = "value") %>%
   pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
   filter(is_annotated == 1 & is.finite(value))
@@ -701,7 +708,7 @@ loc_dist_overview_all <- ggplot(mean_log2fc_df, aes(x = reorder(Annotation, mean
   labs(x = NULL, y = "Mean log2FC", title = "Mean log2FC per Organelle Annotation (All)") +
   theme_bw(base_size = 8)
 
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_all.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist_bar, "diff136_loc_dist_overview_all.pdf"),
   loc_dist_overview_all,
   width = 14, height = 12, device = cairo_pdf
 )
@@ -731,14 +738,14 @@ loc_dist_overview_subset <- ggplot(mean_log2fc_subset_df, aes(x = reorder(Annota
 
 
 # --- Step 5. Save to PDF
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist_bar, "diff136_loc_dist_overview_selected.pdf"),
   loc_dist_overview_subset,
   width = 14, height = 12, device = cairo_pdf
 )
+```
 
-
-
-
+### IVab. Comparison across selected annotations
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
 # selected annotations  
@@ -768,13 +775,15 @@ loc_dist_overview_subset2 <- ggplot(mean2_log2fc_subset_df, aes(x = reorder(Anno
 
 
 # --- Step 7. Save to PDF
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directComp.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist_bar, "diff136_loc_dist_overview_selected_directComp.pdf"),
   loc_dist_overview_subset2,
   width = 3, height = 4, device = cairo_pdf
 )
 
+```
 
-
+### IVac. Selected annotations & sorted 
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
 # selected annotations  
@@ -808,7 +817,7 @@ loc_dist_overview_subset3 <- ggplot(
 
 
 # --- Step 9. Save to PDF
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directComp_decs.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist_bar, "diff136_loc_dist_overview_selected_directComp_decs.pdf"),
   loc_dist_overview_subset3,
   width = 3, height = 4, device = cairo_pdf
 )
@@ -816,7 +825,8 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_sele
 ```
 
 
-## IIIb. Barplots of WC-norm mean(log2FC) of select annotations (also RoR for the norm plots )
+## IVb. Barplots: General comparison annotation WC-norm mean(log2FC)
+### IVba. Barplots: ASAH1 [axon/WC] vs Ctrl [axon/WC]
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
@@ -858,18 +868,15 @@ loc_dist_overview_subset_norm <- ggplot(
   theme(panel.grid = element_blank())
 
 # --- Step 4. Save to PDF
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directComp_internalNorm.pdf"), 
+ggsave(file.path(out_dir_diff136_organelle_dist_barnorm, "diff136_loc_dist_overview_selected_directComp_internalNorm.pdf"), 
        loc_dist_overview_subset_norm, width = 3, height = 4, device = cairo_pdf)
-
-
 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots with internal norm comparisons + ratio-of-ratios
 # ─────────────────────────────────────────────────────────────────────────────
-
-# --- Step 3. Compute ratio-of-ratios
+# --- Step 5. Compute ratio-of-ratios
 ratio_df <- mean3_log2fc_subset_df %>%
   dplyr::select(Log2FC, Annotation, mean_log2FC) %>%
   pivot_wider(names_from = Log2FC, values_from = mean_log2FC) %>%
@@ -877,11 +884,11 @@ ratio_df <- mean3_log2fc_subset_df %>%
          Log2FC = "RatioOfRatios") %>%
   dplyr::select(Annotation, Log2FC, mean_log2FC = ratio_of_ratios)
 
-# --- Step 4. Combine with original df
+# --- Step 6. Combine with original df
 combined_df <- bind_rows(mean3_log2fc_subset_df, ratio_df) %>%
   mutate(Annotation = factor(Annotation, levels = axon_norm_order2))
 
-# --- Step 5. Plot with 3 facets
+# --- Step 7. Plot with 3 facets
 loc_dist_overview_subset_ratio <- ggplot(
   combined_df,
   aes(x = Annotation, y = mean_log2FC)
@@ -895,57 +902,27 @@ loc_dist_overview_subset_ratio <- ggplot(
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
-# --- Step 6. Save to PDF
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_loc_dist_overview_selected_directComp_internalNorm_ratio.pdf"),
+# --- Step 8. Save to PDF
+ggsave(file.path(out_dir_diff136_organelle_dist_barnorm, "diff136_loc_dist_overview_selected_directComp_internalNorm_ratio.pdf"),
        loc_dist_overview_subset_ratio,
        width = 5, height = 4, device = cairo_pdf)
 
 ```
 
 
-
-
-
-## IIIb++.
+### IVbb. Resorted RoR, EulerTop5
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # IIIb-plus. Resort by RoR, save sorted plot, extract top-5 annotations,
 # make Euler plots, and run GO on sig up/down for those annotations
 # ─────────────────────────────────────────────────────────────────────────────
 
-# # Safety: rebuild the inputs if current session does not have them
-# if (!exists("mean3_log2fc_subset_df") || !exists("ratio_df")) {
-#   subset3_log2fc <- c("log2FC_ASAH1_Axon.ASAH1", "log2FC_Ctrl_Axon.Ctrl")
-# 
-#   mean3_log2fc_subset_df <- mean_log2fc_df %>% 
-#     filter(Annotation != "Nucleus") %>% 
-#     filter(Log2FC %in% subset3_log2fc)
-# 
-#   axon_norm_order2 <- mean3_log2fc_subset_df %>%
-#     filter(Log2FC == "log2FC_ASAH1_Axon.ASAH1") %>%
-#     arrange(mean_log2FC) %>%
-#     pull(Annotation)
-# 
-#   mean3_log2fc_subset_df <- mean3_log2fc_subset_df %>%
-#     mutate(Annotation = factor(Annotation, levels = axon_norm_order2))
-# 
-#   ratio_df <- mean3_log2fc_subset_df %>%
-#     dplyr::select(Log2FC, Annotation, mean_log2FC) %>%
-#     tidyr::pivot_wider(names_from = Log2FC, values_from = mean_log2FC) %>%
-#     mutate(ratio_of_ratios = `log2FC_ASAH1_Axon.ASAH1` / `log2FC_Ctrl_Axon.Ctrl`,
-#            Log2FC = "RatioOfRatios") %>%
-#     dplyr::select(Annotation, Log2FC, mean_log2FC = ratio_of_ratios)
-# 
-#   combined_df <- bind_rows(mean3_log2fc_subset_df, ratio_df) %>%
-#     mutate(Annotation = factor(Annotation, levels = axon_norm_order2))
-# }
-
 # --- 1. RoR-sorted plot
 ror_sort_order_vec <- ratio_df %>%
   arrange(desc(mean_log2FC)) %>%
   pull(Annotation)
 
-# mark which facets get the restricted range
+# 1.1 mark which facets get the restricted range
 combined_df_sortedByRoR <- combined_df_sortedByRoR %>%
   mutate(y_clamped = ifelse(Log2FC %in% c("log2FC_ASAH1_Axon.ASAH1",
                                           "log2FC_Ctrl_Axon.Ctrl"),
@@ -965,19 +942,18 @@ loc_dist_overview_subset_ratio_sorted <- ggplot(
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
-ggsave(file.path(out_dir_diff136_organelle_dist,"diff136_loc_dist_overview_selected_directComp_internalNorm_rorsorted_clamped.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist_barnorm,"diff136_loc_dist_overview_selected_directComp_internalNorm_rorsorted_clamped.pdf"),
        loc_dist_overview_subset_ratio_sorted, width = 5, height = 4, device = cairo_pdf)
 
 
-
-# Ensure we have the RoR sort order
+# 1.2 Ensure we have the RoR sort order
 if (!exists("ror_sort_order_vec")) {
   ror_sort_order_vec <- ratio_df %>%
     arrange(desc(mean_log2FC)) %>%
     pull(Annotation)
 }
 
-# Build internal-norm-only df, ordered by RoR and clamped
+# 1.3 Build internal-norm-only df, ordered by RoR and clamped
 comparisons_internal_norm <- c("log2FC_ASAH1_Axon.ASAH1",
                                "log2FC_Ctrl_Axon.Ctrl")
 
@@ -988,6 +964,7 @@ combined_df_internalNorm_rorSorted <- combined_df %>%
     mean_log2FC = pmax(pmin(mean_log2FC, 0.6), -0.6)
   )
 
+# 1.4 plot reordered RoR plot
 loc_dist_overview_internalNorm_rorSorted <- ggplot(
   combined_df_internalNorm_rorSorted,
   aes(x = Annotation, y = mean_log2FC)
@@ -1003,11 +980,10 @@ loc_dist_overview_internalNorm_rorSorted <- ggplot(
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
+# 1.5 save plot
 ggsave(
-  file.path(out_dir_diff136_organelle_dist,"diff136_loc_dist_overview_selected_directComp_internalNorm_clamped_rorSorted.pdf"),
+  file.path(out_dir_diff136_organelle_dist_barnorm,"diff136_loc_dist_overview_selected_directComp_internalNorm_clamped_rorSorted.pdf"),
   loc_dist_overview_internalNorm_rorSorted,width = 4, height = 4, device = cairo_pdf)
-
-
 
 
 
@@ -1020,7 +996,7 @@ top5_annotations_by_ror <- ratio_df %>%
   pull(Annotation) %>%
   as.character()
 
-# helper to get gene sets per annotation for internal-norm comparisons
+# 2.1 helper to get gene sets per annotation for internal-norm comparisons
 get_internal_norm_gene_sets <- function(ann_term, df) {
   sub_df <- df %>% filter(.data[[ann_term]] == 1)
   asah1_pos <- sub_df %>%
@@ -1036,7 +1012,7 @@ get_internal_norm_gene_sets <- function(ann_term, df) {
        Ctrl_all   = ctrl_pos)
 }
 
-# build table
+# 2.2 build table
 top5_gene_overlap_tbl <- purrr::map_dfr(top5_annotations_by_ror, function(ann_term) {
   gs <- get_internal_norm_gene_sets(ann_term, diff136_df_annotated)
   tibble(
@@ -1049,11 +1025,13 @@ top5_gene_overlap_tbl <- purrr::map_dfr(top5_annotations_by_ror, function(ann_te
   )
 })
 
-csv_top5_genes_path <- file.path(out_dir_diff136_organelle_dist, "top5_byRoR_gene_overlap_ASAH1_vs_Ctrl.csv")
+# 2.3 save table
+csv_top5_genes_path <- file.path(out_dir_diff136_organelle_dist_barnorm, "top5_byRoR_gene_overlap_ASAH1_vs_Ctrl.csv")
 write.csv(top5_gene_overlap_tbl, csv_top5_genes_path, row.names = FALSE)
 
-# Euler plots per annotation
-euler_out_dir_top5 <- file.path(out_dir_diff136_organelle_dist, "euler_top5_byRoR")
+
+# -- 3: Create & save Euler plots per annotation
+euler_out_dir_top5 <- file.path(out_dir_diff136_organelle_dist_barnorm, "euler_top5_byRoR")
 dir.create(euler_out_dir_top5, showWarnings = FALSE, recursive = TRUE)
 
 invisible(lapply(top5_annotations_by_ror, function(ann_term) {
@@ -1066,9 +1044,10 @@ invisible(lapply(top5_annotations_by_ror, function(ann_term) {
   dev.off()
 }))
 
+```
 
-
-
+### IVbc. Top5 RoR GO eval
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # GO for top-5 RoR annotations: build inputs (up/down) + run GO once
 # ─────────────────────────────────────────────────────────────────────────────
