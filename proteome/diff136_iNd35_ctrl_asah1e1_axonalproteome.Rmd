@@ -28,6 +28,7 @@ library(RColorBrewer)  # custom color scales
 library(viridis)       # color scales (optional)
 library(NatParksPalettes)
 library(scales) 
+library(eulerr)
 
 # --- Plot Layouts ---
 library(gridExtra)     # arranging plots
@@ -69,6 +70,11 @@ dir.create(out_dir_diff136_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
 out_dir_diff136_rainbow_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
 dir.create(out_dir_diff136_rainbow_GO, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_diff136_rainbow_GOcluster <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/heatmapclusters"
+dir.create(out_dir_diff136_rainbow_GOcluster, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_diff136_rainbow_GOror <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/RoR"
+dir.create(out_dir_diff136_rainbow_GOror, recursive = TRUE, showWarnings = FALSE)
 
 ```
 
@@ -904,13 +910,16 @@ ggsave(
 
 
 
+
+
 # --- 2. CSV of genes in top 5 annotations by RoR and Euler overlap plots
 suppressPackageStartupMessages(require(eulerr))
 
 top5_annotations_by_ror <- ratio_df %>%
   arrange(desc(mean_log2FC)) %>%
   slice_head(n = 5) %>%
-  pull(Annotation)
+  pull(Annotation) %>%
+  as.character()
 
 # helper to get gene sets per annotation for internal-norm comparisons
 get_internal_norm_gene_sets <- function(ann_term, df) {
@@ -988,7 +997,7 @@ invisible(lapply(go_ann_to_use, function(ann_term) {
         gene_set = gene_vec,
         background_genes = unique(diff136_df_annotated$Gene.Symbol),
         tag = paste0("Top5_", ann_term, "_", dir_flag),
-        out_dir = out_dir_diff136_rainbow_GO
+        out_dir = out_dir_diff136_rainbow_GOror
       )
     }
     NULL
@@ -1735,7 +1744,7 @@ plot_topGO_for_geneset(
   gene_set = genes_interest,
   background_genes = background_genes,
   tag = "ASAH1_cluster4_5",
-  out_dir = out_dir_diff136_rainbow_GO
+  out_dir = out_dir_diff136_rainbow_GOcluster
 )
 
 
