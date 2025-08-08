@@ -1049,85 +1049,7 @@ invisible(lapply(top5_annotations_by_ror, function(ann_term) {
 
 ```
 
-### IVbc. Top5 RoR GO eval
-```{r}
-# ─────────────────────────────────────────────────────────────────────────────
-# GO for top-5 RoR annotations: build inputs (up/down) + run GO once
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Reuse sig_hits_tbl if available, else read from CSV as fallback
-go_sig_tbl <- if (exists("sig_hits_tbl")) {
-  message("Using in-memory sig_hits_tbl")
-  sig_hits_tbl
-} else {
-  fallback_path <- file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv")
-  if (!file.exists(fallback_path)) stop("sig_hits_tbl not in memory and CSV not found at: ", fallback_path)
-  message("Loading sig_hits_tbl from CSV fallback")
-  read.csv(fallback_path, stringsAsFactors = FALSE)
-}
-
-# Ensure top5 vector is character
-top5_annotations_by_ror <- as.character(top5_annotations_by_ror)
-
-# Align to top 5 RoR and keep up and down
-go_ann_to_use <- intersect(unique(go_sig_tbl$Annotation), top5_annotations_by_ror)
-
-sig_hits_top5 <- go_sig_tbl %>%
-  dplyr::filter(Annotation %in% go_ann_to_use, SigStatus %in% c("up","down")) %>%
-  dplyr::mutate(GeneList = ifelse(is.na(GeneList), "", GeneList))
-
-# Write GO input CSVs
-dir.create(out_dir_diff136_GOror, showWarnings = FALSE, recursive = TRUE)
-
-sig_hits_top5_long <- sig_hits_top5 %>%
-  tidyr::separate_rows(GeneList, sep = ";", convert = FALSE) %>%
-  dplyr::rename(GeneSymbol = GeneList) %>%
-  dplyr::filter(nzchar(GeneSymbol)) %>%
-  dplyr::distinct(Annotation, SigStatus, GeneSymbol)
-
-readr::write_csv(sig_hits_top5_long,
-  file.path(out_dir_diff136_GOror, "GO_inputs_top5_annotations_up_down_long.csv"))
-
-sig_hits_top5_wide <- sig_hits_top5_long %>%
-  dplyr::group_by(Annotation, SigStatus) %>%
-  dplyr::summarise(GeneList = paste(sort(unique(GeneSymbol)), collapse = ";"), .groups = "drop") %>%
-  tidyr::pivot_wider(names_from = SigStatus, values_from = GeneList)
-
-readr::write_csv(sig_hits_top5_wide,
-  file.path(out_dir_diff136_GOror, "GO_inputs_top5_annotations_up_down_wide.csv"))
-
-# Run GO per annotation and direction, save plots and CSVs
-invisible(lapply(go_ann_to_use, function(ann_term) {
-  lapply(c("up","down"), function(dir_flag) {
-    gene_vec <- sig_hits_top5_long %>%
-      dplyr::filter(Annotation == ann_term, SigStatus == dir_flag) %>%
-      dplyr::pull(GeneSymbol) %>%
-      unique()
-
-    if (length(gene_vec) >= 5) {
-      plot_topGO_for_geneset(
-        gene_set = gene_vec,
-        background_genes = unique(diff136_df_annotated$Gene.Symbol),
-        tag = paste0("Top5_", ann_term, "_", dir_flag),
-        out_dir = out_dir_diff136_GOror
-      )
-    }
-    NULL
-  })
-}))
-
-# Summary for QC purposes
-go_manifest <- sig_hits_top5_long %>%
-  dplyr::count(Annotation, SigStatus, name = "n_genes") %>%
-  tidyr::complete(Annotation = go_ann_to_use, SigStatus = c("up","down"), fill = list(n_genes = 0)) %>%
-  dplyr::arrange(match(Annotation, top5_annotations_by_ror), SigStatus)
-
-readr::write_csv(go_manifest,
-  file.path(out_dir_diff136_GOror, "GO_inputs_top5_manifest_counts.csv"))
-```
-
-
-### IVbd. Sensitivity ranking with normalized comparisons (delta, Cohen's d, RoR)
+### IVbc. Sensitivity ranking with normalized comparisons (delta, Cohen's d, RoR)
 ```{r}
 # • Δ mean log2FC – difference in normalized mean log2 fold-change between ASAH1 and Ctrl (\bar{x}{ASAH1} - \bar{x}{Ctrl}).
 # • Cohen’s d – standardized effect size, Δ mean log2FC divided by pooled standard deviation across genes in the annotation.
@@ -1216,6 +1138,37 @@ out_rank_dir <- file.path(out_dir_diff136_organelle_dist_barnorm, "ranking_sensi
 dir.create(out_rank_dir, showWarnings = FALSE, recursive = TRUE)
 readr::write_csv(rank_tbl, file.path(out_rank_dir, "RankTable_annotation_ranking_norm_delta_d_ror.csv"))
 
+# --- 9. Heatmap of ranking metrics
+# order rows by ascending composite rank
+ord_levels <- rev(rank_tbl$Annotation)
+
+heatmap_mat <- rank_tbl %>%
+  dplyr::select(Annotation, delta_mean, cohen_d, ror_mean, pr_delta, pr_d, pr_ror, composite_pr) %>%
+  as.data.frame()
+rownames(heatmap_mat) <- heatmap_mat$Annotation
+heatmap_mat$Annotation <- NULL
+heatmap_mat <- heatmap_mat[ord_levels, , drop = FALSE]
+
+# make heatmap
+pheatmap(
+  mat = heatmap_mat,
+  scale = "column",
+  color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(100),
+  #color = viridis(100),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  border_color = NA,
+  fontsize_row = 6,
+  fontsize_col = 6,
+  cellwidth = 6,
+  cellheight = 6,
+  filename = file.path(out_rank_dir, "RankTable_annotation_ranking_heatmap.pdf"),
+  width = 5,
+  height = 6
+)
+
+
+
 # --- 9. Plot delta and Cohen's d using ascending composite order
 ord_levels <- rev(rank_tbl$Annotation)
 
@@ -1267,7 +1220,7 @@ ggsave(
 ```
 
 
-### IVbe. Top5 COMPOSITE GO eval
+### IVbd. Top5 COMPOSITE GO eval
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # GO for top-5 annotations by composite rank: build inputs (up/down) + run GO
@@ -2009,6 +1962,85 @@ plot_ror_annotation_distribution(
 
 ```
 
+
+
+
+### IVbc. Top5 RoR GO eval
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# GO for top-5 RoR annotations: build inputs (up/down) + run GO once
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Reuse sig_hits_tbl if available, else read from CSV as fallback
+go_sig_tbl <- if (exists("sig_hits_tbl")) {
+  message("Using in-memory sig_hits_tbl")
+  sig_hits_tbl
+} else {
+  fallback_path <- file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv")
+  if (!file.exists(fallback_path)) stop("sig_hits_tbl not in memory and CSV not found at: ", fallback_path)
+  message("Loading sig_hits_tbl from CSV fallback")
+  read.csv(fallback_path, stringsAsFactors = FALSE)
+}
+
+# Ensure top5 vector is character
+top5_annotations_by_ror <- as.character(top5_annotations_by_ror)
+
+# Align to top 5 RoR and keep up and down
+go_ann_to_use <- intersect(unique(go_sig_tbl$Annotation), top5_annotations_by_ror)
+
+sig_hits_top5 <- go_sig_tbl %>%
+  dplyr::filter(Annotation %in% go_ann_to_use, SigStatus %in% c("up","down")) %>%
+  dplyr::mutate(GeneList = ifelse(is.na(GeneList), "", GeneList))
+
+# Write GO input CSVs
+dir.create(out_dir_diff136_GOror, showWarnings = FALSE, recursive = TRUE)
+
+sig_hits_top5_long <- sig_hits_top5 %>%
+  tidyr::separate_rows(GeneList, sep = ";", convert = FALSE) %>%
+  dplyr::rename(GeneSymbol = GeneList) %>%
+  dplyr::filter(nzchar(GeneSymbol)) %>%
+  dplyr::distinct(Annotation, SigStatus, GeneSymbol)
+
+readr::write_csv(sig_hits_top5_long,
+  file.path(out_dir_diff136_GOror, "GO_inputs_top5_annotations_up_down_long.csv"))
+
+sig_hits_top5_wide <- sig_hits_top5_long %>%
+  dplyr::group_by(Annotation, SigStatus) %>%
+  dplyr::summarise(GeneList = paste(sort(unique(GeneSymbol)), collapse = ";"), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = SigStatus, values_from = GeneList)
+
+readr::write_csv(sig_hits_top5_wide,
+  file.path(out_dir_diff136_GOror, "GO_inputs_top5_annotations_up_down_wide.csv"))
+
+# Run GO per annotation and direction, save plots and CSVs
+invisible(lapply(go_ann_to_use, function(ann_term) {
+  lapply(c("up","down"), function(dir_flag) {
+    gene_vec <- sig_hits_top5_long %>%
+      dplyr::filter(Annotation == ann_term, SigStatus == dir_flag) %>%
+      dplyr::pull(GeneSymbol) %>%
+      unique()
+
+    if (length(gene_vec) >= 5) {
+      plot_topGO_for_geneset(
+        gene_set = gene_vec,
+        background_genes = unique(diff136_df_annotated$Gene.Symbol),
+        tag = paste0("Top5_", ann_term, "_", dir_flag),
+        out_dir = out_dir_diff136_GOror
+      )
+    }
+    NULL
+  })
+}))
+
+# Summary for QC purposes
+go_manifest <- sig_hits_top5_long %>%
+  dplyr::count(Annotation, SigStatus, name = "n_genes") %>%
+  tidyr::complete(Annotation = go_ann_to_use, SigStatus = c("up","down"), fill = list(n_genes = 0)) %>%
+  dplyr::arrange(match(Annotation, top5_annotations_by_ror), SigStatus)
+
+readr::write_csv(go_manifest,
+  file.path(out_dir_diff136_GOror, "GO_inputs_top5_manifest_counts.csv"))
+```
 
 
 
