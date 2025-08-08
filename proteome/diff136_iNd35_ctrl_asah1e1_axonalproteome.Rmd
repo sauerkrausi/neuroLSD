@@ -333,6 +333,105 @@ ggsave(file.path(out_dir_diff136_heatmap,
   diff136_clusterPlot, width = 6, height = 6, device = cairo_pdf)
 ```
 
+## IIc. GO analysis of clusters of interest 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# GO term analysis based on clusters 
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 1. Define function for GO Term analysis 
+plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX", out_dir) {
+  library(topGO)
+  library(org.Hs.eg.db)
+  library(tidyverse)
+
+  # Step 1: Create geneList for topGO
+  geneList <- factor(as.integer(background_genes %in% gene_set))
+  names(geneList) <- background_genes
+
+  # Step 2: Run topGO Fisher test (BP)
+  GOdata <- new("topGOdata",
+                ontology = "BP",
+                allGenes = geneList,
+                geneSel = function(x) x == 1,
+                annot = annFUN.org,
+                mapping = "org.Hs.eg.db",
+                ID = "symbol")
+
+  resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+
+  # Step 3: Generate GO table and extract raw p-values
+  # calculate 30 top hits, but only plot top 10 
+  go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30)
+
+  go_table <- go_table %>%
+    mutate(
+      raw_pval     = score(resultFisher)[GO.ID],
+      Significant  = as.numeric(Significant),
+      Expected     = as.numeric(Expected),
+      Enrichment   = Significant / Expected,
+      log10P       = -log10(raw_pval)
+    ) %>%
+    filter(!is.na(raw_pval)) %>%
+    arrange(raw_pval) %>%
+    slice_head(n = 10)
+
+  # Step 4: Get associated genes per GO term
+  go_genes <- genesInTerm(GOdata)
+  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
+    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
+  })
+
+  # Step 5: Save GO term table + gene associations
+  write_csv(go_table, file = file.path(out_dir, paste0("GO_results_", tag, ".csv")))
+
+  # Step 6: Plot dot plot
+  p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+    geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
+    scale_fill_gradient(low = "white", high = "firebrick") +
+    theme_bw(base_size = 8) +
+    labs(
+      x = "Fold Enrichment",
+      y = "GO Term",
+      size = expression(-log[10]*"P"),
+      title = paste0("Top GO Terms (", tag, ")")
+    ) +
+    theme(panel.grid = element_blank())
+
+  ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
+
+  return(p)
+}
+
+
+
+# --- Step 2. Define input clusters to analyse & background genes 
+# Input: cluster genes
+genes_interest <- diff136_df_annotated %>%
+  #filter(cluster %in% c(4)) %>%
+  filter(cluster %in% c(4,5)) %>%
+  pull(Gene.Symbol) %>%
+  unique()
+
+# Background genes
+background_genes <- unique(diff136_df_annotated$Gene.Symbol)
+
+
+
+# --- Step 3. Run function 
+# Run function
+plot_topGO_for_geneset(
+  gene_set = genes_interest,
+  background_genes = background_genes,
+  tag = "ASAH1_cluster4_5",
+  out_dir = out_dir_diff136_rainbow_GOcluster
+)
+
+```
+
+
+
+
 
 # III. Correlation of Selected Annotations
 calculate annotated-based correlation across all and also facet wrap them
@@ -556,8 +655,8 @@ dev.off()
 ```
 
 
-
-## IIIa. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
+# IV. Fraction comparisons (WC/SOMA/PROJECTION)
+## IV. Barplots of mean(log2FC) of each organelle annotations arcross all sample comparisons
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
@@ -967,29 +1066,60 @@ invisible(lapply(top5_annotations_by_ror, function(ann_term) {
   dev.off()
 }))
 
-# 3) GO analysis on sig up and down genes for the same top 5 annotations
-sig_gene_csv_path <- file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv")
-stopifnot(file.exists(sig_gene_csv_path))
 
-sig_hits_tbl <- read.csv(sig_gene_csv_path, stringsAsFactors = FALSE)
 
-# align to the selected top 5 only
-go_ann_to_use <- intersect(unique(sig_hits_tbl$Annotation), top5_annotations_by_ror)
 
-# helper to turn semicolon list into vector
-split_genes <- function(x) {
-  if (is.na(x) || !nzchar(x)) character(0) else unlist(strsplit(x, ";"))
+# ─────────────────────────────────────────────────────────────────────────────
+# GO for top-5 RoR annotations: build inputs (up/down) + run GO once
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Reuse sig_hits_tbl if available, else read from CSV as fallback
+go_sig_tbl <- if (exists("sig_hits_tbl")) {
+  message("Using in-memory sig_hits_tbl")
+  sig_hits_tbl
+} else {
+  fallback_path <- file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv")
+  if (!file.exists(fallback_path)) stop("sig_hits_tbl not in memory and CSV not found at: ", fallback_path)
+  message("Loading sig_hits_tbl from CSV fallback")
+  read.csv(fallback_path, stringsAsFactors = FALSE)
 }
 
-# run GO per annotation and direction
+# Ensure top5 vector is character
+top5_annotations_by_ror <- as.character(top5_annotations_by_ror)
+
+# Align to top 5 RoR and keep up and down
+go_ann_to_use <- intersect(unique(go_sig_tbl$Annotation), top5_annotations_by_ror)
+
+sig_hits_top5 <- go_sig_tbl %>%
+  dplyr::filter(Annotation %in% go_ann_to_use, SigStatus %in% c("up","down")) %>%
+  dplyr::mutate(GeneList = ifelse(is.na(GeneList), "", GeneList))
+
+# Write GO input CSVs
+dir.create(out_dir_diff136_rainbow_GOror, showWarnings = FALSE, recursive = TRUE)
+
+sig_hits_top5_long <- sig_hits_top5 %>%
+  tidyr::separate_rows(GeneList, sep = ";", convert = FALSE) %>%
+  dplyr::rename(GeneSymbol = GeneList) %>%
+  dplyr::filter(nzchar(GeneSymbol)) %>%
+  dplyr::distinct(Annotation, SigStatus, GeneSymbol)
+
+readr::write_csv(sig_hits_top5_long,
+  file.path(out_dir_diff136_rainbow_GOror, "GO_inputs_top5_annotations_up_down_long.csv"))
+
+sig_hits_top5_wide <- sig_hits_top5_long %>%
+  dplyr::group_by(Annotation, SigStatus) %>%
+  dplyr::summarise(GeneList = paste(sort(unique(GeneSymbol)), collapse = ";"), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = SigStatus, values_from = GeneList)
+
+readr::write_csv(sig_hits_top5_wide,
+  file.path(out_dir_diff136_rainbow_GOror, "GO_inputs_top5_annotations_up_down_wide.csv"))
+
+# Run GO per annotation and direction, save plots and CSVs
 invisible(lapply(go_ann_to_use, function(ann_term) {
-  lapply(c("up", "down"), function(dir_flag) {
-    gene_vec <- sig_hits_tbl %>%
-      filter(Annotation == ann_term, SigStatus == dir_flag) %>%
-      pull(GeneList) %>%
-      purrr::map_chr(identity) %>%
-      paste(collapse = ";") %>%
-      split_genes() %>%
+  lapply(c("up","down"), function(dir_flag) {
+    gene_vec <- sig_hits_top5_long %>%
+      dplyr::filter(Annotation == ann_term, SigStatus == dir_flag) %>%
+      dplyr::pull(GeneSymbol) %>%
       unique()
 
     if (length(gene_vec) >= 5) {
@@ -1003,7 +1133,19 @@ invisible(lapply(go_ann_to_use, function(ann_term) {
     NULL
   })
 }))
+
+# Manifest for quick auditing
+go_manifest <- sig_hits_top5_long %>%
+  dplyr::count(Annotation, SigStatus, name = "n_genes") %>%
+  tidyr::complete(Annotation = go_ann_to_use, SigStatus = c("up","down"), fill = list(n_genes = 0)) %>%
+  dplyr::arrange(match(Annotation, top5_annotations_by_ror), SigStatus)
+
+readr::write_csv(go_manifest,
+  file.path(out_dir_diff136_rainbow_GOror, "GO_inputs_top5_manifest_counts.csv"))
 ```
+
+
+
 
 ## IIIc. Barplots of mean(log2FC) of synaptic annotations
 ```{r}
@@ -1193,8 +1335,8 @@ write.csv(
 ```
 
 
-# IV. Rainbowplot of annotations markers 
-## IVa. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
+# V. Rainbowplot of annotations markers 
+## Va. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -1653,100 +1795,3 @@ plot_ror_annotation_distribution(
 
 
 
-# VI. GO analysis of clusters of interest 
-```{r}
-# ─────────────────────────────────────────────────────────────────────────────
-# GO term analysis based on clusters 
-# ─────────────────────────────────────────────────────────────────────────────
-
-# --- Step 1. Define function for GO Term analysis 
-plot_topGO_for_geneset <- function(gene_set, background_genes, tag = "clusterX", out_dir) {
-  library(topGO)
-  library(org.Hs.eg.db)
-  library(tidyverse)
-
-  # Step 1: Create geneList for topGO
-  geneList <- factor(as.integer(background_genes %in% gene_set))
-  names(geneList) <- background_genes
-
-  # Step 2: Run topGO Fisher test (BP)
-  GOdata <- new("topGOdata",
-                ontology = "BP",
-                allGenes = geneList,
-                geneSel = function(x) x == 1,
-                annot = annFUN.org,
-                mapping = "org.Hs.eg.db",
-                ID = "symbol")
-
-  resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
-
-  # Step 3: Generate GO table and extract raw p-values
-  # calculate 30 top hits, but only plot top 10 
-  go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30)
-
-  go_table <- go_table %>%
-    mutate(
-      raw_pval     = score(resultFisher)[GO.ID],
-      Significant  = as.numeric(Significant),
-      Expected     = as.numeric(Expected),
-      Enrichment   = Significant / Expected,
-      log10P       = -log10(raw_pval)
-    ) %>%
-    filter(!is.na(raw_pval)) %>%
-    arrange(raw_pval) %>%
-    slice_head(n = 10)
-
-  # Step 4: Get associated genes per GO term
-  go_genes <- genesInTerm(GOdata)
-  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
-    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
-  })
-
-  # Step 5: Save GO term table + gene associations
-  write_csv(go_table, file = file.path(out_dir, paste0("GO_results_", tag, ".csv")))
-
-  # Step 6: Plot dot plot
-  p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
-    geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
-    scale_fill_gradient(low = "white", high = "firebrick") +
-    theme_bw(base_size = 8) +
-    labs(
-      x = "Fold Enrichment",
-      y = "GO Term",
-      size = expression(-log[10]*"P"),
-      title = paste0("Top GO Terms (", tag, ")")
-    ) +
-    theme(panel.grid = element_blank())
-
-  ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
-
-  return(p)
-}
-
-
-
-# --- Step 2. Define input clusters to analyse & background genes 
-# Input: cluster genes
-genes_interest <- diff136_df_annotated %>%
-  #filter(cluster %in% c(4)) %>%
-  filter(cluster %in% c(4,5)) %>%
-  pull(Gene.Symbol) %>%
-  unique()
-
-# Background genes
-background_genes <- unique(diff136_df_annotated$Gene.Symbol)
-
-
-
-# --- Step 3. Run function 
-# Run function
-plot_topGO_for_geneset(
-  gene_set = genes_interest,
-  background_genes = background_genes,
-  tag = "ASAH1_cluster4_5",
-  out_dir = out_dir_diff136_rainbow_GOcluster
-)
-
-
-
-```
