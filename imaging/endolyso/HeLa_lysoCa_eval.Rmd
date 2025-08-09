@@ -48,6 +48,8 @@ library(dplyr)
 
 ```
 
+
+# II. 
 ```{r}
 # Calcium flux eval from lysosomal OGB5N live-cell imaging
 # Input path and file
@@ -176,9 +178,9 @@ invisible(
         scale_fill_manual(values = group_colors_fixed, guide = "none") +
         labs(title = meas_name, x = NULL, y = "Mean per repeat") +
         theme_bw() +
-        theme(panel.grid = element_blank(), plot.title = element_text(size = 11, face = "bold"))
+        theme(panel.grid = element_blank(), plot.title = element_text(size = 6, face = "bold"))
       ggsave(file.path(out_dir_ogb5n, paste0("bar_mean_", sanitize_name(meas_name), ".pdf")),
-             plot = p, width = 6, height = 4, device = "pdf")
+             plot = p, width = 3, height = 3, device = "pdf")
     })
 )
 
