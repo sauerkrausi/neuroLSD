@@ -12,46 +12,29 @@ knitr::opts_chunk$set(echo = TRUE)
 # I. Load packackes
 ```{r}
 library(devtools)
-
-# Core data manipulation & visualization
-library(tidyverse)        # ggplot2, dplyr, purrr, readr, tibble, tidyr, stringr
-library(zoo)              # Rolling operations
-library(reshape2)         # Data reshaping
-library(pheatmap)         # Heatmaps
-library(ggdendro)         # Dendrograms
-library(viridis)          # Color palettes
-library(RColorBrewer)
-library(NatParksPalettes)
-library(tidyplots)
-library(ggpubr)           # Publication-ready plots
-library(ggsignif)         # Significance annotations
-library(Cairo)            # For cairo_pdf output
-library(patchwork)        # Plot layouts
-library(cowplot)          # Plot composition
-library(gridExtra)        # Layout utilities
-library(grid)             # Viewports and custom layout
-library(rlang)            # Tidy evaluation tools
-
-# Signal processing
-  library(readr)
-  library(dplyr)
-  library(stringr)
-  library(tidyr)
-  library(ggplot2)
-  library(purrr)
-# Plot composition
-library(gridExtra)
-library(grid)
-library(cowplot)
+# Core data manipulation 
+library(tidyverse)
 library(Cairo)
+library(readr)
 library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(tibble)
+library(purrr)
+
+# For PDF export
+library(Cairo)    
+
+# Tidy evaluation helpers (used in dplyr/mutate etc.)
+library(rlang)
 
 ```
 
-
-# II. 
+# II. dataimport and metadata setup
 ```{r}
-# Calcium flux eval from lysosomal OGB5N live-cell imaging
+
+# --- 1. Setup
 # Input path and file
 in_dir_ogb5n <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20241111_HeLa-Ctrl-ASAH1_OGB1AM_OGB5N_SiRLyso_MLSA5/Eval_OGB5N"
 infile_ogb5n  <- file.path(in_dir_ogb5n, "OGB5N_object_clean.csv")
@@ -60,10 +43,16 @@ infile_ogb5n  <- file.path(in_dir_ogb5n, "OGB5N_object_clean.csv")
 out_dir_ogb5n <- file.path(in_dir_ogb5n, "out_eval_OGB5N")
 dir.create(out_dir_ogb5n, showWarnings = FALSE, recursive = TRUE)
 
-# Read data
-ogb5n_df <- read_csv(infile_ogb5n, guess_max = 200000)
+# Colors and ordering
+group_levels_fixed <- c("Ctrl_fed", "Ctrl_1hMLSA5", "ASAH1_fed", "ASAH1_1hMLSA5")
+group_colors_fixed <- c(
+  "Ctrl_fed" = "grey70",
+  "Ctrl_1hMLSA5" = "grey90",
+  "ASAH1_fed" = "dodgerblue",
+  "ASAH1_1hMLSA5" = "skyblue"
+)
 
-# Columns of interest
+# Measurements
 intensity_cols <- c(
   "Intensity_IntegratedIntensity_OGB5N",
   "Intensity_IntegratedIntensity_OGB5N_on_Lyso",
@@ -71,17 +60,21 @@ intensity_cols <- c(
   "Intensity_MeanIntensity_OGB5N_on_Lyso"
 )
 
+sanitize_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
+
+
+# --- 2. Load and select
+ogb5n_df <- read_csv(infile_ogb5n, guess_max = 200000)
+
 ogb5n_core <- ogb5n_df %>%
   select(ImageNumber, FileName_OGB5N, all_of(intensity_cols))
 
-# Parse Genotype, Treatment, and replicate index from FileName_OGB5N
-# Assumptions:
-#   Genotype tokens contain "Ctrl" or "Control" or "ASAH1"
-#   Treatment tokens contain "Fed" or "1hMLSA5"
-#   Replicate indicated as "(series n)" where n is 0..8
-# 1) Parse again
-group_levels_fixed <- c("Ctrl_fed", "Ctrl_1hMLSA5", "ASAH1_fed", "ASAH1_1hMLSA5")
+```
 
+
+# III. Parse data and read in data in long format
+```{r}
+# --- 3.Parse metadata from filenames
 ogb5n_parsed <- ogb5n_core %>%
   mutate(
     Genotype = case_when(
@@ -95,21 +88,17 @@ ogb5n_parsed <- ogb5n_core %>%
       TRUE ~ NA_character_
     ),
     RepeatID = str_extract(FileName_OGB5N, "(?i)series[_\\s-]*\\d+") %>% str_extract("\\d+") %>% as.integer(),
-    RepeatID = if_else(is.na(RepeatID), ImageNumber, RepeatID),  # fallback if no "series n" tag
+    RepeatID = if_else(is.na(RepeatID), ImageNumber, RepeatID),
     Group = paste(Genotype, Treatment, sep = "_")
   ) %>%
   filter(!is.na(Genotype), !is.na(Treatment)) %>%
   mutate(Group = factor(Group, levels = group_levels_fixed))
 
-# 2) Long format (rebuild)
-ogb5n_long <- ogb5n_parsed %>%
-  pivot_longer(
-    cols = all_of(intensity_cols),
-    names_to = "Measurement",
-    values_to = "Value"
-  )
 
-# 3) Per-repeat summary (rebuild)
+# --- 4.Long format and per-repeat summaries
+ogb5n_long <- ogb5n_parsed %>%
+  pivot_longer(cols = all_of(intensity_cols), names_to = "Measurement", values_to = "Value")
+
 ogb5n_rep_summary <- ogb5n_long %>%
   group_by(Measurement, Genotype, Treatment, Group, RepeatID) %>%
   summarise(
@@ -120,7 +109,14 @@ ogb5n_rep_summary <- ogb5n_long %>%
     .groups = "drop"
   )
 
-# 4) Stats (rebuild)
+write_csv(ogb5n_rep_summary, file.path(out_dir_ogb5n, "OGB5N_perRepeat_summary.csv"))
+```
+
+
+
+# IV. Stat test 
+```{r}
+# --- 5. Global stats (Kruskal and all pairwise Wilcoxon BH)
 run_stats_for_measurement <- function(meas_name, rep_df_input) {
   sub_df <- rep_df_input %>% filter(Measurement == meas_name) %>% mutate(Group = droplevels(Group))
   kw <- tryCatch({
@@ -142,11 +138,56 @@ stats_list <- purrr::map(intensity_cols, ~run_stats_for_measurement(.x, ogb5n_re
 kw_tbl <- dplyr::bind_rows(lapply(stats_list, `[[`, "kw"))
 pw_tbl <- dplyr::bind_rows(lapply(stats_list, `[[`, "pw"))
 
-write_csv(ogb5n_rep_summary, file.path(out_dir_ogb5n, "OGB5N_perRepeat_summary.csv"))
 write_csv(kw_tbl, file.path(out_dir_ogb5n, "OGB5N_stats_kruskal.csv"))
 write_csv(pw_tbl, file.path(out_dir_ogb5n, "OGB5N_stats_pairwise_wilcoxon_BH.csv"))
 
-# 5) Group summary for plotting (rebuild)
+
+# --- 6. Planned contrasts: genotype within treatment, treatment within genotype
+
+planned_contrasts_for_measurement <- function(meas_name, rep_df_input) {
+  sub <- rep_df_input %>% filter(Measurement == meas_name)
+
+  v <- function(g) sub %>% filter(Group == g) %>% pull(mean_value)
+
+  pairs_tbl <- tibble(
+    contrast = c(
+      "Genotype_at_fed: ASAH1_fed vs Ctrl_fed",
+      "Genotype_at_1hMLSA5: ASAH1_1hMLSA5 vs Ctrl_1hMLSA5",
+      "Treatment_in_Ctrl: Ctrl_1hMLSA5 vs Ctrl_fed",
+      "Treatment_in_ASAH1: ASAH1_1hMLSA5 vs ASAH1_fed"
+    ),
+    g1 = c("ASAH1_fed", "ASAH1_1hMLSA5", "Ctrl_1hMLSA5", "ASAH1_1hMLSA5"),
+    g2 = c("Ctrl_fed",  "Ctrl_1hMLSA5",  "Ctrl_fed",     "ASAH1_fed")
+  )
+
+  out <- pairs_tbl %>%
+    rowwise() %>%
+    mutate(
+      n1 = length(v(g1)),
+      n2 = length(v(g2)),
+      p_value = tryCatch(wilcox.test(v(g1), v(g2))$p.value, error = function(e) NA_real_),
+      effect_direction = sign(median(v(g1), na.rm = TRUE) - median(v(g2), na.rm = TRUE))
+    ) %>%
+    ungroup() %>%
+    mutate(
+      p_adj_BH = p.adjust(p_value, method = "BH"),
+      Measurement = meas_name
+    ) %>%
+    select(Measurement, contrast, g1, g2, n1, n2, p_value, p_adj_BH, effect_direction)
+
+  out
+}
+
+planned_list <- purrr::map(intensity_cols, ~planned_contrasts_for_measurement(.x, ogb5n_rep_summary))
+planned_tbl <- dplyr::bind_rows(planned_list)
+write_csv(planned_tbl, file.path(out_dir_ogb5n, "OGB5N_stats_planned_contrasts_wilcoxon_BH.csv"))
+
+```
+
+
+# V. Summarize, plot data & save summary
+```{r}
+# --- 7. Group summary and plotting with jittered per-repeat points
 ogb5n_group_summary <- ogb5n_rep_summary %>%
   group_by(Measurement, Group) %>%
   summarise(
@@ -158,36 +199,43 @@ ogb5n_group_summary <- ogb5n_rep_summary %>%
   ) %>%
   mutate(Group = factor(Group, levels = group_levels_fixed))
 
-# 6) Plot PDF only
-group_colors_fixed <- c(
-  "Ctrl_fed" = "grey70",
-  "Ctrl_1hMLSA5" = "grey90",
-  "ASAH1_fed" = "dodgerblue",
-  "ASAH1_1hMLSA5" = "skyblue"
-)
-
-sanitize_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
-
 invisible(
-  ogb5n_group_summary %>%
-    split(.$Measurement) %>%
-    purrr::imap(function(df_plot, meas_name) {
-      p <- ggplot(df_plot, aes(x = Group, y = group_mean, fill = Group)) +
-        geom_col(width = 0.7) +
+  split(ogb5n_group_summary, ogb5n_group_summary$Measurement) %>%
+    imap(function(df_bar, meas_name) {
+
+      df_pts <- ogb5n_rep_summary %>%
+        filter(Measurement == meas_name) %>%
+        mutate(Group = factor(Group, levels = levels(df_bar$Group)))
+
+      p <- ggplot(df_bar, aes(x = Group, y = group_mean, fill = Group)) +
+        geom_col(width = 0.7) + 
         geom_errorbar(aes(ymin = group_mean - group_sem, ymax = group_mean + group_sem), width = 0.2, linewidth = 0.4) +
+        geom_point(
+          data = df_pts,
+          aes(x = Group, y = mean_value),
+          position = position_jitter(width = 0.1, height = 0, seed = 123),
+          size = 1.6,
+          alpha = 0.85,
+          inherit.aes = FALSE
+        ) +
         scale_fill_manual(values = group_colors_fixed, guide = "none") +
         labs(title = meas_name, x = NULL, y = "Mean per repeat") +
         theme_bw() +
-        theme(panel.grid = element_blank(), plot.title = element_text(size = 6, face = "bold"))
-      ggsave(file.path(out_dir_ogb5n, paste0("bar_mean_", sanitize_name(meas_name), ".pdf")),
-             plot = p, width = 3, height = 3, device = "pdf")
+        theme(panel.grid = element_blank(), plot.title = element_text(size = 10, face = "bold"))
+
+      ggsave(
+        filename = file.path(out_dir_ogb5n, paste0("bar_mean_", sanitize_name(meas_name), ".pdf")),
+        plot = p, width = 4, height = 4, device = "pdf"
+      )
     })
 )
 
 
+# --- 8. Quick table check
+ogb5n_group_summary %>%
+  select(Measurement, Group, n_repeats, group_mean) %>%
+  arrange(Measurement, Group) %>%
+  print(n = 40)
 
-# Optional quick check
-ogb5n_group_summary %>% select(Measurement, Group, n_repeats, group_mean) %>% arrange(Measurement, Group) %>% print(n = 40)
+write_csv(ogb5n_group_summary, file.path(out_dir_ogb5n, "OGB5N_stats_summary.csv"))
 ```
-
-
