@@ -4387,10 +4387,10 @@ library(eulerr)
 
 # --- 1. Define Parameters
 #annotations_to_check <- c("MitoMatrix","OXPHOS","Mito") 
-annotations_to_check <- c("Mito")       
+annotations_to_check <- c("OXPHOS")       
 logfc_thresh <- -0.75                         
 genotypes <- c("ASAH1", "GBA1", "SMPD1", 
-               "HEXA", "HEXB", "PSAP")        # Genotypes to include
+               "HEXA", "HEXB", "PSAP")        
 
 
 # --- 2. Function to extract downregulated gene sets
@@ -4427,19 +4427,19 @@ fit_iN  <- euler(gene_sets_iN)
 fit_iDA <- euler(gene_sets_iDA)
 
 # Save iN plot
-pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iN_downregulated_all_Mito.pdf"), width = 8, height = 8)
+pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iN_downregulated_all_OXPHOS.pdf"), width = 8, height = 8)
 plot(fit_iN,
      fills = list(fill = "steelblue", alpha = 0.4),
      labels = list(font = 1),
-     main = "iN: Overlap of Downregulated Genes in Mito")
+     main = "iN: Overlap of Downregulated Genes in OXPHOS")
 dev.off()
 
 # Save iDA plot
-pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iDA_downregulated_all_Mito.pdf"), width = 8, height = 8)
+pdf(file.path(out_dir_d50_SphMuteuler, "Euler_iDA_downregulated_all_OXPHOS.pdf"), width = 8, height = 8)
 plot(fit_iDA,
      fills = list(fill = "firebrick", alpha = 0.4),
      labels = list(font = 1),
-     main = "iDA: Overlap of Downregulated Genes in Mito")
+     main = "iDA: Overlap of Downregulated Genes in OXPHOS")
 dev.off()
 
 
@@ -4461,7 +4461,7 @@ hits_iDA <- make_hit_table(gene_sets_iDA, "iDA")
 hits_all <- bind_rows(hits_iN, hits_iDA)
 
 # --- 6. Write to CSV
-write_csv(hits_all, file.path(out_dir_d50_SphMuteuler, "Downregulated_Mito_hits_by_genotype.csv"))
+write_csv(hits_all, file.path(out_dir_d50_SphMuteuler, "Downregulated_OXPHOS_hits_by_genotype.csv"))
 
 # --- 7. Pairwise overlap matrix (gene counts)
 all_sets <- c(gene_sets_iN, gene_sets_iDA)
@@ -4480,7 +4480,7 @@ for (i in seq_along(all_sets)) {
 overlap_df <- as.data.frame(overlap_matrix) %>%
   rownames_to_column("Genotype")
 
-write_csv(overlap_df, file.path(out_dir_d50_SphMuteuler, "Pairwise_overlap_counts_Mito.csv"))
+write_csv(overlap_df, file.path(out_dir_d50_SphMuteuler, "Pairwise_overlap_counts_OXPHOS.csv"))
 
 
 
