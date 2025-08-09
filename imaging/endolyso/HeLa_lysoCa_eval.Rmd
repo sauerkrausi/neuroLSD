@@ -33,8 +33,12 @@ library(grid)             # Viewports and custom layout
 library(rlang)            # Tidy evaluation tools
 
 # Signal processing
-#library(signal)
-
+  library(readr)
+  library(dplyr)
+  library(stringr)
+  library(tidyr)
+  library(ggplot2)
+  library(purrr)
 # Plot composition
 library(gridExtra)
 library(grid)
@@ -54,15 +58,6 @@ infile_ogb5n  <- file.path(in_dir_ogb5n, "OGB5N_object_clean.csv")
 out_dir_ogb5n <- file.path(in_dir_ogb5n, "out_eval_OGB5N")
 dir.create(out_dir_ogb5n, showWarnings = FALSE, recursive = TRUE)
 
-suppressPackageStartupMessages({
-  library(readr)
-  library(dplyr)
-  library(stringr)
-  library(tidyr)
-  library(ggplot2)
-  library(purrr)
-})
-
 # Read data
 ogb5n_df <- read_csv(infile_ogb5n, guess_max = 200000)
 
@@ -80,43 +75,39 @@ ogb5n_core <- ogb5n_df %>%
 # Parse Genotype, Treatment, and replicate index from FileName_OGB5N
 # Assumptions:
 #   Genotype tokens contain "Ctrl" or "Control" or "ASAH1"
-#   Treatment tokens contain "fed" or "1hMLSA5"
+#   Treatment tokens contain "Fed" or "1hMLSA5"
 #   Replicate indicated as "(series n)" where n is 0..8
+# 1) Parse again
+group_levels_fixed <- c("Ctrl_fed", "Ctrl_1hMLSA5", "ASAH1_fed", "ASAH1_1hMLSA5")
+
 ogb5n_parsed <- ogb5n_core %>%
   mutate(
-    Genotype_raw = str_extract(FileName_OGB5N, "(?i)Ctrl|Control|ASAH1"),
     Genotype = case_when(
-      is.na(Genotype_raw) ~ NA_character_,
-      str_detect(Genotype_raw, regex("ASAH1", ignore_case = TRUE)) ~ "ASAH1",
-      TRUE ~ "Ctrl"
+      str_detect(FileName_OGB5N, "(?i)(^|_)ASAH1(_|$)") ~ "ASAH1",
+      str_detect(FileName_OGB5N, "(?i)(^|_)(Ctrl|Control)(_|$)") ~ "Ctrl",
+      TRUE ~ NA_character_
     ),
-    Treatment = str_to_lower(str_extract(FileName_OGB5N, "(fed|1hMLSA5)")),
-    RepeatID = str_extract(FileName_OGB5N, "(?i)series\\s*\\d+") %>%
-      str_extract("\\d+") %>% as.integer(),
+    Treatment = case_when(
+      str_detect(FileName_OGB5N, "(?i)(^|_)fed(_|$)") ~ "fed",
+      str_detect(FileName_OGB5N, "(?i)1h\\s*mlsa5") ~ "1hMLSA5",
+      TRUE ~ NA_character_
+    ),
+    RepeatID = str_extract(FileName_OGB5N, "(?i)series[_\\s-]*\\d+") %>% str_extract("\\d+") %>% as.integer(),
+    RepeatID = if_else(is.na(RepeatID), ImageNumber, RepeatID),  # fallback if no "series n" tag
     Group = paste(Genotype, Treatment, sep = "_")
   ) %>%
-  mutate(
-    Group = factor(Group, levels = c("Ctrl_fed", "Ctrl_1hmlsa5", "ASAH1_fed", "ASAH1_1hmlsa5"))
+  filter(!is.na(Genotype), !is.na(Treatment)) %>%
+  mutate(Group = factor(Group, levels = group_levels_fixed))
+
+# 2) Long format (rebuild)
+ogb5n_long <- ogb5n_parsed %>%
+  pivot_longer(
+    cols = all_of(intensity_cols),
+    names_to = "Measurement",
+    values_to = "Value"
   )
 
-# Guardrails for parsing
-if (any(is.na(ogb5n_parsed$Genotype))) {
-  warning("Some Genotype values could not be parsed from FileName_OGB5N.")
-}
-if (any(is.na(ogb5n_parsed$Treatment))) {
-  warning("Some Treatment values could not be parsed from FileName_OGB5N.")
-}
-if (any(is.na(ogb5n_parsed$RepeatID))) {
-  warning("Some RepeatID values could not be parsed from FileName_OGB5N.")
-}
-
-# Long format for convenient summarization
-ogb5n_long <- ogb5n_parsed %>%
-  pivot_longer(cols = all_of(intensity_cols),
-               names_to = "Measurement",
-               values_to = "Value")
-
-# Per replicate summary statistics
+# 3) Per-repeat summary (rebuild)
 ogb5n_rep_summary <- ogb5n_long %>%
   group_by(Measurement, Genotype, Treatment, Group, RepeatID) %>%
   summarise(
@@ -127,53 +118,33 @@ ogb5n_rep_summary <- ogb5n_long %>%
     .groups = "drop"
   )
 
-# Save per replicate summary
-write_csv(ogb5n_rep_summary,
-          file.path(out_dir_ogb5n, "OGB5N_perRepeat_summary.csv"))
-
-# Stats across groups using per replicate means as the unit of analysis
-# Kruskal-Wallis plus pairwise Wilcoxon with BH correction
-run_stats_for_measurement <- function(meas_name, rep_df) {
-  sub_df <- rep_df %>% filter(Measurement == meas_name) %>%
-    filter(!is.na(Group)) %>%
-    mutate(Group = droplevels(Group))
-  # Kruskal
-  kw <- tryCatch(
-    {
-      stat <- kruskal.test(mean_value ~ Group, data = sub_df)
-      tibble(
-        Measurement = meas_name,
-        test = "KruskalWallis",
-        statistic = unname(stat$statistic),
-        df = unname(stat$parameter),
-        p_value = unname(stat$p.value)
-      )
-    },
-    error = function(e) tibble(Measurement = meas_name, test = "KruskalWallis", statistic = NA, df = NA, p_value = NA)
-  )
-  # Pairwise Wilcoxon
-  pw <- tryCatch(
-    {
-      w <- pairwise.wilcox.test(sub_df$mean_value, sub_df$Group, p.adjust.method = "BH", exact = FALSE)
-      # Convert matrix to tidy tibble
-      as_tibble(as.table(w$p.value), .name_repair = "unique") %>%
-        rename(group1 = Var1, group2 = Var2, p_adj = Freq) %>%
-        mutate(Measurement = meas_name, test = "PairwiseWilcoxonBH") %>%
-        select(Measurement, test, group1, group2, p_adj)
-    },
-    error = function(e) tibble(Measurement = meas_name, test = "PairwiseWilcoxonBH", group1 = NA, group2 = NA, p_adj = NA)
-  )
+# 4) Stats (rebuild)
+run_stats_for_measurement <- function(meas_name, rep_df_input) {
+  sub_df <- rep_df_input %>% filter(Measurement == meas_name) %>% mutate(Group = droplevels(Group))
+  kw <- tryCatch({
+    stat <- kruskal.test(mean_value ~ Group, data = sub_df)
+    tibble(Measurement = meas_name, test = "KruskalWallis",
+           statistic = unname(stat$statistic), df = unname(stat$parameter), p_value = unname(stat$p.value))
+  }, error = function(e) tibble(Measurement = meas_name, test = "KruskalWallis", statistic = NA, df = NA, p_value = NA))
+  pw <- tryCatch({
+    w <- pairwise.wilcox.test(sub_df$mean_value, sub_df$Group, p.adjust.method = "BH", exact = FALSE)
+    as_tibble(as.table(w$p.value)) %>%
+      rename(group1 = Var1, group2 = Var2, p_adj = Freq) %>%
+      mutate(Measurement = meas_name, test = "PairwiseWilcoxonBH") %>%
+      select(Measurement, test, group1, group2, p_adj)
+  }, error = function(e) tibble(Measurement = meas_name, test = "PairwiseWilcoxonBH", group1 = NA, group2 = NA, p_adj = NA))
   list(kw = kw, pw = pw)
 }
 
-stats_list <- map(intensity_cols, ~run_stats_for_measurement(.x, ogb5n_rep_summary))
-kw_tbl <- bind_rows(lapply(stats_list, `[[`, "kw"))
-pw_tbl <- bind_rows(lapply(stats_list, `[[`, "pw"))
+stats_list <- purrr::map(intensity_cols, ~run_stats_for_measurement(.x, ogb5n_rep_summary))
+kw_tbl <- dplyr::bind_rows(lapply(stats_list, `[[`, "kw"))
+pw_tbl <- dplyr::bind_rows(lapply(stats_list, `[[`, "pw"))
 
+write_csv(ogb5n_rep_summary, file.path(out_dir_ogb5n, "OGB5N_perRepeat_summary.csv"))
 write_csv(kw_tbl, file.path(out_dir_ogb5n, "OGB5N_stats_kruskal.csv"))
 write_csv(pw_tbl, file.path(out_dir_ogb5n, "OGB5N_stats_pairwise_wilcoxon_BH.csv"))
 
-# Group summary for plotting from per replicate means
+# 5) Group summary for plotting (rebuild)
 ogb5n_group_summary <- ogb5n_rep_summary %>%
   group_by(Measurement, Group) %>%
   summarise(
@@ -183,176 +154,38 @@ ogb5n_group_summary <- ogb5n_rep_summary %>%
     group_sem = group_sd / sqrt(n_repeats),
     .groups = "drop"
   ) %>%
-  mutate(
-    Group = factor(Group, levels = c("Ctrl_fed", "Ctrl_1hmlsa5", "ASAH1_fed", "ASAH1_1hmlsa5"))
-  )
+  mutate(Group = factor(Group, levels = group_levels_fixed))
 
-# Colors and order
-group_colors <- c(
+# 6) Plot PDF only
+group_colors_fixed <- c(
   "Ctrl_fed" = "grey70",
-  "Ctrl_1hmlsa5" = "grey90",
+  "Ctrl_1hMLSA5" = "grey90",
   "ASAH1_fed" = "dodgerblue",
-  "ASAH1_1hmlsa5" = "skyblue"
+  "ASAH1_1hMLSA5" = "skyblue"
 )
 
-# Helper to sanitize measurement names for filenames
-sanitize_name <- function(x) {
-  gsub("[^A-Za-z0-9]+", "_", x)
-}
+sanitize_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
 
-# Plot and save per measurement
 invisible(
   ogb5n_group_summary %>%
     split(.$Measurement) %>%
-    imap(function(df_plot, meas_name) {
+    purrr::imap(function(df_plot, meas_name) {
       p <- ggplot(df_plot, aes(x = Group, y = group_mean, fill = Group)) +
         geom_col(width = 0.7) +
-        geom_errorbar(aes(ymin = group_mean - group_sem, ymax = group_mean + group_sem),
-                      width = 0.2, linewidth = 0.4) +
-        scale_fill_manual(values = group_colors, guide = "none") +
-        labs(
-          title = meas_name,
-          x = NULL,
-          y = "Mean per repeat"
-        ) +
+        geom_errorbar(aes(ymin = group_mean - group_sem, ymax = group_mean + group_sem), width = 0.2, linewidth = 0.4) +
+        scale_fill_manual(values = group_colors_fixed, guide = "none") +
+        labs(title = meas_name, x = NULL, y = "Mean per repeat") +
         theme_bw() +
-        theme(
-          panel.grid = element_blank(),
-          plot.title = element_text(size = 11, face = "bold")
-        )
-      fname_base <- paste0("bar_mean_", sanitize_name(meas_name))
-      ggsave(filename = file.path(out_dir_ogb5n, paste0(fname_base, ".pdf")),
-             plot = p, width = 6, height = 4, device = cairo_pdf)
-      ggsave(filename = file.path(out_dir_ogb5n, paste0(fname_base, ".png")),
-             plot = p, width = 6, height = 4, dpi = 300)
+        theme(panel.grid = element_blank(), plot.title = element_text(size = 11, face = "bold"))
+      ggsave(file.path(out_dir_ogb5n, paste0("bar_mean_", sanitize_name(meas_name), ".pdf")),
+             plot = p, width = 6, height = 4, device = "pdf")
     })
 )
 
-# Also save the per object tidy table with parsed metadata
-write_csv(
-  ogb5n_long %>%
-    select(ImageNumber, FileName_OGB5N, Genotype, Treatment, RepeatID, Group, Measurement, Value),
-  file.path(out_dir_ogb5n, "OGB5N_perObject_long_with_metadata.csv")
-)
 
-message("Done. Outputs written to: ", out_dir_ogb5n)
+
+# Optional quick check
+ogb5n_group_summary %>% select(Measurement, Group, n_repeats, group_mean) %>% arrange(Measurement, Group) %>% print(n = 40)
 ```
 
 
-# II. Data input & output dir 
-```{r}
-# -------------------
-# DEFINE INPUT  
-# -------------------
-th_summary <- read.csv("/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/results/TH_quantification_summary.csv")
-
-# -------------------
-# DEFINE OUTPUT DIR  
-# -------------------
-theval_outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/eval"
-dir.create(theval_outdir, showWarnings = FALSE, recursive = TRUE)
-
-```
-
-
-
-# III. plot data and save as pdf
-```{r}
-# --- 1. Add genotype and neurontype columns
-th_summary <- th_summary %>%
-  mutate(
-    neurontype = case_when(
-      str_detect(file, "iN")  ~ "iN",
-      str_detect(file, "iDA") ~ "iDA",
-      TRUE ~ NA_character_
-    ),
-    genotype = case_when(
-      str_detect(file, "Ctrl")  ~ "Ctrl",
-      TRUE ~ NA_character_
-    ),
-    neurontype = factor(neurontype, levels = c("iN", "iDA"))
-  )
-
-# --- 2. Aggregate with mean & SD
-agg_df <- th_summary %>%
-  group_by(genotype, neurontype) %>%
-  summarise(
-    PercentPos_mean = mean(percent_th_positive, na.rm = TRUE),
-    PercentPos_sd   = sd(percent_th_positive, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(PercentNeg_mean = 100 - PercentPos_mean)
-
-# --- 3. Pivot longer for plotting
-stacked_df <- agg_df %>%
-  pivot_longer(
-    cols = c(PercentPos_mean, PercentNeg_mean),
-    names_to = "THstatus",
-    values_to = "Percent"
-  ) %>%
-  mutate(
-    THstatus = ifelse(THstatus == "PercentPos_mean", "TH+", "TH−"),
-    Group = paste(genotype, THstatus, sep = "_"),
-    THstatus = factor(THstatus, levels = c("TH+", "TH−"))
-  )
-
-# --- 4. Compute label positions
-stacked_df <- stacked_df %>%
-  group_by(genotype, neurontype) %>%
-  arrange(desc(THstatus)) %>%
-  mutate(
-    ypos = cumsum(Percent) - Percent / 2,
-    label = paste0(round(Percent), "%")
-  ) %>%
-  ungroup()
-
-# --- 5. Define colors
-group_colors <- c(
-  "Ctrl_TH+" = "grey50",
-  "Ctrl_TH−" = "grey70"
-)
-
-# --- Build errorbar data (only TH+ rows, includes SD)
-errorbar_df <- agg_df %>%
-  transmute(
-    genotype,
-    neurontype,
-    Percent = PercentPos_mean,
-    PercentPos_sd
-  )
-
-# --- 6. Plot with error bars for TH+
-th_stacked_plot <- ggplot(stacked_df, aes(x = genotype, y = Percent, fill = Group)) +
-  geom_bar(stat = "identity", position = "stack", color = "black") +
-  geom_errorbar(
-    data = errorbar_df,
-    aes(
-      x = genotype,
-      y = Percent,
-      ymin = Percent - PercentPos_sd,
-      ymax = Percent + PercentPos_sd
-    ),
-    inherit.aes = FALSE,
-    width = 0.2,
-    color = "black"
-  ) +
-  geom_text(aes(label = label, y = ypos), color = "white", size = 2.5) +
-  facet_wrap(~ neurontype, nrow = 1) +
-  labs(
-    title = "% TH+ vs TH− Cells by Genotype",
-    y = "Percent of Cells",
-    x = "Genotype"
-  ) +
-  scale_fill_manual(values = group_colors) +
-  scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +
-  theme_bw(base_size = 7) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid = element_blank(),
-    legend.position = "bottom"
-  )
-
-# --- 7. Save
-ggsave(filename = file.path(theval_outdir, "TH_positive_vs_negative_stacked.pdf"),
-       plot = th_stacked_plot, width = 2, height = 4, device = cairo_pdf)
-```
