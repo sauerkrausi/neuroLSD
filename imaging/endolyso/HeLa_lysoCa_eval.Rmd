@@ -22,6 +22,7 @@ library(tidyr)
 library(ggplot2)
 library(tibble)
 library(purrr)
+library(patchwork)
 
 # For PDF export
 library(Cairo)    
@@ -187,55 +188,70 @@ write_csv(planned_tbl, file.path(out_dir_ogb5n, "OGB5N_stats_planned_contrasts_w
 
 # V. Summarize, plot data & save summary
 ```{r}
-# --- 7. Group summary and plotting with jittered per-repeat points
-ogb5n_group_summary <- ogb5n_rep_summary %>%
-  group_by(Measurement, Group) %>%
-  summarise(
-    n_repeats = n(),
-    group_mean = mean(mean_value, na.rm = TRUE),
-    group_sd = sd(mean_value, na.rm = TRUE),
-    group_sem = group_sd / sqrt(n_repeats),
-    .groups = "drop"
-  ) %>%
-  mutate(Group = factor(Group, levels = group_levels_fixed))
+# --- 7a. Bar plots
+split(ogb5n_group_summary, ogb5n_group_summary$Measurement) %>%
+  purrr::iwalk(function(df_bar, meas_name) {
 
-invisible(
-  split(ogb5n_group_summary, ogb5n_group_summary$Measurement) %>%
-    imap(function(df_bar, meas_name) {
+    df_pts <- ogb5n_rep_summary %>%
+      dplyr::filter(Measurement == meas_name) %>%
+      dplyr::mutate(Group = factor(Group, levels = levels(df_bar$Group)))
 
-      df_pts <- ogb5n_rep_summary %>%
-        filter(Measurement == meas_name) %>%
-        mutate(Group = factor(Group, levels = levels(df_bar$Group)))
+    p_bar <- ggplot(df_bar, aes(x = Group, y = group_mean, fill = Group)) +
+      geom_col(width = 0.7) +
+      geom_errorbar(aes(ymin = group_mean - group_sem, ymax = group_mean + group_sem),
+                    width = 0.2, linewidth = 0.4) +
+      geom_point(
+        data = df_pts,
+        aes(x = Group, y = mean_value),
+        position = position_jitter(width = 0.1, height = 0, seed = 123),
+        size = 1.6,
+        alpha = 0.85,
+        inherit.aes = FALSE
+      ) +
+      scale_fill_manual(values = group_colors_fixed, guide = "none") +
+      labs(title = meas_name, x = NULL, y = "Mean per repeat") +
+      theme_bw() +
+      theme(panel.grid = element_blank(), plot.title = element_text(size = 10, face = "bold"))
 
-      p <- ggplot(df_bar, aes(x = Group, y = group_mean, fill = Group)) +
-        geom_col(width = 0.7) + 
-        geom_errorbar(aes(ymin = group_mean - group_sem, ymax = group_mean + group_sem), width = 0.2, linewidth = 0.4) +
-        geom_point(
-          data = df_pts,
-          aes(x = Group, y = mean_value),
-          position = position_jitter(width = 0.1, height = 0, seed = 123),
-          size = 1.6,
-          alpha = 0.85,
-          inherit.aes = FALSE
-        ) +
-        scale_fill_manual(values = group_colors_fixed, guide = "none") +
-        labs(title = meas_name, x = NULL, y = "Mean per repeat") +
-        theme_bw() +
-        theme(panel.grid = element_blank(), plot.title = element_text(size = 10, face = "bold"))
+    ggsave(
+      filename = file.path(out_dir_ogb5n, paste0("bar_mean_", sanitize_name(meas_name), ".pdf")),
+      plot = p_bar, width = 4, height = 4, device = "pdf"
+    )
+  })
 
-      ggsave(
-        filename = file.path(out_dir_ogb5n, paste0("bar_mean_", sanitize_name(meas_name), ".pdf")),
-        plot = p, width = 4, height = 4, device = "pdf"
-      )
-    })
-)
+# --- 7b. Violin plots with boxplots + jitter
+split(ogb5n_group_summary, ogb5n_group_summary$Measurement) %>%
+  purrr::iwalk(function(df_bar, meas_name) {
 
+    df_pts <- ogb5n_rep_summary %>%
+      dplyr::filter(Measurement == meas_name) %>%
+      dplyr::mutate(Group = factor(Group, levels = levels(df_bar$Group)))
+
+    p_violin <- ggplot(df_pts, aes(x = Group, y = mean_value, fill = Group)) +
+      geom_violin(trim = FALSE, width = 0.8, adjust = 1.2, linewidth = 0.3) +
+      geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white", linewidth = 0.35) +
+      geom_point(
+        position = position_jitter(width = 0.1, height = 0, seed = 123),
+        size = 1.4,
+        alpha = 0.8
+      ) +
+      scale_fill_manual(values = group_colors_fixed, guide = "none") +
+      labs(title = paste(meas_name, "(per-repeat means)"),
+           x = NULL, y = "Per-repeat means") +
+      theme_bw() +
+      theme(panel.grid = element_blank(), plot.title = element_text(size = 10, face = "bold"))
+
+    ggsave(
+      filename = file.path(out_dir_ogb5n, paste0("violin_", sanitize_name(meas_name), ".pdf")),
+      plot = p_violin, width = 4, height = 4, device = "pdf"
+    )
+  })
 
 # --- 8. Quick table check
 ogb5n_group_summary %>%
-  select(Measurement, Group, n_repeats, group_mean) %>%
-  arrange(Measurement, Group) %>%
+  dplyr::select(Measurement, Group, n_repeats, group_mean) %>%
+  dplyr::arrange(Measurement, Group) %>%
   print(n = 40)
 
-write_csv(ogb5n_group_summary, file.path(out_dir_ogb5n, "OGB5N_stats_summary.csv"))
+readr::write_csv(ogb5n_group_summary, file.path(out_dir_ogb5n, "OGB5N_stats_summary.csv"))
 ```
