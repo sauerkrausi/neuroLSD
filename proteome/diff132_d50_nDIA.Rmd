@@ -1702,15 +1702,14 @@ make_vatpase_color_table <- function(
     "ATP6V1G1","ATP6V1G2","ATP6V1G3",
     "ATP6V1H",
     # V0 sector (includes full c-ring and small subunits)
-    "ATP6V0A1","ATP6V0A2","ATP6V0A3","ATP6V0A4",   # a
-    "ATP6V0C",                                     # c
-    "ATP6V0B",                                     # c″
-    "ATP6V0D1","ATP6V0D2",                         # d
-    "ATP6V0E1","ATP6V0E2",                         # e
-    "RNASEK",                                      # f (human counterpart)
+    "ATP6V0A1","ATP6V0A2","ATP6V0A3","ATP6V0A4",
+    "ATP6V0C", "ATP6V0B",
+    "ATP6V0D1","ATP6V0D2",
+    "ATP6V0E1","ATP6V0E2",
+    "RNASEK",
     # Accessory subunits
     "ATP6AP1","ATP6AP2",
-    # Assembly/regulatory peripheral factors
+    # Assembly or regulatory factors
     "DMXL1","DMXL2","WDR7","ROGDI"
   ),
   out_dir = out_dir_d50_ascd_avg,
@@ -1745,7 +1744,7 @@ make_vatpase_color_table <- function(
     tibble::tibble(chain = "V", gene = "ATP6AP2")
   )
 
-  # 1) Build global log2FC for scaling from all genotypes, day 50
+  # --- 1. Build long table with log2FC at day 50
   global_long_df <- input_df %>%
     dplyr::filter(Genes %in% vatpase_gene_set, day == 50) %>%
     dplyr::transmute(
@@ -1755,27 +1754,63 @@ make_vatpase_color_table <- function(
       log2FC = safe_log2fc(mean_ko, mean_ctrl, pseudocount)
     )
 
-  # Global domain ignoring non-finite
-  global_vals_vec <- global_long_df$log2FC[is.finite(global_long_df$log2FC)]
-  if (length(global_vals_vec) == 0) stop("No finite log2FC values found for vATPase genes.")
+  # --- 2. Genotype-only symmetric domain across iN and iDA
+  geno_vals_vec <- global_long_df %>%
+    dplyr::filter(genotype == user_genotype, neuron %in% c("iN","iDA")) %>%
+    dplyr::pull(log2FC)
+  geno_vals_vec <- geno_vals_vec[is.finite(geno_vals_vec)]
+  if (length(geno_vals_vec) == 0) stop("No finite log2FC values for this genotype.")
+  geno_lim_val <- max(abs(range(geno_vals_vec, na.rm = TRUE)))
+  domain_vec <- c(-geno_lim_val, geno_lim_val)
 
-  global_lim_val <- max(abs(range(global_vals_vec, na.rm = TRUE)))
-  domain_vec <- c(-global_lim_val, global_lim_val)
-
-  # 2) Color mapper: blue - white - red across the symmetric domain
+  # --- 3. Color mapper blue white red using genotype-only domain
   col_fn_local <- scales::col_numeric(
     palette = colorRampPalette(c("#2c7bb6", "white", "#d7191c"))(201),
     domain = domain_vec,
     na.color = "#B0B0B0"
   )
 
-  # 3) Subset to user-selected genotype for both neurons and keep all genes
+  # --- 3a. Save color scale CSV
+  colorscale_df <- tibble::tibble(
+    value = seq(domain_vec[1], domain_vec[2], length.out = 201),
+    color = toupper(col_fn_local(value))
+  )
+  colorscale_file <- file.path(out_dir, paste0("vATPase_colorscale_", user_genotype, ".csv"))
+  write.csv(colorscale_df, colorscale_file, row.names = FALSE)
+
+  # --- 3b. Save color scale PDF
+  cs_plot_df <- tibble::tibble(
+    x = seq(domain_vec[1], domain_vec[2], length.out = 500),
+    y = 1,
+    z = x
+  )
+  colorscale_pdf <- file.path(out_dir, paste0("vATPase_colorscale_", user_genotype, ".pdf"))
+  grDevices::cairo_pdf(colorscale_pdf, width = 4, height = 0.6)
+  print(
+    ggplot2::ggplot(cs_plot_df, ggplot2::aes(x = x, y = y, fill = z)) +
+      ggplot2::geom_raster() +
+      ggplot2::scale_fill_gradient2(
+        low = "#2c7bb6", mid = "white", high = "#d7191c",
+        midpoint = 0, limits = domain_vec, guide = "none"
+      ) +
+      ggplot2::scale_x_continuous(breaks = c(domain_vec[1], 0, domain_vec[2])) +
+      ggplot2::labs(x = "log2FC", y = NULL, title = NULL) +
+      ggplot2::theme_minimal(base_size = 8) +
+      ggplot2::theme(
+        panel.grid = ggplot2::element_blank(),
+        axis.text.y = ggplot2::element_blank(),
+        axis.ticks.y = ggplot2::element_blank(),
+        plot.margin = ggplot2::margin(4, 8, 4, 8)
+      )
+  )
+  grDevices::dev.off()
+
+  # --- 4. Build per-neuron tables and save CSVs
   build_one_neuron_tbl <- function(neuron_label_val) {
     df_neuron_df <- global_long_df %>%
       dplyr::filter(genotype == user_genotype, neuron == neuron_label_val) %>%
       dplyr::select(Genes, log2FC)
 
-    # Ensure all vATPase genes are present; fill missing with NA
     df_full_df <- tibble::tibble(Genes = vatpase_gene_set) %>%
       dplyr::left_join(df_neuron_df, by = "Genes") %>%
       dplyr::mutate(
@@ -1783,7 +1818,6 @@ make_vatpase_color_table <- function(
       ) %>%
       dplyr::rename(Gene = Genes)
 
-    # Add chain mapping and ChimeraX command
     out_with_chains_df <- chain_gene_map %>%
       dplyr::left_join(df_full_df, by = c("gene" = "Gene")) %>%
       dplyr::mutate(
@@ -1791,28 +1825,30 @@ make_vatpase_color_table <- function(
       ) %>%
       dplyr::select(Gene = gene, Chain = chain, Color, log2FC, chimerax_command)
 
-    # Order chains: 0–9 then A–Z
     chain_levels_vec <- c(as.character(0:9), LETTERS)
     out_with_chains_df <- out_with_chains_df %>%
       dplyr::mutate(Chain = factor(Chain, levels = chain_levels_vec)) %>%
       dplyr::arrange(Chain)
 
-    # Save CSV
     out_file_path <- file.path(out_dir, paste0("vATPase_colors_", neuron_label_val, "_", user_genotype, "_6wm2.csv"))
     write.csv(out_with_chains_df, out_file_path, row.names = FALSE)
-    message("Saved: ", out_file_path)
-
     out_with_chains_df
   }
 
   tbl_iN  <- build_one_neuron_tbl("iN")
   tbl_iDA <- build_one_neuron_tbl("iDA")
 
-  list(iN = tbl_iN, iDA = tbl_iDA, scale_limits = domain_vec)
+  list(
+    iN = tbl_iN,
+    iDA = tbl_iDA,
+    scale_limits = domain_vec,
+    colorscale_file = colorscale_file,
+    colorscale_pdf = colorscale_pdf
+  )
 }
 
-# Example call:
-make_vatpase_color_table("GBA1")
+# Call function for genotype of choice:
+make_vatpase_color_table("MCOLN1")
 
 
 ```
