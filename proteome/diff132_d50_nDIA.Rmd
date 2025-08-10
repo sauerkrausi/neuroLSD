@@ -1684,6 +1684,102 @@ d50_vATPase_plot
 ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_vATPase.pdf"), d50_vATPase_plot, width = 4, height = 3, device = cairo_pdf)
 
 
+
+
+# --------------------------------------------------- #
+# Function: vATPase color table by genotype (iN and iDA)
+# --------------------------------------------------- #
+make_vatpase_color_table <- function(
+  user_genotype,
+  input_df = clean_d50_transformed_df,
+  vatpase_gene_set = c(
+    # V1 sector
+    "ATP6V1A",
+    "ATP6V1B1","ATP6V1B2",
+    "ATP6V1C1","ATP6V1C2",
+    "ATP6V1D",
+    "ATP6V1E1","ATP6V1E2",
+    "ATP6V1F",
+    "ATP6V1G1","ATP6V1G2","ATP6V1G3",
+    "ATP6V1H",
+  
+    # V0 sector (includes full c-ring and small subunits)
+    "ATP6V0A1","ATP6V0A2","ATP6V0A3","ATP6V0A4",   # a
+    "ATP6V0C",                                    # c
+    "ATP6V0B",                                    # c″ (proteolipid family)
+    "ATP6V0D1","ATP6V0D2",                         # d
+    "ATP6V0E1","ATP6V0E2",                         # e
+    "RNASEK",                                      # f (human counterpart)
+  
+    # Accessory subunits that sit in/around V0
+    "ATP6AP1","ATP6AP2",                           # AC45 / (pro)renin receptor
+  
+    # Assembly/regulatory “peripheral” factors frequently bound to lysosomal V-ATPase
+    "DMXL1","DMXL2","WDR7","ROGDI"
+  ),
+  out_dir = out_dir_d50_ascd_avg
+) {
+  stopifnot(dir.exists(out_dir))
+
+  # 1) Build global log2FC for scaling from all genotypes, day 50
+  global_long <- input_df %>%
+    filter(Genes %in% vatpase_gene_set, day == 50) %>%
+    transmute(
+      Genes,
+      genotype,
+      neuron,
+      log2FC = log2(mean_ko / mean_ctrl)
+    )
+
+  # Global domain ignoring non-finite
+  global_vals <- global_long$log2FC[is.finite(global_long$log2FC)]
+  if (length(global_vals) == 0) stop("No finite log2FC values found for vATPase genes.")
+
+  global_min <- min(global_vals, na.rm = TRUE)
+  global_max <- max(global_vals, na.rm = TRUE)
+
+  # Symmetric domain around 0 improves blue–white–red mapping
+  global_limit <- max(abs(global_min), abs(global_max))
+  domain <- c(-global_limit, global_limit)
+
+  # 2) Color mapper: blue–white–red across the symmetric domain
+  # Shades: "#2c7bb6" blue, "#ffffbf" white-ish, "#d7191c" red
+  col_fn <- scales::col_numeric(
+    palette = colorRampPalette(c("#2c7bb6", "#ffffbf", "#d7191c"))(201),
+    domain = domain,
+    na.color = "#B0B0B0"  # grey for missing
+  )
+
+  # 3) Subset to user-selected genotype for both neurons and keep all genes
+  build_one_neuron <- function(neuron_label) {
+    df_neuron <- global_long %>%
+      filter(genotype == user_genotype, neuron == neuron_label) %>%
+      select(Genes, log2FC)
+
+    # Ensure all vATPase genes are present; fill missing with NA
+    df_full <- tibble(Genes = vatpase_gene_set) %>%
+      left_join(df_neuron, by = "Genes") %>%
+      mutate(
+        Color = col_fn(log2FC)
+      ) %>%
+      select(Gene = Genes, Color, log2FC)
+
+    # Save CSV
+    out_file <- file.path(out_dir, paste0("vATPase_colors_", neuron_label, "_", user_genotype, ".csv"))
+    write.csv(df_full, out_file, row.names = FALSE)
+    message("Saved: ", out_file)
+    return(df_full)
+  }
+
+  tbl_iN  <- build_one_neuron("iN")
+  tbl_iDA <- build_one_neuron("iDA")
+
+  list(iN = tbl_iN, iDA = tbl_iDA, scale_limits = domain)
+}
+
+# Example call:
+make_vatpase_color_table("MCOLN1")
+
 ```
 
 #### VIIb2. SV & SNARE plot by neuon x genotype; ascending order 
