@@ -1503,9 +1503,8 @@ fill_colors <- c("ASAH1" = "dodgerblue", "Ctrl" = "grey70")
 selected_annotations <- c("SVfusion", "Svendocytosis", "Svexocytosis", 
                           "SynapseSVs", "Presynaptic", "Postsynaptic","vATPase")
 
-vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
-                   "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
-                   "SYP", "DMXL1", "DMXL2", "PODXL", "PODXL2")
+vatpase_genes <- c("ATP6V1A","ATP6V1B1","ATP6V1B2","ATP6V1C1","ATP6V1C2","ATP6V1D","ATP6V1E1","ATP6V1E2","ATP6V1F","ATP6V1G1","ATP6V1G2","ATP6V1G3","ATP6V1H","ATP6V0A1","ATP6V0A2","ATP6V0A3","ATP6V0A4",
+  "ATP6V0C","ATP6V0B","ATP6V0D1","ATP6V0D2","ATP6V0E1","ATP6V0E2","RNASEK","ATP6AP1","ATP6AP2","DMXL1","DMXL2","WDR7","ROGDI")
 
 
 # --- Step 2. Prepare data
@@ -1774,82 +1773,98 @@ library(ggdist)
 #install.packages("gghalves")
 library(gghalves)
 
+# --- Step 0. Define vATPase and lysohydrolase gene lists
+vatpase_genes <- c("ATP6V1A","ATP6V1B1","ATP6V1B2","ATP6V1C1","ATP6V1C2","ATP6V1D","ATP6V1E1","ATP6V1E2","ATP6V1F","ATP6V1G1","ATP6V1G2","ATP6V1G3","ATP6V1H","ATP6V0A1","ATP6V0A2","ATP6V0A3","ATP6V0A4",
+  "ATP6V0C","ATP6V0B","ATP6V0D1","ATP6V0D2","ATP6V0E1","ATP6V0E2","RNASEK","ATP6AP1","ATP6AP2","DMXL1","DMXL2","WDR7","ROGDI")
 
-# --- Step 0. Define vATPase genes 
-vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "ATP6V1A", "ATP6V0D1",
-                   "ATP6AP1", "ATP6V1F", "ATP6V0A1", "ATP6V0A2", "ATP6V1H", "ATP6V1D", "ROGDI",
-                   "SYP", "DMXL1", "DMXL2", "PODXL", "PODXL2")
+lysohydrolases <- c(
+  "ASAH1","GBA","ARSA","ARSB","GALNS","IDUA","GLA","NEU1","MAN2B1",
+  "GLB1","HEXA","GNS","HEXB","CTSA","CTSZ","TPP1","NAGLU","CTSL",
+  "CTSB","NAGA","LGMN"
+)
 
-
-# # --- Step 1: Prepare scatter_df with categorical y-axis
+# --- Step 1. Prepare scatter_df with categorical y-axis
 scatter_df <- diff136_df_annotated %>%
-  filter(Gene.Symbol %in% vatpase_genes | Nucleus == 1 | `Lysosome` == 1) %>%
+  filter(
+    Gene.Symbol %in% vatpase_genes |
+    Gene.Symbol %in% lysohydrolases |
+    Nucleus == 1 |
+    Lysosome == 1
+  ) %>%
   mutate(
     y_group = case_when(
-      Gene.Symbol %in% vatpase_genes      ~ "vATPase",
-      `Lysosome` == 1               ~ "Lysosome",
-      Nucleus == 1                        ~ "Nucleus",
-      TRUE                                ~ NA_character_
+      Gene.Symbol %in% lysohydrolases ~ "Hydrolases",
+      Gene.Symbol %in% vatpase_genes  ~ "vATPase",
+      Lysosome == 1                   ~ "Lysosome",
+      #Nucleus == 1                    ~ "Nucleus",
+      TRUE                            ~ NA_character_
     )
   ) %>%
-  filter(!is.na(y_group))
-
-# put nucleus at bottom 
-scatter_df <- scatter_df %>%
+  filter(!is.na(y_group)) %>%
   mutate(
-    y_group = factor(y_group, levels = c("Nucleus", "Lysosome", "vATPase"))
+    # put Nucleus at bottom in the flipped plot
+    y_group = factor(y_group, levels = c("Nucleus","Lysosome","Hydrolases","vATPase"))
   )
 
-# --- Step 2. create plot 
-ASAH1_axonXsoma_loc_rainbowplot <- ggplot(scatter_df, aes(y = log2FC_ASAH1_Axon.ASAH1_Soma, x = y_group, fill = y_group)) + 
-  # 1. Aligned half-point jitter
+# --- Step 2a. Select top labels per group
+n_per_group <- 5
+label_df <- bind_rows(
+  scatter_df %>%
+    group_by(y_group) %>%
+    slice_max(order_by = log2FC_Ctrl_Axon.Ctrl_Soma, n = n_per_group, with_ties = FALSE),
+  scatter_df %>%
+    group_by(y_group) %>%
+    slice_min(order_by = log2FC_Ctrl_Axon.Ctrl_Soma, n = n_per_group, with_ties = FALSE)
+) %>% ungroup()
+
+
+# --- Step 3. Create plot
+axonXsoma_loc_rainbowplot <- ggplot(
+  scatter_df,
+  aes(y = log2FC_Ctrl_Axon.Ctrl_Soma, x = y_group, fill = y_group)
+) +
   gghalves::geom_half_point(
-    side = "b",            # bottom side (now works because axis is flipped)
+    side = "b",
     range_scale = 0.2,
     alpha = 0.2,
     size = 1,
     shape = 16
   ) +
-  
-  # 2. Add dashed zero line (horizontal now)
   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
-
-  # 3. Half-eye distribution
   ggdist::stat_halfeye(
-    adjust = 2, 
-    width = 0.6, 
-    .width = 0, 
-    justification = -0.2, 
+    adjust = 2,
+    width = 0.6,
+    .width = 0,
+    justification = -0.2,
     point_colour = NA
   ) +
-
-  # 4. Boxplot
-  geom_boxplot(
-    width = 0.15, 
-    outlier.shape = NA
+  geom_boxplot(width = 0.15, outlier.shape = NA) +
+  # --- Step 3a. Label top pos/neg per annotation
+  geom_text_repel(
+    data = label_df,
+    aes(label = Gene.Symbol),
+    position = position_nudge(x = -0.25),
+    size = 2,
+    min.segment.length = 0,
+    max.overlaps = Inf,
+    box.padding = 0.2,
+    point.padding = 0.1,
+    segment.size = 0.2
   ) +
-
-  # 5. Coloring & theming
   scale_fill_manual(values = c(
-    "Nucleus"   = "grey30",
-    "Lysosome"  = "#bdc9e1",
-    "vATPase"   = "dodgerblue3"
+    "Lysosome" = "grey70",
+    "Hydrolases" = "firebrick",
+    "vATPase" = "dodgerblue3"
   )) +
-  coord_flip() + ## flip graph so it looks still like landscape mode 
+  coord_flip() +
   theme_bw(base_size = 6) +
-  labs(y = "log2FC ASAH1 Axon vs Soma", x = NULL, title = "Localization Organelle Distribution in Axon vs Soma") +
-  theme(
-    panel.grid = element_blank(),
-    legend.position = "none"
-  )
+  labs(y = "log2FC Control Projection vs Soma", x = NULL,
+       title = "Localization Organelle Distribution in Axon vs Soma") +
+  theme(panel.grid = element_blank(), legend.position = "none")
 
-
-# --- Step 3. save pdf file 
-ggsave(file.path(out_dir_diff136_rainbow, "diff136_lysosome_vATPase_nucleus_scatter.pdf"),
-  ASAH1_axonXsoma_loc_rainbowplot,
-  width = 10, height = 8, device = cairo_pdf
-)
-
+# --- Step 4. Save PDF
+ggsave(file.path(out_dir_diff136_rainbow, "diff136_lysosome_hydrolases_vATPase_nucleus_scatter.pdf"),
+  axonXsoma_loc_rainbowplot, width = 8, height = 3, device = cairo_pdf)
 
 
 ```
@@ -2220,85 +2235,6 @@ plot_ror_annotation_distribution(
 
 ```
 
-
-
-
-### IVbc. Top5 RoR GO eval
-```{r}
-# ─────────────────────────────────────────────────────────────────────────────
-# GO for top-5 RoR annotations: build inputs (up/down) + run GO once
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Reuse sig_hits_tbl if available, else read from CSV as fallback
-go_sig_tbl <- if (exists("sig_hits_tbl")) {
-  message("Using in-memory sig_hits_tbl")
-  sig_hits_tbl
-} else {
-  fallback_path <- file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv")
-  if (!file.exists(fallback_path)) stop("sig_hits_tbl not in memory and CSV not found at: ", fallback_path)
-  message("Loading sig_hits_tbl from CSV fallback")
-  read.csv(fallback_path, stringsAsFactors = FALSE)
-}
-
-# Ensure top5 vector is character
-top5_annotations_by_ror <- as.character(top5_annotations_by_ror)
-
-# Align to top 5 RoR and keep up and down
-go_ann_to_use <- intersect(unique(go_sig_tbl$Annotation), top5_annotations_by_ror)
-
-sig_hits_top5 <- go_sig_tbl %>%
-  dplyr::filter(Annotation %in% go_ann_to_use, SigStatus %in% c("up","down")) %>%
-  dplyr::mutate(GeneList = ifelse(is.na(GeneList), "", GeneList))
-
-# Write GO input CSVs
-dir.create(out_dir_diff136_GOror, showWarnings = FALSE, recursive = TRUE)
-
-sig_hits_top5_long <- sig_hits_top5 %>%
-  tidyr::separate_rows(GeneList, sep = ";", convert = FALSE) %>%
-  dplyr::rename(GeneSymbol = GeneList) %>%
-  dplyr::filter(nzchar(GeneSymbol)) %>%
-  dplyr::distinct(Annotation, SigStatus, GeneSymbol)
-
-readr::write_csv(sig_hits_top5_long,
-  file.path(out_dir_diff136_GOror, "GO_inputs_top5_annotations_up_down_long.csv"))
-
-sig_hits_top5_wide <- sig_hits_top5_long %>%
-  dplyr::group_by(Annotation, SigStatus) %>%
-  dplyr::summarise(GeneList = paste(sort(unique(GeneSymbol)), collapse = ";"), .groups = "drop") %>%
-  tidyr::pivot_wider(names_from = SigStatus, values_from = GeneList)
-
-readr::write_csv(sig_hits_top5_wide,
-  file.path(out_dir_diff136_GOror, "GO_inputs_top5_annotations_up_down_wide.csv"))
-
-# Run GO per annotation and direction, save plots and CSVs
-invisible(lapply(go_ann_to_use, function(ann_term) {
-  lapply(c("up","down"), function(dir_flag) {
-    gene_vec <- sig_hits_top5_long %>%
-      dplyr::filter(Annotation == ann_term, SigStatus == dir_flag) %>%
-      dplyr::pull(GeneSymbol) %>%
-      unique()
-
-    if (length(gene_vec) >= 5) {
-      plot_topGO_for_geneset(
-        gene_set = gene_vec,
-        background_genes = unique(diff136_df_annotated$Gene.Symbol),
-        tag = paste0("Top5_", ann_term, "_", dir_flag),
-        out_dir = out_dir_diff136_GOror
-      )
-    }
-    NULL
-  })
-}))
-
-# Summary for QC purposes
-go_manifest <- sig_hits_top5_long %>%
-  dplyr::count(Annotation, SigStatus, name = "n_genes") %>%
-  tidyr::complete(Annotation = go_ann_to_use, SigStatus = c("up","down"), fill = list(n_genes = 0)) %>%
-  dplyr::arrange(match(Annotation, top5_annotations_by_ror), SigStatus)
-
-readr::write_csv(go_manifest,
-  file.path(out_dir_diff136_GOror, "GO_inputs_top5_manifest_counts.csv"))
-```
 
 
 
