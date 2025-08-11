@@ -1265,29 +1265,49 @@ values_df <- df_clean_heatmap %>%
   summarise(value = mean(value, na.rm = TRUE), .groups = "drop") %>%
   mutate(RowID = paste(condition, neuron, sep = "_"))
 
-# --- 3. Left join to preserve full layout and reshape
+# --- 4. Build matrix
 heatmap_matrix_abundance <- all_rows %>%
-  left_join(values_df, by = c("Genes", "neuron", "condition", "RowID")) %>%
+  left_join(values_df, by = c("Genes","neuron","condition","RowID")) %>%
   select(Genes, RowID, value) %>%
   pivot_wider(names_from = Genes, values_from = value) %>%
   column_to_rownames("RowID") %>%
   as.matrix()
 
-# --- 4. Plot heatmap & save
-pdf(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_RdYlBu.pdf"),
+# --- 5. Clip high values for better contrast at low end
+cap_value <- 10000000
+heatmap_matrix_capped <- pmin(heatmap_matrix_abundance, cap_value)
+
+# --- 6. Save CSV copies (raw and capped)
+readr::write_csv(
+  heatmap_matrix_abundance %>% as.data.frame() %>% rownames_to_column("RowID"),
+  file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_matrix_raw.csv")
+)
+readr::write_csv(
+  heatmap_matrix_capped %>% as.data.frame() %>% rownames_to_column("RowID"),
+  file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_matrix_capped.csv")
+)
+
+# --- 7. Plot heatmap with clipped range
+min_val <- suppressWarnings(min(heatmap_matrix_capped, na.rm = TRUE))
+bk <- seq(min_val, cap_value, length.out = 100)
+
+pdf(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_RdYlBu_capped.pdf"),
     width = 8, height = 6)
 pheatmap(
-  heatmap_matrix_abundance,
-  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  heatmap_matrix_capped,
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(bk) - 1),
+  breaks = bk,
   cluster_rows = FALSE,
   cluster_cols = FALSE,
   na_col = "grey70",
   cellheight = 15,
   cellwidth = 15,
   border_color = "black",
-  main = "LSD Protein Abundance (Control vs KO) at Day 50"
+  legend_labels = NA,
+  main = "LSD Protein Abundance (Control vs KO) at Day 50 - capped"
 )
 dev.off()
+
 
 ```
 
