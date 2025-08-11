@@ -1673,6 +1673,68 @@ write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist, "dif
 ```
 
 
+### IVdb. GO eval of IDs in TOP 5 sig up / down categories 
+```{r}
+# --- GO on RoR up/down genes for top-5 annotations
+# --- 1. Preconditions
+stopifnot(exists("sig_long_df"), exists("diff136_df_annotated"))
+stopifnot(exists("out_dir_diff136_GOror"))
+stopifnot(exists("plot_topGO_for_geneset"))
+
+# --- 2. Pick top-5 annotations by total RoR hits (up + down)
+ror_counts_tbl <- sig_long_df %>%
+  dplyr::filter(Type == "RatioOfRatio", SigStatus %in% c("up","down")) %>%
+  dplyr::count(Annotation, SigStatus, name = "n") %>%
+  tidyr::pivot_wider(names_from = SigStatus, values_from = n, values_fill = 0) %>%
+  dplyr::mutate(n_total = up + down) %>%
+  dplyr::arrange(dplyr::desc(n_total))
+
+ror_top5_ann <- ror_counts_tbl %>% dplyr::slice_head(n = 5) %>% dplyr::pull(Annotation)
+
+# --- 3. Build long gene list for top-5 RoR annotations
+go_ror_long <- sig_long_df %>%
+  dplyr::filter(Type == "RatioOfRatio",
+                SigStatus %in% c("up","down"),
+                Annotation %in% ror_top5_ann) %>%
+  dplyr::select(Annotation, SigStatus, Gene.Symbol) %>%
+  dplyr::distinct()
+
+# Save manifests
+readr::write_csv(ror_counts_tbl,
+                 file.path(out_dir_diff136_GOror, "RoR_top5_annotation_counts_manifest.csv"))
+readr::write_csv(go_ror_long,
+                 file.path(out_dir_diff136_GOror, "GO_inputs_RoR_top5_up_down_long.csv"))
+
+# --- 4. Run GO for each Annotation × direction if set size >= 5
+background_genes_vec <- unique(diff136_df_annotated$Gene.Symbol)
+min_genes_for_go <- 5
+
+invisible(lapply(ror_top5_ann, function(ann_term) {
+  lapply(c("up","down"), function(direction_flag) {
+    gene_vec <- go_ror_long %>%
+      dplyr::filter(Annotation == ann_term, SigStatus == direction_flag) %>%
+      dplyr::pull(Gene.Symbol) %>%
+      unique()
+
+    # Save the exact inputs used
+    readr::write_csv(tibble::tibble(GeneSymbol = gene_vec),
+                     file.path(out_dir_diff136_GOror,
+                              paste0("GO_inputs_RoR_top5_", ann_term, "_", direction_flag, ".csv")))
+
+    if (length(gene_vec) >= min_genes_for_go) {
+      plot_topGO_for_geneset(
+        gene_set = gene_vec,
+        background_genes = background_genes_vec,
+        tag = paste0("RoR_top5_", ann_term, "_", direction_flag),
+        out_dir = out_dir_diff136_GOror
+      )
+    }
+    NULL
+  })
+}))
+```
+
+
 # V. Rainbowplot of annotations markers 
 ## Va. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
 ```{r}
@@ -1764,7 +1826,6 @@ ggsave(file.path(out_dir_diff136_rainbow, "diff136_lysosome_vATPase_nucleus_scat
 
 
 ```
-
 
 
 ## IVb. Rainbowplot of User-select Annotations for axon--soma localization distribution
