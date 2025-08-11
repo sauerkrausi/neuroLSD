@@ -77,6 +77,8 @@ dir.create(out_dir_diff136_organelle_dist_norm_composite, recursive = TRUE, show
 out_dir_diff136_organelle_dist_norm_composite_euler <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked_composite/euer_plots"
 dir.create(out_dir_diff136_organelle_dist_norm_composite_euler, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_diff136_organelle_dist_ror_norm <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/RoR_norm"
+dir.create(out_dir_diff136_organelle_dist_ror_norm, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_diff136_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
 dir.create(out_dir_diff136_rainbow, recursive = TRUE, showWarnings = FALSE)
@@ -84,7 +86,7 @@ dir.create(out_dir_diff136_rainbow, recursive = TRUE, showWarnings = FALSE)
 out_dir_diff136_rainbow_RoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/ror"
 dir.create(out_dir_diff136_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
 
-
+RoR_norm
 
 out_dir_diff136_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
 dir.create(out_dir_diff136_GO, recursive = TRUE, showWarnings = FALSE)
@@ -1553,8 +1555,8 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_vatpase_synaptic_barpl
 ## IVd.  Absolute & RoR comparison of Axonal Proteome 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# Analysis of axonal proteome in Ctrl & ASAH1-/- neurons 
-# do both absolute (in genotype comparison to soma fraction) and ratio of ratio (RoR),
+# Analysis of neuronal projection proteome in Ctrl & ASAH1-/- neurons 
+# do both absolute (in genotype comparison to WC fraction) and ratio of ratio (RoR),
 # norm. to WC in genotype 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1575,6 +1577,16 @@ diff136_df_annotated <- diff136_df_annotated %>%
     TRUE                         ~ "n.s."
   ))
 
+# --- Step 3. Direction for RoR (who is enriched?)
+diff136_df_annotated <- diff136_df_annotated %>%
+  mutate(
+    enriched_in_RoR = case_when(
+      is.na(sig_RoR_ASAH1_Axon)  ~ NA_character_,
+      sig_RoR_ASAH1_Axon == "up" ~ "KO",     # (Axon/WC)_KO > (Axon/WC)_Ctrl
+      sig_RoR_ASAH1_Axon == "down" ~ "Ctrl",
+      TRUE ~ NA_character_
+    )
+  )
 
 # --- Step 4. Define relevant sig columns and annotations
 sig_cols_abs <- c("sig_ASAH1_Axon.ASAH1_Soma", "sig_Ctrl_Axon.Ctrl_Soma", "sig_ASAH1_Axon.Ctrl_Axon")
@@ -1589,22 +1601,31 @@ annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetai
 
 # --- Step 4a. Long-format: ABS comparisons
 sig_long_abs <- diff136_df_annotated %>%
-  select(Gene.Symbol, all_of(sig_cols_abs), all_of(annotation_cols)) %>%
-  pivot_longer(cols = all_of(sig_cols_abs), names_to = "Comparison", values_to = "SigStatus") %>%
-  pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
-  filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
-  mutate(Type = "Absolute")
+  dplyr::select(Gene.Symbol, all_of(sig_cols_abs), all_of(annotation_cols)) %>%
+  tidyr::pivot_longer(cols = all_of(sig_cols_abs), names_to = "Comparison", values_to = "SigStatus") %>%
+  tidyr::pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
+  dplyr::filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
+  dplyr::mutate(Type = "Absolute")
 
 # --- Step 4b. Long-format: RoR comparisons
+annotation_cols <- setdiff(annotation_cols, "Annotation")
+
 sig_long_ror <- diff136_df_annotated %>%
-  select(Gene.Symbol, all_of(sig_cols_ror), all_of(annotation_cols)) %>%
-  pivot_longer(cols = all_of(sig_cols_ror), names_to = "Comparison", values_to = "SigStatus") %>%
-  pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
-  filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
-  mutate(Type = "RatioOfRatio")
+  dplyr::select(Gene.Symbol, sig_RoR_ASAH1_Axon, enriched_in_RoR, dplyr::all_of(annotation_cols)) %>%
+  tidyr::pivot_longer(cols = dplyr::all_of(annotation_cols), names_to = "Annotation_tmp", values_to = "is_annotated") %>%
+  dplyr::filter(is_annotated == 1, sig_RoR_ASAH1_Axon %in% c("up","down")) %>%
+  dplyr::transmute(
+    Gene.Symbol,
+    Comparison = "sig_RoR_ASAH1_Axon",
+    SigStatus  = sig_RoR_ASAH1_Axon,
+    Annotation = Annotation_tmp,
+    Type       = "RatioOfRatio",
+    EnrichedIn = enriched_in_RoR
+  )
 
 # --- Step 4c. Combine
 sig_long_df <- bind_rows(sig_long_abs, sig_long_ror)
+
 
 # --- Step 5. Count per Annotation × Comparison × Direction
 sig_summary <- sig_long_df %>%
@@ -1621,9 +1642,8 @@ sig_gene_summary <- sig_long_df %>%
   ) %>%
   filter(Annotation != "Nucleus")
 
-sig_summary <- sig_summary %>% filter(Annotation != "Nucleus")
-sig_gene_summary <- sig_gene_summary %>% filter(Annotation != "Nucleus")
-
+sig_summary <- sig_summary %>% dplyr::filter(Annotation != "Nucleus")
+sig_gene_summary <- sig_gene_summary %>% dplyr::filter(Annotation != "Nucleus")
 
 
 # --- Step 7. Plot
@@ -1638,7 +1658,7 @@ sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
   theme_bw(base_size = 8) +
   theme(panel.grid = element_blank())
 
-ggsave(file.path(out_dir_diff136_organelle_dist,"diff136_sig_hits_annotation_absolute_barplot.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_annotation_absolute_barplot.pdf"),
   sig_plot_abs,
   width = 5, height = 8, device = cairo_pdf
 )
@@ -1655,7 +1675,7 @@ sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
   theme_bw(base_size = 8) +
   theme(panel.grid = element_blank())
 
-ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_ror_barplot.pdf"),
+ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_ror_barplot.pdf"),
   sig_plot_ror,
   width = 6, height = 8, device = cairo_pdf
 )
@@ -1669,7 +1689,7 @@ sig_gene_summary <- sig_long_df %>%
     .groups = "drop"
   )
 
-write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist, "diff136_sig_hits_annotation_geneList.csv"),row.names = FALSE)
+write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_geneList.csv"),row.names = FALSE)
 ```
 
 
