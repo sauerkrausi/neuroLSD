@@ -1552,7 +1552,8 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_vatpase_synaptic_barpl
 ```
 
 
-## IVd.  Absolute & RoR comparison of Axonal Proteome 
+## IVd.  Comparison of Neuron Projection Proteome 
+## IVda.  Absolute & RoR
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Analysis of neuronal projection proteome in Ctrl & ASAH1-/- neurons 
@@ -1680,14 +1681,17 @@ ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_anno
   width = 6, height = 8, device = cairo_pdf
 )
 
-# --- Step 8. Save gene-level summary
+
+# --- Step 8. Save gene-level summary with enrichment interpretation for RoR
 sig_gene_summary <- sig_long_df %>%
-  group_by(Type, Comparison, Annotation, SigStatus) %>%
-  summarise(
-    n = n(),
-    GeneList = paste(unique(Gene.Symbol), collapse = ";"),
-    .groups = "drop"
-  )
+  group_by(Type, Comparison, Annotation, SigStatus, EnrichedIn) %>%
+  summarise(n = n(), GeneList = paste(unique(Gene.Symbol), collapse = ";"), .groups = "drop") %>%
+  mutate(SigStatus_labeled = case_when(
+    Type == "RatioOfRatio" & SigStatus == "up"   ~ "up (ASAH1 enriched)",
+    Type == "RatioOfRatio" & SigStatus == "down" ~ "down (Control enriched)",
+    TRUE ~ SigStatus
+  )) %>%
+  filter(Annotation != "Nucleus")
 
 write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_geneList.csv"),row.names = FALSE)
 ```
@@ -1695,12 +1699,11 @@ write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist_ror_n
 
 ### IVdb. GO eval of IDs in TOP 5 sig up / down categories 
 ```{r}
-# --- GO on RoR up/down genes for top-5 annotations (excluding Nucleus)
-stopifnot(exists("sig_long_df"), exists("diff136_df_annotated"))
-stopifnot(exists("out_dir_diff136_GOror"))
-stopifnot(exists("plot_topGO_for_geneset"))
+# --------------------------------------------------
+# --- GO on RoR up/down genes for top-5 annotations
+# --------------------------------------------------
 
-# --- 1. Pick top-5 annotations by total RoR hits (up + down), excluding Nucleus
+# --- 1. Pick top-5 annotations by total RoR hits (up + down)
 ror_counts_tbl <- sig_long_df %>%
   dplyr::filter(Type == "RatioOfRatio",
                 SigStatus %in% c("up","down"),
