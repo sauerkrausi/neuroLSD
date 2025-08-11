@@ -1691,6 +1691,7 @@ sig_gene_summary <- sig_long_df %>%
     Type == "RatioOfRatio" & SigStatus == "down" ~ "down (Control enriched)",
     TRUE ~ SigStatus
   )) %>%
+  dplyr::select(Type, Comparison, Annotation, SigStatus, EnrichedIn, SigStatus_labeled, everything()) %>%
   filter(Annotation != "Nucleus")
 
 write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_geneList.csv"),row.names = FALSE)
