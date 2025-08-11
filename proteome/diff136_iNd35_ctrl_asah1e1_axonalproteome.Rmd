@@ -1257,8 +1257,21 @@ p_d <- ggplot(rank_tbl, aes(x = factor(Annotation, levels = ord_levels), y = coh
        title = "Annotation ranking by composite percentile (ascending)") +
   theme_bw(base_size = 6) + theme(panel.grid = element_blank())
 
+p_comp_rank <- ggplot(rank_tbl, aes(x = factor(Annotation, levels = ord_levels), y = composite_pr)) +
+  geom_col(fill = "grey30") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(
+    x = NULL,
+    y = "Composite percentile (0 to 1)",
+    title = "Annotation ranking by composite percentile (ascending)"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank())
+
 ggsave(file.path(out_rank_dir, "ranking_delta_compositeOrder_asc.pdf"), p_delta, width = 4, height = 5, device = cairo_pdf)
 ggsave(file.path(out_rank_dir, "ranking_cohensd_compositeOrder_asc.pdf"), p_d, width = 4, height = 5, device = cairo_pdf)
+ggsave(file.path(out_rank_dir, "ranking_compositePercentile_asc.pdf"), p_comp_rank, width = 4, height = 5, device = cairo_pdf)
 
 # --- 10. Save top-5 lists for concordance check
 topk <- 5
