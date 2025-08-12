@@ -1595,153 +1595,7 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_vatpase_synaptic_barpl
 
 
 ## IVd.  Comparison of Neuron Projection Proteome 
-## IVda.  Absolute & RoR
-```{r}
-# ─────────────────────────────────────────────────────────────────────────────
-# Analysis of neuronal projection proteome in Ctrl & ASAH1-/- neurons 
-# do both absolute (in genotype comparison to WC fraction) and ratio of ratio (RoR),
-# norm. to WC in genotype 
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Calculate RoR and call significance:
-# --- Step 1. Calculate RoR
-diff136_df_annotated <- diff136_df_annotated %>%
-  mutate(RoR_ASAH1_Axon = `log2FC_ASAH1_Axon.ASAH1` - `log2FC_Ctrl_Axon.Ctrl`)
-
-# --- Step 2. Define threshold for up/down calls (adjust as needed)
-fc_thresh <- 0.585  # ~1.5-fold
-
-# --- Step 3. Call significance
-diff136_df_annotated <- diff136_df_annotated %>%
-  mutate(sig_RoR_ASAH1_Axon = case_when(
-    is.na(RoR_ASAH1_Axon)        ~ NA_character_,
-    RoR_ASAH1_Axon > fc_thresh   ~ "up",
-    RoR_ASAH1_Axon < -fc_thresh  ~ "down",
-    TRUE                         ~ "n.s."
-  ))
-
-# --- Step 3. Direction for RoR (who is enriched?)
-diff136_df_annotated <- diff136_df_annotated %>%
-  mutate(
-    enriched_in_RoR = case_when(
-      is.na(sig_RoR_ASAH1_Axon)  ~ NA_character_,
-      sig_RoR_ASAH1_Axon == "up" ~ "KO",     # (Axon/WC)_KO > (Axon/WC)_Ctrl
-      sig_RoR_ASAH1_Axon == "down" ~ "Ctrl",
-      TRUE ~ NA_character_
-    )
-  )
-
-# --- Step 4. Define relevant sig columns and annotations
-sig_cols_abs <- c("sig_ASAH1_Axon.ASAH1_Soma", "sig_Ctrl_Axon.Ctrl_Soma", "sig_ASAH1_Axon.Ctrl_Axon")
-sig_cols_ror <- c("sig_RoR_ASAH1_Axon")
-
-# Binary annotations (0/1 or NA)
-annotation_cols <- setdiff(colnames(diff136_df_annotated), c(sig_cols_abs, sig_cols_ror))
-annotation_cols <- annotation_cols[
-  sapply(diff136_df_annotated[, annotation_cols], function(x) all(x %in% c(0, 1, NA)))
-]
-annotation_cols <- setdiff(annotation_cols, c("Autophagy (Detailed)", "EndoDetailLoac"))
-
-# --- Step 4a. Long-format: ABS comparisons
-sig_long_abs <- diff136_df_annotated %>%
-  dplyr::select(Gene.Symbol, all_of(sig_cols_abs), all_of(annotation_cols)) %>%
-  tidyr::pivot_longer(cols = all_of(sig_cols_abs), names_to = "Comparison", values_to = "SigStatus") %>%
-  tidyr::pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
-  dplyr::filter(is_annotated == 1 & SigStatus %in% c("up", "down")) %>%
-  dplyr::mutate(Type = "Absolute")
-
-# --- Step 4b. Long-format: RoR comparisons
-annotation_cols <- setdiff(annotation_cols, "Annotation")
-
-sig_long_ror <- diff136_df_annotated %>%
-  dplyr::select(Gene.Symbol, sig_RoR_ASAH1_Axon, enriched_in_RoR, dplyr::all_of(annotation_cols)) %>%
-  tidyr::pivot_longer(cols = dplyr::all_of(annotation_cols), names_to = "Annotation_tmp", values_to = "is_annotated") %>%
-  dplyr::filter(is_annotated == 1, sig_RoR_ASAH1_Axon %in% c("up","down")) %>%
-  dplyr::transmute(
-    Gene.Symbol,
-    Comparison = "sig_RoR_ASAH1_Axon",
-    SigStatus  = sig_RoR_ASAH1_Axon,
-    Annotation = Annotation_tmp,
-    Type       = "RatioOfRatio",
-    EnrichedIn = enriched_in_RoR
-  )
-
-# --- Step 4c. Combine
-sig_long_df <- bind_rows(sig_long_abs, sig_long_ror)
-
-
-# --- Step 5. Count per Annotation × Comparison × Direction
-sig_summary <- sig_long_df %>%
-  group_by(Type, Comparison, Annotation, SigStatus) %>%
-  summarise(n = n(), .groups = "drop")
-
-# --- Step 6. Save gene-level summary
-sig_gene_summary <- sig_long_df %>%
-  group_by(Type, Comparison, Annotation, SigStatus) %>%
-  summarise(
-    n = n(),
-    GeneList = paste(unique(Gene.Symbol), collapse = ";"),
-    .groups = "drop"
-  ) %>%
-  filter(Annotation != "Nucleus")
-
-sig_summary <- sig_summary %>% dplyr::filter(Annotation != "Nucleus")
-sig_gene_summary <- sig_gene_summary %>% dplyr::filter(Annotation != "Nucleus")
-
-
-# --- Step 7. Plot
-# --- Absolute plot
-sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
-                       aes(x = reorder(Annotation, n), y = n, fill = SigStatus)) +
-  geom_col(position = "stack") +
-  coord_flip() +
-  facet_wrap(~ Comparison, ncol = 1) +
-  scale_fill_manual(values = c(up = "grey70", down = "dodgerblue")) +
-  labs(x = NULL, y = "# Significant Hits", title = "Significant Hits – Absolute Comparisons") +
-  theme_bw(base_size = 8) +
-  theme(panel.grid = element_blank())
-
-ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_annotation_absolute_barplot.pdf"),
-  sig_plot_abs,
-  width = 5, height = 8, device = cairo_pdf
-)
-
-
-# --- RoR plot
-sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
-                       aes(x = reorder(Annotation, n), y = n, fill = SigStatus)) +
-  geom_col(position = "stack") +
-  coord_flip() +
-  facet_wrap(~ Comparison, ncol = 1) +
-  scale_fill_manual(values = c(up = "grey70", down = "dodgerblue")) +
-  labs(x = NULL, y = "# Significant Hits", title = "Significant Hits – Ratio of Ratio Comparisons") +
-  theme_bw(base_size = 8) +
-  theme(panel.grid = element_blank())
-
-ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_ror_barplot.pdf"),
-  sig_plot_ror,
-  width = 6, height = 8, device = cairo_pdf
-)
-
-
-# --- Step 8. Save gene-level summary with enrichment interpretation for RoR
-sig_gene_summary <- sig_long_df %>%
-  group_by(Type, Comparison, Annotation, SigStatus, EnrichedIn) %>%
-  summarise(n = n(), GeneList = paste(unique(Gene.Symbol), collapse = ";"), .groups = "drop") %>%
-  mutate(SigStatus_labeled = case_when(
-    Type == "RatioOfRatio" & SigStatus == "up"   ~ "up (ASAH1 enriched)",
-    Type == "RatioOfRatio" & SigStatus == "down" ~ "down (Control enriched)",
-    TRUE ~ SigStatus
-  )) %>%
-  dplyr::select(Type, Comparison, Annotation, SigStatus, EnrichedIn, SigStatus_labeled, everything()) %>%
-  filter(Annotation != "Nucleus")
-
-write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_geneList.csv"),row.names = FALSE)
-```
-
-
-
-#test 
+### IVda.  Absolute & RoR
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Analysis of neuronal projection proteome in Ctrl & ASAH1-/- neurons 
@@ -1851,7 +1705,7 @@ sig_gene_summary <- sig_long_df %>%
             GeneList = paste(unique(Gene.Symbol), collapse = ";"),
             .groups = "drop")
 
-# --- Step 10. Plot Absolute (4 colors)
+# --- Step 10. Plot Absolute
 sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
                        aes(x = reorder(Annotation, n), y = n, fill = Call)) +
   geom_col() + coord_flip() +
@@ -1863,7 +1717,7 @@ sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
 ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_absolute_barplot_4colors.pdf"),
        sig_plot_abs, width = 5, height = 8, device = cairo_pdf)
 
-# --- Step 11. Plot RoR (4 colors)
+# --- Step 11. Plot RoR
 sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
                        aes(x = reorder(Annotation, n), y = n, fill = Call)) +
   geom_col() + coord_flip() +
@@ -1875,16 +1729,12 @@ sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
 ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_ror_barplot_4colors.pdf"),
        sig_plot_ror, width = 6, height = 8, device = cairo_pdf)
 
-# --- Step 12. Save CSVs with Call
+# --- Step 12. Save CSVs
 write.csv(sig_gene_summary,
-          file = file.path(out_dir_diff136_organelle_dist_ror_norm,
-                           "diff136_sig_hits_annotation_geneList_withCall.csv"),
-          row.names = FALSE)
+          file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_geneList_withSig.csv"),row.names = FALSE)
 
 write.csv(sig_long_df,
-          file = file.path(out_dir_diff136_organelle_dist_ror_norm,
-                           "diff136_sig_hits_long_withCall.csv"),
-          row.names = FALSE)
+          file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_long_withSig.csv"),row.names = FALSE)
 
 
 ```
@@ -1894,64 +1744,109 @@ write.csv(sig_long_df,
 ### IVdb. GO eval of IDs in TOP 5 sig up / down categories 
 ```{r}
 # --------------------------------------------------
-# --- GO on RoR up/down genes for top-5 annotations
+# GO on RoR hits split into four Call classes
+# calculates for: Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down
 # --------------------------------------------------
 
-# --- 1. Pick top-5 annotations by total RoR hits (up + down)
-ror_counts_tbl <- sig_long_df %>%
-  dplyr::filter(Type == "RatioOfRatio",
-                SigStatus %in% c("up","down"),
-                Annotation != "Nucleus") %>%
-  dplyr::count(Annotation, SigStatus, name = "n") %>%
-  tidyr::pivot_wider(names_from = SigStatus, values_from = n, values_fill = 0) %>%
-  dplyr::mutate(n_total = up + down) %>%
-  dplyr::arrange(dplyr::desc(n_total))
-
-ror_top5_ann <- ror_counts_tbl %>%
-  dplyr::slice_head(n = 5) %>%
-  dplyr::pull(Annotation)
-
-# --- 2. Build long gene list for top-5 RoR annotations
-go_ror_long <- sig_long_df %>%
-  dplyr::filter(Type == "RatioOfRatio",
-                SigStatus %in% c("up","down"),
-                Annotation %in% ror_top5_ann) %>%
-  dplyr::select(Annotation, SigStatus, Gene.Symbol) %>%
-  dplyr::distinct()
-
-# Save manifests
-readr::write_csv(ror_counts_tbl,
-                 file.path(out_dir_diff136_GOror, "RoR_top5_annotation_counts_manifest.csv"))
-readr::write_csv(go_ror_long,
-                 file.path(out_dir_diff136_GOror, "GO_inputs_RoR_top5_up_down_long.csv"))
-
-# --- 3. Run GO for each Annotation × direction if set size >= 5
+# --- 1. Guard and background
+stopifnot("Call" %in% names(sig_long_df))
 background_genes_vec <- unique(diff136_df_annotated$Gene.Symbol)
 min_genes_for_go <- 5
 
-invisible(lapply(ror_top5_ann, function(ann_term) {
-  lapply(c("up","down"), function(direction_flag) {
+# --- 2. Count RoR hits per Annotation × Call, get top-5 per Call
+ror_counts_by_call <- sig_long_df %>%
+  dplyr::filter(Type == "RatioOfRatio", Annotation != "Nucleus") %>%
+  dplyr::count(Call, Annotation, name = "n") %>%
+  dplyr::arrange(Call, dplyr::desc(n)) %>%
+  dplyr::group_by(Call) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup()
+
+# --- 3. Long gene table for selected top-5 per Call
+go_ror_long <- sig_long_df %>%
+  dplyr::filter(Type == "RatioOfRatio",
+                Annotation %in% ror_counts_by_call$Annotation,
+                Call %in% ror_counts_by_call$Call) %>%
+  dplyr::select(Call, Annotation, Gene.Symbol) %>%
+  dplyr::distinct()
+
+# --- 4. Save manifests
+readr::write_csv(ror_counts_by_call,
+                 file.path(out_dir_diff136_GOror, "RoR_top5_annotation_counts_byCall_manifest.csv"))
+readr::write_csv(go_ror_long,
+                 file.path(out_dir_diff136_GOror, "GO_inputs_RoR_top5_byCall_long.csv"))
+
+# --- 5. Run GO for each Call × Annotation if set size >= threshold
+calls_order <- c("Ctrl_up","Ctrl_down","ASAH1_up","ASAH1_down")
+all_go_results <- list()
+
+invisible(lapply(calls_order, function(call_flag) {
+  ann_subset <- ror_counts_by_call %>%
+    dplyr::filter(Call == call_flag) %>%
+    dplyr::pull(Annotation) %>%
+    unique()
+
+  lapply(ann_subset, function(ann_term) {
     gene_vec <- go_ror_long %>%
-      dplyr::filter(Annotation == ann_term, SigStatus == direction_flag) %>%
+      dplyr::filter(Call == call_flag, Annotation == ann_term) %>%
       dplyr::pull(Gene.Symbol) %>%
       unique()
 
-    # Save the exact inputs used
+    # Save exact input list
     readr::write_csv(tibble::tibble(GeneSymbol = gene_vec),
                      file.path(out_dir_diff136_GOror,
-                               paste0("GO_inputs_RoR_top5_", ann_term, "_", direction_flag, ".csv")))
+                               paste0("GO_inputs_RoR_top5_", call_flag, "_", ann_term, ".csv")))
 
     if (length(gene_vec) >= min_genes_for_go) {
-      plot_topGO_for_geneset(
-        gene_set = gene_vec,
-        background_genes = background_genes_vec,
-        tag = paste0("RoR_top5_", ann_term, "_", direction_flag),
-        out_dir = out_dir_diff136_GOror
-      )
+      # 5.1 Build 0/1 vector over background
+      geneList <- as.integer(background_genes_vec %in% gene_vec)
+      names(geneList) <- background_genes_vec
+
+      # 5.2 topGO Fisher test (BP)
+      GOdata <- new("topGOdata",
+                    ontology = "BP",
+                    allGenes = geneList,
+                    geneSel = function(x) x == 1,
+                    annot = annFUN.org,
+                    mapping = "org.Hs.eg.db",
+                    ID = "symbol")
+      resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+
+      # 5.3 Generate GO table with extra fields
+      go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30) %>%
+        dplyr::mutate(
+          raw_pval    = score(resultFisher)[GO.ID],
+          Significant = as.numeric(Significant),
+          Expected    = as.numeric(Expected),
+          Enrichment  = Significant / Expected,
+          log10P      = -log10(raw_pval)
+        ) %>%
+        dplyr::filter(!is.na(raw_pval)) %>%
+        dplyr::arrange(raw_pval) %>%
+        dplyr::slice_head(n = 10)
+
+      # 5.4 Add associated genes per GO term
+      go_genes <- genesInTerm(GOdata)
+      go_table$Genes <- vapply(go_table$GO.ID, function(go_id) {
+        paste(intersect(unname(go_genes[[go_id]]), gene_vec), collapse = ";")
+      }, character(1))
+
+      # 5.5 Save per run CSV and collect for master table
+      tag_str <- paste0("RoR_top5_", call_flag, "_", ann_term)
+      readr::write_csv(go_table, file.path(out_dir_diff136_GOror, paste0("GO_results_", tag_str, ".csv")))
+      all_go_results[[length(all_go_results) + 1]] <<- dplyr::mutate(go_table,
+        Call = call_flag, Annotation = ann_term, Tag = tag_str)
     }
     NULL
   })
 }))
+
+# --- 6. Save master GO CSV with Call and Annotation
+if (length(all_go_results) > 0) {
+  master_go <- dplyr::bind_rows(all_go_results)
+  readr::write_csv(master_go,
+                   file.path(out_dir_diff136_GOror, "GO_results_RoR_top5_byCall_MASTER.csv"))
+}
 ```
 
 
