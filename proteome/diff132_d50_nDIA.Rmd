@@ -1938,7 +1938,7 @@ avg_svsnare_fc_summary <- avg_svsnare_fc_summary %>%
   mutate(group = factor(group, levels = unique(group)))
 
 # --- 4. Merge ordering into main data frame ---
-vsvsnare_long_df <- svsnare_long_df %>%
+svsnare_long_df <- svsnare_long_df %>%
   inner_join(avg_svsnare_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
   mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
 
@@ -1978,33 +1978,33 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_sv
 svdocking_genes <- c("SYP","VAMP2","SYB2","STXBP1","UNC18A","CPLX1","SYT1","SNAP25","SNAP","STX1A","STX1A","UNC13B")
 
 # --- 1. Filter and compute log2FC ---
-svsnare_long_df <- clean_d50_transformed_df %>%
-  filter(Genes %in% svsnare_genes, day == 50) %>%
+svdocking_long_df <- clean_d50_transformed_df %>%
+  filter(Genes %in% svdocking_genes, day == 50) %>%
   mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
   mutate(group = paste(genotype, neuron, sep = "_"))
 
 # --- 2. Compute average log2FC per group ---
-avg_svsnare_fc_summary <- svsnare_long_df %>%
+avg_svdocking_fc_summary <- svdocking_long_df %>%
   group_by(group, neuron) %>%
   summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
 
 # --- 3. Order by increasing avg log2FC ---
-avg_svsnare_fc_summary <- avg_svsnare_fc_summary %>%
+avg_svdocking_fc_summary <- avg_svdocking_fc_summary %>%
   arrange(neuron, avg_log2FC) %>%
   group_by(neuron) %>%
   mutate(group = factor(group, levels = unique(group)))
 
 # --- 4. Merge ordering into main data frame ---
-vsvsnare_long_df <- svsnare_long_df %>%
-  inner_join(avg_svsnare_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
-  mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
+svdocking_long_df <- svdocking_long_df %>%
+  inner_join(avg_svdocking_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
+  mutate(group = factor(group, levels = levels(avg_svdocking_fc_summary$group)))
 
 # --- 5. Plot ---
-d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = Genes)) +
+d50_svdocking_plot <- ggplot(svdocking_long_df, aes(x = group, y = log2FC, group = Genes)) +
   geom_line(color = "grey70", size = 0.3, alpha = 0.8) +
   geom_hline(yintercept =0, linetype = "dashed", color = "black") +
   geom_point(color = "grey70", size = 0.5, alpha = 0.8) +
-  geom_line(data = avg_svsnare_fc_summary, 
+  geom_line(data = avg_svdocking_fc_summary, 
             aes(x = group, y = avg_log2FC, group = 1),
             color = "red", size = 1.2, inherit.aes = FALSE) +
   facet_wrap(~neuron, scales = "free_x") +
@@ -2014,7 +2014,7 @@ d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = G
     panel.grid = element_blank()
   ) +
   labs(
-    title = "SV SNARE Genes: log2FC Summary by Genotype × Neuron",
+    title = "SV Docking Genes: log2FC Summary by Genotype × Neuron",
     x = "Genotype × Neuron (sorted by mean log2FC)",
     y = expression(log[2]*"(KO / Ctrl)")
   )
@@ -2022,7 +2022,7 @@ d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = G
 d50_svsnare_plot
 
 # --- 6. save pdf ---
-ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_svsnare_plot, width = 4, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_svsnare_plot, width = 4, height = 3, device = cairo_pdf)
 
 ```
 
@@ -2728,10 +2728,10 @@ correlate_log2fc_annotations(
 ```
 
 
-### VIIIb. Disease Impact Scoring from Correlation Analysis
+### VIIIb. Organelle Impact Scoring from Correlation Analysis
 ```{r}
 ###########################################################
-# Disease Impact Scoring from Correlation Analysis
+# Organelle Impact Scoring from Correlation Analysis
 # ---------------------------------------------------------
 # Goal: Rank genotypes by their average correlation pattern
 # across selected organelle annotations. Lowest correlation
@@ -2765,12 +2765,18 @@ impact_score_from_corr <- function(corr_mat, neuron_type) {
 # --- Step 1: Generate correlation matrix ------------------
 corr_mat <- correlate_log2fc_annotations(
   data = log2FC_d50_annotated,
-  annotations = c("Endo_iN_curated_Hundley","EarlyEndosome", "RecyclingEndosome", 
+  annotations = c("Endo_iN_curated_Hundley","EarlyEndosome", "RecyclingEndosome",
                   "Presynaptic", "Postsynaptic", "SynGO",
                   "SynapseSVs", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase"),
   basedir = out_dir_d50_CrossCorr
 )
 
+# corr_mat <- correlate_log2fc_annotations(
+#   data = log2FC_d50_annotated,
+#   annotations = c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI"),
+#   basedir = out_dir_d50_CrossCorr
+# )
 
 # --- Step 2: Compute impact scores for iN and iDA ---------
 impact_scores_iN  <- impact_score_from_corr(corr_mat, "iN")
@@ -2785,7 +2791,7 @@ plot_impact_heatmap <- function(impact_scores, neuron_type, out_dir) {
   
   # 1. Subset for the neuron type
   df_sub <- impact_scores %>% filter(Neuron == neuron_type)
-  
+
   # 2. Order by rank (lowest = top)
   df_sub <- df_sub %>% arrange(Rank)
   
@@ -2796,7 +2802,7 @@ plot_impact_heatmap <- function(impact_scores, neuron_type, out_dir) {
     as.matrix()
   
   # 4. Save heatmap as PDF
-  pdf(file.path(out_dir, paste0("disease_impact_scoring_", neuron_type, ".pdf")), 
+  pdf(file.path(out_dir, paste0("organelle_impact_scoring_", neuron_type, ".pdf")), 
       width = 4, height = 5)
   pheatmap(
     mat            = impact_mat,
