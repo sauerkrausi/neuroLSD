@@ -1969,7 +1969,62 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_sv
 
 ```
 
+#### VIIb3. SV docking plot by neuon x genotype; ascending order 
+```{r}
+# --------------------------------------------------- #
+# neuro QC plots
+# SV snare plots 
+# --------------------------------------------------- #
+svdocking_genes <- c("SYP","VAMP2","SYB2","STXBP1","UNC18A","CPLX1","SYT1","SNAP25","SNAP","STX1A","STX1A","UNC13B")
 
+# --- 1. Filter and compute log2FC ---
+svsnare_long_df <- clean_d50_transformed_df %>%
+  filter(Genes %in% svsnare_genes, day == 50) %>%
+  mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
+  mutate(group = paste(genotype, neuron, sep = "_"))
+
+# --- 2. Compute average log2FC per group ---
+avg_svsnare_fc_summary <- svsnare_long_df %>%
+  group_by(group, neuron) %>%
+  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+
+# --- 3. Order by increasing avg log2FC ---
+avg_svsnare_fc_summary <- avg_svsnare_fc_summary %>%
+  arrange(neuron, avg_log2FC) %>%
+  group_by(neuron) %>%
+  mutate(group = factor(group, levels = unique(group)))
+
+# --- 4. Merge ordering into main data frame ---
+vsvsnare_long_df <- svsnare_long_df %>%
+  inner_join(avg_svsnare_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
+  mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
+
+# --- 5. Plot ---
+d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = Genes)) +
+  geom_line(color = "grey70", size = 0.3, alpha = 0.8) +
+  geom_hline(yintercept =0, linetype = "dashed", color = "black") +
+  geom_point(color = "grey70", size = 0.5, alpha = 0.8) +
+  geom_line(data = avg_svsnare_fc_summary, 
+            aes(x = group, y = avg_log2FC, group = 1),
+            color = "red", size = 1.2, inherit.aes = FALSE) +
+  facet_wrap(~neuron, scales = "free_x") +
+  theme_bw(base_size = 8) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    title = "SV SNARE Genes: log2FC Summary by Genotype × Neuron",
+    x = "Genotype × Neuron (sorted by mean log2FC)",
+    y = expression(log[2]*"(KO / Ctrl)")
+  )
+
+d50_svsnare_plot
+
+# --- 6. save pdf ---
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_svsnare_plot, width = 4, height = 3, device = cairo_pdf)
+
+```
 
 
 
