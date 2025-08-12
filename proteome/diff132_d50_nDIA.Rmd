@@ -1920,29 +1920,29 @@ make_vatpase_color_table("MCOLN1")
 # --------------------------------------------------- #
 svsnare_genes <- c("SYP", "VAMP2", "STXBP1", "CPLX1", "SYT1", "SNAP25","SNAP","STX1A", "STX1")
 
-# --- 1. Filter and compute log2FC ---
+# --- 1. Filter and compute log2FC
 svsnare_long_df <- clean_d50_transformed_df %>%
   filter(Genes %in% svsnare_genes, day == 50) %>%
   mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
   mutate(group = paste(genotype, neuron, sep = "_"))
 
-# --- 2. Compute average log2FC per group ---
+# --- 2. Compute average log2FC per group
 avg_svsnare_fc_summary <- svsnare_long_df %>%
   group_by(group, neuron) %>%
   summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
 
-# --- 3. Order by increasing avg log2FC ---
+# --- 3. Order by increasing avg log2FC
 avg_svsnare_fc_summary <- avg_svsnare_fc_summary %>%
   arrange(neuron, avg_log2FC) %>%
   group_by(neuron) %>%
   mutate(group = factor(group, levels = unique(group)))
 
-# --- 4. Merge ordering into main data frame ---
+# --- 4. Merge ordering into main data frame
 svsnare_long_df <- svsnare_long_df %>%
   inner_join(avg_svsnare_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
   mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
 
-# --- 5. Plot ---
+# --- 5. Plot
 d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = Genes)) +
   geom_line(color = "grey70", size = 0.3, alpha = 0.8) +
   geom_hline(yintercept =0, linetype = "dashed", color = "black") +
@@ -1973,56 +1973,58 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_sv
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
-# SV snare plots 
+# SV docking plots 
 # --------------------------------------------------- #
 svdocking_genes <- c("SYP","VAMP2","SYB2","STXBP1","UNC18A","CPLX1","SYT1","SNAP25","SNAP","STX1A","STX1A","UNC13B")
 
-# --- 1. Filter and compute log2FC ---
+# --- 1. Filter and compute log2FC
 svdocking_long_df <- clean_d50_transformed_df %>%
   filter(Genes %in% svdocking_genes, day == 50) %>%
   mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
   mutate(group = paste(genotype, neuron, sep = "_"))
 
-# --- 2. Compute average log2FC per group ---
-avg_svdocking_fc_summary <- svdocking_long_df %>%
-  group_by(group, neuron) %>%
-  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+# --- 2. Compute mean and SD per group
+svdocking_summary <- svdocking_long_df %>%
+  dplyr::group_by(group, neuron) %>%
+  dplyr::summarise(
+    avg_log2FC = mean(log2FC, na.rm = TRUE),
+    sd_log2FC  = sd(log2FC,  na.rm = TRUE),
+    .groups = "drop"
+  )
 
-# --- 3. Order by increasing avg log2FC ---
-avg_svdocking_fc_summary <- avg_svdocking_fc_summary %>%
-  arrange(neuron, avg_log2FC) %>%
-  group_by(neuron) %>%
-  mutate(group = factor(group, levels = unique(group)))
+# --- 3. Order by increasing mean per neuron
+svdocking_summary <- svdocking_summary %>%
+  dplyr::arrange(neuron, avg_log2FC) %>%
+  dplyr::group_by(neuron) %>%
+  dplyr::mutate(group_order = dplyr::row_number()) %>%
+  dplyr::ungroup()
 
-# --- 4. Merge ordering into main data frame ---
-svdocking_long_df <- svdocking_long_df %>%
-  inner_join(avg_svdocking_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
-  mutate(group = factor(group, levels = levels(avg_svdocking_fc_summary$group)))
-
-# --- 5. Plot ---
-d50_svdocking_plot <- ggplot(svdocking_long_df, aes(x = group, y = log2FC, group = Genes)) +
-  geom_line(color = "grey70", size = 0.3, alpha = 0.8) +
-  geom_hline(yintercept =0, linetype = "dashed", color = "black") +
-  geom_point(color = "grey70", size = 0.5, alpha = 0.8) +
-  geom_line(data = avg_svdocking_fc_summary, 
-            aes(x = group, y = avg_log2FC, group = 1),
-            color = "red", size = 1.2, inherit.aes = FALSE) +
-  facet_wrap(~neuron, scales = "free_x") +
+# --- 4. Plot: SD in grey70, mean in red
+d50_svdocking_plot <- ggplot(svdocking_summary,
+  aes(x = reorder(group, group_order), y = avg_log2FC, group = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  # SD band per group
+  geom_linerange(aes(ymin = avg_log2FC - sd_log2FC,
+                     ymax = avg_log2FC + sd_log2FC),
+                 color = "grey70", linewidth = 1.2, alpha = 0.8) +
+  # mean line and points
+  geom_line(color = "red", linewidth = 0.9) +
+  geom_point(color = "red", size = 0.8) +
+  facet_wrap(~ neuron, scales = "free_x") +
   theme_bw(base_size = 8) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
   ) +
   labs(
-    title = "SV Docking Genes: log2FC Summary by Genotype × Neuron",
-    x = "Genotype × Neuron (sorted by mean log2FC)",
+    title = "SV Docking Genes: mean ± SD by Genotype x Neuron",
+    x = "Genotype x Neuron (sorted by mean log2FC)",
     y = expression(log[2]*"(KO / Ctrl)")
   )
 
-d50_svsnare_plot
-
-# --- 6. save pdf ---
-ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_svsnare_plot, width = 4, height = 3, device = cairo_pdf)
+# --- 5. print and save
+d50_svdocking_plot
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_svdocking_plot, width = 4, height = 3, device = cairo_pdf)
 
 ```
 
