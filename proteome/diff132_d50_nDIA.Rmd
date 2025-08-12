@@ -1284,7 +1284,7 @@ readr::write_csv(
 )
 readr::write_csv(
   heatmap_matrix_capped %>% as.data.frame() %>% rownames_to_column("RowID"),
-  file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_matrix_capped.csv")
+  file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_matrix_cilpped.csv")
 )
 
 # --- 7. Plot heatmap with clipped range
@@ -1305,6 +1305,45 @@ pheatmap(
   border_color = "black",
   legend_labels = NA,
   main = "LSD Protein Abundance (Control vs KO) at Day 50 - capped"
+)
+dev.off()
+
+
+# --- 8. Implement log2 converted heatmap here 
+heatmap_matrix_log2 <- all_rows %>%
+  left_join(values_df, by = c("Genes","neuron","condition","RowID")) %>%
+  select(Genes, RowID, value) %>%
+  pivot_wider(names_from = Genes, values_from = value) %>%
+  column_to_rownames("RowID") %>%
+  # log2 transform (add pseudocount to avoid log2(0))
+  apply(2, function(x) log2(x + 1)) %>%
+  as.matrix()
+
+# --- 9. Save CSV
+readr::write_csv(
+  heatmap_matrix_log2 %>% as.data.frame() %>% rownames_to_column("RowID"),
+  file.path(out_dir_d50_QC, "LSDgene_Abundance_log2_matrix.csv")
+)
+
+# --- 10. Determine breaks for color scale
+min_val_log2 <- suppressWarnings(min(heatmap_matrix_log2, na.rm = TRUE))
+max_val_log2 <- suppressWarnings(max(heatmap_matrix_log2, na.rm = TRUE))
+bk_log2 <- seq(min_val_log2, max_val_log2, length.out = 100)
+
+# --- 11. Plot heatmap log2 scaled
+pdf(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_RdYlBu_log2.pdf"),
+    width = 8, height = 6)
+pheatmap(
+  heatmap_matrix_log2,
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(bk_log2) - 1),
+  breaks = bk_log2,
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  na_col = "grey70",
+  cellheight = 15,
+  cellwidth = 15,
+  border_color = "black",
+  main = "LSD Protein Abundance (Control vs KO) at Day 50 - log2 transformed"
 )
 dev.off()
 
