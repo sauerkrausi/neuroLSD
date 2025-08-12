@@ -1740,6 +1740,157 @@ write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist_ror_n
 ```
 
 
+
+#test 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Analysis of neuronal projection proteome in Ctrl & ASAH1-/- neurons 
+# Absolute (genotype vs WC) and Ratio of Ratio (RoR), norm. to WC in genotype
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 1. Calculate RoR
+diff136_df_annotated <- diff136_df_annotated %>%
+  dplyr::mutate(RoR_ASAH1_Axon = `log2FC_ASAH1_Axon.ASAH1` - `log2FC_Ctrl_Axon.Ctrl`)
+
+# --- Step 2. Threshold
+fc_thresh <- 0.585
+
+# --- Step 3. Call RoR significance
+diff136_df_annotated <- diff136_df_annotated %>%
+  dplyr::mutate(sig_RoR_ASAH1_Axon = case_when(
+    is.na(RoR_ASAH1_Axon)        ~ NA_character_,
+    RoR_ASAH1_Axon > fc_thresh   ~ "up",
+    RoR_ASAH1_Axon < -fc_thresh  ~ "down",
+    TRUE                         ~ "n.s."
+  ),
+  enriched_in_RoR = case_when(
+    sig_RoR_ASAH1_Axon == "up"   ~ "KO",
+    sig_RoR_ASAH1_Axon == "down" ~ "Ctrl",
+    TRUE ~ NA_character_
+  ))
+
+# --- Step 4. Absolute direction in each genotype
+diff136_df_annotated <- diff136_df_annotated %>%
+  dplyr::mutate(
+    abs_dir_ctrl = case_when(
+      `log2FC_Ctrl_Axon.Ctrl`  >  fc_thresh ~ "accumulating",
+      `log2FC_Ctrl_Axon.Ctrl`  < -fc_thresh ~ "decreased",
+      TRUE ~ "n.s."
+    ),
+    abs_dir_ko = case_when(
+      `log2FC_ASAH1_Axon.ASAH1` >  fc_thresh ~ "accumulating",
+      `log2FC_ASAH1_Axon.ASAH1` < -fc_thresh ~ "decreased",
+      TRUE ~ "n.s."
+    )
+  )
+
+# --- Step 5. Define relevant columns
+sig_cols_abs <- c("sig_ASAH1_Axon.ASAH1_Soma", "sig_Ctrl_Axon.Ctrl_Soma")
+sig_cols_ror <- "sig_RoR_ASAH1_Axon"
+annotation_cols <- setdiff(names(diff136_df_annotated),
+                            c(sig_cols_abs, sig_cols_ror))
+annotation_cols <- annotation_cols[sapply(diff136_df_annotated[, annotation_cols],
+                                           function(x) all(x %in% c(0, 1, NA)))]
+annotation_cols <- setdiff(annotation_cols, "Nucleus")
+
+# --- Step 6. Define 4-color palette
+fill_palette4 <- c(
+  "Ctrl_down"   = "grey50",
+  "Ctrl_up"     = "grey70",
+  "ASAH1_down"  = "dodgerblue1",
+  "ASAH1_up"    = "dodgerblue3"
+)
+
+# --- Step 7. Long-format Absolute with Call
+sig_long_abs <- diff136_df_annotated %>%
+  dplyr::select(Gene.Symbol, all_of(sig_cols_abs), all_of(annotation_cols)) %>%
+  pivot_longer(cols = all_of(sig_cols_abs), names_to = "Comparison", values_to = "SigStatus") %>%
+  pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1, SigStatus %in% c("up", "down")) %>%
+  mutate(Type = "Absolute",
+         Call = case_when(
+           Comparison == "sig_Ctrl_Axon.Ctrl_Soma"   & SigStatus == "up"   ~ "Ctrl_up",
+           Comparison == "sig_Ctrl_Axon.Ctrl_Soma"   & SigStatus == "down" ~ "Ctrl_down",
+           Comparison == "sig_ASAH1_Axon.ASAH1_Soma" & SigStatus == "up"   ~ "ASAH1_up",
+           Comparison == "sig_ASAH1_Axon.ASAH1_Soma" & SigStatus == "down" ~ "ASAH1_down"
+         )) %>%
+  filter(!is.na(Call))
+
+# --- Step 8. Long-format RoR with Call
+sig_long_ror <- diff136_df_annotated %>%
+  dplyr::select(Gene.Symbol, sig_RoR_ASAH1_Axon, enriched_in_RoR,
+         abs_dir_ctrl, abs_dir_ko, all_of(annotation_cols)) %>%
+  pivot_longer(cols = all_of(annotation_cols), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1, sig_RoR_ASAH1_Axon %in% c("up", "down")) %>%
+  transmute(
+    Gene.Symbol,
+    Comparison = "sig_RoR_ASAH1_Axon",
+    SigStatus  = sig_RoR_ASAH1_Axon,
+    Annotation,
+    Type       = "RatioOfRatio",
+    AbsDir_KO  = abs_dir_ko,
+    AbsDir_Ctrl= abs_dir_ctrl,
+    Call = case_when(
+      SigStatus == "up"   & AbsDir_KO   == "accumulating" ~ "ASAH1_up",
+      SigStatus == "up"   & AbsDir_KO   == "decreased"    ~ "ASAH1_down",
+      SigStatus == "down" & AbsDir_Ctrl == "accumulating" ~ "Ctrl_up",
+      SigStatus == "down" & AbsDir_Ctrl == "decreased"    ~ "Ctrl_down"
+    )
+  ) %>% filter(!is.na(Call))
+
+# --- Step 9. Combine and summarise
+sig_long_df <- bind_rows(sig_long_abs, sig_long_ror)
+
+sig_summary <- sig_long_df %>%
+  group_by(Type, Comparison, Annotation, Call) %>%
+  summarise(n = n(), .groups = "drop")
+
+sig_gene_summary <- sig_long_df %>%
+  group_by(Type, Comparison, Annotation, Call) %>%
+  summarise(n = n(),
+            GeneList = paste(unique(Gene.Symbol), collapse = ";"),
+            .groups = "drop")
+
+# --- Step 10. Plot Absolute (4 colors)
+sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
+                       aes(x = reorder(Annotation, n), y = n, fill = Call)) +
+  geom_col() + coord_flip() +
+  facet_wrap(~ Comparison, ncol = 1) +
+  scale_fill_manual(values = fill_palette4, drop = FALSE) +
+  labs(x = NULL, y = "# Significant Hits", title = "Absolute Comparisons (4-way call)") +
+  theme_bw(base_size = 8) + theme(panel.grid = element_blank())
+
+ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_absolute_barplot_4colors.pdf"),
+       sig_plot_abs, width = 5, height = 8, device = cairo_pdf)
+
+# --- Step 11. Plot RoR (4 colors)
+sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
+                       aes(x = reorder(Annotation, n), y = n, fill = Call)) +
+  geom_col() + coord_flip() +
+  facet_wrap(~ Comparison, ncol = 1) +
+  scale_fill_manual(values = fill_palette4, drop = FALSE) +
+  labs(x = NULL, y = "# Significant Hits", title = "RoR Comparisons (4-way call)") +
+  theme_bw(base_size = 8) + theme(panel.grid = element_blank())
+
+ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_ror_barplot_4colors.pdf"),
+       sig_plot_ror, width = 6, height = 8, device = cairo_pdf)
+
+# --- Step 12. Save CSVs with Call
+write.csv(sig_gene_summary,
+          file = file.path(out_dir_diff136_organelle_dist_ror_norm,
+                           "diff136_sig_hits_annotation_geneList_withCall.csv"),
+          row.names = FALSE)
+
+write.csv(sig_long_df,
+          file = file.path(out_dir_diff136_organelle_dist_ror_norm,
+                           "diff136_sig_hits_long_withCall.csv"),
+          row.names = FALSE)
+
+
+```
+
+
+
 ### IVdb. GO eval of IDs in TOP 5 sig up / down categories 
 ```{r}
 # --------------------------------------------------
@@ -2004,15 +2155,16 @@ plot_annotation_rainbow3 <- function(
 
   clean_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
   out_file <- file.path(out_dir, paste0("rainbow3_", clean_name(log2fc_col), "_", paste(clean_name(as.character(unique_groups)), collapse = "_"), ".pdf"))
-  ggsave(out_file, p, width = 4, height = 3, device = cairo_pdf)
+  ggsave(out_file, p, width = 8, height = 3, device = cairo_pdf)
 }
 
 
 
 # --- Step 2. Define annotations to be plotted ==> 3 MAX
 # gene_sets <- c("Lysosome","EarlyEndosome","RecyclingEndosome","SynapseSVs","SVfusion", "Svendocytosis","Svexocytosis","Nucleus","Lysosome","EarlyEndosome","RecyclingEndosome","NeuroDev","SynapseSVs","Presynaptic", "Postsynaptic","vATPase")
-
-gene_sets3 <- c("Lysosome","Svexocytosis", "Svendocytosis")
+gene_sets3 <- c("Lysosome","OXPHOS", "mtComplexI")
+gene_sets3 <- c("SynapseSVs","Svexocytosis", "SVfusion")
+gene_sets3 <- c("Endo_iN_curated_Hundley","EarlyEndosome", "RecyclingEndosome")
 
 
 # --- Step 3. Define log2FC datasets to be plotted 
@@ -2023,7 +2175,7 @@ gene_sets3 <- c("Lysosome","Svexocytosis", "Svendocytosis")
 # )
 
 
-# --- Step  4. Call function 
+# --- Step  4. Call function for Control Axon vs projections 
 plot_annotation_rainbow3(
   df          = diff136_df_annotated,
   gene_sets   = gene_sets3,
@@ -2033,6 +2185,15 @@ plot_annotation_rainbow3(
   n_top_labels = 5)
 
 
+
+# --- Step  5. Call function for KO vs Ctrl axon comparison
+plot_annotation_rainbow3(
+  df          = diff136_df_annotated,
+  gene_sets   = gene_sets3,
+  log2fc_col  = "log2FC_ASAH1_Axon.Ctrl_Axon",
+  out_dir     = out_dir_diff136_rainbow_3anno,
+  reference_fc = "log2FC_ASAH1_Axon.Ctrl_Axon",
+  n_top_labels = 5)
 
 ```
 
