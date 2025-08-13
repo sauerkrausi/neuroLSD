@@ -1606,7 +1606,10 @@ ascd_ann_long_df <- complete_data_annotated_day50 %>%
 # --- 2. Compute average log2FC per annotation per group ---
 ascd_avg_ann_fc_summary <- ascd_ann_long_df %>%
   group_by(group, neuron, Annotation) %>%
-  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+  dplyr::summarise(
+    avg_log2FC = mean(log2FC, na.rm = TRUE),
+    sd_log2FC  = sd(log2FC,  na.rm = TRUE),
+    .groups = "drop")
 
 # --- 3. Order groups within each neuron ---
 ascd_avg_ann_fc_summary <- ascd_avg_ann_fc_summary %>%
@@ -1620,23 +1623,23 @@ ascd_ann_long_df <- ascd_ann_long_df %>%
              by = c("group", "neuron")) %>%
   mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group)))
 
-# --- 5. Plot ---
-d50_ascd_ann_plot <- ggplot(ascd_ann_long_df, aes(x = group, y = log2FC, group = Genes)) +
-  geom_line(color = "grey70", size = 0.3, alpha = 0.6) +
-  geom_point(color = "grey70", size = 0.5, alpha = 0.6) +
+# --- 5. Plot: mean ± SD from summary ---
+d50_ascd_ann_plot <- ggplot(ascd_avg_ann_fc_summary, aes(x = group, y = avg_log2FC)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-  geom_line(data = ascd_avg_ann_fc_summary,
-            aes(x = group, y = avg_log2FC, group = Annotation),
-            color = "red", size = 1.2, inherit.aes = FALSE) +
-  facet_wrap(~neuron, scales = "free_x") +
+  geom_linerange(aes(ymin = avg_log2FC - sd_log2FC,
+                     ymax = avg_log2FC + sd_log2FC),
+                 color = "grey70", linewidth = 1.2, alpha = 0.8) +
+  geom_line(aes(group = 1), color = "red", linewidth = 0.9) +
+  geom_point(color = "red", size = 0.8) +
+  facet_wrap(~ neuron, scales = "free_x") +
   theme_bw(base_size = 8) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
   ) +
   labs(
-    title = "Functional Annotations: log2FC Summary by Genotype × Neuron",
-    x = "Genotype × Neuron (sorted by mean log2FC)",
+    title = "Functional Annotations: mean ± SD by Genotype x Neuron",
+    x = "Genotype x Neuron (sorted by mean log2FC)",
     y = expression(log[2]*"(KO / Ctrl)")
   )
 
@@ -1648,40 +1651,34 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_ascending_Avg_SVfusion.pdf")
 
 
 # --- 7. Zoom into first 6 groups per neuron ---
-ascd_top10_summary <- ascd_avg_ann_fc_summary %>%
+ascd_top6_summary <- ascd_avg_ann_fc_summary %>%
   group_by(neuron) %>%
   slice_head(n = 6) %>%
-  ungroup()
+  ungroup() %>%
+  mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group)))
 
-ascd_top10_long_df <- ascd_ann_long_df %>%
-  filter(group %in% ascd_top10_summary$group)
-
-# ensure factor order matches the subset
-ascd_top10_long_df <- ascd_top10_long_df %>%
-  mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group))) 
-
-# --- 8. Plot top 10 ---
-d50_ascd_ann_plot_top10 <- ggplot(ascd_top10_long_df, aes(x = group, y = log2FC, group = Genes)) +
-  geom_line(color = "grey70", size = 0.3, alpha = 0.6) +
-  geom_point(color = "grey70", size = 0.5, alpha = 0.6) +
+# --- 8. Plot top 6
+d50_ascd_ann_plot_top6 <- ggplot(ascd_top6_summary, aes(x = group, y = avg_log2FC)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-  geom_line(data = ascd_top10_summary,
-            aes(x = group, y = avg_log2FC, group = Annotation),
-            color = "red", size = 1.2, inherit.aes = FALSE) +
-  facet_wrap(~neuron, scales = "free_x") +
+  geom_linerange(aes(ymin = avg_log2FC - sd_log2FC,
+                     ymax = avg_log2FC + sd_log2FC),
+                 color = "grey70", linewidth = 1.2, alpha = 0.8) +
+  geom_line(aes(group = 1), color = "red", linewidth = 0.9) +
+  geom_point(color = "red", size = 0.8) +
+  facet_wrap(~ neuron, scales = "free_x") +
   theme_bw(base_size = 8) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
   ) +
   labs(
-    title = "Top Genotypes (by avg log2FC)",
-    x = "Genotype × Neuron (Top 6)",
+    title = "Top Genotypes: mean ± SD",
+    x = "Genotype x Neuron (Top 6)",
     y = expression(log[2]*"(KO / Ctrl)")
   )
 
 # --- 9. Save second PDF ---
-ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_SVfusion.pdf"), d50_ascd_ann_plot_top10, width = 2, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_SVfusion.pdf"), d50_ascd_ann_plot_top6, width = 2, height = 3, device = cairo_pdf)
 
 ```
 
