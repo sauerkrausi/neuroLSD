@@ -256,7 +256,6 @@ readr::write_csv(tfn_group_summary, file.path(out_dir_tfn, "OGB5N_stats_summary.
 # HeLa Control and ASAH1-/-
 # ------------------------------------------
 
-
 # --- 1. User inputs and outputs
 hela_base_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250613_HeLa-Ctrl-ASAH1_EndoLysoStains/cpsamEL/eval"
 
@@ -269,7 +268,7 @@ hela_out_dir <- file.path(hela_base_dir, "figures")
 dir.create(hela_out_dir, showWarnings = FALSE, recursive = TRUE)
 
 
-# --- 2. IO helpers
+# --- 2. IO helper functions
 hela_read_metrics_pairwise <- function(metrics_dir) {
   f <- file.path(metrics_dir, "pairwise_colocalization.csv")
   if (!file.exists(f)) return(NULL)
@@ -283,14 +282,14 @@ hela_read_metrics_summary <- function(metrics_dir) {
 }
 
 
-# --- 3. Parsing helpers
+# --- 3. Parsing helper functions
 hela_get_genotype <- function(x_prefix) {
   ifelse(stringr::str_detect(x_prefix, stringr::regex("ASAH1", ignore_case = TRUE)),
          "ASAH1", "Control")
 }
 
 
-# --- 4. Build data frames
+# --- 4. Build data frames by looping through subfolders 
 hela_subdirs_vec <- list.dirs(hela_base_dir, full.names = TRUE, recursive = FALSE)
 
 hela_pairwise_list <- list()
@@ -332,7 +331,62 @@ HeLa_summary_df <- bind_rows(hela_summary_list) %>%
   mutate(genotype = factor(genotype, levels = c("Control", "ASAH1")))
 
 
-# --- 5. Statistics helpers
+# --- CLEANING: remove non-finite, out-of-range, and outliers ---
+# metric properties
+hela_metric_specs <- tibble::tibble(
+  metric = c("coloc_per_nucleus","frac_coloc_A","frac_coloc_B",
+             "avg_area_HA","avg_area_EEA1","avg_area_VPS35",
+             "HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus"),
+  clamp01 = c(FALSE,TRUE,TRUE, FALSE,FALSE,FALSE, FALSE,FALSE,FALSE),
+  nonneg  = c(TRUE,TRUE,TRUE, TRUE,TRUE,TRUE, TRUE,TRUE,TRUE)
+)
+
+hela_flag_outliers <- function(df, group_vars, value_col, method="mad", k_mad=3){
+  spec <- hela_metric_specs %>% filter(metric == value_col)
+  clamp01 <- ifelse(nrow(spec)>0, spec$clamp01, FALSE)
+  nonneg  <- ifelse(nrow(spec)>0, spec$nonneg,  FALSE)
+  df %>% mutate(.val = .data[[value_col]]) %>%
+    mutate(.finite = is.finite(.val),
+           .inrange = ifelse(clamp01, (.val >= 0 & .val <= 1), TRUE),
+           .inrange = ifelse(nonneg, .inrange & (.val >= 0), .inrange)) %>%
+    mutate(.keep_basic = .finite & .inrange) %>%
+    group_by(across(all_of(group_vars))) %>%
+    mutate(.med = median(.val[.keep_basic], na.rm=TRUE),
+           .mad = mad(.val[.keep_basic], constant=1.4826, na.rm=TRUE),
+           .low = .med - k_mad*.mad,
+           .high = .med + k_mad*.mad) %>%
+    ungroup() %>%
+    mutate(.outlier_num = .keep_basic & (.val < .low | .val > .high),
+           .drop = !.keep_basic | .outlier_num,
+           .reason = case_when(
+             !.finite ~ "nonfinite",
+             .finite & !.inrange ~ "out_of_range",
+             .outlier_num ~ paste0("outlier_", method),
+             TRUE ~ "keep"
+           ))
+}
+
+# clean colocalization metrics
+coloc_metrics_vec <- c("coloc_per_nucleus", "frac_coloc_A", "frac_coloc_B")
+for (m in coloc_metrics_vec) {
+  if (!m %in% names(HeLa_colocalization_df)) next
+  flagged <- hela_flag_outliers(HeLa_colocalization_df, c("pair","genotype"), m)
+  readr::write_csv(flagged %>% filter(.drop), file.path(hela_out_dir, paste0("REMOVED_",m,".csv")))
+  HeLa_colocalization_df <- flagged %>% filter(!.drop) %>% select(-starts_with(".")) %>% as.data.frame()
+}
+
+# clean summary metrics
+summary_metrics_all <- c("avg_area_HA","avg_area_EEA1","avg_area_VPS35",
+                         "HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus")
+for (m in summary_metrics_all) {
+  if (!m %in% names(HeLa_summary_df)) next
+  flagged <- hela_flag_outliers(HeLa_summary_df, c("genotype"), m)
+  readr::write_csv(flagged %>% filter(.drop), file.path(hela_out_dir, paste0("REMOVED_",m,".csv")))
+  HeLa_summary_df <- flagged %>% filter(!.drop) %>% select(-starts_with(".")) %>% as.data.frame()
+}
+
+
+# --- 5. Statistics helper functions
 hela_wilcox_by_group <- function(in_df, group_var, value_col) {
   stopifnot(group_var %in% names(in_df), value_col %in% names(in_df))
   in_df %>%
@@ -362,8 +416,6 @@ hela_wilcox_by_group <- function(in_df, group_var, value_col) {
 
 # --- 6. Add stats to data frames
 # 6a. Pairwise colocalization stats per metric per pair
-coloc_metrics_vec <- c("coloc_per_nucleus", "frac_coloc_A", "frac_coloc_B")
-
 for (m_name in coloc_metrics_vec) {
   if (!m_name %in% names(HeLa_colocalization_df)) next
   stat_tbl_m <- hela_wilcox_by_group(HeLa_colocalization_df, "pair", m_name) %>%
@@ -374,12 +426,10 @@ for (m_name in coloc_metrics_vec) {
   HeLa_colocalization_df <- HeLa_colocalization_df %>%
     left_join(stat_tbl_m, by = "pair")
 }
-
-readr::write_csv(HeLa_colocalization_df,
-                 file.path(hela_out_dir, "HeLa_colocalization_with_stats.csv"))
+# write summary csv colocalization
+readr::write_csv(HeLa_colocalization_df,file.path(hela_out_dir, "HeLa_colocalization_with_stats.csv"))
 
 # 6b. Summary stats per metric across images
-# Normalize possible column name variants once
 if ("n_EEA1_per_nucleus" %in% names(HeLa_summary_df) && !("EEA1_per_nucleus" %in% names(HeLa_summary_df))) {
   HeLa_summary_df <- HeLa_summary_df %>% rename(EEA1_per_nucleus = n_EEA1_per_nucleus)
 }
@@ -435,7 +485,6 @@ hela_add_summary_stats <- function(df_in, metric_names, adjust_scope_label) {
 HeLa_summary_df <- HeLa_summary_df %>%
   hela_add_summary_stats(summary_avg_metrics_vec, "avg_area") %>%
   hela_add_summary_stats(summary_pernuc_metrics_vec, "per_nucleus")
-
 readr::write_csv(HeLa_summary_df,file.path(hela_out_dir, "HeLa_summary_with_stats.csv"))
 
 
@@ -443,7 +492,7 @@ readr::write_csv(HeLa_summary_df,file.path(hela_out_dir, "HeLa_summary_with_stat
 hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec) {
   stopifnot(y_col %in% names(input_df))
 
-  stats_tbl <- input_df %>%
+  summary_stats_table <- input_df %>%
     select(pair, genotype, !!sym(y_col)) %>%
     filter(!is.na(.data[[y_col]])) %>%
     group_by(pair) %>%
@@ -470,16 +519,16 @@ hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec
     group_by(pair) %>%
     summarize(y_pos = max(.data[[y_col]], na.rm = TRUE) * 1.05, .groups = "drop")
 
-  stats_for_plot <- left_join(stats_tbl, y_pos_tbl, by = "pair")
+  stats_for_plot <- left_join(summary_stats_table, y_pos_tbl, by = "pair")
 
-  p_obj <- ggplot(input_df, aes(x = genotype, y = .data[[y_col]], fill = genotype)) +
+  plotting_object_dummy <- ggplot(input_df, aes(x = genotype, y = .data[[y_col]], fill = genotype)) +
     geom_violin(trim = FALSE, linewidth = 0.2) +
     geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white") +
     geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
     scale_fill_manual(values = palette_vec) +
     labs(title = y_lab, x = "Genotype", y = y_lab) +
     facet_wrap(~ pair, scales = "free_y") +
-    theme_bw(base_size = 10) +
+    theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
       legend.position = "none",
@@ -491,8 +540,7 @@ hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec
       inherit.aes = FALSE, size = 3
     )
 
-  ggsave(file.path(hela_out_dir, out_name), p_obj, width = 10, height = 7)
-  invisible(p_obj)
+  ggsave(file.path(hela_out_dir, out_name), plotting_object_dummy, width = 6, height = 5)
 }
 
 hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name, palette_vec) {
@@ -506,7 +554,7 @@ hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name,
     select(genotype, dplyr::all_of(metric_vec)) %>%
     pivot_longer(cols = dplyr::all_of(metric_vec), names_to = "metric", values_to = "value")
 
-  p_sm <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
+  plotting_object_summary <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
     geom_violin(trim = FALSE, linewidth = 0.2) +
     geom_boxplot(width = 0.25, outlier.shape = NA) +
     geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
@@ -520,13 +568,11 @@ hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name,
       strip.background = element_rect(fill = "grey95", color = "grey80")
     )
 
-  ggsave(file.path(hela_out_dir, out_name), p_sm, width = 10, height = 7)
-  invisible(p_sm)
+  ggsave(file.path(hela_out_dir, out_name), plotting_object_summary, width = 10, height = 7)
 }
 
 
-# --- 8. Plots
-# Colocalization
+# --- 8. Call plotting function to create plots
 hela_plot_coloc_metric(
   HeLa_colocalization_df, "frac_coloc_A",
   "Fraction colocalized in A", "HeLa_frac_coloc_A_by_genotype.pdf",
@@ -538,7 +584,6 @@ hela_plot_coloc_metric(
   hela_genotype_colors
 )
 
-# Per image summary
 hela_plot_summary_metrics(
   HeLa_summary_df,
   c("avg_area_HA", "avg_area_EEA1", "avg_area_VPS35"),
@@ -553,8 +598,6 @@ hela_plot_summary_metrics(
   "HeLa_summary_per_nucleus_metrics.pdf",
   hela_genotype_colors
 )
-
-
 
 ```
 
