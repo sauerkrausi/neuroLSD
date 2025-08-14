@@ -248,8 +248,6 @@ readr::write_csv(tfn_group_summary, file.path(out_dir_tfn, "OGB5N_stats_summary.
 
 
 # III. HeLa endo-lysosomal stain evaluation
-
-
 ```{r}
 # ------------------------------------------
 # Color and quant eval of endo-lyso stains
@@ -330,6 +328,10 @@ HeLa_summary_df <- bind_rows(hela_summary_list) %>%
   relocate(genotype, .after = prefix) %>%
   mutate(genotype = factor(genotype, levels = c("Control", "ASAH1")))
 
+# keep raw copies for per-metric cleaning downstream
+HeLa_colocalization_raw <- HeLa_colocalization_df
+HeLa_summary_raw        <- HeLa_summary_df
+
 
 # --- CLEANING: remove non-finite, out-of-range, and outliers
 # metric properties
@@ -380,25 +382,22 @@ hela_flag_outliers <- function(df, group_vars, value_col, method="mad", k_mad=3)
 }
 
 # clean colocalization metrics
-coloc_metrics_vec <- c("coloc_per_nucleus", "frac_coloc_A", "frac_coloc_B")
+coloc_metrics_vec <- c("coloc_per_nucleus","frac_coloc_A","frac_coloc_B")
 for (m in coloc_metrics_vec) {
   if (!m %in% names(HeLa_colocalization_df)) next
   flagged <- hela_flag_outliers(HeLa_colocalization_df, c("pair","genotype"), m)
-  readr::write_csv(flagged %>% filter(.drop), file.path(hela_out_dir, paste0("REMOVED_",m,".csv")))
-  HeLa_colocalization_df <- flagged %>% filter(!.drop) %>% select(-starts_with(".")) %>% as.data.frame()
+  readr::write_csv(flagged %>% dplyr::filter(.drop),
+                   file.path(hela_out_dir, paste0("REMOVED_", m, ".csv")))
 }
-
 # clean summary metrics
 summary_metrics_all <- c("avg_area_HA","avg_area_EEA1","avg_area_VPS35","avg_area_LAMP1","avg_area_RAB7",
                          "HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus","LAMP1_per_nucleus","RAB7_per_nucleus")
-
 for (m in summary_metrics_all) {
   if (!m %in% names(HeLa_summary_df)) next
   flagged <- hela_flag_outliers(HeLa_summary_df, c("genotype"), m)
-  readr::write_csv(flagged %>% filter(.drop), file.path(hela_out_dir, paste0("REMOVED_",m,".csv")))
-  HeLa_summary_df <- flagged %>% filter(!.drop) %>% select(-starts_with(".")) %>% as.data.frame()
+  readr::write_csv(flagged %>% dplyr::filter(.drop),
+                   file.path(hela_out_dir, paste0("REMOVED_", m, ".csv")))
 }
-
 
 # --- 5. Statistics helper functions
 hela_wilcox_by_group <- function(in_df, group_var, value_col) {
@@ -431,17 +430,21 @@ hela_wilcox_by_group <- function(in_df, group_var, value_col) {
 # --- 6. Add stats to data frames
 # 6a. Pairwise colocalization stats per metric per pair
 for (m_name in coloc_metrics_vec) {
-  if (!m_name %in% names(HeLa_colocalization_df)) next
-  stat_tbl_m <- hela_wilcox_by_group(HeLa_colocalization_df, "pair", m_name) %>%
-    select(pair,
-           !!sym(paste0("p_adj_", m_name)) := p_adj,
-           !!sym(paste0("p_label_", m_name)) := p_label,
-           !!sym(paste0("statistic_", m_name)) := statistic)
-  HeLa_colocalization_df <- HeLa_colocalization_df %>%
-    left_join(stat_tbl_m, by = "pair")
+  if (!m_name %in% names(HeLa_colocalization_raw)) next
+  cl <- hela_flag_outliers(HeLa_colocalization_raw, c("pair","genotype"), m_name) %>%
+        dplyr::filter(!.drop)
+  df_m <- cl %>% dplyr::select(-dplyr::starts_with("."))  # strip aux columns
+  stat_tbl_m <- hela_wilcox_by_group(df_m, "pair", m_name) %>%
+    dplyr::select(pair,
+      !!rlang::sym(paste0("p_adj_", m_name)) := p_adj,
+      !!rlang::sym(paste0("p_label_", m_name)) := p_label,
+      !!rlang::sym(paste0("statistic_", m_name)) := statistic)
+  HeLa_colocalization_df <- HeLa_colocalization_raw %>%
+    dplyr::left_join(stat_tbl_m, by = "pair")
 }
 # write summary csv colocalization
 readr::write_csv(HeLa_colocalization_df,file.path(hela_out_dir, "HeLa_colocalization_with_stats.csv"))
+
 
 # 6b. Summary stats per metric across images
 if ("n_EEA1_per_nucleus" %in% names(HeLa_summary_df) && !("EEA1_per_nucleus" %in% names(HeLa_summary_df))) {
@@ -465,40 +468,32 @@ hela_add_summary_stats <- function(df_in, metric_names, adjust_scope_label) {
   if (length(present_metrics) == 0) return(df_in)
 
   stats_list <- lapply(present_metrics, function(mn) {
-    st <- hela_wilcox_by_group(
-      df_in %>% select(genotype, !!sym(mn)) %>% mutate(metric = mn),
-      group_var = "metric",
-      value_col = mn
-    )
+    cl <- hela_flag_outliers(df_in, c("genotype"), mn) %>% dplyr::filter(!.drop)
+    df_m <- cl %>% dplyr::select(genotype, !!rlang::sym(mn)) %>% dplyr::mutate(metric = mn)
+    st <- hela_wilcox_by_group(df_m, "metric", mn)
     st$metric <- mn
     st
   })
 
-  stats_df <- bind_rows(stats_list) %>%
-    mutate(
+  stats_df <- dplyr::bind_rows(stats_list) %>%
+    dplyr::mutate(
       p_adj = p.adjust(p, method = "BH"),
-      p_label = case_when(
-        is.na(p_adj) ~ "n.a.",
-        p_adj < 0.001 ~ "***",
-        p_adj < 0.01  ~ "**",
-        p_adj < 0.05  ~ "*",
-        TRUE          ~ "ns"
+      p_label = dplyr::case_when(
+        is.na(p_adj) ~ "n.a.", p_adj < 0.001 ~ "***",
+        p_adj < 0.01 ~ "**",  p_adj < 0.05  ~ "*", TRUE ~ "ns"
       )
     )
 
   df_out <- df_in
   for (mn in present_metrics) {
-    row_m <- stats_df %>% filter(metric == mn) %>% slice(1)
-    df_out[[paste0("p_adj_", mn)]] <- row_m$p_adj
-    df_out[[paste0("p_label_", mn)]] <- row_m$p_label
+    row_m <- stats_df %>% dplyr::filter(metric == mn) %>% dplyr::slice(1)
+    df_out[[paste0("p_adj_", mn)]]     <- row_m$p_adj
+    df_out[[paste0("p_label_", mn)]]   <- row_m$p_label
     df_out[[paste0("statistic_", mn)]] <- row_m$statistic
   }
 
-  readr::write_csv(
-    stats_df %>% select(metric, statistic, p, p_adj, p_label),
-    file.path(hela_out_dir, paste0("HeLa_summary_stats_", adjust_scope_label, ".csv"))
-  )
-
+  readr::write_csv(stats_df %>% dplyr::select(metric, statistic, p, p_adj, p_label),
+                   file.path(hela_out_dir, paste0("HeLa_summary_stats_", adjust_scope_label, ".csv")))
   df_out
 }
 
@@ -511,90 +506,60 @@ readr::write_csv(HeLa_summary_df,file.path(hela_out_dir, "HeLa_summary_with_stat
 # --- 7. Plotting helpers
 hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec) {
   stopifnot(y_col %in% names(input_df))
+  cl <- hela_flag_outliers(input_df, c("pair","genotype"), y_col) %>% dplyr::filter(!.drop)
+  if (nrow(cl) == 0) { warning("No data left to plot after cleaning for metric: ", y_col); return(invisible(NULL)) }
 
-  summary_stats_table <- input_df %>%
-    select(pair, genotype, !!sym(y_col)) %>%
-    filter(!is.na(.data[[y_col]])) %>%
-    group_by(pair) %>%
-    do({
-      if (dplyr::n_distinct(.$genotype) < 2) tibble(statistic = NA_real_, p = NA_real_)
-      else {
-        wt <- rstatix::wilcox_test(reformulate("genotype", response = y_col), data = .)
-        tibble(statistic = wt$statistic, p = wt$p)
-      }
-    }) %>%
-    ungroup() %>%
-    mutate(
-      p_adj = p.adjust(p, method = "BH"),
-      p_label = case_when(
-        is.na(p_adj) ~ "n.a.",
-        p_adj < 0.001 ~ "***",
-        p_adj < 0.01  ~ "**",
-        p_adj < 0.05  ~ "*",
-        TRUE          ~ "ns"
-      )
-    )
+  stats_tbl <- cl %>% dplyr::select(pair, genotype, !!rlang::sym(y_col)) %>%
+    dplyr::group_by(pair) %>%
+    dplyr::do({
+      if (dplyr::n_distinct(.$genotype) < 2) tibble::tibble(statistic=NA_real_, p=NA_real_)
+      else { wt <- rstatix::wilcox_test(reformulate("genotype", response = y_col), data = .)
+             tibble::tibble(statistic = wt$statistic, p = wt$p) }
+    }) %>% dplyr::ungroup() %>%
+    dplyr::mutate(p_adj = p.adjust(p, method = "BH"),
+                  p_label = dplyr::case_when(is.na(p_adj)~"n.a.", p_adj<0.001~"***", p_adj<0.01~"**", p_adj<0.05~"*", TRUE~"ns"))
+  y_pos_tbl <- cl %>% dplyr::group_by(pair) %>% dplyr::summarize(y_pos = max(.data[[y_col]], na.rm = TRUE) * 1.05, .groups = "drop")
+  stats_for_plot <- dplyr::left_join(stats_tbl, y_pos_tbl, by = "pair")
 
-  y_pos_tbl <- input_df %>%
-    group_by(pair) %>%
-    summarize(y_pos = max(.data[[y_col]], na.rm = TRUE) * 1.05, .groups = "drop")
-
-  stats_for_plot <- left_join(summary_stats_table, y_pos_tbl, by = "pair")
-
-  plotting_object_dummy <- ggplot(input_df, aes(x = genotype, y = .data[[y_col]], fill = genotype)) +
+  plot_color_metric <- ggplot(cl, aes(x = genotype, y = .data[[y_col]], fill = genotype)) +
     geom_violin(trim = FALSE, linewidth = 0.2) +
     geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white") +
     geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
     scale_fill_manual(values = palette_vec) +
     labs(title = y_lab, x = "Genotype", y = y_lab) +
-    facet_wrap(~ pair, scales = "free_y") +
+    facet_wrap(~ pair, scales = "free_y", nrow = 1) +
     theme_bw(base_size = 6) +
-    theme(
-      panel.grid = element_blank(),
-      legend.position = "none",
-      strip.background = element_rect(fill = "grey95", color = "grey80")
-    ) +
-    geom_text(
-      data = stats_for_plot,
-      aes(x = 1.5, y = y_pos, label = paste0("BH p: ", signif(p_adj, 3), "  ", p_label)),
-      inherit.aes = FALSE, size = 3
-    )
-
-  ggsave(file.path(hela_out_dir, out_name), plotting_object_dummy, width = 6, height = 5)
+    theme(panel.grid = element_blank(), legend.position = "none",
+                   strip.background = element_rect(fill = "grey95", color = "grey80")) +
+    geom_text(data = stats_for_plot, aes(x = 1.5, y = y_pos, label = paste0("BH p: ", signif(p_adj, 3), "  ", p_label)),
+                       inherit.aes = FALSE, size = 3)
+  ggsave(file.path(hela_out_dir, out_name), plot_color_metric, width = 8, height = 5)
 }
 
 hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name, palette_vec) {
   metric_vec <- intersect(metric_vec, names(input_df))
-  if (length(metric_vec) == 0) {
-    warning("No requested metrics found for ", out_name)
-    return(invisible(NULL))
-  }
+  if (length(metric_vec) == 0) { warning("No requested metrics found for ", out_name); return(invisible(NULL)) }
 
-  long_df <- input_df %>%
-    select(genotype, dplyr::all_of(metric_vec)) %>%
-    pivot_longer(cols = dplyr::all_of(metric_vec), names_to = "metric", values_to = "value") %>%
-    filter(is.finite(value))
-  
-  if (nrow(long_df) == 0) {
-    warning("No data left to plot after cleaning for: ", paste(metric_vec, collapse=", "))
-    return(invisible(NULL))
-  }
+  cleaned_list <- lapply(metric_vec, function(mn) {
+    cl <- hela_flag_outliers(input_df, c("genotype"), mn) %>% dplyr::filter(!.drop)
+    if (nrow(cl) == 0) return(NULL)
+    cl %>% dplyr::select(genotype, !!rlang::sym(mn)) %>% dplyr::mutate(metric = mn) %>%
+      dplyr::rename(value = !!rlang::sym(mn))
+  })
+  long_df <- cleaned_list %>% purrr::compact() %>% dplyr::bind_rows()
+  if (is.null(long_df) || nrow(long_df) == 0) { warning("No data left to plot after cleaning for: ", paste(metric_vec, collapse=", ")); return(invisible(NULL)) }
 
-  plotting_object_summary <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
+  plot_summary_dummy <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
     geom_violin(trim = FALSE, linewidth = 0.2) +
-    geom_boxplot(width = 0.25, outlier.shape = NA) +
+    geom_boxplot(width = 0.25, outlier.shape = NA,fill = "white") +
     geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
     scale_fill_manual(values = palette_vec) +
     labs(title = title_txt, x = "Genotype", y = NULL) +
-    facet_wrap(~ metric, scales = "free_y") +
-    theme_bw(base_size = 10) +
-    theme(
-      panel.grid = element_blank(),
-      legend.position = "none",
-      strip.background = element_rect(fill = "grey95", color = "grey80")
-    )
-
-  ggsave(file.path(hela_out_dir, out_name), plotting_object_summary, width = 10, height = 7)
+    facet_wrap(~ metric, scales = "free_y", nrow = 1)+
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), legend.position = "none",
+                   strip.background = element_rect(fill = "grey95", color = "grey80"))
+  ggsave(file.path(hela_out_dir, out_name), plot_summary_dummy, width = 8, height = 5)
 }
 
 
