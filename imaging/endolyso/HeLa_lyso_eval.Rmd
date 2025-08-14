@@ -533,7 +533,7 @@ hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec
                    strip.background = element_rect(fill = "grey95", color = "grey80")) +
     geom_text(data = stats_for_plot, aes(x = 1.5, y = y_pos, label = paste0("BH p: ", signif(p_adj, 3), "  ", p_label)),
                        inherit.aes = FALSE, size = 3)
-  ggsave(file.path(hela_out_dir, out_name), plot_color_metric, width = 8, height = 5)
+  ggsave(file.path(hela_out_dir, out_name), plot_color_metric, width = 12, height = 5)
 }
 
 hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name, palette_vec) {
@@ -543,23 +543,63 @@ hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name,
   cleaned_list <- lapply(metric_vec, function(mn) {
     cl <- hela_flag_outliers(input_df, c("genotype"), mn) %>% dplyr::filter(!.drop)
     if (nrow(cl) == 0) return(NULL)
-    cl %>% dplyr::select(genotype, !!rlang::sym(mn)) %>% dplyr::mutate(metric = mn) %>%
+    cl %>%
+      dplyr::select(genotype, !!rlang::sym(mn)) %>%
+      dplyr::mutate(metric = mn) %>%
       dplyr::rename(value = !!rlang::sym(mn))
   })
   long_df <- cleaned_list %>% purrr::compact() %>% dplyr::bind_rows()
-  if (is.null(long_df) || nrow(long_df) == 0) { warning("No data left to plot after cleaning for: ", paste(metric_vec, collapse=", ")); return(invisible(NULL)) }
+  if (is.null(long_df) || nrow(long_df) == 0) { warning("No data left to plot after cleaning for: ", paste(metric_vec, collapse = ", ")); return(invisible(NULL)) }
 
-  plot_summary_dummy <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
+  # stats per metric
+  stats_tbl <- long_df %>%
+    dplyr::group_by(metric) %>%
+    dplyr::do({
+      if (dplyr::n_distinct(.$genotype) < 2) tibble::tibble(statistic = NA_real_, p = NA_real_)
+      else {
+        wt <- rstatix::wilcox_test(value ~ genotype, data = .)
+        tibble::tibble(statistic = wt$statistic, p = wt$p)
+      }
+    }) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      p_adj = p.adjust(p, method = "BH"),
+      p_label = dplyr::case_when(
+        is.na(p_adj) ~ "n.a.",
+        p_adj < 0.001 ~ "***",
+        p_adj < 0.01  ~ "**",
+        p_adj < 0.05  ~ "*",
+        TRUE          ~ "ns"
+      )
+    )
+
+  y_pos_tbl <- long_df %>%
+    dplyr::group_by(metric) %>%
+    dplyr::summarise(y_pos = max(value, na.rm = TRUE) * 1.05, .groups = "drop")
+
+  stats_for_plot <- dplyr::left_join(stats_tbl, y_pos_tbl, by = "metric")
+
+  plot_summary <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
     geom_violin(trim = FALSE, linewidth = 0.2) +
-    geom_boxplot(width = 0.25, outlier.shape = NA,fill = "white") +
+    geom_boxplot(width = 0.25, outlier.shape = NA, fill = "white") +
     geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
     scale_fill_manual(values = palette_vec) +
     labs(title = title_txt, x = "Genotype", y = NULL) +
-    facet_wrap(~ metric, scales = "free_y", nrow = 1)+
+    facet_wrap(~ metric, scales = "free_y", nrow = 1) +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), legend.position = "none",
-                   strip.background = element_rect(fill = "grey95", color = "grey80"))
-  ggsave(file.path(hela_out_dir, out_name), plot_summary_dummy, width = 8, height = 5)
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "none",
+      strip.background = element_rect(fill = "grey95", color = "grey80")
+    ) +
+    geom_text(
+      data = stats_for_plot,
+      aes(x = 1.5, y = y_pos, label = paste0("BH p: ", signif(p_adj, 3), "  ", p_label)),
+      inherit.aes = FALSE,
+      size = 3
+    )
+
+  ggsave(file.path(hela_out_dir, out_name), plot_summary, width = 12, height = 5)
 }
 
 
