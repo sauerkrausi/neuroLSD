@@ -36,212 +36,90 @@ library(tidyverse)
 library(readr)
 library(stringr)
 library(rstatix) 
+library(janitor)
+
 
 ```
 
 
 # II. TFN-488 uptake an coloc eval with EEA1
-## IIa. dataimport and metadata setup
 ```{r}
-# Root path
-root_tfn <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay"
+# path to your metrics
+metrics_dir <- "/Volumes/Expansion/Harvard/NIC/LucilleTwo/Project_neuroLSD/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay/pyeval/metrics"
 
-# Input TFN.csv in each CP_Eval_* folder
-cp_dirs <- c("CP_Eval_1", "CP_Eval_2", "CP_Eval_3")
-infiles_tfn <- file.path(root_tfn, cp_dirs, "Endosomes.csv")
+# read files
+coloc_df <- read_csv(file.path(metrics_dir, "pairwise_colocalization.csv"), show_col_types = FALSE) %>%
+  clean_names()
 
-# Output directory
-out_dir_tfn <- file.path(root_tfn, "Combined_colocalization_eval")
-dir.create(out_dir_tfn, showWarnings = FALSE, recursive = TRUE)
+summary_df <- read_csv(file.path(metrics_dir, "per_image_summary.csv"), show_col_types = FALSE) %>%
+  clean_names()
 
-# Columns to import
-keep_cols_tfn <- c(
-  "FileName_TFN",
-  "Correlation_Manders_TFN_EEA1",
-  "Correlation_Overlap_EEA1_TFN",
-  "AreaShape_Area",
-  "AreaShape_Compactness"
-)
-
-# Read and combine, add RepeatID from folder index
-tfn_raw <- purrr::map2_dfr(
-  infiles_tfn, seq_along(infiles_tfn),
-  ~ readr::read_csv(.x, guess_max = 200000, show_col_types = FALSE) %>%
-      dplyr::select(any_of(keep_cols_tfn)) %>%
-      dplyr::mutate(RepeatID = .y)
-)
-
-# Group order and colors
-tfn_group_levels <- c("Ctrl_5min", "Ctrl_45min", "ASAH1_5min", "ASAH1_45min")
-tfn_group_colors <- c(
-  "Ctrl_5min"   = "grey70",
-  "Ctrl_45min"  = "grey90",
-  "ASAH1_5min"  = "dodgerblue",
-  "ASAH1_45min" = "skyblue"
-)
-
-sanitize_label <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
-
-```
-
-
-## IIb. Parse data and read in data in long format
-```{r}
-# Strict tokens to avoid chase samples; require the trailing underscore after timepoint
-tfn_parsed <- tfn_raw %>%
-  mutate(
-    Genotype = case_when(
-      str_detect(FileName_TFN, "(?i)(^|_)Ctrl-5min_")  ~ "Ctrl",
-      str_detect(FileName_TFN, "(?i)(^|_)Ctrl-45min_") ~ "Ctrl",
-      str_detect(FileName_TFN, "(?i)(^|_)ASAH1-5min_")  ~ "ASAH1",
-      str_detect(FileName_TFN, "(?i)(^|_)ASAH1-45min_") ~ "ASAH1",
-      TRUE ~ NA_character_
-    ),
-    Timepoint = case_when(
-      str_detect(FileName_TFN, "(?i)(^|_)(Ctrl|ASAH1)-5min_")  ~ "5min",
-      str_detect(FileName_TFN, "(?i)(^|_)(Ctrl|ASAH1)-45min_") ~ "45min",
-      TRUE ~ NA_character_
-    )
-  ) %>%
-  filter(!is.na(Genotype), !is.na(Timepoint)) %>%
-  mutate(
-    Group = factor(paste(Genotype, Timepoint, sep = "_"), levels = tfn_group_levels)
-  )
-
-# Metrics to analyze and plot
-metric_cols_tfn <- c(
-  "Correlation_Manders_TFN_EEA1",
-  "Correlation_Overlap_EEA1_TFN",
-  "AreaShape_Area",
-  "AreaShape_Compactness"
-)
-
-# Long format for convenience
-tfn_long <- tfn_parsed %>%
-  pivot_longer(cols = all_of(metric_cols_tfn), names_to = "Metric", values_to = "Value")
-```
-
-
-
-## IIc. Per-repeat summaries & stats
-```{r}
-tfn_rep_summary <- tfn_long %>%
-  group_by(Metric, Group, RepeatID) %>%
-  summarise(
-    n_objects   = n(),
-    mean_value  = mean(Value, na.rm = TRUE),
-    median_value= median(Value, na.rm = TRUE),
-    sd_value    = sd(Value, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-readr::write_csv(tfn_rep_summary, file.path(out_dir_tfn, "TFN_perRepeat_summary.csv"))
-
-# Global Kruskal + pairwise Wilcoxon (BH) per metric
-tfn_run_stats <- function(metric_name, rep_df) {
-  sub <- rep_df %>% dplyr::filter(Metric == metric_name) %>% dplyr::mutate(Group = droplevels(Group))
-
-  kw <- tryCatch({
-    s <- kruskal.test(mean_value ~ Group, data = sub)
-    tibble::tibble(Metric = metric_name, test = "KruskalWallis",
-                   statistic = unname(s$statistic), df = unname(s$parameter), p_value = unname(s$p.value))
-  }, error = function(e) tibble::tibble(Metric = metric_name, test = "KruskalWallis",
-                                        statistic = NA, df = NA, p_value = NA))
-
-  pw <- tryCatch({
-    w <- pairwise.wilcox.test(sub$mean_value, sub$Group, p.adjust.method = "BH", exact = FALSE)
-    as_tibble(as.table(w$p.value)) %>%
-      dplyr::rename(group1 = Var1, group2 = Var2, p_adj = Freq) %>%
-      dplyr::mutate(Metric = metric_name, test = "PairwiseWilcoxonBH") %>%
-      dplyr::select(Metric, test, group1, group2, p_adj)
-  }, error = function(e) tibble::tibble(Metric = metric_name, test = "PairwiseWilcoxonBH",
-                                        group1 = NA, group2 = NA, p_adj = NA))
-
-  list(kw = kw, pw = pw)
+# parser
+parse_sample_meta <- function(tbl_in) {
+  tbl_in %>%
+    mutate(
+      geno_raw = str_extract(sample, "(?<![A-Za-z0-9])(Ctrl|ASAH1)(?![A-Za-z0-9])"),
+      genotype = case_when(
+        geno_raw == "Ctrl"  ~ "Control",
+        geno_raw == "ASAH1" ~ "ASAH1",
+        TRUE ~ NA_character_
+      ),
+      trt_raw = str_extract(sample, "(?<![A-Za-z0-9])(5min|45min)(?![A-Za-z0-9])"),
+      treatment = case_when(
+        trt_raw == "5min"  ~ "5 min",
+        trt_raw == "45min" ~ "45 min",
+        TRUE ~ NA_character_
+      ),
+      genotype = factor(genotype, levels = c("Control", "ASAH1")),
+      treatment = factor(treatment, levels = c("5 min", "45 min"))
+    ) %>%
+    select(-geno_raw, -trt_raw)
 }
 
-tfn_stats_list <- purrr::map(unique(tfn_long$Metric), ~ tfn_run_stats(.x, tfn_rep_summary))
-tfn_kw_tbl <- dplyr::bind_rows(lapply(tfn_stats_list, `[[`, "kw"))
-tfn_pw_tbl <- dplyr::bind_rows(lapply(tfn_stats_list, `[[`, "pw"))
+coloc_df <- parse_sample_meta(coloc_df)
+summary_df <- parse_sample_meta(summary_df)
 
-readr::write_csv(tfn_kw_tbl, file.path(out_dir_tfn, "TFN_stats_kruskal.csv"))
-readr::write_csv(tfn_pw_tbl, file.path(out_dir_tfn, "TFN_stats_pairwise_wilcoxon_BH.csv"))
+# quick check of parsed counts
+parsed_counts_tbl <- coloc_df %>%
+  count(genotype, treatment, name = "n_images")
 
-```
+print(parsed_counts_tbl)
 
 
-## IId. Summarize, plot data & save summary
-```{r}
-# Group summary for bars
-tfn_group_summary <- tfn_rep_summary %>%
-  group_by(Metric, Group) %>%
-  summarise(
-    n_repeats  = n(),
-    group_mean = mean(mean_value, na.rm = TRUE),
-    group_sem  = sd(mean_value, na.rm = TRUE) / sqrt(n_repeats),
-    .groups = "drop"
-  ) %>%
-  mutate(Group = factor(Group, levels = levels(tfn_parsed$Group)))
+hela_genotype_colors <- c(
+  "Control" = "grey80",
+  "ASAH1"   = "dodgerblue"
+)
 
-# Bar plots with jittered per-repeat points
-split(tfn_group_summary, tfn_group_summary$Metric) %>%
-  purrr::iwalk(function(df_bar, metric_name) {
+# plot frac_coloc_eea1 by genotype and treatment
+coloc_df <- coloc_df %>%
+  mutate(
+    genotype_treatment = factor(
+      paste(genotype, treatment, sep = "_"),
+      levels = c(
+        "Control_5 min",
+        "Control_45 min",
+        "ASAH1_5 min",
+        "ASAH1_45 min"
+      )
+    )
+  )
 
-    df_pts <- tfn_rep_summary %>%
-      dplyr::filter(Metric == metric_name) %>%
-      dplyr::mutate(Group = factor(Group, levels = levels(df_bar$Group)))
+plot_frac_coloc_eea1 <- ggplot(coloc_df, aes(x = genotype_treatment, y = frac_coloc_eea1, fill = genotype)) +
+  geom_violin(trim = FALSE, linewidth = 0.2)+
+  geom_boxplot(width = 0.2, outlier.shape = NA, alpha = 0.85, fill = "white") +
+  geom_jitter(width = 0.1, size = 1, alpha = 0.6) +
+  scale_fill_manual(values = hela_genotype_colors) +
+  labs(x = "Genotype + Treatment", y = "Fraction of EEA1 colocalized") +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none")
 
-    p_bar <- ggplot(df_bar, aes(x = Group, y = group_mean, fill = Group)) +
-      geom_col(width = 0.7) +
-      geom_errorbar(aes(ymin = group_mean - group_sem, ymax = group_mean + group_sem), width = 0.2, linewidth = 0.4) +
-      geom_point(
-        data = df_pts,
-        aes(x = Group, y = mean_value),
-        position = position_jitter(width = 0.1, height = 0, seed = 123),
-        size = 1.6, alpha = 0.85, inherit.aes = FALSE
-      ) +
-      scale_fill_manual(values = tfn_group_colors, guide = "none") +
-      labs(title = metric_name, x = NULL, y = "Mean per repeat") +
-      theme_bw() +
-      theme(panel.grid = element_blank(), plot.title = element_text(size = 10, face = "bold"))
-
-    print(p_bar)
-    ggsave(file.path(out_dir_tfn, paste0("bar_", sanitize_label(metric_name), ".pdf")),
-           plot = p_bar, width = 4, height = 4, device = "pdf")
-  })
-
-# Violin plots with jitter (background) + boxplot
-split(tfn_group_summary, tfn_group_summary$Metric) %>%
-  purrr::iwalk(function(df_bar, metric_name) {
-
-    df_pts <- tfn_rep_summary %>%
-      dplyr::filter(Metric == metric_name) %>%
-      dplyr::mutate(Group = factor(Group, levels = levels(df_bar$Group)))
-
-    p_violin <- ggplot(df_pts, aes(x = Group, y = mean_value, fill = Group)) +
-      geom_point(
-        position = position_jitter(width = 0.1, height = 0, seed = 123),
-        size = 1.2, alpha = 0.3
-      ) +
-      geom_violin(trim = FALSE, width = 0.8, adjust = 1.2, linewidth = 0.3, alpha = 0.85) +
-      geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white", linewidth = 0.35) +
-      scale_fill_manual(values = tfn_group_colors, guide = "none") +
-      labs(title = paste(metric_name, "(per-repeat means)"), x = NULL, y = "Per-repeat means") +
-      theme_bw() +
-      theme(panel.grid = element_blank(), plot.title = element_text(size = 10, face = "bold"))
-
-    print(p_violin)
-    ggsave(file.path(out_dir_tfn, paste0("violin_", sanitize_label(metric_name), ".pdf")),
-           plot = p_violin, width = 4, height = 4, device = "pdf")
-  })
-
-# --- 8. Quick table check
-tfn_group_summary %>%
-  dplyr::select(Metric, Group, n_repeats, group_mean) %>%
-  dplyr::arrange(Metric, Group) %>%
-  print(n = 40)
-
-readr::write_csv(tfn_group_summary, file.path(out_dir_tfn, "OGB5N_stats_summary.csv"))
+print(plot_frac_coloc_eea1)
+ggsave(file.path(metrics_dir, "HeLa_EEA1-TFN_coloc.pdf"), plot_frac_coloc_eea1, width = 4, height = 3,device = cairo_pdf)
+  
+  
 ```
 
 
