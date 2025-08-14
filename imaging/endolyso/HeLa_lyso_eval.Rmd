@@ -108,12 +108,36 @@ coloc_df <- coloc_df %>%
     )
   )
 
+# --- 4b. Outlier removal (IQR rule) per treatment group
+remove_outliers_iqr <- function(df, value_col) {
+  df %>%
+    group_by(treatment) %>%
+    mutate(
+      Q1 = quantile(.data[[value_col]], 0.25, na.rm = TRUE),
+      Q3 = quantile(.data[[value_col]], 0.75, na.rm = TRUE),
+      IQR_val = Q3 - Q1,
+      lower_bound = Q1 - 1.5 * IQR_val,
+      upper_bound = Q3 + 1.5 * IQR_val,
+      is_outlier = (.data[[value_col]] < lower_bound) | (.data[[value_col]] > upper_bound)
+    ) %>%
+    ungroup() %>%
+    filter(!is_outlier) %>%
+    select(-Q1, -Q3, -IQR_val, -lower_bound, -upper_bound, -is_outlier)
+}
 
-# --- 5. Wilcoxon tests: Control vs ASAH1 within each treatment on frac_coloc_eea1
-stats_tbl <- coloc_df %>%
+# Apply outlier removal separately for each metric
+coloc_df_clean <- coloc_df %>%
+  remove_outliers_iqr("frac_coloc_eea1") %>%
+  remove_outliers_iqr("frac_coloc_tfn")
+
+
+
+# --- 5. Wilcoxon tests: Control vs ASAH1 within each treatment
+# EEA1
+stats_tbl <- coloc_df_clean %>%
   filter(!is.na(frac_coloc_eea1), !is.na(genotype), !is.na(treatment)) %>%
   group_by(treatment) %>%
-  wilcox_test(frac_coloc_eea1 ~ genotype) %>%
+  rstatix::wilcox_test(frac_coloc_eea1 ~ genotype) %>%
   ungroup() %>%
   mutate(
     p_adj = p.adjust(p, method = "BH"),
@@ -126,26 +150,54 @@ stats_tbl <- coloc_df %>%
     )
   )
 
-# y positions for labels and x positions above ASAH1 for each treatment
-y_pos_tbl <- coloc_df %>%
+# TFN
+stats_tbl_tfn <- coloc_df_clean %>%
+  filter(!is.na(frac_coloc_tfn), !is.na(genotype), !is.na(treatment)) %>%
+  group_by(treatment) %>%
+  rstatix::wilcox_test(frac_coloc_tfn ~ genotype) %>%
+  ungroup() %>%
+  mutate(
+    p_adj = p.adjust(p, method = "BH"),
+    p_stars = case_when(
+      is.na(p_adj) ~ "n.a.",
+      p_adj < 0.001 ~ "***",
+      p_adj < 0.01  ~ "**",
+      p_adj < 0.05  ~ "*",
+      TRUE ~ "ns"
+    )
+  )
+
+# --- 5b. y-positions for labels and x positions above ASAH1 for each treatment
+y_pos_tbl_eea1 <- coloc_df %>%
   group_by(treatment) %>%
   summarise(y_pos = max(frac_coloc_eea1, na.rm = TRUE) * 1.05, .groups = "drop")
+
+y_pos_tbl_tfn <- coloc_df %>%
+  group_by(treatment) %>%
+  summarise(y_pos = max(frac_coloc_tfn,  na.rm = TRUE) * 1.05, .groups = "drop")
 
 levels_gt <- levels(coloc_df$genotype_treatment)
 
 stats_for_plot <- stats_tbl %>%
-  left_join(y_pos_tbl, by = "treatment") %>%
+  left_join(y_pos_tbl_eea1, by = "treatment") %>%
   mutate(
     x_label = paste0("ASAH1_", treatment),
     x_pos   = match(x_label, levels_gt),
     p_text  = paste0("BH p: ", signif(p_adj, 3), "  ", p_stars)
   )
 
-# --- 6 . plot frac_coloc_eea1 by genotype and treatment (violin + box + jitter) with p labels
-# save plot as pdf
-plot_frac_coloc_eea1 <- ggplot(coloc_df, aes(x = genotype_treatment, y = frac_coloc_eea1, fill = genotype)) +
+stats_for_plot_tfn <- stats_tbl_tfn %>%
+  left_join(y_pos_tbl_tfn, by = "treatment") %>%
+  mutate(
+    x_label = paste0("ASAH1_", treatment),
+    x_pos   = match(x_label, levels_gt),
+    p_text  = paste0("BH p: ", signif(p_adj, 3), "  ", p_stars)
+  )
+
+# --- 6a. Plot EEA1 (violin + box + jitter) with p labels
+plot_frac_coloc_eea1 <- ggplot(coloc_df_clean, aes(x = genotype_treatment, y = frac_coloc_eea1, fill = genotype)) +
   geom_jitter(width = 0.1, size = 1, alpha = 0.6) +
-  geom_violin(trim = FALSE, linewidth = 0.2, alpha =0.6) +
+  geom_violin(trim = FALSE, linewidth = 0.2, alpha = 0.6) +
   geom_boxplot(width = 0.2, outlier.shape = NA, alpha = 0.85, fill = "white") +
   scale_fill_manual(values = hela_genotype_colors) +
   labs(x = "Genotype + Treatment", y = "Fraction of EEA1 colocalized") +
@@ -161,19 +213,47 @@ plot_frac_coloc_eea1 <- ggplot(coloc_df, aes(x = genotype_treatment, y = frac_co
 print(plot_frac_coloc_eea1)
 ggsave(file.path(outdir, "HeLa_EEA1-TFN_coloc.pdf"), plot_frac_coloc_eea1, width = 3, height = 5, device = cairo_pdf)
 
+# --- 6b. Plot TFN (violin + box + jitter) with p labels
+plot_frac_coloc_tfn <- ggplot(coloc_df_clean, aes(x = genotype_treatment, y = frac_coloc_tfn, fill = genotype)) +
+  geom_jitter(width = 0.1, size = 1, alpha = 0.6) +
+  geom_violin(trim = FALSE, linewidth = 0.2, alpha = 0.6) +
+  geom_boxplot(width = 0.2, outlier.shape = NA, alpha = 0.85, fill = "white") +
+  scale_fill_manual(values = hela_genotype_colors) +
+  labs(x = "Genotype + Treatment", y = "Fraction of TFN colocalized") +
+  theme_bw() +
+  theme(panel.grid = element_blank(), legend.position = "none") +
+  geom_text(
+    data = stats_for_plot_tfn,
+    aes(x = x_pos, y = y_pos, label = p_text),
+    inherit.aes = FALSE,
+    size = 3
+  )
 
-# --- 7. Write annotated CSVs with stats columns merged by treatment
+print(plot_frac_coloc_tfn)
+ggsave(file.path(outdir, "HeLa_EEA1-TFN_coloc_tfn.pdf"), plot_frac_coloc_tfn, width = 3, height = 5, device = cairo_pdf)
+
+# --- 7. Write annotated CSVs with BOTH stats merged by treatment
 coloc_df %>%
-  left_join(stats_tbl %>% select(treatment, p, p_adj, p_stars), by = "treatment") %>%
-  write_csv(file.path(outdir, "pairwise_colocalization_annotated.csv"))
+  left_join(stats_tbl %>% select(treatment, p, p_adj, p_stars) %>%
+              rename(p_eea1 = p, p_adj_eea1 = p_adj, p_stars_eea1 = p_stars),
+            by = "treatment") %>%
+  left_join(stats_tbl_tfn %>% select(treatment, p, p_adj, p_stars) %>%
+              rename(p_tfn = p, p_adj_tfn = p_adj, p_stars_tfn = p_stars),
+            by = "treatment") %>%
+  readr::write_csv(file.path(outdir, "pairwise_colocalization_annotated.csv"))
 
 summary_df %>%
-  left_join(stats_tbl %>% select(treatment, p, p_adj, p_stars), by = "treatment") %>%
-  write_csv(file.path(outdir, "per_image_summary_annotated.csv"))
+  left_join(stats_tbl %>% select(treatment, p, p_adj, p_stars) %>%
+              rename(p_eea1 = p, p_adj_eea1 = p_adj, p_stars_eea1 = p_stars),
+            by = "treatment") %>%
+  left_join(stats_tbl_tfn %>% select(treatment, p, p_adj, p_stars) %>%
+              rename(p_tfn = p, p_adj_tfn = p_adj, p_stars_tfn = p_stars),
+            by = "treatment") %>%
+  readr::write_csv(file.path(outdir, "per_image_summary_annotated.csv"))
 
-
-# --- 8. also save the stats table itself
-write_csv(stats_tbl, file.path(outdir, "EEA1_coloc_wilcoxon_by_treatment.csv"))
+# --- 8. Save each stats table separately as well
+readr::write_csv(stats_tbl,      file.path(outdir, "EEA1_coloc_wilcoxon_by_treatment.csv"))
+readr::write_csv(stats_tbl_tfn,  file.path(outdir, "TFN_coloc_wilcoxon_by_treatment.csv"))
   
 ```
 
