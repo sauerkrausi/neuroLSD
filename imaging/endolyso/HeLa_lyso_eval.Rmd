@@ -251,15 +251,13 @@ readr::write_csv(tfn_group_summary, file.path(out_dir_tfn, "OGB5N_stats_summary.
 
 
 ```{r}
-# --------------------------------
+# ------------------------------------------
 # Color and quant eval of endo-lyso stains
 # HeLa Control and ASAH1-/-
-# --------------------------------
+# ------------------------------------------
 
-# --- 1. User inputs
-# -----------------------------
-# 1. User inputs and outputs
-# -----------------------------
+
+# --- 1. User inputs and outputs
 hela_base_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250613_HeLa-Ctrl-ASAH1_EndoLysoStains/cpsamEL/eval"
 
 hela_genotype_colors <- c(
@@ -270,9 +268,8 @@ hela_genotype_colors <- c(
 hela_out_dir <- file.path(hela_base_dir, "figures")
 dir.create(hela_out_dir, showWarnings = FALSE, recursive = TRUE)
 
-# -----------------------------
-# 2. IO helpers
-# -----------------------------
+
+# --- 2. IO helpers
 hela_read_metrics_pairwise <- function(metrics_dir) {
   f <- file.path(metrics_dir, "pairwise_colocalization.csv")
   if (!file.exists(f)) return(NULL)
@@ -285,17 +282,15 @@ hela_read_metrics_summary <- function(metrics_dir) {
   readr::read_csv(f, show_col_types = FALSE)
 }
 
-# -----------------------------
-# 3. Parsing helpers
-# -----------------------------
+
+# --- 3. Parsing helpers
 hela_get_genotype <- function(x_prefix) {
   ifelse(stringr::str_detect(x_prefix, stringr::regex("ASAH1", ignore_case = TRUE)),
          "ASAH1", "Control")
 }
 
-# -----------------------------
-# 4. Build data frames
-# -----------------------------
+
+# --- 4. Build data frames
 hela_subdirs_vec <- list.dirs(hela_base_dir, full.names = TRUE, recursive = FALSE)
 
 hela_pairwise_list <- list()
@@ -336,9 +331,8 @@ HeLa_summary_df <- bind_rows(hela_summary_list) %>%
   relocate(genotype, .after = prefix) %>%
   mutate(genotype = factor(genotype, levels = c("Control", "ASAH1")))
 
-# -----------------------------
-# 5. Statistics helpers
-# -----------------------------
+
+# --- 5. Statistics helpers
 hela_wilcox_by_group <- function(in_df, group_var, value_col) {
   stopifnot(group_var %in% names(in_df), value_col %in% names(in_df))
   in_df %>%
@@ -365,9 +359,8 @@ hela_wilcox_by_group <- function(in_df, group_var, value_col) {
     )
 }
 
-# -----------------------------
-# 6. Add stats to data frames
-# -----------------------------
+
+# --- 6. Add stats to data frames
 # 6a. Pairwise colocalization stats per metric per pair
 coloc_metrics_vec <- c("coloc_per_nucleus", "frac_coloc_A", "frac_coloc_B")
 
@@ -443,12 +436,10 @@ HeLa_summary_df <- HeLa_summary_df %>%
   hela_add_summary_stats(summary_avg_metrics_vec, "avg_area") %>%
   hela_add_summary_stats(summary_pernuc_metrics_vec, "per_nucleus")
 
-readr::write_csv(HeLa_summary_df,
-                 file.path(hela_out_dir, "HeLa_summary_with_stats.csv"))
+readr::write_csv(HeLa_summary_df,file.path(hela_out_dir, "HeLa_summary_with_stats.csv"))
 
-# -----------------------------
-# 7. Plotting helpers
-# -----------------------------
+
+# --- 7. Plotting helpers
 hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec) {
   stopifnot(y_col %in% names(input_df))
 
@@ -483,7 +474,7 @@ hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec
 
   p_obj <- ggplot(input_df, aes(x = genotype, y = .data[[y_col]], fill = genotype)) +
     geom_violin(trim = FALSE, linewidth = 0.2) +
-    geom_boxplot(width = 0.25, outlier.shape = NA) +
+    geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white") +
     geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
     scale_fill_manual(values = palette_vec) +
     labs(title = y_lab, x = "Genotype", y = y_lab) +
@@ -533,9 +524,8 @@ hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name,
   invisible(p_sm)
 }
 
-# -----------------------------
-# 8. Plots
-# -----------------------------
+
+# --- 8. Plots
 # Colocalization
 hela_plot_coloc_metric(
   HeLa_colocalization_df, "frac_coloc_A",
@@ -545,11 +535,6 @@ hela_plot_coloc_metric(
 hela_plot_coloc_metric(
   HeLa_colocalization_df, "frac_coloc_B",
   "Fraction colocalized in B", "HeLa_frac_coloc_B_by_genotype.pdf",
-  hela_genotype_colors
-)
-hela_plot_coloc_metric(
-  HeLa_colocalization_df, "coloc_per_nucleus",
-  "Colocalization per nucleus", "HeLa_coloc_per_nucleus_by_genotype.pdf",
   hela_genotype_colors
 )
 
