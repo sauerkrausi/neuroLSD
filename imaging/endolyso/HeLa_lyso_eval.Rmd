@@ -40,7 +40,7 @@ library(rstatix)
 ```
 
 
-# II. TFN-488 uptake — Combined colocalization eval
+# II. TFN-488 uptake an coloc eval with EEA1
 ## IIa. dataimport and metadata setup
 ```{r}
 # Root path
@@ -504,6 +504,7 @@ readr::write_csv(HeLa_summary_df,file.path(hela_out_dir, "HeLa_summary_with_stat
 
 
 # --- 7. Plotting helpers
+## function for plotting colocalisation
 hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec) {
   stopifnot(y_col %in% names(input_df))
   cl <- hela_flag_outliers(input_df, c("pair","genotype"), y_col) %>% dplyr::filter(!.drop)
@@ -533,9 +534,10 @@ hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec
                    strip.background = element_rect(fill = "grey95", color = "grey80")) +
     geom_text(data = stats_for_plot, aes(x = 1.5, y = y_pos, label = paste0("BH p: ", signif(p_adj, 3), "  ", p_label)),
                        inherit.aes = FALSE, size = 3)
-  ggsave(file.path(hela_out_dir, out_name), plot_color_metric, width = 12, height = 5)
+  ggsave(file.path(hela_out_dir, out_name), plot_color_metric, width = 15, height = 3)
 }
 
+## function for plotting number and area per comparison 
 hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name, palette_vec) {
   metric_vec <- intersect(metric_vec, names(input_df))
   if (length(metric_vec) == 0) { warning("No requested metrics found for ", out_name); return(invisible(NULL)) }
@@ -599,7 +601,7 @@ hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name,
       size = 3
     )
 
-  ggsave(file.path(hela_out_dir, out_name), plot_summary, width = 12, height = 5)
+  ggsave(file.path(hela_out_dir, out_name), plot_summary, width = 15, height = 3)
 }
 
 
