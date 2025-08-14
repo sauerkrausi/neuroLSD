@@ -1,5 +1,5 @@
 ---
-title: "TFN-488 uptake — Combined colocalization eval"
+title: "HeLa Endo-lyso imaging eval"
 output: html_document
 date: "2025-08-10"
   chunk_output_type: console
@@ -32,7 +32,9 @@ library(rlang)
 
 ```
 
-# II. dataimport and metadata setup
+
+# II. TFN-488 uptake — Combined colocalization eval
+## IIa. dataimport and metadata setup
 ```{r}
 # Root path
 root_tfn <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay"
