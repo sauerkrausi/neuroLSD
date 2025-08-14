@@ -320,76 +320,131 @@ HeLa_summary_df        <- bind_rows(hela_summary_list)  %>% relocate(genotype, .
 message("HeLa_colocalization_df: ", nrow(HeLa_colocalization_df), " rows")
 message("HeLa_summary_df: ", nrow(HeLa_summary_df), " rows")
 
-# -------- 4. Plot colocalization per genotype with stats --------
-# We will use 'coloc_per_nucleus' as the response
-# Non parametric Wilcoxon rank sum test per pair
+# Fix plotting order
+HeLa_colocalization_df <- HeLa_colocalization_df %>%
+  mutate(genotype = factor(genotype, levels = c("Control", "ASAH1")))
+HeLa_summary_df <- HeLa_summary_df %>%
+  mutate(genotype = factor(genotype, levels = c("Control", "ASAH1")))
 
-# compute per pair test
-hela_stats_tbl <- HeLa_colocalization_df %>%
-  select(pair, genotype, coloc_per_nucleus) %>%
-  filter(!is.na(coloc_per_nucleus)) %>%
-  group_by(pair) %>%
-  do({
-    if (n_distinct(.$genotype) < 2) {
-      tibble(statistic = NA_real_, p = NA_real_)
-    } else {
-      wt <- wilcox_test(coloc_per_nucleus ~ genotype, data = .)
-      tibble(statistic = wt$statistic, p = wt$p)
-    }
-  }) %>%
-  ungroup() %>%
-  mutate(p_adj = p.adjust(p, method = "BH"),
-         p_label = case_when(
-           is.na(p_adj) ~ "n.a.",
-           p_adj < 0.001 ~ "***",
-           p_adj < 0.01  ~ "**",
-           p_adj < 0.05  ~ "*",
-           TRUE          ~ "ns"
-         ))
+# Helper to plot any colocalization metric by pair with stats
+hela_plot_coloc_metric <- function(input_df, y_col, y_lab, out_name, palette_vec) {
+  stopifnot(y_col %in% names(input_df))
+  # stats per pair
+  stats_tbl <- input_df %>%
+    select(pair, genotype, !!sym(y_col)) %>%
+    filter(!is.na(.data[[y_col]])) %>%
+    group_by(pair) %>%
+    do({
+      if (n_distinct(.$genotype) < 2) tibble(statistic = NA_real_, p = NA_real_)
+      else {
+        wt <- rstatix::wilcox_test(reformulate("genotype", response = y_col), data = .)
+        tibble(statistic = wt$statistic, p = wt$p)
+      }
+    }) %>%
+    ungroup() %>%
+    mutate(p_adj = p.adjust(p, method = "BH"),
+           p_label = case_when(
+             is.na(p_adj) ~ "n.a.",
+             p_adj < 0.001 ~ "***",
+             p_adj < 0.01  ~ "**",
+             p_adj < 0.05  ~ "*",
+             TRUE          ~ "ns"
+           ))
+  # y pos per facet
+  y_pos_tbl <- input_df %>%
+    group_by(pair) %>%
+    summarize(y_pos = max(.data[[y_col]], na.rm = TRUE) * 1.05, .groups = "drop")
 
-# y positions for labels per facet
-hela_ypos_tbl <- HeLa_colocalization_df %>%
-  group_by(pair) %>%
-  summarize(y_pos = max(coloc_per_nucleus, na.rm = TRUE) * 1.05, .groups = "drop")
+  stats_for_plot <- left_join(stats_tbl, y_pos_tbl, by = "pair")
 
-hela_stats_for_plot <- hela_stats_tbl %>%
-  inner_join(hela_ypos_tbl, by = "pair")
+  p_obj <- ggplot(input_df, aes(x = genotype, y = .data[[y_col]], fill = genotype)) +
+    geom_violin(trim = FALSE, linewidth = 0.2) +
+    geom_boxplot(width = 0.25, outlier.shape = NA) +
+    geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
+    scale_fill_manual(values = palette_vec) +
+    labs(title = y_lab, x = "Genotype", y = y_lab) +
+    facet_wrap(~ pair, scales = "free_y") +
+    theme_bw(base_size = 10) +
+    theme(panel.grid = element_blank(), legend.position = "none",
+          strip.background = element_rect(fill = "grey95", color = "grey80")) +
+    geom_text(data = stats_for_plot,
+              aes(x = 1.5, y = y_pos, label = paste0("BH p: ", signif(p_adj, 3), "  ", p_label)),
+              inherit.aes = FALSE, size = 3)
+  ggsave(file.path(hela_out_dir, out_name), p_obj, width = 10, height = 7)
+  invisible(p_obj)
+}
 
-# plot
-hela_coloc_plot <- HeLa_colocalization_df %>%
-  ggplot(aes(x = genotype, y = coloc_per_nucleus, fill = genotype)) +
-  geom_violin(trim = FALSE, linewidth = 0.2) +
-  geom_boxplot(width = 0.25, outlier.shape = NA) +
-  geom_jitter(aes(group = genotype), width = 0.12, alpha = 0.6, size = 0.9) +
-  scale_fill_manual(values = hela_genotype_colors) +
-  labs(
-    title = "Pairwise colocalization per nucleus by genotype",
-    x = "Genotype", y = "Colocalization per nucleus"
-  ) +
-  facet_wrap(~ pair, scales = "free_y") +
-  theme_bw(base_size = 10) +
-  theme(
-    panel.grid = element_blank(),
-    legend.position = "none",
-    strip.background = element_rect(fill = "grey95", color = "grey80")
-  ) +
-  geom_text(
-    data = hela_stats_for_plot,
-    aes(x = 1.5, y = y_pos, label = paste0("BH p: ", signif(p_adj, 3), "  ", p_label)),
-    inherit.aes = FALSE,
-    size = 3
-  )
+# New coloc plots
+hela_plot_coloc_metric(
+  HeLa_colocalization_df, "frac_coloc_A",
+  "Fraction coloc in A", "HeLa_frac_coloc_A_by_genotype.pdf",
+  hela_genotype_colors
+)
 
-# save plot and data
-ggsave(filename = file.path(hela_out_dir, "HeLa_pairwise_colocalization_by_genotype.pdf"),
-       plot = hela_coloc_plot, width = 10, height = 7)
+hela_plot_coloc_metric(
+  HeLa_colocalization_df, "frac_coloc_B",
+  "Fraction coloc in B", "HeLa_frac_coloc_B_by_genotype.pdf",
+  hela_genotype_colors
+)
 
-write_csv(HeLa_colocalization_df, file.path(hela_out_dir, "HeLa_colocalization_df.csv"))
-write_csv(HeLa_summary_df,        file.path(hela_out_dir, "HeLa_summary_df.csv"))
-write_csv(hela_stats_tbl,         file.path(hela_out_dir, "HeLa_pairwise_wilcoxon_stats.csv"))
+# If you also want the original coloc_per_nucleus with the fixed order, re-run:
+hela_plot_coloc_metric(
+  HeLa_colocalization_df, "coloc_per_nucleus",
+  "Colocalization per nucleus", "HeLa_coloc_per_nucleus_by_genotype.pdf",
+  hela_genotype_colors
+)
 
-message("Saved plot and tables in: ", hela_out_dir)
+# ---------------- per_image_summary plots ----------------
 
+# Normalize possible column name variants
+if ("n_EEA1_per_nucleus" %in% names(HeLa_summary_df) && !("EEA1_per_nucleus" %in% names(HeLa_summary_df))) {
+  HeLa_summary_df <- HeLa_summary_df %>% rename(EEA1_per_nucleus = n_EEA1_per_nucleus)
+}
+if ("n_VPS35_per_nucleus" %in% names(HeLa_summary_df) && !("VPS35_per_nucleus" %in% names(HeLa_summary_df))) {
+  HeLa_summary_df <- HeLa_summary_df %>% rename(VPS35_per_nucleus = n_VPS35_per_nucleus)
+}
+
+# Helper to plot a set of summary metrics together as facets
+hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name, palette_vec) {
+  metric_vec <- intersect(metric_vec, names(input_df))
+  if (length(metric_vec) == 0) {
+    warning("No requested metrics found for ", out_name)
+    return(invisible(NULL))
+  }
+  long_df <- input_df %>%
+    select(genotype, all_of(metric_vec)) %>%
+    pivot_longer(cols = all_of(metric_vec), names_to = "metric", values_to = "value")
+  p_sm <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
+    geom_violin(trim = FALSE, linewidth = 0.2) +
+    geom_boxplot(width = 0.25, outlier.shape = NA) +
+    geom_jitter(width = 0.12, alpha = 0.6, size = 0.9) +
+    scale_fill_manual(values = palette_vec) +
+    labs(title = title_txt, x = "Genotype", y = NULL) +
+    facet_wrap(~ metric, scales = "free_y") +
+    theme_bw(base_size = 10) +
+    theme(panel.grid = element_blank(), legend.position = "none",
+          strip.background = element_rect(fill = "grey95", color = "grey80"))
+  ggsave(file.path(hela_out_dir, out_name), p_sm, width = 10, height = 7)
+  invisible(p_sm)
+}
+
+# 1. avg area metrics
+hela_plot_summary_metrics(
+  HeLa_summary_df,
+  c("avg_area_HA", "avg_area_EEA1", "avg_area_VPS35"),
+  "Average object area per image",
+  "HeLa_summary_avg_area_metrics.pdf",
+  hela_genotype_colors
+)
+
+# 2. per nucleus metrics
+hela_plot_summary_metrics(
+  HeLa_summary_df,
+  c("HA_per_nucleus", "EEA1_per_nucleus", "VPS35_per_nucleus"),
+  "Objects per nucleus per image",
+  "HeLa_summary_per_nucleus_metrics.pdf",
+  hela_genotype_colors
+)
 
 
 ```
