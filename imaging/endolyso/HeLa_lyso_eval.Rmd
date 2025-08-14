@@ -216,7 +216,7 @@ ggsave(file.path(outdir, "HeLa_EEA1-TFN_coloc.pdf"), plot_frac_coloc_eea1, width
 # --- 6b. Plot TFN (violin + box + jitter) with p labels
 plot_frac_coloc_tfn <- ggplot(coloc_df_clean, aes(x = genotype_treatment, y = frac_coloc_tfn, fill = genotype)) +
   geom_jitter(width = 0.1, size = 1, alpha = 0.6) +
-  geom_violin(trim = FALSE, linewidth = 0.2, alpha = 0.6) +
+  geom_violin(trim = TRUE, linewidth = 0.2, alpha = 0.6) +
   geom_boxplot(width = 0.2, outlier.shape = NA, alpha = 0.85, fill = "white") +
   scale_fill_manual(values = hela_genotype_colors) +
   labs(x = "Genotype + Treatment", y = "Fraction of TFN colocalized") +
@@ -227,7 +227,8 @@ plot_frac_coloc_tfn <- ggplot(coloc_df_clean, aes(x = genotype_treatment, y = fr
     aes(x = x_pos, y = y_pos, label = p_text),
     inherit.aes = FALSE,
     size = 3
-  )
+  ) +
+    coord_cartesian(ylim = c(0, 0.16))
 
 print(plot_frac_coloc_tfn)
 ggsave(file.path(outdir, "HeLa_EEA1-TFN_coloc_tfn.pdf"), plot_frac_coloc_tfn, width = 3, height = 5, device = cairo_pdf)
