@@ -44,17 +44,24 @@ library(janitor)
 
 # II. TFN-488 uptake an coloc eval with EEA1
 ```{r}
-# path to your metrics
-metrics_dir <- "/Volumes/Expansion/Harvard/NIC/LucilleTwo/Project_neuroLSD/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay/pyeval/metrics"
+# ------------------------------------------
+# Color of 5min or 45min incubated TFN-488 in
+# HeLa Control and ASAH1-/- 
+# ------------------------------------------
 
-# read files
+# --- 1. Path to your metrics
+metrics_dir <- "/Volumes/Expansion/Harvard/NIC/LucilleTwo/Project_neuroLSD/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay/pyeval/metrics"
+outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay/pyEval"
+
+# --- 2. read files
 coloc_df <- read_csv(file.path(metrics_dir, "pairwise_colocalization.csv"), show_col_types = FALSE) %>%
   clean_names()
 
 summary_df <- read_csv(file.path(metrics_dir, "per_image_summary.csv"), show_col_types = FALSE) %>%
   clean_names()
 
-# parser
+
+# --- 3. Helper function to parse though python output files 
 parse_sample_meta <- function(tbl_in) {
   tbl_in %>%
     mutate(
@@ -79,19 +86,15 @@ parse_sample_meta <- function(tbl_in) {
 coloc_df <- parse_sample_meta(coloc_df)
 summary_df <- parse_sample_meta(summary_df)
 
-# quick check of parsed counts
-parsed_counts_tbl <- coloc_df %>%
-  count(genotype, treatment, name = "n_images")
-
-print(parsed_counts_tbl)
 
 
+# --- 4. Set colors for plot 
 hela_genotype_colors <- c(
   "Control" = "grey80",
   "ASAH1"   = "dodgerblue"
 )
 
-# plot frac_coloc_eea1 by genotype and treatment
+# establish combined x order: Control 5, Control 45, ASAH1 5, ASAH1 45
 coloc_df <- coloc_df %>%
   mutate(
     genotype_treatment = factor(
@@ -105,20 +108,72 @@ coloc_df <- coloc_df %>%
     )
   )
 
+
+# --- 5. Wilcoxon tests: Control vs ASAH1 within each treatment on frac_coloc_eea1
+stats_tbl <- coloc_df %>%
+  filter(!is.na(frac_coloc_eea1), !is.na(genotype), !is.na(treatment)) %>%
+  group_by(treatment) %>%
+  wilcox_test(frac_coloc_eea1 ~ genotype) %>%
+  ungroup() %>%
+  mutate(
+    p_adj = p.adjust(p, method = "BH"),
+    p_stars = case_when(
+      is.na(p_adj) ~ "n.a.",
+      p_adj < 0.001 ~ "***",
+      p_adj < 0.01  ~ "**",
+      p_adj < 0.05  ~ "*",
+      TRUE ~ "ns"
+    )
+  )
+
+# y positions for labels and x positions above ASAH1 for each treatment
+y_pos_tbl <- coloc_df %>%
+  group_by(treatment) %>%
+  summarise(y_pos = max(frac_coloc_eea1, na.rm = TRUE) * 1.05, .groups = "drop")
+
+levels_gt <- levels(coloc_df$genotype_treatment)
+
+stats_for_plot <- stats_tbl %>%
+  left_join(y_pos_tbl, by = "treatment") %>%
+  mutate(
+    x_label = paste0("ASAH1_", treatment),
+    x_pos   = match(x_label, levels_gt),
+    p_text  = paste0("BH p: ", signif(p_adj, 3), "  ", p_stars)
+  )
+
+# --- 6 . plot frac_coloc_eea1 by genotype and treatment (violin + box + jitter) with p labels
+# save plot as pdf
 plot_frac_coloc_eea1 <- ggplot(coloc_df, aes(x = genotype_treatment, y = frac_coloc_eea1, fill = genotype)) +
-  geom_violin(trim = FALSE, linewidth = 0.2)+
+  geom_violin(trim = FALSE, linewidth = 0.2) +
   geom_boxplot(width = 0.2, outlier.shape = NA, alpha = 0.85, fill = "white") +
   geom_jitter(width = 0.1, size = 1, alpha = 0.6) +
   scale_fill_manual(values = hela_genotype_colors) +
   labs(x = "Genotype + Treatment", y = "Fraction of EEA1 colocalized") +
   theme_bw() +
-  theme(
-    panel.grid = element_blank(),
-    legend.position = "none")
+  theme(panel.grid = element_blank(), legend.position = "none") +
+  geom_text(
+    data = stats_for_plot,
+    aes(x = x_pos, y = y_pos, label = p_text),
+    inherit.aes = FALSE,
+    size = 3
+  )
 
 print(plot_frac_coloc_eea1)
-ggsave(file.path(metrics_dir, "HeLa_EEA1-TFN_coloc.pdf"), plot_frac_coloc_eea1, width = 4, height = 3,device = cairo_pdf)
-  
+ggsave(file.path(outdir, "HeLa_EEA1-TFN_coloc.pdf"), plot_frac_coloc_eea1, width = 3, height = 5, device = cairo_pdf)
+
+
+# --- 7. Write annotated CSVs with stats columns merged by treatment
+coloc_df %>%
+  left_join(stats_tbl %>% select(treatment, p, p_adj, p_stars), by = "treatment") %>%
+  write_csv(file.path(outdir, "pairwise_colocalization_annotated.csv"))
+
+summary_df %>%
+  left_join(stats_tbl %>% select(treatment, p, p_adj, p_stars), by = "treatment") %>%
+  write_csv(file.path(outdir, "per_image_summary_annotated.csv"))
+
+
+# --- 8. also save the stats table itself
+write_csv(stats_tbl, file.path(outdir, "EEA1_coloc_wilcoxon_by_treatment.csv"))
   
 ```
 
