@@ -331,39 +331,52 @@ HeLa_summary_df <- bind_rows(hela_summary_list) %>%
   mutate(genotype = factor(genotype, levels = c("Control", "ASAH1")))
 
 
-# --- CLEANING: remove non-finite, out-of-range, and outliers ---
+# --- CLEANING: remove non-finite, out-of-range, and outliers
 # metric properties
 hela_metric_specs <- tibble::tibble(
-  metric = c("coloc_per_nucleus","frac_coloc_A","frac_coloc_B",
-             "avg_area_HA","avg_area_EEA1","avg_area_VPS35",
-             "HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus"),
-  clamp01 = c(FALSE,TRUE,TRUE, FALSE,FALSE,FALSE, FALSE,FALSE,FALSE),
-  nonneg  = c(TRUE,TRUE,TRUE, TRUE,TRUE,TRUE, TRUE,TRUE,TRUE)
+  metric  = c("coloc_per_nucleus","frac_coloc_A","frac_coloc_B",
+              "avg_area_HA","avg_area_EEA1","avg_area_VPS35","avg_area_LAMP1","avg_area_RAB7",
+              "HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus","LAMP1_per_nucleus","RAB7_per_nucleus"),
+  clamp01 = c(FALSE, TRUE, TRUE,
+              FALSE, FALSE, FALSE, FALSE, FALSE,
+              FALSE, FALSE, FALSE, FALSE, FALSE),
+  nonneg  = c(TRUE,  TRUE, TRUE,
+              TRUE,  TRUE,  TRUE,  TRUE,  TRUE,
+              TRUE,  TRUE,  TRUE,  TRUE,  TRUE)
 )
 
 hela_flag_outliers <- function(df, group_vars, value_col, method="mad", k_mad=3){
-  spec <- hela_metric_specs %>% filter(metric == value_col)
+  spec <- hela_metric_specs %>% dplyr::filter(metric == value_col)
   clamp01 <- ifelse(nrow(spec)>0, spec$clamp01, FALSE)
   nonneg  <- ifelse(nrow(spec)>0, spec$nonneg,  FALSE)
-  df %>% mutate(.val = .data[[value_col]]) %>%
-    mutate(.finite = is.finite(.val),
-           .inrange = ifelse(clamp01, (.val >= 0 & .val <= 1), TRUE),
-           .inrange = ifelse(nonneg, .inrange & (.val >= 0), .inrange)) %>%
-    mutate(.keep_basic = .finite & .inrange) %>%
-    group_by(across(all_of(group_vars))) %>%
-    mutate(.med = median(.val[.keep_basic], na.rm=TRUE),
-           .mad = mad(.val[.keep_basic], constant=1.4826, na.rm=TRUE),
-           .low = .med - k_mad*.mad,
-           .high = .med + k_mad*.mad) %>%
-    ungroup() %>%
-    mutate(.outlier_num = .keep_basic & (.val < .low | .val > .high),
-           .drop = !.keep_basic | .outlier_num,
-           .reason = case_when(
-             !.finite ~ "nonfinite",
-             .finite & !.inrange ~ "out_of_range",
-             .outlier_num ~ paste0("outlier_", method),
-             TRUE ~ "keep"
-           ))
+  df %>% 
+    dplyr::mutate(.val = .data[[value_col]],
+                  .finite = is.finite(.val),
+                  .inrange = TRUE) %>%
+    { if (clamp01) dplyr::mutate(., .inrange = .inrange & (.val >= 0 & .val <= 1)) else . } %>%
+    { if (nonneg)  dplyr::mutate(., .inrange = .inrange & (.val >= 0))            else . } %>%
+    dplyr::mutate(.keep_basic = .finite & .inrange) %>%
+    dplyr::group_by(dplyr::across(all_of(group_vars))) %>%
+    dplyr::mutate(
+      .med = suppressWarnings(stats::median(.val[.keep_basic], na.rm = TRUE)),
+      .mad = suppressWarnings(stats::mad(.val[.keep_basic], constant = 1.4826, na.rm = TRUE))
+    ) %>%
+    dplyr::mutate(
+      .mad = ifelse(is.finite(.mad) & .mad > 0, .mad, NA_real_),
+      .low = ifelse(is.na(.mad), -Inf, .med - k_mad*.mad),
+      .high= ifelse(is.na(.mad),  Inf, .med + k_mad*.mad)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      .outlier_num = .keep_basic & (.val < .low | .val > .high),
+      .drop = !.keep_basic | .outlier_num,
+      .reason = dplyr::case_when(
+        !.finite ~ "nonfinite",
+        .finite & !.inrange ~ "out_of_range",
+        .outlier_num ~ paste0("outlier_", method),
+        TRUE ~ "keep"
+      )
+    )
 }
 
 # clean colocalization metrics
@@ -376,8 +389,9 @@ for (m in coloc_metrics_vec) {
 }
 
 # clean summary metrics
-summary_metrics_all <- c("avg_area_HA","avg_area_EEA1","avg_area_VPS35",
-                         "HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus")
+summary_metrics_all <- c("avg_area_HA","avg_area_EEA1","avg_area_VPS35","avg_area_LAMP1","avg_area_RAB7",
+                         "HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus","LAMP1_per_nucleus","RAB7_per_nucleus")
+
 for (m in summary_metrics_all) {
   if (!m %in% names(HeLa_summary_df)) next
   flagged <- hela_flag_outliers(HeLa_summary_df, c("genotype"), m)
@@ -436,9 +450,15 @@ if ("n_EEA1_per_nucleus" %in% names(HeLa_summary_df) && !("EEA1_per_nucleus" %in
 if ("n_VPS35_per_nucleus" %in% names(HeLa_summary_df) && !("VPS35_per_nucleus" %in% names(HeLa_summary_df))) {
   HeLa_summary_df <- HeLa_summary_df %>% rename(VPS35_per_nucleus = n_VPS35_per_nucleus)
 }
+if ("n_LAMP1_per_nucleus" %in% names(HeLa_summary_df) && !("LAMP1_per_nucleus" %in% names(HeLa_summary_df))) {
+  HeLa_summary_df <- HeLa_summary_df %>% rename(LAMP1_per_nucleus = n_LAMP1_per_nucleus)
+}
+if ("n_RAB7_per_nucleus" %in% names(HeLa_summary_df) && !("RAB7_per_nucleus" %in% names(HeLa_summary_df))) {
+  HeLa_summary_df <- HeLa_summary_df %>% dplyr::rename(RAB7_per_nucleus = n_RAB7_per_nucleus)
+}
 
-summary_avg_metrics_vec <- c("avg_area_HA", "avg_area_EEA1", "avg_area_VPS35")
-summary_pernuc_metrics_vec <- c("HA_per_nucleus", "EEA1_per_nucleus", "VPS35_per_nucleus")
+summary_avg_metrics_vec     <- c("avg_area_HA","avg_area_EEA1","avg_area_VPS35","avg_area_LAMP1","avg_area_RAB7")
+summary_pernuc_metrics_vec  <- c("HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus","LAMP1_per_nucleus","RAB7_per_nucleus")
 
 hela_add_summary_stats <- function(df_in, metric_names, adjust_scope_label) {
   present_metrics <- intersect(metric_names, names(df_in))
@@ -552,7 +572,13 @@ hela_plot_summary_metrics <- function(input_df, metric_vec, title_txt, out_name,
 
   long_df <- input_df %>%
     select(genotype, dplyr::all_of(metric_vec)) %>%
-    pivot_longer(cols = dplyr::all_of(metric_vec), names_to = "metric", values_to = "value")
+    pivot_longer(cols = dplyr::all_of(metric_vec), names_to = "metric", values_to = "value") %>%
+    filter(is.finite(value))
+  
+  if (nrow(long_df) == 0) {
+    warning("No data left to plot after cleaning for: ", paste(metric_vec, collapse=", "))
+    return(invisible(NULL))
+  }
 
   plotting_object_summary <- ggplot(long_df, aes(x = genotype, y = value, fill = genotype)) +
     geom_violin(trim = FALSE, linewidth = 0.2) +
@@ -586,14 +612,14 @@ hela_plot_coloc_metric(
 
 hela_plot_summary_metrics(
   HeLa_summary_df,
-  c("avg_area_HA", "avg_area_EEA1", "avg_area_VPS35"),
+  c("avg_area_HA","avg_area_EEA1","avg_area_VPS35","avg_area_LAMP1","avg_area_RAB7"),
   "Average object area per image",
   "HeLa_summary_avg_area_metrics.pdf",
   hela_genotype_colors
 )
 hela_plot_summary_metrics(
   HeLa_summary_df,
-  c("HA_per_nucleus", "EEA1_per_nucleus", "VPS35_per_nucleus"),
+  c("HA_per_nucleus","EEA1_per_nucleus","VPS35_per_nucleus","LAMP1_per_nucleus","RAB7_per_nucleus"),
   "Objects per nucleus per image",
   "HeLa_summary_per_nucleus_metrics.pdf",
   hela_genotype_colors
