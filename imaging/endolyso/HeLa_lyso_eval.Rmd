@@ -14,29 +14,25 @@ knitr::opts_chunk$set(echo = TRUE)
 library(devtools)
 # Core data manipulation 
 library(tidyverse)
-library(Cairo)
 library(readr)
 library(dplyr)
 library(stringr)
 library(tidyr)
-library(ggplot2)
 library(tibble)
 library(purrr)
-library(patchwork)
 
-# For PDF export
-library(Cairo)    
+# plotting
+library(ggplot2)
+library(Cairo)
 
-# Tidy evaluation helpers (used in dplyr/mutate etc.)
-library(rlang)
-
-
-
-library(tidyverse)
-library(readr)
-library(stringr)
-library(rstatix) 
+# data cleaning
 library(janitor)
+
+# stats
+library(rstatix)
+
+# tidy evaluation
+library(rlang)
 
 
 ```
