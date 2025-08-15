@@ -1,0 +1,109 @@
+---
+title: "neuron_endo_syn_eval"
+output: html_document
+date: "2025-08-15"
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# I. Load packackes
+```{r}
+library(devtools)
+# Core data manipulation 
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(tibble)
+library(purrr)
+
+# plotting
+library(ggplot2)
+library(Cairo)
+
+# data cleaning
+library(janitor)
+
+# stats
+library(rstatix)
+
+# tidy evaluation
+library(rlang)
+
+
+```
+
+
+# II. EEA1 numbers in iN and iDA neurons 
+```{r}
+# ------------------------------------------
+# Color of 5min or 45min incubated TFN-488 in
+# HeLa Control and ASAH1-/- 
+# ------------------------------------------
+
+# --- 1. Path to your metrics
+metrics_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
+outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
+
+# --- 2. read in dataframe of eea1 stats
+eea1_neuron_df <- read_csv(file.path(metrics_dir, "per_image_summary.csv"), show_col_types = FALSE)
+
+
+# --- 3. define sample order and colors 
+eea1_neuron_df <- eea1_neuron_df %>%
+  mutate(
+    group_combo = paste(Genotype, neurontype, sep = "_"),
+    group_combo = factor(group_combo, levels = c("Ctrl_iN", "Ctrl_iDA", "ASAH1_iN", "ASAH1_iDA"))
+  )
+
+group_colors <- c(
+  "Ctrl_iN"   = "grey60",
+  "Ctrl_iDA"  = "grey80",
+  "ASAH1_iN"  = "dodgerblue3",
+  "ASAH1_iDA" = "dodgerblue"
+)
+
+eea1_summary_df <- eea1_neuron_df %>%
+  group_by(group_combo, Genotype, neurontype) %>%
+  summarise(
+    mean_n_EEA1_nuc = mean(n_EEA1_nuc, na.rm = TRUE),
+    sd_n_EEA1_nuc   = sd(n_EEA1_nuc, na.rm = TRUE),
+    n_images        = dplyr::n(),
+    se_n_EEA1_nuc   = sd_n_EEA1_nuc / sqrt(n_images),
+    .groups = "drop"
+  )
+
+
+# --- 
+p_eea1_bar_sd_jitter <- ggplot(eea1_summary_df, aes(x = group_combo, y = mean_n_EEA1_nuc, fill = group_combo)) +
+  geom_col(width = 0.7) +
+  geom_errorbar(aes(ymin = mean_n_EEA1_nuc - sd_n_EEA1_nuc,
+                    ymax = mean_n_EEA1_nuc + sd_n_EEA1_nuc),
+                width = 0.15) +
+  geom_point(data = eea1_neuron_df,
+             aes(x = group_combo, y = n_EEA1_nuc, color = "black", alpha = 0.6),
+             position = position_jitter(width = 0.12, height = 0),
+             size = 1.8, alpha = 0.6, inherit.aes = FALSE) +
+  scale_fill_manual(values = group_colors, guide = "none") +
+  scale_color_manual(values = group_colors, guide = "none") +
+  labs(x = "Group", y = "n_EEA1_nuc (mean ± SD)", title = "EEA1 puncta per nucleus") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank())
+
+kw_test_df <- kruskal_test(n_EEA1_nuc ~ group_combo, data = eea1_neuron_df) %>%
+  mutate(test = "Kruskal-Wallis")
+
+pw_test_df <- eea1_neuron_df %>%
+  pairwise_wilcox_test(n_EEA1_nuc ~ group_combo, p.adjust.method = "holm") %>%
+  mutate(method = "Wilcoxon rank-sum") %>%
+  select(group1, group2, p, p.adj, p.adj.signif, method)
+
+write_csv(eea1_summary_df, file.path(outdir, "eea1_neuron_stats_summary.csv"))
+write_csv(kw_test_df,      file.path(outdir, "eea1_neuron_kw_test.csv"))
+write_csv(pw_test_df,      file.path(outdir, "eea1_neuron_pairwise_wilcoxon.csv"))
+ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter.pdf"), p_eea1_bar_sd_jitter, width = 4, height = 4, units = "in")
+```
