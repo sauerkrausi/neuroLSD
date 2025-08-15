@@ -30,6 +30,7 @@ library(janitor)
 
 # stats
 library(rstatix)
+library(ggpubr)   
 
 # tidy evaluation
 library(rlang)
@@ -49,11 +50,10 @@ library(rlang)
 metrics_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
 outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
 
-# --- 2. read in dataframe of eea1 stats
+# --- 2. data
 eea1_neuron_df <- read_csv(file.path(metrics_dir, "per_image_summary.csv"), show_col_types = FALSE)
 
-
-# --- 3. define sample order and colors 
+# --- 3. groups and colors
 eea1_neuron_df <- eea1_neuron_df %>%
   mutate(
     group_combo = paste(Genotype, neurontype, sep = "_"),
@@ -67,6 +67,7 @@ group_colors <- c(
   "ASAH1_iDA" = "dodgerblue"
 )
 
+# --- 4. summary stats
 eea1_summary_df <- eea1_neuron_df %>%
   group_by(group_combo, Genotype, neurontype) %>%
   summarise(
@@ -77,33 +78,41 @@ eea1_summary_df <- eea1_neuron_df %>%
     .groups = "drop"
   )
 
+# --- 5. stats
+kw_test_df <- kruskal_test(n_EEA1_nuc ~ group_combo, data = eea1_neuron_df) %>%
+  mutate(test = "Kruskal-Wallis")
+kw_subtitle <- paste0("Kruskal-Wallis p = ", signif(kw_test_df$p, 3))
 
-# --- 
+pwc <- eea1_neuron_df %>%
+  pairwise_wilcox_test(n_EEA1_nuc ~ group_combo, p.adjust.method = "holm") %>%
+  add_xy_position(x = "group_combo", fun = "max", data = eea1_neuron_df)
+
+# --- 6. plot with jitter and p-value brackets
 p_eea1_bar_sd_jitter <- ggplot(eea1_summary_df, aes(x = group_combo, y = mean_n_EEA1_nuc, fill = group_combo)) +
   geom_col(width = 0.7) +
   geom_errorbar(aes(ymin = mean_n_EEA1_nuc - sd_n_EEA1_nuc,
                     ymax = mean_n_EEA1_nuc + sd_n_EEA1_nuc),
                 width = 0.15) +
-  geom_point(data = eea1_neuron_df,
-             aes(x = group_combo, y = n_EEA1_nuc, color = "black", alpha = 0.6),
-             position = position_jitter(width = 0.12, height = 0),
-             size = 1.8, alpha = 0.6, inherit.aes = FALSE) +
+  geom_point(data = eea1_neuron_df, aes(x = group_combo, y = n_EEA1_nuc),color = "black", position = position_jitter(width = 0.12, height = 0),
+             size = 1.6, alpha = 0.4, inherit.aes = FALSE) +
   scale_fill_manual(values = group_colors, guide = "none") +
-  scale_color_manual(values = group_colors, guide = "none") +
-  labs(x = "Group", y = "n_EEA1_nuc (mean ± SD)", title = "EEA1 puncta per nucleus") +
+  labs(x = "Group", y = "n_EEA1_nuc (mean ± SD)",
+       title = "larger EEA1 puncta per nucleus",
+       subtitle = kw_subtitle) +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank())
+  theme(panel.grid = element_blank()) +
+  expand_limits(y = max(pwc$y.position, na.rm = TRUE) * 1.05)
 
-kw_test_df <- kruskal_test(n_EEA1_nuc ~ group_combo, data = eea1_neuron_df) %>%
-  mutate(test = "Kruskal-Wallis")
+p_eea1_bar_sd_jitter <- p_eea1_bar_sd_jitter +
+  stat_pvalue_manual(pwc,
+                     label = "p.adj.signif",
+                     xmin = "group1", xmax = "group2",
+                     y.position = "y.position",
+                     tip.length = 0.01, size = 2.6)
 
-pw_test_df <- eea1_neuron_df %>%
-  pairwise_wilcox_test(n_EEA1_nuc ~ group_combo, p.adjust.method = "holm") %>%
-  mutate(method = "Wilcoxon rank-sum") %>%
-  select(group1, group2, p, p.adj, p.adj.signif, method)
-
+# --- 7. save
 write_csv(eea1_summary_df, file.path(outdir, "eea1_neuron_stats_summary.csv"))
 write_csv(kw_test_df,      file.path(outdir, "eea1_neuron_kw_test.csv"))
-write_csv(pw_test_df,      file.path(outdir, "eea1_neuron_pairwise_wilcoxon.csv"))
-ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter.pdf"), p_eea1_bar_sd_jitter, width = 4, height = 4, units = "in")
+write_csv(pwc,             file.path(outdir, "eea1_neuron_pairwise_wilcoxon_with_xypos.csv"))
+ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter_pvals.pdf"), p_eea1_bar_sd_jitter, width = 4, height = 4, units = "in")
 ```
