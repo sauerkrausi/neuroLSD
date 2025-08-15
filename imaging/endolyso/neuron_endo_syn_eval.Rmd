@@ -114,5 +114,5 @@ p_eea1_bar_sd_jitter <- p_eea1_bar_sd_jitter +
 write_csv(eea1_summary_df, file.path(outdir, "eea1_neuron_stats_summary.csv"))
 write_csv(kw_test_df,      file.path(outdir, "eea1_neuron_kw_test.csv"))
 write_csv(pwc,             file.path(outdir, "eea1_neuron_pairwise_wilcoxon_with_xypos.csv"))
-ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter_pvals.pdf"), p_eea1_bar_sd_jitter, width = 4, height = 4, units = "in")
+ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter_pvals.pdf"), p_eea1_bar_sd_jitter, width = 3, height = 4, units = "in")
 ```
