@@ -1654,7 +1654,7 @@ make_topvar_heatmap_iDA(
 )
 ```
 
-
+#### VIg. PCA on iDA Svendocytosis","vATPase","SVfusion","Svexocytosis in separate iterations 
 ```{r}
 # --- PCA drivers for synaptic-angle annotations in iDA ---
 library(tidyverse)
@@ -1720,43 +1720,40 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
     rownames_to_column("Genes")
 
   # facet all PC pairings among first n PCs
-   pc_pairs <- combn(paste0("PC", 1:pcs_to_use), 2, simplify = FALSE)
-    plot_df <- purrr::map_dfr(pc_pairs, function(p) {
-      tibble(
-        genotype = scores_df$genotype,
-        x = scores_df[[p[1]]],
-        y = scores_df[[p[2]]],
-        panel = paste(p[1], "vs", p[2]),
-        highlight = genotype %in% highlight_genos
-      )
-    })
-    
-    # assign colors: blue for highlights, grey for others
-    geno_colors <- setNames(
-      ifelse(unique(plot_df$genotype) %in% highlight_genos, "dodgerblue", "grey60"),
-      unique(plot_df$genotype)
-    )
-    
-    p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
-      geom_point(aes(color = genotype), size = 1.6, alpha = 0.85) +
-      # label only the highlighted genotypes
-      geom_text_repel(
-        data = subset(plot_df, highlight),
-        aes(label = genotype),
-        size = 2.5,
-        max.overlaps = Inf,
-        min.segment.length = 0,
-        box.padding = 0.3,
-        segment.color = "grey50",
-        inherit.aes = FALSE
-      ) +
-      scale_color_manual(values = geno_colors) +
-      facet_wrap(~ panel, scales = "free") +
-      labs(x = NULL, y = NULL,
-           title = paste0(annotation_col, " iDA PCA: pairwise PCs (top ", pcs_to_use, ")"),
-           color = "Genotype") +
-      theme_bw() +
-      theme(panel.grid = element_blank())
+  pc_pairs <- combn(paste0("PC", 1:pcs_to_use), 2, simplify = FALSE)
+plot_df <- purrr::map_dfr(pc_pairs, function(p) {
+  tibble(
+    genotype = scores_df$genotype,
+    x = scores_df[[p[1]]],
+    y = scores_df[[p[2]]],
+    panel = paste(p[1], "vs", p[2]),
+    highlight = genotype %in% highlight_genos
+  )
+})
+
+geno_colors <- setNames(
+  ifelse(unique(plot_df$genotype) %in% highlight_genos, "dodgerblue", "grey60"),
+  unique(plot_df$genotype)
+)
+
+p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
+  geom_point(aes(color = genotype), size = 1.6, alpha = 0.85) +
+  geom_text_repel(
+    data = subset(plot_df, highlight),
+    aes(x = x, y = y, label = genotype, color = genotype),
+    size = 2.5,
+    max.overlaps = Inf,
+    min.segment.length = 0,
+    box.padding = 0.3,
+    segment.color = "grey50"
+  ) +
+  scale_color_manual(values = geno_colors) +
+  facet_wrap(~ panel, scales = "free") +
+  labs(x = NULL, y = NULL,
+       title = paste0(annotation_col, " iDA PCA: pairwise PCs (top ", pcs_to_use, ")"),
+       color = "Genotype") +
+  theme_bw() +
+  theme(panel.grid = element_blank())
 
   # save
   readr::write_csv(scores_df,   file.path(pca_out_dir, paste0(annotation_col, "_iDA_PCA_scores.csv")))
@@ -1768,6 +1765,128 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
 }
 # run for all available annotations
 walk(annotations_to_run, ~ run_synaptic_pca_iDA(.x, n_pcs = n_pcs_plot))
+```
+
+
+
+#### VIh. PCA on iDA union annotation 
+```{r}
+highlight_genos <- c("ASAH1","CLN8","GBA1","ATP13A2","PSAP","SMPD1","HEXA","HEXB")
+
+annotations_to_combine <- c("Svexocytosis","Svendocytosis","vATPase","SVfusion")
+
+# Step 1: get combined gene set
+combined_genes <- complete_data_annotated_day50 %>%
+  filter(rowSums(select(., all_of(annotations_to_combine))) > 0) %>%
+  pull(Genes) %>%
+  unique()
+
+# Step 2: subset iDA log2FC data
+ida_df <- complete_data_annotated_day50 %>%
+  filter(Genes %in% combined_genes) %>%
+  select(Genes, matches("_iDA_log2_fold_change$")) %>%
+  pivot_longer(cols = -Genes, names_to = "Condition", values_to = "log2FC") %>%
+  mutate(genotype = sub("_.*$", "", Condition)) %>%
+  pivot_wider(names_from = Genes, values_from = log2FC) %>%
+  arrange(genotype)
+
+geno_ids <- ida_df$genotype
+mat <- ida_df %>% select(-genotype) %>% as.data.frame()
+# Ensure all features are numeric
+mat <- mat %>% mutate(across(everything(), as.numeric))
+
+# Remove genes with any NA across genotypes
+mat <- mat[, colSums(is.na(mat)) == 0, drop = FALSE]
+
+# Calculate SDs
+sds <- apply(mat, 2, sd, na.rm = TRUE)
+
+# Drop zero-variance (constant) genes
+mat <- mat[, sds > 0, drop = FALSE]
+
+# Step 3: run PCA
+pca_combined <- prcomp(mat, center = TRUE, scale. = TRUE)
+
+# Step 4: PC permutations plot
+# scores for genotypes
+scores_df <- as.data.frame(pca_combined$x) %>%
+  mutate(genotype = geno_ids) %>%
+  relocate(genotype)
+
+pcs_to_use <- min(5, ncol(pca_combined$x))
+pc_names   <- paste0("PC", 1:pcs_to_use)
+
+# build all PC pair panels with x = first, y = second
+pc_pairs <- combn(pc_names, 2, simplify = FALSE)
+plot_df <- purrr::map_dfr(pc_pairs, function(p) {
+  tibble(
+    genotype = scores_df$genotype,
+    x = scores_df[[p[1]]],
+    y = scores_df[[p[2]]],
+    panel = paste0(p[1], " vs ", p[2]),
+    highlight = genotype %in% highlight_genos
+  )
+})
+
+# color map: highlights in dodgerblue, others grey60
+geno_levels <- unique(scores_df$genotype)
+geno_colors <- setNames(
+  ifelse(geno_levels %in% highlight_genos, "dodgerblue", "grey60"),
+  geno_levels
+)
+
+p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
+  geom_point(aes(color = genotype), size = 1.6, alpha = 0.85) +
+  geom_text_repel(
+    data = dplyr::filter(plot_df, highlight),
+    aes(label = genotype, color = genotype),
+    size = 2.5,
+    max.overlaps = Inf,
+    min.segment.length = 0,
+    box.padding = 0.3,
+    segment.color = "grey50"
+  ) +
+  scale_color_manual(values = geno_colors) +
+  facet_wrap(~ panel, scales = "free") +
+  labs(
+    x = NULL, y = NULL,
+    title = "iDA PCA on union of SV annotations (PC1–PC5 pairings)",
+    color = "Genotype"
+  ) +
+  theme_bw() +
+  theme(panel.grid = element_blank())
+
+# save PDF (uses your existing pca_out_dir)
+ggsave(file.path(pca_out_dir, "iDA_union_annotations_PCA_PCpairs_facet.pdf"),
+       p_facets, width = 7.5, height = 6.0, units = "in")
+
+
+
+# Step 5: main drivers for each PC behind GBA1 and ASAH1
+scores_df <- as.data.frame(pca_combined$x) %>% mutate(genotype = geno_ids)
+
+# Example for ASAH1, PC of interest = PC where ASAH1 has extreme score
+pc_for_asah1 <- which.max(abs(scores_df %>% filter(genotype == "ASAH1") %>% select(PC1,PC5)))
+top_asah1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_asah1, drop = FALSE] %>%
+  rownames_to_column("Genes") %>%
+  rename(loading = 2) %>%
+  arrange(desc(abs(loading))) %>%
+  slice_head(n = 20)
+
+write_csv(top_asah1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_drivers_", "ASAH1", "_PC", pc_for_asah1, ".csv")))
+
+
+# Repeat for GBA1
+pc_for_gba1 <- which.max(abs(scores_df %>% filter(genotype == "GBA1") %>% select(PC1,PC5)))
+top_gba1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_gba1, drop = FALSE] %>%
+  rownames_to_column("Genes") %>%
+  rename(loading = 2) %>%
+  arrange(desc(abs(loading))) %>%
+  slice_head(n = 20)
+
+write_csv(top_gba1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_drivers_", "GBA1", "_PC", pc_for_gba1, ".csv")))
+
+
 ```
 
 
