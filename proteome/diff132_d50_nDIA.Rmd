@@ -1525,9 +1525,9 @@ svexo_group2 <- c("ASAH1","GBA1","CLN8","NPC1","DNAJC5","TPP1","ATP13A2","SMPD1"
 svfusion_group1 <- c("CLN6","CTSF","MFSD8","PPT1","MCOLN1","CLN3","NPC2","CLN5","GRN","NPC1","DNAJC5","TPP1","GAA","CTSD","LIPA")
 svfusion_group2 <- c("ASAH1","CLN8","GBA1","ATP13A2","PSAP","SMPD1","HEXA","HEXB")
 
-# --- Helper: make ranked table + heatmap for one annotation --- 
+# --- 3. Helper: make ranked table + heatmap for one annotation --- 
 make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_top = 40, out_prefix = "SV") {
-  # 1) subset to annotation == 1 and iDA log2FC columns
+  # 3.1) subset to annotation == 1 and iDA log2FC columns
   long_df <- complete_data_annotated_day50 %>%
     filter(.data[[annotation_col]] == 1) %>%
     pivot_longer(
@@ -1538,7 +1538,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
     mutate(genotype = sub("_.*$", "", Condition)) %>%
     select(Genes, genotype, log2FC)
 
-  # 2) restrict to requested genotypes that actually exist
+  # 3.2) restrict to requested genotypes that actually exist
   requested_genos <- unique(c(group1_vec, group2_vec))
   present_genos   <- intersect(requested_genos, unique(long_df$genotype))
   if (length(present_genos) == 0) {
@@ -1547,7 +1547,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
   }
   long_df <- long_df %>% filter(genotype %in% present_genos)
 
-  # 3) variability per protein across present genotypes
+  # 3.3) variability per protein across present genotypes
   var_tbl <- long_df %>%
     group_by(Genes) %>%
     summarise(
@@ -1564,7 +1564,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
   # write full ranking
   write_csv(var_tbl, file.path(out_dir_key, paste0(out_prefix, "_top_variable_genes_iDA_ranked.csv")))
 
-  # 4) select top N and build matrix
+  # 3.4) select top N and build matrix
   top_genes <- var_tbl %>% slice_head(n = n_top) %>% pull(Genes)
   wide_mat <- long_df %>%
     filter(Genes %in% top_genes) %>%
@@ -1583,7 +1583,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
     column_to_rownames("Genes") %>%
     as.matrix()
 
-  # 5) heat range + palette
+  # 3.5) heat range + palette
   rng_min <- suppressWarnings(min(mat_vals, na.rm = TRUE))
   rng_max <- suppressWarnings(max(mat_vals, na.rm = TRUE))
   if (!is.finite(rng_min) || !is.finite(rng_max)) {
@@ -1597,7 +1597,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
   bk <- seq(rng_min, rng_max, length.out = 100)
   pal <- colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(bk) - 1)
 
-  # 6) plot heatmap (keep fontsize as in your code)
+  # 3.6) plot heatmap (keep fontsize as in your code)
   pdf(file.path(out_dir_key, paste0(out_prefix, "_top_variable_genes_iDA_heatmap.pdf")), width = 6, height = 8)
   pheatmap(
     mat_vals,
@@ -1615,13 +1615,29 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
   dev.off()
 }
 
-# --- Run for both annotations ---
+# --- 4. Run for both annotations & save outputs in specified outdir 
 make_topvar_heatmap_iDA(
   annotation_col = "Svexocytosis",
   group1_vec = svexo_group1,
   group2_vec = svexo_group2,
   n_top = n_top_drivers,
   out_prefix = "SVexocytosis"
+)
+
+make_topvar_heatmap_iDA(
+  annotation_col = "Svendocytosis",
+  group1_vec = svfusion_group1,
+  group2_vec = svfusion_group2,
+  n_top = n_top_drivers,
+  out_prefix = "Svendocytosis"
+)
+
+make_topvar_heatmap_iDA(
+  annotation_col = "vATPase",
+  group1_vec = svfusion_group1,
+  group2_vec = svfusion_group2,
+  n_top = n_top_drivers,
+  out_prefix = "vATPase"
 )
 
 make_topvar_heatmap_iDA(
