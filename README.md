@@ -8,8 +8,10 @@ The **neuroLSD** project investigates how lysosomal storage disorder–associate
 
 ## 🔬 Imaging
 Analysis workflows for calcium imaging and TH-positive neuron quantification.  
-- **Calcium**: Cellpose-SAM–based segmentation (Python) and R Markdown pipelines for ΔF/F signal extraction, trace binarization, and network-level analysis, including a master pipeline for multi-dataset integration.  
-- **TH**: R and Python scripts for quantifying TH-positive neurons in iN/iDA cultures.  
+- **Calcium:** Segmentation of neuronal soma in calcium imaging using Cellpose-SAM custom models, followed by R pipelines for ΔF/F extraction, trace binarization, network analysis, and multi-dataset integration.
+- **TH:** Automated quantification of TH-positive neurons in iN/iDA cultures via Python-based segmentation and R statistical analysis.
+- **Models:** Custom Cellpose SAM models for neuronal soma live in imaging/models, with MODEL_INDEX.txt linking to Zenodo downloads.
+- **Endo‑lyso HeLa:** Endo‑lysosomal confocal analysis for HeLa in imaging/endolyso, including channel splitting, Cellpose SAM based segmentation, EEA1 and TFN colocalization metrics, and an Rmd that outputs figures and annotated CSVs.
 
 See [`imagingREADME.md`](imaging/imagingREADME.md) for details on workflow steps, input formats, and outputs.
 
@@ -42,4 +44,4 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
 - **Proteomics:**  
   Run Rmd scripts in RStudio. Input: processed TMTpro/nDIA data.  
 - **Calcium Imaging:**  
-  Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files.  
+  Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files. 
