@@ -1507,6 +1507,80 @@ p_iDA <- make_lineplot_all(
 ```
 
 
+### VIf. Key driver of SVfusion in iDA
+```{r}
+# --- Parameters ---
+n_top_synapsesv <- 40   # number of most variable proteins to plot
+out_file_csv    <- file.path(out_dir_d50_ascd_avg, "synapsesv_top_variable_genes_iDA_ranked.csv")
+out_file_pdf    <- file.path(out_dir_d50_ascd_avg, "synapsesv_top_variable_genes_iDA_heatmap.pdf")
+
+# --- 1) Long format: iDA log2FC across genotypes, restricted to SynapseSVs ---
+synapsesv_long_iDA <- complete_data_annotated_day50 %>%
+  filter(SynapseSVs == 1) %>%
+  pivot_longer(
+    cols = matches("_iDA_log2_fold_change$"),
+    names_to = "Condition",
+    values_to = "log2FC"
+  ) %>%
+  mutate(genotype = sub("_.*", "", Condition)) %>%  # e.g., "GBA1" from "GBA1_iDA_log2_fold_change"
+  select(Genes, genotype, log2FC)
+
+# --- 2) Variability per gene across genotypes (iDA only) ---
+synapsesv_var_df <- synapsesv_long_iDA %>%
+  group_by(Genes) %>%
+  summarise(
+    n_genotypes = n_distinct(genotype),
+    mean_log2FC = mean(log2FC, na.rm = TRUE),
+    sd_log2FC   = sd(log2FC,  na.rm = TRUE),
+    var_log2FC  = var(log2FC, na.rm = TRUE),
+    mad_log2FC  = mad(log2FC, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(n_genotypes >= 2) %>%               # keep genes seen in at least two genotypes
+  arrange(desc(sd_log2FC))
+
+# Save the full ranked table
+readr::write_csv(synapsesv_var_df, out_file_csv)
+
+# --- 3) Select top N most variable and build a heatmap matrix ---
+top_genes <- synapsesv_var_df %>%
+  slice_head(n = n_top_synapsesv) %>%
+  pull(Genes)
+
+# Keep only these genes, spread to a matrix Genes x genotype
+synapsesv_mat <- synapsesv_long_iDA %>%
+  filter(Genes %in% top_genes) %>%
+  mutate(Genes = factor(Genes, levels = top_genes)) %>%   # preserve descending variability order
+  pivot_wider(names_from = genotype, values_from = log2FC) %>%
+  arrange(Genes) %>%
+  column_to_rownames("Genes") %>%
+  as.matrix()
+
+# Optional: order genotype columns (keep current order or set a custom vector)
+# geno_order <- c("Ctrl","ASAH1","GBA1","SMPD1","GRN", ...)  # if desired
+# synapsesv_mat <- synapsesv_mat[, intersect(geno_order, colnames(synapsesv_mat)), drop = FALSE]
+
+# --- 4) Plot heatmap (no clustering of rows to keep descending variability order) ---
+bk <- seq(min(synapsesv_mat, na.rm = TRUE), max(synapsesv_mat, na.rm = TRUE), length.out = 100)
+
+pdf(out_file_pdf, width = 6, height = 8)
+pheatmap(
+  synapsesv_mat,
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(bk) - 1),
+  breaks = bk,
+  cluster_rows = FALSE,
+  cluster_cols = TRUE,
+  na_col = "grey90",
+  border_color = NA,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize = 6,
+  main = "Top variable SynapseSVs proteins in iDA (log2FC)"
+)
+dev.off()
+```
+
+
 # VII. Neuro QC plots
 Aimed to plot neuro markers to plot differences between neuron types
 
