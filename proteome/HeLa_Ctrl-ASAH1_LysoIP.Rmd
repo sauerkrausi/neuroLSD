@@ -530,6 +530,97 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_deta
 ```
 
 
+### IVd. Co-purification / co-enrichment relative to lysosome mean per genotype
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Co-purification / co-enrichment relative to lysosome mean per genotype
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 0) Define organelle annotations to evaluate (must be logical columns in helalysoip_annotated_df)
+organelle_coenrich <- c("Lysosome", "Endo_iN_curated_Hundley", "Golgi", "ER", "Mito",
+                        "EarlyEndosome", "RecyclingEndosome")
+organelle_coenrich <- organelle_coenrich[organelle_coenrich %in% names(helalysoip_annotated_df)]
+
+# --- 1) Helper to compute lysosome mean and co-enrichment flags for one genotype
+compute_coenrichment_one <- function(df_in, sample_col, sample_label) {
+  stopifnot(sample_col %in% names(df_in))
+  # lysosome mean for this genotype
+  lysosome_mean <- df_in %>%
+    filter(Lysosome == TRUE) %>%
+    pull(all_of(sample_col)) %>%
+    { mean(., na.rm = TRUE) }
+
+  # gene-level long df of organelle memberships
+  long_membership <- df_in %>%
+    select(Gene.Symbol, all_of(sample_col), all_of(organelle_coenrich)) %>%
+    pivot_longer(cols = all_of(organelle_coenrich),
+                 names_to = "Organelle", values_to = "flag") %>%
+    filter(flag) %>%
+    mutate(Sample = sample_label,
+           log2FC_value = .data[[sample_col]],
+           lysosome_mean = lysosome_mean,
+           sig_coenriched = is.finite(log2FC_value) & (log2FC_value >= lysosome_mean)) %>%
+    select(Gene.Symbol, Sample, Organelle, log2FC_value, lysosome_mean, sig_coenriched)
+
+  return(long_membership)
+}
+
+# --- 2) Run for Ctrl vs Untagged and ASAH1 vs Untagged
+coenrich_ctrl_df <- compute_coenrichment_one(
+  df_in = helalysoip_annotated_df,
+  sample_col = "log2FC_CtrlLysoIP.untagged",
+  sample_label = "Ctrl vs Untagged"
+)
+
+coenrich_asah1_df <- compute_coenrichment_one(
+  df_in = helalysoip_annotated_df,
+  sample_col = "log2FC_ASAH1LysoIP.untagged",
+  sample_label = "ASAH1 vs Untagged"
+)
+
+coenrich_genelevel_df <- bind_rows(coenrich_ctrl_df, coenrich_asah1_df)
+
+# --- 3) Write gene-level CSV (traceability)
+write.csv(coenrich_genelevel_df,
+          file = file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_genelevel.csv"),
+          row.names = FALSE)
+
+# --- 4) Summarize counts per annotation and genotype
+coenrich_summary_df <- coenrich_genelevel_df %>%
+  group_by(Organelle, Sample) %>%
+  summarise(
+    n_organelle_genes = n(),
+    n_sig_coenriched = sum(sig_coenriched, na.rm = TRUE),
+    frac_sig_coenriched = ifelse(n_organelle_genes > 0, n_sig_coenriched / n_organelle_genes, NA_real_),
+    lysosome_mean_ref = unique(lysosome_mean),
+    .groups = "drop"
+  ) %>%
+  arrange(Organelle, Sample)
+
+# --- 5) Write summary CSV
+write.csv(coenrich_summary_df,
+          file = file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_summary.csv"),
+          row.names = FALSE)
+
+# --- 6) Stacked bar plot: counts of sig. co-enriched per annotation
+coenrich_bar_plot <- ggplot(coenrich_summary_df,
+                            aes(x = Organelle, y = n_sig_coenriched, fill = Sample)) +
+  geom_col(position = "stack", width = 0.8, color = "black", linewidth = 0.1) +
+  scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70",
+                               "ASAH1 vs Untagged" = "dodgerblue3")) +
+  labs(x = NULL, y = "# sig. co-enriched (log2FC ≥ mean Lyso)",
+       title = "Co-enrichment relative to Lysosome mean (per genotype)") +
+  theme_bw(base_size = 9) +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.title = element_blank())
+
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_stackedbar.pdf"),
+       coenrich_bar_plot, width = 5.5, height = 3.5, device = cairo_pdf)
+```
+
+
+
 # V. Focused lyso evaluations
 ### Va. Abundnance of lysosomal hydrolases
 ```{r}
