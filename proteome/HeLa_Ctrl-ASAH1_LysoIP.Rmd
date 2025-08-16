@@ -91,6 +91,9 @@ dir.create(out_dir_lysoip_organelle_rainfall, recursive = TRUE, showWarnings = F
 out_dir_lysoip_venn <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn"
 dir.create(out_dir_lysoip_venn, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_lysoip_venn_coenrichment  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn/coenrichment"
+dir.create(out_dir_lysoip_venn_coenrichment, recursive = TRUE, showWarnings = FALSE)
+
 out_dir_lysoip_autophagy <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/autophagy"
 dir.create(out_dir_lysoip_autophagy, recursive = TRUE, showWarnings = FALSE)
 
@@ -536,12 +539,12 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_deta
 # Co-purification / co-enrichment relative to lysosome mean per genotype
 # ─────────────────────────────────────────────────────────────────────────────
 
-# --- 0) Define organelle annotations to evaluate (must be logical columns in helalysoip_annotated_df)
+# --- 0. Define organelle annotations to evaluate (must be logical columns in helalysoip_annotated_df)
 organelle_coenrich <- c("Lysosome", "Endo_iN_curated_Hundley", "Golgi", "ER", "Mito",
                         "EarlyEndosome", "RecyclingEndosome")
 organelle_coenrich <- organelle_coenrich[organelle_coenrich %in% names(helalysoip_annotated_df)]
 
-# --- 1) Helper to compute lysosome mean and co-enrichment flags for one genotype
+# --- 1. Helper to compute lysosome mean and co-enrichment flags for one genotype
 compute_coenrichment_one <- function(df_in, sample_col, sample_label) {
   stopifnot(sample_col %in% names(df_in))
   # lysosome mean for this genotype
@@ -565,7 +568,7 @@ compute_coenrichment_one <- function(df_in, sample_col, sample_label) {
   return(long_membership)
 }
 
-# --- 2) Run for Ctrl vs Untagged and ASAH1 vs Untagged
+# --- 2. Run for Ctrl vs Untagged and ASAH1 vs Untagged
 coenrich_ctrl_df <- compute_coenrichment_one(
   df_in = helalysoip_annotated_df,
   sample_col = "log2FC_CtrlLysoIP.untagged",
@@ -580,12 +583,12 @@ coenrich_asah1_df <- compute_coenrichment_one(
 
 coenrich_genelevel_df <- bind_rows(coenrich_ctrl_df, coenrich_asah1_df)
 
-# --- 3) Write gene-level CSV (traceability)
+# --- 3. Write protein-level CSV
 write.csv(coenrich_genelevel_df,
           file = file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_genelevel.csv"),
           row.names = FALSE)
 
-# --- 4) Summarize counts per annotation and genotype
+# --- 4. Summarize counts per annotation and genotype
 coenrich_summary_df <- coenrich_genelevel_df %>%
   group_by(Organelle, Sample) %>%
   summarise(
@@ -597,27 +600,182 @@ coenrich_summary_df <- coenrich_genelevel_df %>%
   ) %>%
   arrange(Organelle, Sample)
 
-# --- 5) Write summary CSV
+
+# --- 5. Sort Organelle by descending total co-enrichment (sum of both genotypes)
+totals_order <- coenrich_summary_df %>%
+  group_by(Organelle) %>%
+  summarise(total_sig = sum(n_sig_coenriched, na.rm = TRUE), .groups = "drop") %>%
+  #arrange(desc(total_sig)) # desc
+  arrange(total_sig) # ascending 
+
+coenrich_summary_df <- coenrich_summary_df %>%
+  mutate(Organelle = factor(Organelle, levels = totals_order$Organelle))
+
+
+# --- 6. Write summary CSV
 write.csv(coenrich_summary_df,
           file = file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_summary.csv"),
           row.names = FALSE)
 
-# --- 6) Stacked bar plot: counts of sig. co-enriched per annotation
+# --- 7. Stacked bar plot: counts of sig. co-enriched per annotation
 coenrich_bar_plot <- ggplot(coenrich_summary_df,
-                            aes(x = Organelle, y = n_sig_coenriched, fill = Sample)) +
-  geom_col(position = "stack", width = 0.8, color = "black", linewidth = 0.1) +
+                            aes(x = n_sig_coenriched, y =Organelle , fill = Sample)) +
+  geom_col(width = 0.8, color = "black", linewidth = 0.1) +
+  # per-segment counts (skip zeros to reduce clutter)
+  geom_text(aes(label = ifelse(n_sig_coenriched > 0, n_sig_coenriched, "")),
+            position = position_stack(vjust = 0.5),
+            size = 2.8) +
   scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70",
                                "ASAH1 vs Untagged" = "dodgerblue3")) +
   labs(x = NULL, y = "# sig. co-enriched (log2FC ≥ mean Lyso)",
        title = "Co-enrichment relative to Lysosome mean (per genotype)") +
-  theme_bw(base_size = 9) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(),
         axis.text.x = element_text(angle = 45, hjust = 1),
         legend.title = element_blank())
 
-ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_stackedbar.pdf"),
-       coenrich_bar_plot, width = 5.5, height = 3.5, device = cairo_pdf)
+
+# --- 8. Save plot as PDF 
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_stackedbar_vertical_sorted_labeled.pdf"), coenrich_bar_plot, width = 6, height = 4, device = cairo_pdf)
+
+
+
 ```
+
+
+
+
+### IVe. Overlap of sig co-enriched IDs across annotations + Venns
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Overlap of sig co-enriched IDs across annotations + Venns
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Targets (exclude Lysosome itself for this analysis)
+venn_ann6 <- c("Endo_iN_curated_Hundley", "Golgi", "ER", "Mito", "EarlyEndosome", "RecyclingEndosome")
+
+
+## --- 2. Helper: sets of sig_coenriched genes per annotation for one genotype
+get_sig_sets <- function(genelevel_df, sample_label, ann_vec) {
+  genelevel_df %>%
+    filter(Sample == sample_label, sig_coenriched, Organelle %in% ann_vec) %>%
+    group_by(Organelle) %>%
+    summarise(Genes = list(unique(Gene.Symbol)), .groups = "drop") %>%
+    { setNames(.$Genes, .$Organelle) }
+}
+
+ctrl_sets  <- get_sig_sets(coenrich_genelevel_df, "Ctrl vs Untagged",  venn_ann6)
+asah1_sets <- get_sig_sets(coenrich_genelevel_df, "ASAH1 vs Untagged", venn_ann6)
+
+# --- 3. size filter helpers
+min_size <- 5
+
+filter_by_size <- function(setlist, k = min_size) {
+  if (is.null(setlist)) return(list())
+  keep <- vapply(setlist, function(v) length(unique(as.character(v))) >= k, logical(1))
+  setlist[keep]
+}
+
+sanitize_sets <- function(setlist) {
+  if (is.null(setlist)) return(list())
+  setlist <- lapply(setlist, function(v) unique(as.character(v[!is.na(v) & nzchar(v)])))
+  setlist[vapply(setlist, length, integer(1)) > 0]
+}
+
+
+# --- 4. Plot Venn diagrams of overlaps  
+plot_venn <- function(setlist, fname, width = 16, height = 14) {
+  setlist <- sanitize_sets(setlist)
+  if (length(setlist) < 2) {
+    message("Skip Venn: fewer than 2 non-empty sets for ", fname)
+    return(invisible(NULL))
+  }
+  p <- ggVennDiagram::ggVennDiagram(
+    setlist,
+    show_intersect = FALSE, 
+    set_color = "black", 
+    set_size = NA,
+    label = "both", 
+    label_alpha = 0, 
+    label_geom = "label",
+    label_color = "black", 
+    label_size = NA,
+    edge_lty = "solid",
+    edge_size = 0
+  ) + scale_fill_gradient(low = "#F4FAFE", high = "#4981BF") + theme_void()
+  ggsave(file.path(out_dir_lysoip_venn_coenrichment, fname), p, width = width, height = height, units = "cm", dpi = 600, device = cairo_pdf)
+}
+
+
+# --- 5. Save overlap tables for each annotation 
+pairwise_overlap_tbl <- function(setlist) {
+  setlist <- sanitize_sets(setlist)
+  if (length(setlist) < 2) return(tibble(set1=character(), set2=character(), n_intersect=integer(), jaccard=numeric()))
+  combn(names(setlist), 2, simplify = FALSE, FUN = function(p) {
+    a <- setlist[[p[1]]]; b <- setlist[[p[2]]]
+    inter <- length(intersect(a, b)); uni <- length(union(a, b))
+    tibble(set1 = p[1], set2 = p[2], n_intersect = inter, jaccard = ifelse(uni > 0, inter/uni, NA_real_))
+  }) %>% bind_rows() %>% arrange(desc(jaccard), desc(n_intersect))
+}
+
+# --- 6. Apply size filter per genotype 
+ctrl_sets5  <- filter_by_size(ctrl_sets,  min_size)
+asah1_sets5 <- filter_by_size(asah1_sets, min_size)
+
+# Save which annotations that passed size filter cutoff 
+write.csv(tibble(Genotype = "Ctrl",  Annotation = names(ctrl_sets5),  n = vapply(ctrl_sets5, length, 1L)), file.path(out_dir_lysoip_venn_coenrichment, "kept_annotations_CTRL_min5.csv"), row.names = FALSE)
+write.csv(tibble(Genotype = "ASAH1", Annotation = names(asah1_sets5), n = vapply(asah1_sets5, length, 1L)), file.path(out_dir_lysoip_venn_coenrichment, "kept_annotations_ASAH1_min5.csv"), row.names = FALSE)
+
+# --- 7. Save cleaned DFs as csv
+write.csv(pairwise_overlap_tbl(ctrl_sets5), file.path(out_dir_lysoip_venn_coenrichment, "coenrich_overlap_pairwise_CTRL_min5.csv"), row.names = FALSE)
+write.csv(pairwise_overlap_tbl(asah1_sets5), file.path(out_dir_lysoip_venn_coenrichment, "coenrich_overlap_pairwise_ASAH1_min5.csv"), row.names = FALSE)
+
+# --- 8. Per-annotation overlap tables + top-N Venns (within-genotype), no triads
+make_per_annotation_venns <- function(setlist, geno_tag, top_n = 3, min_size_each = 5, min_intersect = 1) {
+  setlist <- sanitize_sets(setlist)
+  annames <- names(setlist)
+  if (length(annames) < 2) return(invisible(NULL))
+
+  for (focal in annames) {
+    focal_vec <- unique(as.character(setlist[[focal]]))
+    others <- setdiff(annames, focal)
+
+    # table of overlaps vs every other annotation
+    tbl <- purrr::map_dfr(others, function(other) {
+      other_vec <- unique(as.character(setlist[[other]]))
+      shared <- intersect(focal_vec, other_vec)
+      uni <- union(focal_vec, other_vec)
+      tibble(Focal = focal, Other = other, n_focal = length(focal_vec), n_other = length(other_vec),
+             n_shared = length(shared), jaccard = ifelse(length(uni) > 0, length(shared)/length(uni), NA_real_),
+             shared_genes = paste(shared, collapse = ";"))
+    }) %>% arrange(desc(n_shared), desc(jaccard))
+
+    # save per-annotation overlap table
+    out_csv <- file.path(out_dir_lysoip_venn_coenrichment, paste0("overlap_within_", geno_tag, "_", gsub("[^A-Za-z0-9]+","_", focal), "_min5.csv"))
+    write.csv(tbl, out_csv, row.names = FALSE)
+
+    # make Venns for top-N overlapping partners that pass size and min_intersect filtros
+    top_tbl <- head(tbl, top_n)
+    purrr::pwalk(list(top_tbl$Other, top_tbl$n_other, top_tbl$n_shared), function(other, n_other, n_shared) {
+      if (length(focal_vec) >= min_size_each && n_other >= min_size_each && n_shared >= min_intersect) {
+        two_set <- list(focal = focal_vec, other = unique(as.character(setlist[[other]])))
+        fname <- paste0("Venn_", geno_tag, "_", gsub("[^A-Za-z0-9]+","_", focal), "_vs_", gsub("[^A-Za-z0-9]+","_", other), "_min5.pdf")
+        plot_venn(two_set, fname, width = 12, height = 10)
+      }
+    })
+  }
+}
+
+make_per_annotation_venns(ctrl_sets5, "CTRL", top_n = 3, min_size_each = 5, min_intersect = 1)
+make_per_annotation_venns(asah1_sets5, "ASAH1", top_n = 3, min_size_each = 5, min_intersect = 1)
+
+
+
+write.csv(per_ann_summary,file.path(out_dir_lysoip_venn_coenrichment, "per_annotation_Ctrl_vs_ASAH1_overlap_summary_min5.csv"),row.names = FALSE)
+
+
+```
+
 
 
 
