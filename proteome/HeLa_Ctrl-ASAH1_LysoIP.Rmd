@@ -684,27 +684,27 @@ sanitize_sets <- function(setlist) {
 
 
 # --- 4. Plot Venn diagrams of overlaps  
-plot_venn <- function(setlist, fname, width = 16, height = 14) {
+plot_venn <- function(setlist, fname, width = 16, height = 14, label_size_pt = 6) {
   setlist <- sanitize_sets(setlist)
-  if (length(setlist) < 2) {
-    message("Skip Venn: fewer than 2 non-empty sets for ", fname)
-    return(invisible(NULL))
-  }
+  if (length(setlist) < 2) return(invisible(NULL))
+
   p <- ggVennDiagram::ggVennDiagram(
     setlist,
-    show_intersect = FALSE, 
-    set_color = "black", 
+    show_intersect = FALSE,
+    set_color = "black",
     set_size = NA,
-    label = "both", 
-    label_alpha = 0, 
+    label = "both",
+    label_alpha = 0,
     label_geom = "label",
-    label_color = "black", 
-    label_size = NA,
+    label_color = "black",
+    label_size = label_size_pt,
     edge_lty = "solid",
     edge_size = 0
   ) + scale_fill_gradient(low = "#F4FAFE", high = "#4981BF") + theme_void()
+
   ggsave(file.path(out_dir_lysoip_venn_coenrichment, fname), p, width = width, height = height, units = "cm", dpi = 600, device = cairo_pdf)
 }
+
 
 
 # --- 5. Save overlap tables for each annotation 
