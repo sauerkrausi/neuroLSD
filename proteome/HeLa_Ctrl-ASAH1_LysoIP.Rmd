@@ -52,10 +52,13 @@ library(Cairo)
 
 
 # --- GO Term analysis ---
-BiocManager::install("topGO")
+#BiocManager::install("topGO")
 library(topGO)
-BiocManager::install("org.Hs.eg.db")
+#BiocManager::install("org.Hs.eg.db")
 library(org.Hs.eg.db)
+#BiocManager::install("clusterProfiler")
+library(clusterProfiler)
+
 
 library(ggplot2)
 library(ggdist)
@@ -63,7 +66,6 @@ library(gghalves)
 library(ggrepel)
 library(dplyr)
 library(tibble)
-
 
 
 # Optional install commands
@@ -717,51 +719,79 @@ if (length(anns_to_compare) > 0) {
 
 ### IVf. GO enrichment of Endo annotations sig. Control
 ```{r}
+# pick target annotations
 target_ann <- c("Endo_iN_curated_Hundley","EarlyEndosome")
-min_genes  <- 10  # skip GO if fewer than this
-universe_symbols <- unique(as.character(helalysoip_annotated_df$Gene.Symbol))
 
-# --- 2. Collect Ctrl-only sig gene sets per target annotation
-ctrl_sig_list <- coenrich_genelevel_df %>%
-  filter(Sample == "Ctrl vs Untagged", sig_coenriched, Organelle %in% target_ann) %>%
-  mutate(Gene.Symbol = as.character(Gene.Symbol)) %>%
-  group_by(Organelle) %>%
-  summarise(genes = sort(unique(Gene.Symbol)), .groups = "drop") %>%
-  { setNames(.$genes, .$Organelle) }
-
-# --- 3. Helper to run GO and export plot + csv
-run_go_and_export <- function(sym_vec, ann_label, ont = c("BP","CC","MF"), top_terms = 20) {
+# helper: run topGO for a set of symbols
+run_topGO <- function(sym_vec, universe_vec, ann_label, ont = c("BP","CC","MF"), min_genes = 10) {
   if (length(sym_vec) < min_genes) {
-    message("Skip GO for ", ann_label, ": n=", length(sym_vec), " < ", min_genes)
+    message("Skip ", ann_label, ": n=", length(sym_vec), " < ", min_genes)
     return(invisible(NULL))
   }
-  clean_ann <- gsub("[^A-Za-z0-9]+","_", ann_label)
+
+  geneList <- factor(as.integer(universe_vec %in% sym_vec))
+  names(geneList) <- universe_vec
+
   for (o in ont) {
-    ego <- tryCatch(
-      enrichGO(gene = sym_vec, OrgDb = org.Hs.eg.db, keyType = "SYMBOL",
-               universe = universe_symbols, ont = o,
-               pAdjustMethod = "BH", qvalueCutoff = 0.05, readable = TRUE),
-      error = function(e) NULL
-    )
-    if (is.null(ego) || nrow(as.data.frame(ego)) == 0) {
-      message("No GO ", o, " terms for ", ann_label)
-      next
-    }
+    GOdata <- new("topGOdata",
+                  ontology = o,
+                  allGenes = geneList,
+                  geneSel = function(x) x == 1,
+                  annot = annFUN.org,
+                  mapping = "org.Hs.eg.db",
+                  ID = "symbol")
 
-    # dotplot (top N terms)
-    p <- enrichplot::dotplot(ego, showCategory = top_terms) +
-         ggtitle(paste0("GO-", o, " Ctrl sig: ", ann_label)) +
-         theme_bw(base_size = 8) + theme(panel.grid = element_blank())
-    ggsave(file.path(out_dir_lysoip_GOcoenrichment, paste0("GO_", o, "_CTRL_", clean_ann, ".pdf")), p, width = 6, height = 5, device = cairo_pdf)
+    resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
 
-    # csv (all terms)
-    go_tbl <- as.data.frame(ego)
-    write.csv(go_tbl, file.path(out_dir_lysoip_GOcoenrichment, paste0("GO_", o, "_CTRL_", clean_ann, ".csv")), row.names = FALSE)
+    go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30)
+    go_table <- go_table %>%
+      mutate(raw_pval   = score(resultFisher)[GO.ID],
+             log10P     = -log10(raw_pval),
+             Significant = as.numeric(Significant),
+             Expected    = as.numeric(Expected),
+             Enrichment  = Significant / Expected) %>%
+      filter(!is.na(raw_pval)) %>%
+      arrange(raw_pval)
+
+    # genes per term
+    go_genes <- genesInTerm(GOdata)
+    go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
+      intersect(go_genes[[go_id]], sym_vec) %>% paste(collapse = ";")
+    })
+
+    # save
+    clean_ann <- gsub("[^A-Za-z0-9]+","_", ann_label)
+    write.csv(go_table, file.path(out_dir_lysoip_GOcoenrichment, paste0("GO_", o, "_CTRL_", clean_ann, ".csv")), row.names = FALSE)
+
+    p <- ggplot(go_table[1:min(10,nrow(go_table)), ], aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+      geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
+      scale_fill_gradient(low = "white", high = "firebrick") +
+      theme_bw(base_size = 8) +
+      labs(x = "Fold Enrichment", y = "GO Term", size = expression(-log[10]*"P"), title = paste0("GO-", o, " (Ctrl sig) — ", ann_label)) +
+      theme(panel.grid = element_blank())
+    ggsave(file.path(out_dir_lysoip_GOcoenrichment, paste0("GO_", o, "_CTRL_", clean_ann, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
   }
 }
 
-# --- 4. Run per annotation for Ctrl-only
-invisible(lapply(names(ctrl_sig_list), function(an) run_go_and_export(ctrl_sig_list[[an]], an)))
+# --- extract universe (all genes across coenrich_summary_df)
+universe_genes <- coenrich_summary_df %>%
+  pull(genes_sig_coenriched) %>%
+  str_split(";") %>%
+  unlist() %>%
+  unique()
+
+# --- loop over target annotations
+for (ann in target_ann) {
+  ctrl_syms <- coenrich_summary_df %>%
+    filter(Sample == "Ctrl vs Untagged", Organelle == ann) %>%
+    pull(genes_sig_coenriched) %>%
+    str_split(";") %>%
+    unlist() %>%
+    unique()
+
+  run_topGO(ctrl_syms, universe_genes, ann)
+}
+
 ```
 
 
