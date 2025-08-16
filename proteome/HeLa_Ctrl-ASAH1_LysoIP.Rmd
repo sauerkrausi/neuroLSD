@@ -373,17 +373,16 @@ ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_clusterViolinPlot_log2FC.pdf"),
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- 1. Define setup
-organelles <- c("Lysosome", "EarlyEndosome", "Endo_iN_curated_Hundley", "Golgi", "RecyclingEndosome", "ER", "Mito")
+organelles <- c("Lysosome","EarlyEndosome","Endo_iN_curated_Hundley","Golgi","RecyclingEndosome","ER","Mito")
 
-org_mapping <- tibble(
+org_mapping_detailed <- tibble(
   Organelle = factor(organelles, levels = organelles),
-  #Org_Label = c("Lyso", "Endo", "Golgi", "ER", "Mito"),
-  Org_Label = c("Lysosome", "EarlyEndosome", "Endo_iN_curated_Hundley", "Golgi", "RecyclingEndosome", "ER", "Mito"),
+  Org_Label = c("Lysosome","EarlyEndosome","Endo_iN_curated_Hundley","Golgi","RecyclingEndosome","ER","Mito"),
   Org_Number = 1:7
 )
 
-org_labels <- org_mapping$Org_Label
-org_order  <- org_mapping$Org_Number
+org_labels <- org_mapping_detailed$Org_Label
+org_order  <- org_mapping_detailed$Org_Number
 
 # --- 2. Create data subset for both comparisons
 df_ctrl <- helalysoip_annotated_df %>%
@@ -402,40 +401,22 @@ df_asah1 <- helalysoip_annotated_df %>%
 
 # --- 3. Combine dataframes and annotate
 violin_df <- bind_rows(df_ctrl, df_asah1) %>%
-  mutate(
-    Sample = factor(Sample, levels = c("Ctrl vs Untagged", "ASAH1 vs Untagged")),
-    Organelle = factor(Organelle, levels = organelles)
-  ) %>%
-  left_join(org_mapping, by = "Organelle")
+  mutate(Sample = factor(Sample, levels = c("Ctrl vs Untagged","ASAH1 vs Untagged")),
+         Organelle = factor(Organelle, levels = organelles)) %>%
+  left_join(org_mapping_detailed, by = "Organelle")
 
-# --- 4. Mean value labels
-# label_df <- violin_df %>%
-#   group_by(Organelle, Sample) %>%
-#   summarize(mean_val = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop") %>%
-#   mutate(
-#     xpos = interaction(Organelle, Sample),
-#     ypos = max(violin_df$log2FC, na.rm = TRUE) + 0.3
-#   )
-
-# --- 4. Compute mean log2FC per annotation and sample
-mean_log2fc_det_df <- violin_det_df %>%
+# --- 4. Compute mean log2FC per annotation and sample → save CSV
+mean_log2fc_df <- violin_df %>%
   group_by(Organelle, Org_Label, Sample) %>%
   summarise(mean_log2FC = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop")
 
-# Save to CSV
-write.csv(
-  mean_log2fc_det_df,
-  file = file.path(out_dir_lysoip_organelle_dist, "LysoIP_mean_log2FC.csv"),
-  row.names = FALSE
-)
-
-
-# number of x slots: 7 organelles × 2 samples
-n_slots <- length(organelles) * 2
-xs <- seq_len(n_slots) 
+write.csv(mean_log2fc_df,file.path(out_dir_lysoip_organelle_dist, "LysoIP_detailedEndo_mean_log2FC.csv"),row.names = FALSE)
 
 # --- 5. Plot
-ggplot(violin_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
+n_slots <- length(organelles) * 2
+xs <- seq_len(n_slots)
+
+p_violin <- ggplot(violin_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
   geom_violin(scale = "width", trim = FALSE, width = 0.9) +
   geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
   geom_jitter(width = 0.15, height = 0, size = 0.3, alpha = 0.2) +
@@ -443,32 +424,22 @@ ggplot(violin_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sam
   scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70", "ASAH1 vs Untagged" = "dodgerblue3")) +
   scale_x_discrete(labels = setNames(
     rep(org_labels, times = 2),
-    interaction(rep(org_mapping$Organelle, times = 2),
-                rep(c("Ctrl vs Untagged", "ASAH1 vs Untagged"), each = length(organelles)))
+    interaction(rep(org_mapping_detailed$Organelle, times = 2),
+                rep(c("Ctrl vs Untagged","ASAH1 vs Untagged"), each = length(organelles)))
   )) +
   theme_bw(base_size = 10) +
-  theme(
-    panel.grid = element_blank(),
-    axis.title.x = element_blank(),
-    axis.text.x = element_text(angle = 0),
-    legend.position = "none"
-  ) +
+  theme(panel.grid = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 0),
+        legend.position = "none") +
   labs(y = expression(log[2]*"FC"), title = "Organelle Enrichment HeLa Ctrl vs ASAH1-/-") +
-
-  # numeric labels per slot (1..7 for Ctrl, 1..7 for ASAH1)
-  annotate("text",
-           x = xs, y = -4.5,
-           label = rep(org_order, times = 2),
-           color = rep(c("darkorange", "firebrick"), each = length(organelles)),
-           size = 3)
-  
-  # group headers roughly centered over each half
-  annotate("text", x = mean(1:length(organelles)),          y = -5.2, label = "Ctrl vs Untagged",  size = 3.2)
+  annotate("text", x = xs, y = -4.5, label = rep(org_order, times = 2),
+           color = rep(c("darkorange","firebrick"), each = length(organelles)), size = 3) +
+  annotate("text", x = mean(1:length(organelles)), y = -5.2, label = "Ctrl vs Untagged", size = 3.2) +
   annotate("text", x = mean((length(organelles)+1):n_slots), y = -5.2, label = "ASAH1 vs Untagged", size = 3.2)
 
-# --- 5. Save
-ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_detailed_ViolinCombo.pdf"), width = 5, height = 5, device = cairo_pdf)
-
+# --- 6. Save
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_detailed_ViolinCombo.pdf"), p_violin, width = 5, height = 5, device = cairo_pdf)
 
 
 ```
@@ -479,61 +450,53 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_deta
 # Violin Plot of detailed endo annotations in ctrl vs ASAH1-/-
 # ─────────────────────────────────────────────────────────────────────────────
 
-# --- 1. Define organelle labels and order for detailed Endo investigation
-organelles <- c("Lysosome", "Endo_iN_curated_Hundley", "Golgi", "ER", "Mito")
-
+## --- 1. Define organelle labels and order
+organelles <- c("Lysosome","Endo_iN_curated_Hundley","Golgi","ER","Mito")
 org_mapping <- tibble(
   Organelle = factor(organelles, levels = organelles),
-  Org_Label = c("Lyso", "Endo", "Golgi", "ER", "Mito"),
+  Org_Label = c("Lyso","Endo","Golgi","ER","Mito"),
   Org_Number = 1:5
 )
+
 # --- 2. Subset data for Ctrl and ASAH1 comparisons
 df_det_ctrl <- helalysoip_annotated_df %>%
-  filter(if_any(all_of(organelle_detailed), ~ .x)) %>%
-  select(Gene.Symbol, all_of(organelle_detailed), log2FC_CtrlLysoIP.untagged) %>%
-  pivot_longer(cols = all_of(organelle_detailed), names_to = "Organelle", values_to = "flag") %>%
+  filter(if_any(all_of(organelles), ~ .x)) %>%
+  select(Gene.Symbol, all_of(organelles), log2FC_CtrlLysoIP.untagged) %>%
+  pivot_longer(cols = all_of(organelles), names_to = "Organelle", values_to = "flag") %>%
   filter(flag) %>%
   mutate(Sample = "Ctrl vs Untagged", log2FC = log2FC_CtrlLysoIP.untagged)
 
 df_det_asah1 <- helalysoip_annotated_df %>%
-  filter(if_any(all_of(organelle_detailed), ~ .x)) %>%
-  select(Gene.Symbol, all_of(organelle_detailed), log2FC_ASAH1LysoIP.untagged) %>%
-  pivot_longer(cols = all_of(organelle_detailed), names_to = "Organelle", values_to = "flag") %>%
+  filter(if_any(all_of(organelles), ~ .x)) %>%
+  select(Gene.Symbol, all_of(organelles), log2FC_ASAH1LysoIP.untagged) %>%
+  pivot_longer(cols = all_of(organelles), names_to = "Organelle", values_to = "flag") %>%
   filter(flag) %>%
   mutate(Sample = "ASAH1 vs Untagged", log2FC = log2FC_ASAH1LysoIP.untagged)
 
 # --- 3. Combine and annotate
 violin_det_df <- bind_rows(df_det_ctrl, df_det_asah1) %>%
-  mutate(Sample = factor(Sample, levels = c("Ctrl vs Untagged", "ASAH1 vs Untagged")),
-         Organelle = factor(Organelle, levels = organelle_detailed)) %>%
-  left_join(org_endodetailed_mapping, by = "Organelle")
+  mutate(Sample = factor(Sample, levels = c("Ctrl vs Untagged","ASAH1 vs Untagged")),
+         Organelle = factor(Organelle, levels = organelles)) %>%
+  left_join(org_mapping, by = "Organelle")
 
-
+# --- 4. Compute mean log2FC per annotation and sample, save CSV
+mean_log2fc_det_df <- violin_det_df %>%
+  group_by(Organelle, Org_Label, Sample) %>%
+  summarise(mean_log2FC = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop")
+write.csv(mean_log2fc_det_df, file.path(out_dir_lysoip_organelle_dist, "LysoIP_mean_log2FC_IVc.csv"), row.names = FALSE)
 
 # --- 5. Plot
-ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
+p_violin_det <- ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
   geom_violin(scale = "width", trim = FALSE, width = 0.9) +
   geom_jitter(width = 0.15, height = 0, size = 0.3, alpha = 0.2) +
   geom_hline(yintercept = 0, linetype = "dotted") +
   scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70", "ASAH1 vs Untagged" = "dodgerblue3")) +
-  # scale_x_discrete(
-  #   labels = setNames(
-  #     rep(org_endodetailed_mapping$Org_Label, times = 2),
-  #     interaction(rep(org_endodetailed_mapping$Organelle, times = 2),
-  #                 rep(c("Ctrl vs Untagged", "ASAH1 vs Untagged"), each = nrow(org_endodetailed_mapping)))
-  #   )
-  # ) +
   theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    axis.title.x = element_blank(),
-    axis.text.x = element_text(angle = 90),
-    legend.position = "none"
-  ) +
+  theme(panel.grid = element_blank(), axis.title.x = element_blank(), axis.text.x = element_text(angle = 90), legend.position = "none") +
   labs(y = expression(log[2]*"FC"), title = "Organelle Enrichment HeLa Ctrl vs ASAH1-/-")
 
 # --- 6. Save
-ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_ViolinCombo.pdf"), width = 3, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_ViolinCombo_IVc.pdf"), p_violin_det, width = 3, height = 5, device = cairo_pdf)
 
 
 
