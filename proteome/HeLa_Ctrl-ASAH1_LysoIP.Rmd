@@ -964,8 +964,8 @@ rainfall_plot <- ggplot(
        title = "ASAH1 vs Ctrl: Lysosome / Hydrolases / vATPase") +
   theme(panel.grid = element_blank(), legend.position = "none")
 
-# --- 4b. Ratio-of-ratios metric (Δlog2FC = ASAH1_vs_untagged − Ctrl_vs_untagged)
-rain_df_ror <- helalysoip_annotated_df %>%
+# --- 4b. ∆log2FC (norm) (Δlog2FC = ASAH1_vs_untagged − Ctrl_vs_untagged)
+rain_df_delta <- helalysoip_annotated_df %>%
   filter(Gene.Symbol %in% vatpase_genes | Gene.Symbol %in% lysohydrolases | Lysosome == TRUE) %>%
   mutate(
     y_group = case_when(
@@ -974,37 +974,37 @@ rain_df_ror <- helalysoip_annotated_df %>%
       Lysosome == TRUE                ~ "Lysosome",
       TRUE ~ NA_character_
     ),
-    delta_log2fc = log2FC_ASAH1LysoIP.untagged - log2FC_CtrlLysoIP.untagged  # ratio-of-ratios on log2 scale
+    delta_log2fc = log2FC_ASAH1LysoIP.untagged - log2FC_CtrlLysoIP.untagged 
   ) %>%
   filter(!is.na(y_group), is.finite(delta_log2fc)) %>%
   mutate(y_group = factor(y_group, levels = c("Lysosome","Hydrolases","vATPase")))
 
-# top 5 by |Δlog2FC| within each group
-label_df_ror <- rain_df_ror %>%
+# top 5 by Δlog2FC within each group
+label_df_delta <- rain_df_delta %>%
   group_by(y_group) %>%
   slice_max(order_by = abs(delta_log2fc), n = 5, with_ties = FALSE) %>%
   ungroup()
 
 # plot
-rainfall_plot_ror <- ggplot(rain_df_ror, aes(y = delta_log2fc, x = y_group, fill = y_group)) +
+rainfall_plot_delta <- ggplot(rain_df_delta, aes(y = delta_log2fc, x = y_group, fill = y_group)) +
   gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
   ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA) +
-  geom_text_repel(data = label_df_ror, aes(label = Gene.Symbol), position = position_nudge(x = -0.25),
+  geom_text_repel(data = label_df_delta, aes(label = Gene.Symbol), position = position_nudge(x = -0.25),
                   size = 2, min.segment.length = 0, max.overlaps = Inf, box.padding = 0.2,
                   point.padding = 0.1, segment.size = 0.2) +
   scale_fill_manual(values = c("Lysosome" = "grey70", "Hydrolases" = "firebrick", "vATPase" = "dodgerblue3")) +
   coord_flip() +
   theme_bw(base_size = 6) +
-  labs(y = expression(Delta~log[2]*"FC (ASAH1−Ctrl)"),
+  labs(y = "∆FC (ASAH1−Ctrl)",
        x = NULL,
-       title = "Ratio-of-ratios (Δlog2FC): ASAH1 vs Ctrl — Lysosome / Hydrolases / vATPase") +
+       title = "Δlog2FC ASAH1 vs Ctrl — Lysosome / Hydrolases / vATPase") +
   theme(panel.grid = element_blank(), legend.position = "none")
 
 
 # --- 5. Save
-ggsave(file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_RatioOfRatios_LysoHydroVATPase.pdf"), rainfall_plot_ror, width = 4, height = 2, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_deltalog2FC_LysoHydroVATPase.pdf"), rainfall_plot_delta, width = 4, height = 2, device = cairo_pdf)
 ggsave(filename = file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_ASAH1vsCtrl_LysoHydroVATPase.pdf"),plot = rainfall_plot, width = 4, height = 2, device = cairo_pdf)
 
 
