@@ -128,8 +128,8 @@ lysohydrolases <- c(
 )
 
 # 2. Process subcellular annotation
-cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32)
-subcell_df <- read_csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
+cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
+subcell_df <- read.csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", stringsAsFactors = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
 long_subcell_df <- subcell_df %>%
@@ -515,7 +515,8 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_deta
 ```
 
 
-# IV. Abundnance of lysosomal hydrolases
+# IV. Focused lyso evaluations
+## IVa. Abundnance of lysosomal hydrolases
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Hydrolase abundance in lysosome Ctrl vs ASAH1-/-
@@ -588,6 +589,11 @@ pheatmap(
 dev.off()
 
 ```
+
+
+## IVb. Rainfallplots of ASAH1 vs Control LysoIP for select annotations 
+
+
 
 
 # V. Venn Diagramm of lyso, endo and iN-endo list to see overlap
