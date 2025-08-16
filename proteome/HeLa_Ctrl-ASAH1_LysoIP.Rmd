@@ -317,7 +317,8 @@ ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_clusterViolinPlot_scaled.pdf"),
 ```
 
 
-# IV. Violins of clusters of interst 
+# IV. Violins of clusters of interest 
+### IVa. Violin Plot of Cluster Abundance
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Violin Plot of Cluster Abundance
@@ -359,9 +360,11 @@ lysoip_clusterPlot <- ggplot(violin_df_lysoip, aes(x = Sample, y = log2FC, fill 
 ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_clusterViolinPlot_log2FC.pdf"),
        lysoip_clusterPlot, width = 6, height = 6, device = cairo_pdf)
 
+```
 
 
-
+### IVb. Violin Plot of select annotations in ctrl vs ASAH1-/-
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Violin Plot of select annotations in ctrl vs ASAH1-/-
 # ─────────────────────────────────────────────────────────────────────────────
@@ -439,9 +442,10 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_Viol
 
 
 
+```
 
-
-
+### IVc. Violin Plot of detailed endo annotations in ctrl vs ASAH1-/-
+```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Violin Plot of detailed endo annotations in ctrl vs ASAH1-/-
 # ─────────────────────────────────────────────────────────────────────────────
