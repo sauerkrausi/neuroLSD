@@ -57,6 +57,14 @@ library(topGO)
 BiocManager::install("org.Hs.eg.db")
 library(org.Hs.eg.db)
 
+library(ggplot2)
+library(ggdist)
+library(gghalves)
+library(ggrepel)
+library(dplyr)
+library(tibble)
+
+
 
 # Optional install commands
 # devtools::install_github("jbengler/tidyplots")
@@ -76,6 +84,9 @@ dir.create(out_dir_lysoip_corrplots, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_lysoip_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Organelle_Distribution"
 dir.create(out_dir_lysoip_organelle_dist, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_lysoip_organelle_rainfall <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Rainfall"
+dir.create(out_dir_lysoip_organelle_rainfall, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_lysoip_venn <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn"
 dir.create(out_dir_lysoip_venn, recursive = TRUE, showWarnings = FALSE)
@@ -515,8 +526,8 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_deta
 ```
 
 
-# IV. Focused lyso evaluations
-## IVa. Abundnance of lysosomal hydrolases
+# V. Focused lyso evaluations
+### Va. Abundnance of lysosomal hydrolases
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Hydrolase abundance in lysosome Ctrl vs ASAH1-/-
@@ -591,12 +602,108 @@ dev.off()
 ```
 
 
-## IVb. Rainfallplots of ASAH1 vs Control LysoIP for select annotations 
+### Vb. Rainfallplots of ASAH1 vs Control LysoIP for select annotations 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Rainfall plot: ASAH1LysoIP vs CtrlLysoIP (highlight top 5 by log2FC)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Define gene sets
+vatpase_genes <- c(
+  "ATP6V1A","ATP6V1B1","ATP6V1B2","ATP6V1C1","ATP6V1C2","ATP6V1D","ATP6V1E1","ATP6V1E2","ATP6V1F",
+  "ATP6V1G1","ATP6V1G2","ATP6V1G3","ATP6V1H","ATP6V0A1","ATP6V0A2","ATP6V0A3","ATP6V0A4",
+  "ATP6V0C","ATP6V0B","ATP6V0D1","ATP6V0D2","ATP6V0E1","ATP6V0E2","RNASEK",
+  "ATP6AP1","ATP6AP2","DMXL1","DMXL2","WDR7","ROGDI", "PODXL"
+)
+
+lysohydrolases <- c(
+  "ASAH1","GBA","ARSA","ARSB","GALNS","IDUA","GLA","NEU1","MAN2B1",
+  "GLB1","HEXA","GNS","HEXB","CTSA","CTSZ","TPP1","NAGLU","CTSL",
+  "CTSB","NAGA","LGMN"
+)
+
+# --- 2. Subset for lysosome / hydrolases / vATPase
+rain_df <- helalysoip_annotated_df %>%
+  filter(
+    Gene.Symbol %in% vatpase_genes |
+    Gene.Symbol %in% lysohydrolases |
+    Lysosome == TRUE
+  ) %>%
+  mutate(
+    y_group = case_when(
+      Gene.Symbol %in% lysohydrolases ~ "Hydrolases",
+      Gene.Symbol %in% vatpase_genes  ~ "vATPase",
+      Lysosome == TRUE                ~ "Lysosome",
+      TRUE ~ NA_character_
+    ),
+    log2fc = log2FC_ASAH1LysoIP.CtrlLysoIP
+  ) %>%
+  filter(!is.na(y_group), is.finite(log2fc)) %>%
+  mutate(
+    y_group = factor(y_group, levels = c("Lysosome","Hydrolases","vATPase"))
+  )
+
+# --- 3. Pick top 5 by absolute FC within each group
+label_df <- rain_df %>%
+  group_by(y_group) %>%
+  slice_max(order_by = abs(log2fc), n = 5, with_ties = FALSE) %>%
+  ungroup()
+
+# --- 4. Plot
+rainfall_plot <- ggplot(
+  rain_df,
+  aes(y = log2fc, x = y_group, fill = y_group)
+) +
+  gghalves::geom_half_point(
+    side = "b",
+    range_scale = 0.2,
+    alpha = 0.2,
+    size = 1,
+    shape = 16
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+  ggdist::stat_halfeye(
+    adjust = 2,
+    width = 0.6,
+    .width = 0,
+    justification = -0.2,
+    point_colour = NA
+  ) +
+  geom_boxplot(width = 0.15, outlier.shape = NA) +
+  geom_text_repel(
+    data = label_df,
+    aes(label = Gene.Symbol),
+    position = position_nudge(x = -0.25),
+    size = 2,
+    min.segment.length = 0,
+    max.overlaps = Inf,
+    box.padding = 0.2,
+    point.padding = 0.1,
+    segment.size = 0.2
+  ) +
+  scale_fill_manual(values = c(
+    "Lysosome"   = "grey70",
+    "Hydrolases" = "firebrick",
+    "vATPase"    = "dodgerblue3"
+  )) +
+  coord_flip() +
+  theme_bw(base_size = 6) +
+  labs(y = "log2FC ASAH1LysoIP vs CtrlLysoIP", x = NULL,
+       title = "ASAH1 vs Ctrl: Lysosome / Hydrolases / vATPase") +
+  theme(panel.grid = element_blank(), legend.position = "none")
+
+
+# --- 5. Save
+ggsave(filename = file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_ASAH1vsCtrl_LysoHydroVATPase.pdf"),plot = rainfall_plot, width = 4, height = 2, device = cairo_pdf)
+
+
+
+```
 
 
 
 
-# V. Venn Diagramm of lyso, endo and iN-endo list to see overlap
+# VI. Venn Diagramm of lyso, endo and iN-endo list to see overlap
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Venn for all proteins detected
@@ -806,7 +913,7 @@ write.csv(data.frame(Overlap_ASAH1_Endosome_EndoCurated = overlap_ASAH1_endosome
 ```
 
 
-## VI. Autophagy investigation in more detail
+## VII. Autophagy investigation in more detail
 ```{r}
 # --- 0.  define annotation lists:
 autophagy_receptors <- c(
@@ -918,8 +1025,7 @@ write_csv(sig_summary_autophagy, file.path(out_dir_lysoip_autophagy, "sig_hits_a
 
 
 
-## VII. GO term analysis of LysoIP data (based on clusters)
-
+## VIII. GO term analysis of LysoIP data (based on clusters)
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # GO Term Analysis for LysoIP Clusters (ASAH1 vs Ctrl)
