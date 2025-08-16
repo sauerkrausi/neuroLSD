@@ -373,12 +373,14 @@ ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_clusterViolinPlot_log2FC.pdf"),
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- 1. Define setup
-organelles <- c("Lysosome", "Endo_iN_curated_Hundley", "Golgi", "ER", "Mito")
+# organelles <- c("Lysosome", "Endo_iN_curated_Hundley", "Golgi", "ER", "Mito")
+organelles <- c("Lysosome", "EarlyEndosome", "Endo_iN_curated_Hundley", "Golgi", "RecyclingEndosome", "ER", "Mito")
 
 org_mapping <- tibble(
   Organelle = factor(organelles, levels = organelles),
-  Org_Label = c("Lyso", "Endo", "Golgi", "ER", "Mito"),
-  Org_Number = 1:5
+  #Org_Label = c("Lyso", "Endo", "Golgi", "ER", "Mito"),
+  Org_Label = c("Lysosome", "EarlyEndosome", "Endo_iN_curated_Hundley", "Golgi", "RecyclingEndosome", "ER", "Mito"),
+  Org_Number = 1:7
 )
 
 org_labels <- org_mapping$Org_Label
@@ -419,6 +421,7 @@ violin_df <- bind_rows(df_ctrl, df_asah1) %>%
 # --- 5. Plot
 ggplot(violin_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
   geom_violin(scale = "width", trim = FALSE, width = 0.9) +
+  geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA, color = "black", linewidth = 0.3) +
   geom_jitter(width = 0.15, height = 0, size = 0.3, alpha = 0.2) +
   geom_hline(yintercept = 0, linetype = "dotted") +
   scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70", "ASAH1 vs Untagged" = "dodgerblue3")) +
