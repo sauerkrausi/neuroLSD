@@ -651,23 +651,22 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_stackedbar_
 # Overlap of sig co-enriched IDs across annotations + Venns
 # ─────────────────────────────────────────────────────────────────────────────
 
-# --- 1. Targets (exclude Lysosome itself for this analysis)
-venn_ann6 <- c("Endo_iN_curated_Hundley", "Golgi", "ER", "Mito", "EarlyEndosome", "RecyclingEndosome")
+# --- 1.  Targets (exclude Lysosome itself)
+venn_ann6 <- c("Endo_iN_curated_Hundley","Golgi","ER","Mito","EarlyEndosome","RecyclingEndosome")
 
-
-## --- 2. Helper: sets of sig_coenriched genes per annotation for one genotype
+# --- 2. Sets of sig_coenriched genes per genotype (coerce to character)
 get_sig_sets <- function(genelevel_df, sample_label, ann_vec) {
   genelevel_df %>%
     filter(Sample == sample_label, sig_coenriched, Organelle %in% ann_vec) %>%
     group_by(Organelle) %>%
-    summarise(Genes = list(unique(Gene.Symbol)), .groups = "drop") %>%
+    summarise(Genes = list(unique(as.character(Gene.Symbol))), .groups = "drop") %>%
     { setNames(.$Genes, .$Organelle) }
 }
 
 ctrl_sets  <- get_sig_sets(coenrich_genelevel_df, "Ctrl vs Untagged",  venn_ann6)
 asah1_sets <- get_sig_sets(coenrich_genelevel_df, "ASAH1 vs Untagged", venn_ann6)
 
-# --- 3. size filter helpers
+# --- 3. Helpers: size filter, sanitize, Venn
 min_size <- 5
 
 filter_by_size <- function(setlist, k = min_size) {
@@ -682,98 +681,64 @@ sanitize_sets <- function(setlist) {
   setlist[vapply(setlist, length, integer(1)) > 0]
 }
 
-
-# --- 4. Plot Venn diagrams of overlaps  
 plot_venn <- function(setlist, fname, width = 16, height = 14, label_size_pt = 6) {
   setlist <- sanitize_sets(setlist)
   if (length(setlist) < 2) return(invisible(NULL))
-
-  p <- ggVennDiagram::ggVennDiagram(
-    setlist,
-    show_intersect = FALSE,
-    set_color = "black",
-    set_size = NA,
-    label = "both",
-    label_alpha = 0,
-    label_geom = "label",
-    label_color = "black",
-    label_size = label_size_pt,
-    edge_lty = "solid",
-    edge_size = 0
-  ) + scale_fill_gradient(low = "#F4FAFE", high = "#4981BF") + theme_void()
-
+  p <- ggVennDiagram::ggVennDiagram(setlist, show_intersect = FALSE, set_color = "black", set_size = NA,
+                                    label = "both", label_alpha = 0, label_geom = "label",
+                                    label_color = "black", label_size = label_size_pt,
+                                    edge_lty = "solid", edge_size = 0) +
+       scale_fill_gradient(low = "#F4FAFE", high = "#4981BF") + theme_void()
   ggsave(file.path(out_dir_lysoip_venn_coenrichment, fname), p, width = width, height = height, units = "cm", dpi = 600, device = cairo_pdf)
 }
 
-
-
-# --- 5. Save overlap tables for each annotation 
-pairwise_overlap_tbl <- function(setlist) {
-  setlist <- sanitize_sets(setlist)
-  if (length(setlist) < 2) return(tibble(set1=character(), set2=character(), n_intersect=integer(), jaccard=numeric()))
-  combn(names(setlist), 2, simplify = FALSE, FUN = function(p) {
-    a <- setlist[[p[1]]]; b <- setlist[[p[2]]]
-    inter <- length(intersect(a, b)); uni <- length(union(a, b))
-    tibble(set1 = p[1], set2 = p[2], n_intersect = inter, jaccard = ifelse(uni > 0, inter/uni, NA_real_))
-  }) %>% bind_rows() %>% arrange(desc(jaccard), desc(n_intersect))
-}
-
-# --- 6. Apply size filter per genotype 
+# --- 4. Apply size filter per genotype
 ctrl_sets5  <- filter_by_size(ctrl_sets,  min_size)
 asah1_sets5 <- filter_by_size(asah1_sets, min_size)
 
-# Save which annotations that passed size filter cutoff 
-write.csv(tibble(Genotype = "Ctrl",  Annotation = names(ctrl_sets5),  n = vapply(ctrl_sets5, length, 1L)), file.path(out_dir_lysoip_venn_coenrichment, "kept_annotations_CTRL_min5.csv"), row.names = FALSE)
+# Log which annotations passed size filter
+write.csv(tibble(Genotype = "Ctrl", Annotation = names(ctrl_sets5), n = vapply(ctrl_sets5, length, 1L)), file.path(out_dir_lysoip_venn_coenrichment, "kept_annotations_CTRL_min5.csv"), row.names = FALSE)
 write.csv(tibble(Genotype = "ASAH1", Annotation = names(asah1_sets5), n = vapply(asah1_sets5, length, 1L)), file.path(out_dir_lysoip_venn_coenrichment, "kept_annotations_ASAH1_min5.csv"), row.names = FALSE)
 
-# --- 7. Save cleaned DFs as csv
-write.csv(pairwise_overlap_tbl(ctrl_sets5), file.path(out_dir_lysoip_venn_coenrichment, "coenrich_overlap_pairwise_CTRL_min5.csv"), row.names = FALSE)
-write.csv(pairwise_overlap_tbl(asah1_sets5), file.path(out_dir_lysoip_venn_coenrichment, "coenrich_overlap_pairwise_ASAH1_min5.csv"), row.names = FALSE)
 
-# --- 8. Per-annotation overlap tables + top-N Venns (within-genotype), no triads
-make_per_annotation_venns <- function(setlist, geno_tag, top_n = 3, min_size_each = 5, min_intersect = 1) {
-  setlist <- sanitize_sets(setlist)
-  annames <- names(setlist)
-  if (length(annames) < 2) return(invisible(NULL))
+# --- 5. Per-annotation Ctrl vs ASAH1 overlap (requires ≥5 on both sides)
+anns_to_compare <- intersect(names(ctrl_sets5), names(asah1_sets5))
+if (length(anns_to_compare) > 0) {
+  per_ann_summary <- purrr::map_dfr(anns_to_compare, function(an) {
+    ctrl_vec  <- unique(as.character(ctrl_sets5[[an]]))
+    asah1_vec <- unique(as.character(asah1_sets5[[an]]))
+    shared    <- intersect(ctrl_vec, asah1_vec)
+    union_set <- union(ctrl_vec, asah1_vec)
+    jacc      <- ifelse(length(union_set) > 0, length(shared) / length(union_set), NA_real_)
+    base      <- gsub("[^A-Za-z0-9]+","_", an)
 
-  for (focal in annames) {
-    focal_vec <- unique(as.character(setlist[[focal]]))
-    others <- setdiff(annames, focal)
+    # save gene lists overlap and unique for each annotations 
+    pad_to <- function(x, n) { c(x, rep(NA_character_, n - length(x))) }
+      ctrl_only  <- sort(unique(setdiff(ctrl_vec, asah1_vec)))
+      asah1_only <- sort(unique(setdiff(asah1_vec, ctrl_vec)))
+      shared     <- sort(unique(intersect(ctrl_vec, asah1_vec)))
+      
+      # make one CSV per plot: ASAH1_unique, Shared, Control_unique
+      nmax <- max(length(asah1_only), length(shared), length(ctrl_only))
+      venn_table <- tibble(
+        ASAH1_unique   = pad_to(asah1_only, nmax),
+        Shared         = pad_to(shared,     nmax),
+        Control_unique = pad_to(ctrl_only,  nmax)
+      )
+      
+      csv_name <- paste0("Venn_", base, "_Ctrl_vs_ASAH1_min5.csv")
+      write.csv(venn_table, file.path(out_dir_lysoip_venn_coenrichment, csv_name), row.names = FALSE)
+    # Venn
+    two_set <- list("Ctrl sig" = ctrl_vec, "ASAH1 sig" = asah1_vec)
+    plot_venn(two_set, paste0("Venn_", base, "_Ctrl_vs_ASAH1_min5.pdf"), width = 12, height = 10)
 
-    # table of overlaps vs every other annotation
-    tbl <- purrr::map_dfr(others, function(other) {
-      other_vec <- unique(as.character(setlist[[other]]))
-      shared <- intersect(focal_vec, other_vec)
-      uni <- union(focal_vec, other_vec)
-      tibble(Focal = focal, Other = other, n_focal = length(focal_vec), n_other = length(other_vec),
-             n_shared = length(shared), jaccard = ifelse(length(uni) > 0, length(shared)/length(uni), NA_real_),
-             shared_genes = paste(shared, collapse = ";"))
-    }) %>% arrange(desc(n_shared), desc(jaccard))
+    tibble(Annotation = an, n_ctrl = length(ctrl_vec), n_asah1 = length(asah1_vec), n_shared = length(shared), jaccard_ctrl_asah1 = jacc)
+  })
 
-    # save per-annotation overlap table
-    out_csv <- file.path(out_dir_lysoip_venn_coenrichment, paste0("overlap_within_", geno_tag, "_", gsub("[^A-Za-z0-9]+","_", focal), "_min5.csv"))
-    write.csv(tbl, out_csv, row.names = FALSE)
-
-    # make Venns for top-N overlapping partners that pass size and min_intersect filtros
-    top_tbl <- head(tbl, top_n)
-    purrr::pwalk(list(top_tbl$Other, top_tbl$n_other, top_tbl$n_shared), function(other, n_other, n_shared) {
-      if (length(focal_vec) >= min_size_each && n_other >= min_size_each && n_shared >= min_intersect) {
-        two_set <- list(focal = focal_vec, other = unique(as.character(setlist[[other]])))
-        fname <- paste0("Venn_", geno_tag, "_", gsub("[^A-Za-z0-9]+","_", focal), "_vs_", gsub("[^A-Za-z0-9]+","_", other), "_min5.pdf")
-        plot_venn(two_set, fname, width = 12, height = 10)
-      }
-    })
-  }
+  write.csv(per_ann_summary, file.path(out_dir_lysoip_venn_coenrichment, "per_annotation_Ctrl_vs_ASAH1_overlap_summary_min5.csv"), row.names = FALSE)
+} else {
+  message("No annotations with ≥", min_size, " sig IDs in both Ctrl and ASAH1.")
 }
-
-make_per_annotation_venns(ctrl_sets5, "CTRL", top_n = 3, min_size_each = 5, min_intersect = 1)
-make_per_annotation_venns(asah1_sets5, "ASAH1", top_n = 3, min_size_each = 5, min_intersect = 1)
-
-
-
-write.csv(per_ann_summary,file.path(out_dir_lysoip_venn_coenrichment, "per_annotation_Ctrl_vs_ASAH1_overlap_summary_min5.csv"),row.names = FALSE)
-
-
 ```
 
 
