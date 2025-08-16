@@ -1866,7 +1866,7 @@ ggsave(file.path(pca_out_dir, "iDA_union_annotations_PCA_PCpairs_facet.pdf"),
 scores_df <- as.data.frame(pca_combined$x) %>% mutate(genotype = geno_ids)
 
 # Example for ASAH1, PC of interest = PC where ASAH1 has extreme score
-pc_for_asah1 <- which.max(abs(scores_df %>% filter(genotype == "ASAH1") %>% select(PC1,PC5)))
+pc_for_asah1 <- which.max(abs(scores_df %>% filter(genotype == "ASAH1") %>% select(PC3)))
 top_asah1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_asah1, drop = FALSE] %>%
   rownames_to_column("Genes") %>%
   rename(loading = 2) %>%
@@ -1877,7 +1877,7 @@ write_csv(top_asah1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_d
 
 
 # Repeat for GBA1
-pc_for_gba1 <- which.max(abs(scores_df %>% filter(genotype == "GBA1") %>% select(PC1,PC5)))
+pc_for_gba1 <- which.max(abs(scores_df %>% filter(genotype == "GBA1") %>% select(PC3)))
 top_gba1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_gba1, drop = FALSE] %>%
   rownames_to_column("Genes") %>%
   rename(loading = 2) %>%
