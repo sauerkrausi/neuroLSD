@@ -920,6 +920,7 @@ label_df <- rain_df %>%
   slice_max(order_by = abs(log2fc), n = 5, with_ties = FALSE) %>%
   ungroup()
 
+
 # --- 4. Plot
 rainfall_plot <- ggplot(
   rain_df,
