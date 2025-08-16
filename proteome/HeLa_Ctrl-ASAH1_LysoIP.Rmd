@@ -575,39 +575,38 @@ coenrich_summary_df <- coenrich_genelevel_df %>%
   ) %>%
   arrange(Organelle, Sample)
 
-
-# --- 5. Sort Organelle by descending total co-enrichment (sum of both genotypes)
+# --- 5. Determine organelle order (ascending by total sig across genotypes)
 totals_order <- coenrich_summary_df %>%
   group_by(Organelle) %>%
   summarise(total_sig = sum(n_sig_coenriched, na.rm = TRUE), .groups = "drop") %>%
-  #arrange(desc(total_sig)) # desc
-  arrange(total_sig) # ascending 
-
-coenrich_summary_df <- coenrich_summary_df %>%
-  mutate(Organelle = factor(Organelle, levels = totals_order$Organelle))
-
+  arrange(total_sig)
+organelle_order <- totals_order$Organelle
 
 # --- 6. Write summary CSV
-write.csv(coenrich_summary_df,
-          file = file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_summary.csv"),
-          row.names = FALSE)
+genes_per_group_df <- coenrich_genelevel_df %>%
+  filter(sig_coenriched) %>%
+  group_by(Organelle, Sample) %>%
+  summarise(genes_sig_coenriched = paste(sort(unique(as.character(Gene.Symbol))), collapse = ";"), .groups = "drop")
+
+coenrich_summary_df <- coenrich_summary_df %>%
+  left_join(genes_per_group_df, by = c("Organelle","Sample")) %>%
+  mutate(genes_sig_coenriched = replace_na(genes_sig_coenriched, "")) %>%
+  mutate(Organelle = factor(Organelle, levels = organelle_order)) %>%
+  arrange(Organelle, Sample)
+
+write.csv(coenrich_summary_df, file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_summary.csv"), row.names = FALSE)
 
 # --- 7. Stacked bar plot: counts of sig. co-enriched per annotation
-coenrich_bar_plot <- ggplot(coenrich_summary_df,
-                            aes(x = n_sig_coenriched, y =Organelle , fill = Sample)) +
+coenrich_bar_plot <- ggplot(coenrich_summary_df, aes(x = n_sig_coenriched, y = Organelle, fill = Sample)) +
   geom_col(width = 0.8, color = "black", linewidth = 0.1) +
-  # per-segment counts (skip zeros to reduce clutter)
-  geom_text(aes(label = ifelse(n_sig_coenriched > 0, n_sig_coenriched, "")),
-            position = position_stack(vjust = 0.5),
-            size = 2.8) +
-  scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70",
-                               "ASAH1 vs Untagged" = "dodgerblue3")) +
-  labs(x = NULL, y = "# sig. co-enriched (log2FC ≥ mean Lyso)",
-       title = "Co-enrichment relative to Lysosome mean (per genotype)") +
+  geom_text(aes(label = ifelse(n_sig_coenriched > 0, n_sig_coenriched, "")), position = position_stack(vjust = 0.5), size = 2.8) +
+  scale_fill_manual(values = c("Ctrl vs Untagged" = "grey70", "ASAH1 vs Untagged" = "dodgerblue3")) +
+  labs(x = NULL, y = "# sig. co-enriched (log2FC ≥ mean Lyso)", title = "Co-enrichment relative to Lysosome mean (per genotype)") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.title = element_blank())
+  theme(
+    panel.grid = element_blank(), 
+    axis.text.x = element_text(angle = 45, hjust = 1), 
+    legend.title = element_blank())
 
 
 # --- 8. Save plot as PDF 
@@ -718,7 +717,51 @@ if (length(anns_to_compare) > 0) {
 
 ### IVf. GO enrichment of Endo annotations sig. Control
 ```{r}
+target_ann <- c("Endo_iN_curated_Hundley","EarlyEndosome")
+min_genes  <- 10  # skip GO if fewer than this
+universe_symbols <- unique(as.character(helalysoip_annotated_df$Gene.Symbol))
 
+# --- 2. Collect Ctrl-only sig gene sets per target annotation
+ctrl_sig_list <- coenrich_genelevel_df %>%
+  filter(Sample == "Ctrl vs Untagged", sig_coenriched, Organelle %in% target_ann) %>%
+  mutate(Gene.Symbol = as.character(Gene.Symbol)) %>%
+  group_by(Organelle) %>%
+  summarise(genes = sort(unique(Gene.Symbol)), .groups = "drop") %>%
+  { setNames(.$genes, .$Organelle) }
+
+# --- 3. Helper to run GO and export plot + csv
+run_go_and_export <- function(sym_vec, ann_label, ont = c("BP","CC","MF"), top_terms = 20) {
+  if (length(sym_vec) < min_genes) {
+    message("Skip GO for ", ann_label, ": n=", length(sym_vec), " < ", min_genes)
+    return(invisible(NULL))
+  }
+  clean_ann <- gsub("[^A-Za-z0-9]+","_", ann_label)
+  for (o in ont) {
+    ego <- tryCatch(
+      enrichGO(gene = sym_vec, OrgDb = org.Hs.eg.db, keyType = "SYMBOL",
+               universe = universe_symbols, ont = o,
+               pAdjustMethod = "BH", qvalueCutoff = 0.05, readable = TRUE),
+      error = function(e) NULL
+    )
+    if (is.null(ego) || nrow(as.data.frame(ego)) == 0) {
+      message("No GO ", o, " terms for ", ann_label)
+      next
+    }
+
+    # dotplot (top N terms)
+    p <- enrichplot::dotplot(ego, showCategory = top_terms) +
+         ggtitle(paste0("GO-", o, " Ctrl sig: ", ann_label)) +
+         theme_bw(base_size = 8) + theme(panel.grid = element_blank())
+    ggsave(file.path(out_dir_lysoip_GOcoenrichment, paste0("GO_", o, "_CTRL_", clean_ann, ".pdf")), p, width = 6, height = 5, device = cairo_pdf)
+
+    # csv (all terms)
+    go_tbl <- as.data.frame(ego)
+    write.csv(go_tbl, file.path(out_dir_lysoip_GOcoenrichment, paste0("GO_", o, "_CTRL_", clean_ann, ".csv")), row.names = FALSE)
+  }
+}
+
+# --- 4. Run per annotation for Ctrl-only
+invisible(lapply(names(ctrl_sig_list), function(an) run_go_and_export(ctrl_sig_list[[an]], an)))
 ```
 
 
