@@ -1353,12 +1353,10 @@ pdf(file.path(out_dir_lysoip_autophagy, "autophagy_upset_CtrlASAH1_updown.pdf"),
 ComplexUpset::upset(
   status_wide,
   c("Ctrl_up","Ctrl_down","ASAH1_up","ASAH1_down"),
-  annotations = list(
+  base_annotations = list(
     'Intersection size' = intersection_size(text = list(aes(label = after_stat(count))))
   ),
-  annotations = list(),
-  width_ratio = 0.4,
-  themes = upset_modify_themes(theme = theme_bw(base_size = 6)) 
+  width_ratio = 0.4
 )
 
 dev.off()
