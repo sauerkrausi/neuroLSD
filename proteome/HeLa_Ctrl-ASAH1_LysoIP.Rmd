@@ -478,7 +478,7 @@ violin_det_df <- bind_rows(df_det_ctrl, df_det_asah1) %>%
 mean_log2fc_det_df <- violin_det_df %>%
   group_by(Organelle, Org_Label, Sample) %>%
   summarise(mean_log2FC = round(mean(log2FC, na.rm = TRUE), 2), .groups = "drop")
-write.csv(mean_log2fc_det_df, file.path(out_dir_lysoip_organelle_dist, "LysoIP_mean_log2FC_IVc.csv"), row.names = FALSE)
+write.csv(mean_log2fc_det_df, file.path(out_dir_lysoip_organelle_dist, "LysoIP_mean_log2FC.csv"), row.names = FALSE)
 
 # --- 5. Plot
 p_violin_det <- ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y = log2FC, fill = Sample)) +
@@ -491,7 +491,7 @@ p_violin_det <- ggplot(violin_det_df, aes(x = interaction(Organelle, Sample), y 
   labs(y = expression(log[2]*"FC"), title = "Organelle Enrichment HeLa Ctrl vs ASAH1-/-")
 
 # --- 6. Save
-ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_ViolinCombo_IVc.pdf"), p_violin_det, width = 3, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_Violin.pdf"), p_violin_det, width = 3, height = 5, device = cairo_pdf)
 
 
 
@@ -571,7 +571,7 @@ p_violin <- ggplot(violin_df, aes(x = interaction(Organelle, Sample), y = log2FC
   annotate("text", x = mean((length(organelles)+1):n_slots), y = -5.2, label = "ASAH1 vs Untagged", size = 3.2)
 
 # --- 6. Save
-ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_detailed_ViolinCombo.pdf"), p_violin, width = 5, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_detailed_ViolinCombo.pdf"), p_violin, width = 5, height = 7, device = cairo_pdf)
 
 
 ```
@@ -719,10 +719,6 @@ org_stats_df <- bind_rows(lapply(organelle_coenrich, function(an) compute_org_st
 
 # save csv
 write.csv(org_stats_df,file.path(out_dir_lysoip_organelle_dist, "LysoIP_ctrl_vs_ASAH1_comparisons.csv"),row.names = FALSE)
-
-
-
-
 
 
 # --- 7. Stacked bar plot: counts of sig. co-enriched per annotation
