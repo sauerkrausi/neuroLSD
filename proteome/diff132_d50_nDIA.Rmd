@@ -1409,7 +1409,7 @@ make_ann_heatmap <- function(df, neuron_type, loc_ann, out_file) {
     filename = out_file 
   )
     # return row order (genotype names)
-  rownames(ann_mat)[sorted_heatmap_iNiDA$tree_row$order]
+  return(rownames(ann_mat)[sorted_heatmap_iNiDA$tree_row$order])
 }
 
 
@@ -1455,37 +1455,14 @@ combine_p_fisher <- function(p_vec) {
   pchisq(stat, df = 2 * length(p_use), lower.tail = FALSE)
 }
 
-# --- 1. Helper to capture the row order used in the mean log2FC heatmap
-compute_row_order_from_mean <- function(df_wide, neuron_type, loc_ann) {
-  ann_mat <- df_wide %>%
-    pivot_longer(
-      cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
-      names_to = "Condition", values_to = "log2FC"
-    ) %>%
-    mutate(genotype = sub("_.*", "", Condition)) %>%
-    pivot_longer(cols = all_of(loc_ann),
-                 names_to = "Annotation", values_to = "is_annotated") %>%
-    filter(is_annotated == 1) %>%
-    group_by(genotype, Annotation) %>%
-    summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
-    pivot_wider(names_from = Annotation, values_from = mean_log2FC) %>%
-    column_to_rownames("genotype") %>%
-    as.matrix()
-
-  ann_mat <- ann_mat[, loc_ann, drop = FALSE]
-  ann_mat[!is.finite(ann_mat)] <- NA
-  ann_mat <- ann_mat[rowSums(!is.na(ann_mat)) > 0, , drop = FALSE]
-  rownames(ann_mat)
-}
-
-# --- 2. P-value heatmap with fixed row order and CSV export
+# --- 1. P-value heatmap with fixed row order and CSV export
 make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, out_file,
                                    out_csv_base = NULL, row_order = NULL) {
 
-  # --- 2.1 Defaults
+  # 1.1 defaults
   if (is.null(out_csv_base)) out_csv_base <- sub("\\.pdf$", "", out_file)
 
-  # --- 2.2 Annotation flags in long form, keep only TRUE/1, deduplicate
+  # 1.2 annotation flags in long form, keep only TRUE/1, deduplicate
   ann_flags_long <- annot_wide %>%
     dplyr::select(Genes, dplyr::all_of(loc_ann)) %>%
     tidyr::pivot_longer(cols = dplyr::all_of(loc_ann),
@@ -1494,12 +1471,12 @@ make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, o
     dplyr::filter(is_annotated) %>%
     dplyr::distinct(Genes, Annotation)
 
-  # --- 2.3 Restrict to neuron, join flags (many-to-many is expected)
+  # 1.3 restrict to neuron, join flags (many-to-many is expected)
   df_neu <- df_day50 %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::inner_join(ann_flags_long, by = "Genes", relationship = "many-to-many")
 
-  # --- 2.4 Combine gene p-values per genotype x annotation; sign by mean fold_change
+  # 1.4 combine p-values per genotype x annotation; sign by mean fold_change
   comb_tbl <- df_neu %>%
     dplyr::filter(is.finite(p_value)) %>%
     dplyr::group_by(genotype, Annotation) %>%
@@ -1512,7 +1489,7 @@ make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, o
     dplyr::mutate(q_comb = p.adjust(p_comb, method = "BH")) %>%
     dplyr::mutate(score = sign(replace_na(mean_fc, 0)) * (-log10(q_comb)))
 
-  # --- 2.5 Wide matrices in requested column order
+  # 1.5 wide matrices in requested column order
   ann_matrix <- comb_tbl %>%
     dplyr::select(genotype, Annotation, score, q_comb) %>%
     tidyr::pivot_wider(names_from = Annotation, values_from = c(score, q_comb)) %>%
@@ -1537,25 +1514,25 @@ make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, o
   rownames(q_mat) <- ann_matrix$genotype
   colnames(q_mat) <- loc_ann
 
-  # --- 2.6 Cap Inf from q=0
+  # 1.6 cap Inf from q=0
   if (any(is.infinite(score_mat), na.rm = TRUE)) {
     finite_max <- max(score_mat[is.finite(score_mat)], na.rm = TRUE)
     score_mat[is.infinite(score_mat)] <- finite_max + 1
   }
 
-  # --- 2.7 Mask non-significant (q >= 0.05) or missing to NA
+  # 1.7 mask non-significant (q >= 0.05) or missing to NA
   mask <- (q_mat >= 0.05) | is.na(q_mat)
   score_mat[mask] <- NA
-  
-  # --- 2.8 Enforce external row order exactly; do NOT drop rows after masking
+
+  # 1.8 enforce external row order exactly; do not drop rows after masking
   if (!is.null(row_order)) {
-    idx <- match(row_order, rownames(score_mat))
+    idx <- match(row_order, rownames(score_mat))   # preserves supplied order
     idx <- idx[!is.na(idx)]
     score_mat <- score_mat[idx, , drop = FALSE]
     q_mat     <- q_mat[idx,  colnames(score_mat), drop = FALSE]
   }
 
-  # --- 2.9 CSV exports
+  # 1.9 CSV exports
   comb_tbl %>%
     dplyr::arrange(genotype, Annotation) %>%
     write.csv(file = paste0(out_csv_base, "_", neuron_type, "_summary_long.csv"),
@@ -1571,7 +1548,7 @@ make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, o
             file = paste0(out_csv_base, "_", neuron_type, "_heatmap_qvals.csv"),
             row.names = FALSE, quote = FALSE)
 
-  # --- 2.10 Plot (no clustering to preserve order)
+  # 1.10 plot (no clustering to preserve order)
   piyg_cols <- colorRampPalette(brewer.pal(11, "PiYG"))(201)
   pheatmap(
     mat = score_mat,
@@ -1592,8 +1569,7 @@ make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, o
   invisible(list(summary_long = comb_tbl, score_mat = score_mat, q_mat = q_mat))
 }
 
-# --- 3. Example usage
-# Run p-value heatmaps with locked row order and CSV export
+# --- 2. Use the row orders returned by make_ann_heatmap() above
 make_ann_heatmap_pvals(
   df_day50     = df_day50,
   annot_wide   = complete_data_annotated_day50,
@@ -1602,7 +1578,6 @@ make_ann_heatmap_pvals(
   out_file     = file.path(out_dir_d50_ascd_avg, "heatmap_d50_iN_pvals_byGenotype.pdf"),
   out_csv_base = file.path(out_dir_d50_ascd_avg, "heatmap_d50"),
   row_order    = row_order_iN
-
 )
 
 make_ann_heatmap_pvals(
