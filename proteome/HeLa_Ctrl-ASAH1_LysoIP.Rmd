@@ -43,7 +43,6 @@ library(grid)
 library(data.table)
 
 # --- Specialized / utility packages
-library(UpSetR)
 library(tidyplots)
 library(gptstudio)
 library(rlang)
@@ -1229,6 +1228,7 @@ write.csv(data.frame(Overlap_ASAH1_Endosome_EndoCurated = overlap_ASAH1_endosome
 # ─────────────────────────────────────────────────────────────────────────────
 # VII. Autophagy investigation in more detail — stacked bars + UpSet
 # ─────────────────────────────────────────────────────────────────────────────
+library(ComplexUpset)
 
 # --- 0.  define annotation lists:
 autophagy_receptors <- c(
@@ -1304,7 +1304,7 @@ autophagy_long <- autophagy_long %>%
                              TRUE ~ "ns")
   )
 
-# --- 4. Stacked barplot: counts of up/down per genotype per annotation
+# --- 4. Prepare data for stacked barplot: counts of up/down per genotype per annotation
 stack_counts <- bind_rows(
   autophagy_long %>% filter(Ctrl_status %in% c("up","down"))  %>% 
     transmute(Annotation, Group = paste("Ctrl",  Ctrl_status),  Gene.Symbol),
@@ -1322,37 +1322,46 @@ stack_counts_wide <- stack_counts %>%
   tidyr::pivot_wider(id_cols = Annotation, names_from = Group, values_from = n, values_fill = 0) %>%
   dplyr::mutate(total = rowSums(across(where(is.numeric))))
 
+
+# --- 4b. Stacked barplot
+ann_order <- stack_counts %>%
+  dplyr::group_by(Annotation) %>%
+  dplyr::summarise(total = sum(n), .groups = "drop") %>%
+  dplyr::arrange(dplyr::desc(total)) %>%
+  dplyr::pull(Annotation)
+
+stack_plot <- ggplot(stack_counts, aes(y = factor(Annotation, levels = ann_order), x = n, fill = Group)) +
+  geom_col(width = 0.8,color = "black", linewidth = 0.1) +
+  geom_text(aes(label = n), position = position_stack(vjust = 0.5), size = 2.4) +
+  scale_fill_manual(values = c("Ctrl up" = "grey50", "Ctrl down" = "grey70", "ASAH1 up" = "dodgerblue3", "ASAH1 down" = "dodgerblue")) +
+  labs(x = NULL, y = NULL, title = "Autophagy annotations: up/down per genotype (LysoIP vs untagged)") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), legend.title = element_blank())
+
+ggsave(file.path(out_dir_lysoip_autophagy, "autophagy_updown_stackedbar.pdf"), stack_plot, width = 5, height = 3.5, device = cairo_pdf)
+
+
 # --- 5. Build gene-level membership table
 sig_gene_summary_autophagy <- autophagy_long %>%
   dplyr::select(Gene.Symbol, Annotation, Ctrl_status, ASAH1_status) %>%
   distinct()
 
-# --- 6. UpSet plot: overlap across Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down
-status_wide <- sig_gene_summary_autophagy %>%
-  dplyr::mutate(
-    Ctrl_up    = as.integer(Ctrl_status  == "up"),
-    Ctrl_down  = as.integer(Ctrl_status  == "down"),
-    ASAH1_up   = as.integer(ASAH1_status == "up"),
-    ASAH1_down = as.integer(ASAH1_status == "down")
-  ) %>%
-  dplyr::select(Gene.Symbol, Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down) %>%
-  dplyr::group_by(Gene.Symbol) %>%
-  dplyr::summarise(across(c(Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down),
-                          ~ as.integer(any(. == 1))), .groups = "drop") %>%
-  as.data.frame()
 
-rownames(status_wide) <- status_wide$Gene.Symbol
-status_wide$Gene.Symbol <- NULL
+# --- 6. Plot intersections via Upsetplot (complexheatmap)
+pdf(file.path(out_dir_lysoip_autophagy, "autophagy_upset_CtrlASAH1_updown.pdf"), width = 6, height = 5, useDingbats = FALSE)
 
-pdf(file.path(out_dir_lysoip_autophagy, "autophagy_upset_CtrlASAH1_updown.pdf"),
-    width = 6, height = 3.5, useDingbats = FALSE)
-  UpSetR::upset(status_wide,
-    nsets = 4,
-    sets = c("Ctrl_up","Ctrl_down","ASAH1_up","ASAH1_down"),
-    order.by = "freq", keep.order = TRUE,
-    mb.ratio = c(0.6, 0.4), text.scale = 0.8)
+ComplexUpset::upset(
+  status_wide,
+  c("Ctrl_up","Ctrl_down","ASAH1_up","ASAH1_down"),
+  annotations = list(
+    'Intersection size' = intersection_size(text = list(aes(label = after_stat(count))))
+  ),
+  annotations = list(),
+  width_ratio = 0.4,
+  themes = upset_modify_themes(theme = theme_bw(base_size = 6)) 
+)
+
 dev.off()
-
 
 # --- 6. save gene-level table
 write.csv(sig_gene_summary_autophagy, file = file.path(out_dir_lysoip_autophagy, "sig_hits_annotation_geneList.csv"),row.names = FALSE)
