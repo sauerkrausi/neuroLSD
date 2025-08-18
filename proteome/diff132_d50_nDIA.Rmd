@@ -1426,124 +1426,131 @@ make_ann_heatmap(
 
 ### pvalues 
 ```{r}
-# Inputs expected:
-# df_day50, complete_data_annotated_day50, out_dir_d50_ascd_avg
-# If you already have your list as custom_annotation_cols, reuse it:
-neuro_annotations_vec <- if (exists("custom_annotation_cols")) custom_annotation_cols else c(
-  "Mito","OXPHOS","mtComplexI","Golgi","Lysosome","ER","Cytoplasm","Nucleus",
-  "Autophagy","SynGO","Endo_iN_curated_Hundley","SynapseSVs",
-  "Presynaptic","Postsynaptic","NeuroDev","EndoLyso",
-  "EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"
-)
+# --------------------------------------------------- #
+# Heatmap of neuro-related annotations (p-values)
+# Same layout as VId, but cells encode signed −log10(q)
+# --------------------------------------------------- #
 
 library(tidyverse)
 library(pheatmap)
 library(RColorBrewer)
 
-# 1) Merge annotation flags onto df_day50
-annot_flags_df <- complete_data_annotated_day50 %>%
-  select(Genes, all_of(neuro_annotations_vec)) %>%
-  mutate(across(all_of(neuro_annotations_vec), as.logical))
-
-df_day50_annot <- df_day50 %>%
-  inner_join(annot_flags_df, by = "Genes")
-
-# 2) Per-annotation tests within neuron types
-# Two complementary summaries:
-#  a) Wilcoxon signed-rank of fold_change vs 0 (two-sided)
-#  b) Fisher combination of per-gene p_value, direction added via mean fold_change for plotting
+# Fisher’s method for p-value combination
 combine_p_fisher <- function(p_vec) {
   p_use <- pmin(pmax(p_vec, .Machine$double.xmin), 1)
-  stat <- -2 * sum(log(p_use))
-  pchisq(stat, df = 2*length(p_use), lower.tail = FALSE)
+  stat  <- -2 * sum(log(p_use))
+  pchisq(stat, df = 2 * length(p_use), lower.tail = FALSE)
 }
 
-annot_stats_tbl <- df_day50_annot %>%
-  filter(neuron %in% c("iN","iDA")) %>%
-  pivot_longer(all_of(neuro_annotations_vec), names_to = "Annotation", values_to = "InSet") %>%
-  filter(InSet) %>%
-  group_by(neuron, Annotation) %>%
-  summarise(
-    n_genes   = n(),
-    mean_fc   = mean(fold_change, na.rm = TRUE),
-    wilcox_p  = tryCatch(
-      if (n() >= 3) wilcox.test(fold_change, mu = 0, exact = FALSE)$p.value else NA_real_,
-      error = function(e) NA_real_
-    ),
-    fisher_p  = if (sum(is.finite(p_value)) >= 3) combine_p_fisher(p_value[is.finite(p_value)]) else NA_real_,
-    .groups = "drop"
-  ) %>%
-  group_by(neuron) %>%
-  mutate(
-    wilcox_q = p.adjust(wilcox_p, method = "BH"),
-    fisher_q = p.adjust(fisher_p, method = "BH")
-  ) %>%
-  ungroup()
+# Helper: make one heatmap for a neuron type using df_day50 + annotations
+make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, out_file) {
 
-# 3) Build signed scores for heatmap, mask q >= 0.05 to NA
-make_score_matrix <- function(tbl, q_col) {
-  mat <- tbl %>%
-    mutate(score = sign(replace_na(mean_fc, 0)) * (-log10(.data[[q_col]]))) %>%
-    select(neuron, Annotation, score, q = all_of(q_col)) %>%
-    pivot_wider(
-      names_from = neuron,
-      values_from = c(score, q),
-      values_fill = NA
-    )
+  # 1) annotation flags in long form
+  ann_flags_long <- annot_wide %>%
+    select(Genes, all_of(loc_ann)) %>%
+    pivot_longer(cols = all_of(loc_ann),
+                 names_to = "Annotation", values_to = "is_annotated") %>%
+    mutate(is_annotated = isTRUE(is_annotated) | is_annotated == 1)
 
-  score_cols <- grep("^score_", names(mat), value = TRUE)
-  if (length(score_cols) == 0) {
-    return(matrix(nrow = 0, ncol = 0,
-                  dimnames = list(character(0), character(0))))
+  # 2) restrict to neuron, join flags
+  df_neu <- df_day50 %>%
+    filter(neuron == neuron_type) %>%
+    inner_join(ann_flags_long, by = "Genes") %>%
+    filter(is_annotated)
+
+  # 3) combine gene p-values per genotype × annotation; add direction via mean fold_change
+  comb_tbl <- df_neu %>%
+    filter(is.finite(p_value)) %>%
+    group_by(genotype, Annotation) %>%
+    summarise(
+      n_genes   = n(),
+      mean_fc   = mean(fold_change, na.rm = TRUE),
+      p_comb    = if (n() >= 3) combine_p_fisher(p_value) else NA_real_,
+      .groups   = "drop"
+    ) %>%
+    # BH within neuron across all genotype × annotation cells
+    mutate(q_comb = p.adjust(p_comb, method = "BH")) %>%
+    # Signed score for coloring
+    mutate(score = sign(replace_na(mean_fc, 0)) * (-log10(q_comb)))
+
+  # 4) wide matrix: rows = genotype, cols = loc_ann in requested order
+  ann_matrix <- comb_tbl %>%
+    select(genotype, Annotation, score, q_comb) %>%
+    pivot_wider(names_from = Annotation, values_from = c(score, q_comb)) %>%
+    arrange(genotype)
+
+  # guard: ensure all requested columns exist
+  score_cols <- paste0("score_", loc_ann)
+  q_cols     <- paste0("q_comb_", loc_ann)
+  missing_sc <- setdiff(score_cols, names(ann_matrix))
+  missing_q  <- setdiff(q_cols, names(ann_matrix))
+  if (length(missing_sc)) ann_matrix[, missing_sc] <- NA_real_
+  if (length(missing_q))  ann_matrix[, missing_q]  <- NA_real_
+
+  score_mat <- ann_matrix %>%
+    select(all_of(score_cols)) %>%
+    as.matrix()
+  rownames(score_mat) <- ann_matrix$genotype
+  colnames(score_mat) <- loc_ann
+
+  q_mat <- ann_matrix %>%
+    select(all_of(q_cols)) %>%
+    as.matrix()
+  colnames(q_mat) <- loc_ann
+
+  # 5) handle Inf from q=0 by capping to finite max+1 (keeps “strongest” look)
+  if (any(is.infinite(score_mat), na.rm = TRUE)) {
+    finite_max <- max(score_mat[is.finite(score_mat)], na.rm = TRUE)
+    score_mat[is.infinite(score_mat)] <- finite_max + 1
   }
-  q_cols <- sub("^score_", "q_", score_cols)
 
-  score_mat <- as.matrix(mat[, score_cols, drop = FALSE])
-  q_mat     <- as.matrix(mat[, q_cols,    drop = FALSE])
+  # 6) mask non-significant (q ≥ 0.05) or missing to NA => plotted as grey70
+  mask <- (q_mat >= 0.05) | is.na(q_mat)
+  score_mat[mask] <- NA
 
-  rownames(score_mat) <- mat$Annotation
-  colnames(score_mat) <- sub("^score_", "", colnames(score_mat))
+  # drop rows without any finite values
+  keep_rows <- rowSums(is.finite(score_mat)) > 0
+  score_mat <- score_mat[keep_rows, , drop = FALSE]
 
-  # --- Replace Inf with 0 (or you could set to max finite)
-  score_mat[is.infinite(score_mat)] <- 0
-
-  # mask non-significant (q ≥ 0.05) and missing
-  score_mat[(q_mat >= 0.05) | is.na(q_mat)] <- NA
-
-  score_mat[order(rownames(score_mat)), , drop = FALSE]
+  # 7) plot
+  piyg_cols <- colorRampPalette(brewer.pal(11, "PiYG"))(201)
+  pheatmap(
+    mat = score_mat,
+    color = piyg_cols,
+    #scale = "row", 
+    na_col = "grey70",
+    cluster_rows = TRUE,
+    cluster_cols = FALSE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    border_color = NA,
+    fontsize = 6,
+    cellheight = 8,
+    cellwidth = 8,
+    main = paste("Annotation p-value (signed −log10 q) –", neuron_type),
+    filename = out_file
+  )
 }
-score_wilcox_mat  <- make_score_matrix(annot_stats_tbl, "wilcox_q")
-score_fisher_mat  <- make_score_matrix(annot_stats_tbl, "fisher_q")
 
-# 4) Heatmaps
-piyg_cols <- colorRampPalette(brewer.pal(11, "PiYG"))(201)
-
-pheatmap(score_wilcox_mat,
-  color = piyg_cols, 
-  na_col = "grey70",
-  cluster_rows = TRUE, 
-  cluster_cols = FALSE,
-  main = "Annotation significance by neuron (Wilcoxon, signed −log10 q)",
-  fontsize = 6, 
-  border_color = NA,
-  filename = file.path(out_dir_d50_ascd_avg, "annot_sig_heatmap_wilcox.pdf"),
-  width = 6, height = 8
+# -------------------- run for both neurons -------------------- #
+# loc_ann is exactly the same vector you used in VId
+# complete_data_annotated_day50: your wide table with annotation flags
+make_ann_heatmap_pvals(
+  df_day50         = df_day50,
+  annot_wide       = complete_data_annotated_day50,
+  neuron_type      = "iN",
+  loc_ann          = loc_ann,
+  out_file         = file.path(out_dir_d50_ascd_avg, "heatmap_d50_iN_pvals_byGenotype.pdf")
 )
 
-pheatmap(score_fisher_mat,
-  color = piyg_cols, 
-  na_col = "grey70",
-  cluster_rows = TRUE, 
-  cluster_cols = FALSE,
-  main = "Annotation significance by neuron (Fisher, signed −log10 q)",
-  fontsize = 9, 
-  border_color = NA,
-  filename = file.path(out_dir_d50_ascd_avg, "annot_sig_heatmap_fisher.pdf"),
-  width = 6, height = 8
+make_ann_heatmap_pvals(
+  df_day50         = df_day50,
+  annot_wide       = complete_data_annotated_day50,
+  neuron_type      = "iDA",
+  loc_ann          = loc_ann,
+  out_file         = file.path(out_dir_d50_ascd_avg, "heatmap_d50_iDA_pvals_byGenotype.pdf")
 )
 
-# 5) Save table
-readr::write_csv(annot_stats_tbl, file.path(out_dir_d50_ascd_avg, "annotation_significance_table.csv"))
 ```
 
 
