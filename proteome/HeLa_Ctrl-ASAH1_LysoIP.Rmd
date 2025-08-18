@@ -430,10 +430,10 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_Viol
 ```
 
 
-### IVc. Violin Plot of dplyr::select annotations in ctrl vs ASAH1-/-
+### IVc. Violin Plot of select annotations in ctrl vs ASAH1-/-
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# Violin Plot of dplyr::select annotations in ctrl vs ASAH1-/-
+# Violin Plot of select annotations in ctrl vs ASAH1-/-
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- 1. Define setup
