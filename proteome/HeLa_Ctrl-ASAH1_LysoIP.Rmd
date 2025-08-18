@@ -1306,17 +1306,17 @@ autophagy_long <- autophagy_long %>%
 
 # --- 4. Stacked barplot: counts of up/down per genotype per annotation
 stack_counts <- bind_rows(
-  autophagy_long %>% filter(Ctrl_status %in% c("up","down"))  %>% transmute(Annotation, Group = paste("Ctrl",  Ctrl_status),  Gene.Symbol),
-  autophagy_long %>% filter(ASAH1_status %in% c("up","down")) %>% transmute(Annotation, Group = paste("ASAH1", ASAH1_status), Gene.Symbol)
+  autophagy_long %>% dplyr::filter(Ctrl_status %in% c("up","down"))  %>% dplyr::transmute(Annotation, Group = paste("Ctrl",  Ctrl_status),  Gene.Symbol),
+  autophagy_long %>% dplyr::filter(ASAH1_status %in% c("up","down")) %>% dplyr::transmute(Annotation, Group = paste("ASAH1", ASAH1_status), Gene.Symbol)
 ) %>%
-  distinct() %>% # ensure one gene counted once per (Annotation,Group)
-  count(Annotation, Group, name = "n") %>%
-  group_by(Annotation) %>%
-  mutate(total = sum(n)) %>%
-  ungroup()
+  dplyr::distinct() %>% # ensure one gene counted once per (Annotation,Group)
+  dplyr::count(Annotation, Group, name = "n") %>%
+  dplyr::group_by(Annotation) %>%
+  dplyr::mutate(total = sum(n)) %>%
+  dplyr::ungroup()
 
 # order annotations by total
-ann_order <- stack_counts %>% group_by(Annotation) %>% summarise(total = sum(n), .groups = "drop") %>% arrange(desc(total)) %>% pull(Annotation)
+ann_order <- stack_counts %>% dplyr::group_by(Annotation) %>% dplyr::summarise(total = sum(n), .groups = "drop") %>% dplyr::arrange(dplyr::desc(total)) %>% dplyr::pull(Annotation)
 
 stack_plot <- ggplot(stack_counts, aes(y = factor(Annotation, levels = ann_order), x = n, fill = Group)) +
   geom_col(width = 0.8, color = "black", linewidth = 0.1) +
@@ -1331,32 +1331,29 @@ stack_plot <- ggplot(stack_counts, aes(y = factor(Annotation, levels = ann_order
 
 ggsave(file.path(out_dir_lysoip_autophagy, "autophagy_updown_stackedbar.pdf"), stack_plot, width = 5, height = 3.5, device = cairo_pdf)
 
+
 # --- 5. UpSet plot: overlap across Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down
 # Build a wide 0/1 incidence over the union of autophagy genes (collapsing annotations)
 status_wide <- autophagy_long %>%
-  select(Gene.Symbol, Ctrl_status, ASAH1_status) %>%
-  distinct() %>%
-  mutate(
+  dplyr::select(Gene.Symbol, Ctrl_status, ASAH1_status) %>%
+  dplyr::distinct() %>%
+  dplyr::mutate(
     Ctrl_up    = as.integer(Ctrl_status  == "up"),
     Ctrl_down  = as.integer(Ctrl_status  == "down"),
     ASAH1_up   = as.integer(ASAH1_status == "up"),
     ASAH1_down = as.integer(ASAH1_status == "down")
   ) %>%
-  select(Gene.Symbol, Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down) %>%
+  dplyr::select(Gene.Symbol, Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down) %>%
   as.data.frame()
 rownames(status_wide) <- status_wide$Gene.Symbol
 status_wide$Gene.Symbol <- NULL
 
 # --- UpSet plot: overlap across Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down
-upset_input <- status_wide %>%
-  as.data.frame() %>%
-  column_to_rownames("Gene.Symbol")
+status_wide[] <- lapply(status_wide, function(x) as.integer(x > 0))
 
-pdf(file.path(out_dir_lysoip_autophagy, "autophagy_upset_CtrlASAH1_updown.pdf"),
-    width = 6, height = 3.5, useDingbats = FALSE)
-
+pdf(file.path(out_dir_lysoip_autophagy, "autophagy_upset_CtrlASAH1_updown.pdf"), width = 6, height = 3.5, useDingbats = FALSE)
 UpSetR::upset(
-  upset_input,
+  status_wide,
   nsets = 4,
   sets = c("Ctrl_up","Ctrl_down","ASAH1_up","ASAH1_down"),
   order.by = "freq",
