@@ -651,11 +651,29 @@ totals_order <- coenrich_summary_df %>%
   arrange(total_sig)
 organelle_order <- totals_order$Organelle
 
-# --- 6. Write summary CSV
+# # --- 6. Write summary CSV
+# genes_per_group_df <- coenrich_genelevel_df %>%
+#   filter(sig_coenriched) %>%
+#   group_by(Organelle, Sample) %>%
+#   summarise(genes_sig_coenriched = paste(sort(unique(as.character(Gene.Symbol))), collapse = ";"), .groups = "drop")
+# 
+# coenrich_summary_df <- coenrich_summary_df %>%
+#   left_join(genes_per_group_df, by = c("Organelle","Sample")) %>%
+#   mutate(genes_sig_coenriched = replace_na(genes_sig_coenriched, "")) %>%so
+#   mutate(Organelle = factor(Organelle, levels = organelle_order)) %>%
+#   arrange(Organelle, Sample)
+# 
+# write.csv(coenrich_summary_df, file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_summary.csv"), row.names = FALSE)
+
+
+
+# 6. Write summary CSV
+# add per-organelle gene lists and preserve order for plotting
 genes_per_group_df <- coenrich_genelevel_df %>%
   filter(sig_coenriched) %>%
   group_by(Organelle, Sample) %>%
-  summarise(genes_sig_coenriched = paste(sort(unique(as.character(Gene.Symbol))), collapse = ";"), .groups = "drop")
+  summarise(genes_sig_coenriched = paste(sort(unique(as.character(Gene.Symbol))), collapse = ";"),
+            .groups = "drop")
 
 coenrich_summary_df <- coenrich_summary_df %>%
   left_join(genes_per_group_df, by = c("Organelle","Sample")) %>%
@@ -663,7 +681,68 @@ coenrich_summary_df <- coenrich_summary_df %>%
   mutate(Organelle = factor(Organelle, levels = organelle_order)) %>%
   arrange(Organelle, Sample)
 
-write.csv(coenrich_summary_df, file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_summary.csv"), row.names = FALSE)
+write.csv(coenrich_summary_df,
+          file.path(out_dir_lysoip_organelle_dist, "LysoIP_coenrichment_summary.csv"),
+          row.names = FALSE)
+
+# 6b. Direct Ctrl vs ASAH1 comparisons (paired Wilcoxon) for plotted organelles
+ctrl_col  <- "log2FC_CtrlLysoIP.untagged"
+asah1_col <- "log2FC_ASAH1LysoIP.untagged"
+
+organelle_coenrich <- c("Lysosome","Endo_iN_curated_Hundley","Golgi","ER","Mito","EarlyEndosome","RecyclingEndosome")
+organelle_coenrich <- organelle_coenrich[organelle_coenrich %in% names(helalysoip_annotated_df)]
+
+compute_org_stats <- function(df_in, organelle_name) {
+  df_org <- df_in %>%
+    filter(.data[[organelle_name]] == TRUE) %>%
+    transmute(Gene.Symbol = as.character(Gene.Symbol),
+              ctrl = .data[[ctrl_col]],
+              asah1 = .data[[asah1_col]]) %>%
+    filter(is.finite(ctrl) & is.finite(asah1))
+
+  if (nrow(df_org) == 0) {
+    return(tibble(Organelle = organelle_name, n_genes = 0,
+                  median_ctrl = NA_real_, median_asah1 = NA_real_, median_delta = NA_real_,
+                  wilcox_p = NA_real_))
+  }
+
+  wt <- suppressWarnings(wilcox.test(df_org$ctrl, df_org$asah1, paired = TRUE, exact = FALSE))
+  delta <- df_org$asah1 - df_org$ctrl
+
+  tibble(Organelle = organelle_name,
+         n_genes = nrow(df_org),
+         median_ctrl = median(df_org$ctrl, na.rm = TRUE),
+         median_asah1 = median(df_org$asah1, na.rm = TRUE),
+         median_delta = median(delta, na.rm = TRUE),
+         wilcox_p = wt$p.value)
+}
+
+# helper to add stars
+p_to_stars <- function(p) {
+  ifelse(is.na(p), "",
+    ifelse(p < 0.001, "***",
+      ifelse(p < 0.01, "**",
+        ifelse(p < 0.05, "*", "")
+      )
+    )
+  )
+}
+
+org_stats_df <- bind_rows(lapply(organelle_coenrich, function(an) compute_org_stats(helalysoip_annotated_df, an))) %>%
+  mutate(wilcox_p_BH = p.adjust(wilcox_p, method = "BH"),
+         wilcox_FDR  = wilcox_p_BH,
+         sig_raw     = p_to_stars(wilcox_p),
+         sig_BH      = p_to_stars(wilcox_p_BH),
+         sig_FDR     = p_to_stars(wilcox_FDR))
+
+write.csv(org_stats_df,
+          file.path(out_dir_lysoip_organelle_dist, "LysoIP_ctrl_vs_ASAH1_comparisons.csv"),
+          row.names = FALSE)
+
+
+
+
+
 
 # --- 7. Stacked bar plot: counts of sig. co-enriched per annotation
 coenrich_bar_plot <- ggplot(coenrich_summary_df, aes(x = n_sig_coenriched, y = Organelle, fill = Sample)) +
