@@ -188,7 +188,7 @@ expr_cols_lysoip <- c(
 mat_helalysoip <- helalysoip_annotated_df %>%
   filter(!is.na(Gene.Symbol)) %>%
   mutate(Gene.Symbol = make.unique(as.character(Gene.Symbol))) %>%
-  select(Gene.Symbol, cluster, all_of(expr_cols_lysoip))
+  dplyr::dplyr::select(Gene.Symbol, cluster, all_of(expr_cols_lysoip))
 
 row_cluster <- mat_helalysoip$cluster
 rownames(mat_helalysoip) <- mat_helalysoip$Gene.Symbol
@@ -267,7 +267,7 @@ write.csv(mat_helalysoip_out,
 # --- Step 1.  Step: Row-wise Scaling (Z-score)
 # Scale intensities row-wise (z-score across all replicates)
 mat_scaled <- mat_helalysoip_out %>%
-  select(untagged_1:ASAH1LysoIP_3) %>%
+  dplyr::select(untagged_1:ASAH1LysoIP_3) %>%
   as.matrix() %>%
   t() %>%
   scale(center = TRUE, scale = TRUE) %>%
@@ -283,11 +283,11 @@ mat_scaled$cluster <- mat_helalysoip_out$cluster
 # Compute group-wise scaled means
 violin_df_lysoip_mean_scaled <- mat_scaled %>%
   mutate(
-    untagged     = rowMeans(select(., c("untagged_1", "untagged_2", "untagged_3")), na.rm = TRUE),
-    CtrlLysoIP   = rowMeans(select(., c("CtrlLysoIP_1", "CtrlLysoIP_2", "CtrlLysoIP_3")), na.rm = TRUE),
-    ASAH1LysoIP  = rowMeans(select(., c("ASAH1LysoIP_1", "ASAH1LysoIP_2", "ASAH1LysoIP_3")), na.rm = TRUE)
+    untagged     = rowMeans(dplyr::select(., c("untagged_1", "untagged_2", "untagged_3")), na.rm = TRUE),
+    CtrlLysoIP   = rowMeans(dplyr::select(., c("CtrlLysoIP_1", "CtrlLysoIP_2", "CtrlLysoIP_3")), na.rm = TRUE),
+    ASAH1LysoIP  = rowMeans(dplyr::select(., c("ASAH1LysoIP_1", "ASAH1LysoIP_2", "ASAH1LysoIP_3")), na.rm = TRUE)
   ) %>%
-  select(cluster, untagged, CtrlLysoIP, ASAH1LysoIP) %>%
+  dplyr::select(cluster, untagged, CtrlLysoIP, ASAH1LysoIP) %>%
   pivot_longer(cols = c("untagged", "CtrlLysoIP", "ASAH1LysoIP"),
                names_to = "Sample", values_to = "scaled_intensity") %>%
   filter(!is.na(cluster) & cluster != 0 & is.finite(scaled_intensity)) %>%
@@ -388,14 +388,14 @@ org_mapping <- tibble(
 # --- 2. Subset data for Ctrl and ASAH1 comparisons
 df_det_ctrl <- helalysoip_annotated_df %>%
   filter(if_any(all_of(organelles), ~ .x)) %>%
-  select(Gene.Symbol, all_of(organelles), log2FC_CtrlLysoIP.untagged) %>%
+  dplyr::select(Gene.Symbol, all_of(organelles), log2FC_CtrlLysoIP.untagged) %>%
   pivot_longer(cols = all_of(organelles), names_to = "Organelle", values_to = "flag") %>%
   filter(flag) %>%
   mutate(Sample = "Ctrl vs Untagged", log2FC = log2FC_CtrlLysoIP.untagged)
 
 df_det_asah1 <- helalysoip_annotated_df %>%
   filter(if_any(all_of(organelles), ~ .x)) %>%
-  select(Gene.Symbol, all_of(organelles), log2FC_ASAH1LysoIP.untagged) %>%
+  dplyr::select(Gene.Symbol, all_of(organelles), log2FC_ASAH1LysoIP.untagged) %>%
   pivot_longer(cols = all_of(organelles), names_to = "Organelle", values_to = "flag") %>%
   filter(flag) %>%
   mutate(Sample = "ASAH1 vs Untagged", log2FC = log2FC_ASAH1LysoIP.untagged)
@@ -430,10 +430,10 @@ ggsave(file.path(out_dir_lysoip_organelle_dist, "LysoIP_OrganelleEnrichment_Viol
 ```
 
 
-### IVc. Violin Plot of select annotations in ctrl vs ASAH1-/-
+### IVc. Violin Plot of dplyr::select annotations in ctrl vs ASAH1-/-
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
-# Violin Plot of select annotations in ctrl vs ASAH1-/-
+# Violin Plot of dplyr::select annotations in ctrl vs ASAH1-/-
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- 1. Define setup
@@ -451,14 +451,14 @@ org_order  <- org_mapping_detailed$Org_Number
 # --- 2. Create data subset for both comparisons
 df_ctrl <- helalysoip_annotated_df %>%
   filter(if_any(all_of(organelles), ~ .x)) %>%
-  select(Gene.Symbol, all_of(organelles), log2FC_CtrlLysoIP.untagged) %>%
+  dplyr::select(Gene.Symbol, all_of(organelles), log2FC_CtrlLysoIP.untagged) %>%
   pivot_longer(cols = all_of(organelles), names_to = "Organelle", values_to = "flag") %>%
   filter(flag) %>%
   mutate(Sample = "Ctrl vs Untagged", log2FC = log2FC_CtrlLysoIP.untagged)
 
 df_asah1 <- helalysoip_annotated_df %>%
   filter(if_any(all_of(organelles), ~ .x)) %>%
-  select(Gene.Symbol, all_of(organelles), log2FC_ASAH1LysoIP.untagged) %>%
+  dplyr::select(Gene.Symbol, all_of(organelles), log2FC_ASAH1LysoIP.untagged) %>%
   pivot_longer(cols = all_of(organelles), names_to = "Organelle", values_to = "flag") %>%
   filter(flag) %>%
   mutate(Sample = "ASAH1 vs Untagged", log2FC = log2FC_ASAH1LysoIP.untagged)
@@ -531,7 +531,7 @@ compute_coenrichment_one <- function(df_in, sample_col, sample_label) {
 
   # gene-level long df of organelle memberships
   long_membership <- df_in %>%
-    select(Gene.Symbol, all_of(sample_col), all_of(organelle_coenrich)) %>%
+    dplyr::select(Gene.Symbol, all_of(sample_col), all_of(organelle_coenrich)) %>%
     pivot_longer(cols = all_of(organelle_coenrich),
                  names_to = "Organelle", values_to = "flag") %>%
     filter(flag) %>%
@@ -539,7 +539,7 @@ compute_coenrichment_one <- function(df_in, sample_col, sample_label) {
            log2FC_value = .data[[sample_col]],
            lysosome_mean = lysosome_mean,
            sig_coenriched = is.finite(log2FC_value) & (log2FC_value >= lysosome_mean)) %>%
-    select(Gene.Symbol, Sample, Organelle, log2FC_value, lysosome_mean, sig_coenriched)
+    dplyr::select(Gene.Symbol, Sample, Organelle, log2FC_value, lysosome_mean, sig_coenriched)
 
   return(long_membership)
 }
@@ -804,9 +804,9 @@ for (ann in target_ann) {
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- Step 1: Prepare data for slope plot
-hydro_df <- helalysoip_annotated_df %>%
+hydro_df <- helalysoip_annotated_df %>% 
   filter(LysoHydrolase == TRUE) %>%
-  select(Gene.Symbol,
+  dplyr::select(Gene.Symbol,
          Ctrl = log2FC_CtrlLysoIP.untagged,
          ASAH1 = log2FC_ASAH1LysoIP.untagged) %>%
   pivot_longer(cols = c("Ctrl", "ASAH1"), names_to = "Sample", values_to = "log2FC") %>%
@@ -842,22 +842,26 @@ ggsave(filename = file.path(out_dir_lysoip_organelle_dist,
 # heatmap 
 # ─────────────────────────────────────────────────────────────────────────────
 
-# --- Step 1: Prepare matrix for heatmap ---
+# --- Step 1: Prepare matrix for heatmap
 heatmap_matrix_lysohydro <- helalysoip_annotated_df %>%
   filter(LysoHydrolase == TRUE) %>%
-  select(Gene.Symbol,
+  dplyr::select(Gene.Symbol,
          Ctrl = log2FC_CtrlLysoIP.untagged,
          ASAH1 = log2FC_ASAH1LysoIP.untagged) %>%
   column_to_rownames("Gene.Symbol") %>%
   as.matrix()
 
-# --- Step 2: Plot heatmap ---
+
+# --- Step 2: Plot heatmap with centered scale
 pdf(file = file.path(out_dir_lysoip_organelle_dist, "lysohydrolase_heatmap.pdf"),
     width = 2, height = 5, useDingbats = FALSE)
 
 pheatmap(
   heatmap_matrix_lysohydro,
-  color = colorRampPalette(c("dodgerblue3", "white", "firebrick"))(100),
+  color = c(colorRampPalette(c("dodgerblue3", "white"))(50),
+            colorRampPalette(c("white", "firebrick"))(50)),
+  breaks = c(seq(-2, 0, length.out = 51),
+             seq(0, 4, length.out = 51)[-1]),  # avoid duplicate 0
   cluster_rows = FALSE,
   cluster_cols = FALSE,
   na_col = "grey70",
@@ -868,11 +872,10 @@ pheatmap(
   main = "Lysosomal Hydrolase log2FC (Ctrl vs ASAH1−/−)"
 )
 dev.off()
-
 ```
 
 
-### Vb. Rainfallplots of ASAH1 vs Control LysoIP for select annotations 
+### Vb. Rainfallplots of ASAH1 vs Control LysoIP for dplyr::select annotations 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot: ASAH1LysoIP vs CtrlLysoIP (highlight top 5 by log2FC)
@@ -1343,7 +1346,7 @@ ggsave(file.path(out_dir_lysoip_autophagy, "autophagy_updown_stackedbar.pdf"), s
 
 # --- 5. Build gene-level membership table
 sig_gene_summary_autophagy <- autophagy_long %>%
-  dplyr::select(Gene.Symbol, Annotation, Ctrl_status, ASAH1_status) %>%
+  dplyr::dplyr::select(Gene.Symbol, Annotation, Ctrl_status, ASAH1_status) %>%
   distinct()
 
 
