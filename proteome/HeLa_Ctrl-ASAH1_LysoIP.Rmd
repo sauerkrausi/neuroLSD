@@ -367,7 +367,7 @@ violin_df_lysoip_mean_scaled_c2 <- mat_scaled %>%
 violin_scaled_plot_c2_hydro <- ggplot(violin_df_lysoip_mean_scaled_c2, aes(x = Sample, y = scaled_intensity)) +
   geom_violin(aes(fill = Sample), scale = "width", trim = FALSE) +
   geom_jitter(data = dplyr::filter(violin_df_lysoip_mean_scaled_c2, !is_lysohydrolase), width = 0.2, height = 0, size =1, alpha = 0.15, color = "red") +
-  geom_point(data = dplyr::filter(violin_df_lysoip_mean_scaled_c2, is_lysohydrolase), aes(fill = "red"), shape = 21, size = 2, color = "black", stroke = 0.25) +
+  geom_point(data = dplyr::filter(violin_df_lysoip_mean_scaled_c2, is_lysohydrolase), aes(fill = "red"), shape = 21, size = 3, color = "black", stroke = 0.25) +
   # ggrepel::geom_text_repel(
   #   data = dplyr::filter(violin_df_lysoip_mean_scaled_c2, is_lysohydrolase),
   #   aes(label = Gene.Symbol),
