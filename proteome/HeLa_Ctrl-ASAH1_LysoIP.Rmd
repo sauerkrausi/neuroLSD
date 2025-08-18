@@ -1362,16 +1362,16 @@ ComplexUpset::upset(
 dev.off()
 
 
-# --- 7. GO on ASAH1_up ∩ Ctrl_down (from status_wide)
-# 1) Gene set and universe
+# --- 7. GO on ASAH1_up ∩ Ctrl_down overlap IDs (from status_wide)
+# 7.1 Set target IDs list and background genes 
 asah1up_ctrldown_genes <- rownames(status_wide)[status_wide$ASAH1_up == 1 & status_wide$Ctrl_down == 1]
 asah1up_ctrldown_genes <- sort(unique(as.character(asah1up_ctrldown_genes)))
-universe_genes <- sort(unique(as.character(helalysoip_annotated_df$Gene.Symbol)))
+background_genes <- sort(unique(as.character(helalysoip_annotated_df$Gene.Symbol)))
 
-# sanity export of input list
+# 7.2 Failsafe export of input list
 write.csv(data.frame(Symbol = asah1up_ctrldown_genes), file.path(out_dir_lysoip_autophagy, "GO_input_ASAH1up_Ctrldown.csv"), row.names = FALSE)
 
-# 2) Helper (topGO over BP/CC/MF) — saves CSV and dotplot PDFs with labeled points
+# 7.3 Helper (topGO over BP/CC/MF) — saves CSV and dotplot PDFs with labeled points
 run_topGO_set <- function(sym_vec, universe_vec, tag, ont = c("BP","CC","MF"), min_genes = 10, out_dir = out_dir_lysoip_autophagy) {
   sym_vec <- unique(sym_vec); universe_vec <- unique(universe_vec)
   if (length(sym_vec) < min_genes) { message("Skip ", tag, ": n=", length(sym_vec), " < ", min_genes); return(invisible(NULL)) }
@@ -1398,14 +1398,8 @@ run_topGO_set <- function(sym_vec, universe_vec, tag, ont = c("BP","CC","MF"), m
   }
 }
 
-# 3) Run
-run_topGO_set(asah1up_ctrldown_genes, universe_genes, tag = "ASAH1_up_AND_Ctrl_down")
-
-
-
-
-
-
+# 7.4 Run helper function with custom background (LysoIPset)
+run_topGO_set(asah1up_ctrldown_genes, background_genes, tag = "ASAH1_up_AND_Ctrl_down")
 
 
 
