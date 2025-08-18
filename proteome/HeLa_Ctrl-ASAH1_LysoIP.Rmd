@@ -324,6 +324,74 @@ ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_clusterViolinPlot_scaled.pdf"),
 
 ```
 
+### IIIb. Cluster 2 (lyso enriched) with hydrolases  
+```{r}
+# --- Target list to overlay
+lysohydrolases <- c(
+  "ASAH1","GBA","ARSA","ARSB","GALNS","IDUA","GLA","NEU1","MAN2B1",
+  "GLB1","HEXA","GNS","HEXB","CTSA","CTSZ","TPP1","NAGLU","CTSL",
+  "CTSB","NAGA","LGMN"
+)
+
+# --- Step 1. Row-wise scaling (unchanged) + keep gene IDs
+mat_scaled <- mat_helalysoip_out %>%
+  dplyr::select(untagged_1:ASAH1LysoIP_3) %>%
+  as.matrix() %>%
+  t() %>%
+  scale(center = TRUE, scale = TRUE) %>%
+  t() %>%
+  as.data.frame()
+
+mat_scaled$cluster <- mat_helalysoip_out$cluster
+mat_scaled$Gene.Symbol <- rownames(mat_helalysoip_out)
+
+# --- Step 2. Build long df for CLUSTER 2 ONLY and flag lysohydrolases
+violin_df_lysoip_mean_scaled_c2 <- mat_scaled %>%
+  filter(cluster == 2) %>%
+  mutate(
+    untagged     = rowMeans(dplyr::select(., c("untagged_1", "untagged_2", "untagged_3")), na.rm = TRUE),
+    CtrlLysoIP   = rowMeans(dplyr::select(., c("CtrlLysoIP_1", "CtrlLysoIP_2", "CtrlLysoIP_3")), na.rm = TRUE),
+    ASAH1LysoIP  = rowMeans(dplyr::select(., c("ASAH1LysoIP_1", "ASAH1LysoIP_2", "ASAH1LysoIP_3")), na.rm = TRUE)
+  ) %>%
+  dplyr::select(Gene.Symbol, cluster, untagged, CtrlLysoIP, ASAH1LysoIP) %>%
+  pivot_longer(cols = c("untagged", "CtrlLysoIP", "ASAH1LysoIP"),
+               names_to = "Sample", values_to = "scaled_intensity") %>%
+  filter(is.finite(scaled_intensity)) %>%
+  mutate(
+    cluster = factor(cluster),
+    Sample  = factor(Sample, levels = c("untagged", "CtrlLysoIP", "ASAH1LysoIP")),
+    is_lysohydrolase = Gene.Symbol %in% lysohydrolases
+  )
+
+# --- Step 3. Plot: cluster 2 only, overlay lysohydrolases
+violin_scaled_plot_c2_hydro <- ggplot(violin_df_lysoip_mean_scaled_c2, aes(x = Sample, y = scaled_intensity)) +
+  geom_violin(aes(fill = Sample), scale = "width", trim = FALSE) +
+  geom_jitter(data = dplyr::filter(violin_df_lysoip_mean_scaled_c2, !is_lysohydrolase), width = 0.2, height = 0, size =1, alpha = 0.15, color = "red") +
+  geom_point(data = dplyr::filter(violin_df_lysoip_mean_scaled_c2, is_lysohydrolase), aes(fill = "red"), shape = 21, size = 2, color = "black", stroke = 0.25) +
+  # ggrepel::geom_text_repel(
+  #   data = dplyr::filter(violin_df_lysoip_mean_scaled_c2, is_lysohydrolase),
+  #   aes(label = Gene.Symbol),
+  #   size = 2, max.overlaps = Inf, box.padding = 0.2, point.padding = 0.1, segment.size = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  facet_wrap(~ cluster, scales = "free_y") +
+  scale_fill_manual(values = c(
+    "untagged"    = "#bdc9e1",
+    "CtrlLysoIP"  = "#74a9cf",
+    "ASAH1LysoIP" = "dodgerblue3"
+  )) +
+  theme_bw(base_size = 10) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(title = "LysoIP (Cluster 2): Scaled Intensities with Lysohydrolase Overlay",
+       x = NULL, y = "Scaled Intensity")
+
+# --- Step 4. Save
+ggsave(file.path(out_dir_lysoip_heatmap, "LysoIP_cluster2_Violin_scaled_lysohydrolaseOverlay.pdf"), violin_scaled_plot_c2_hydro, width = 3, height = 5, device = cairo_pdf)
+```
+
 
 # IV. Violins of clusters of interest 
 ### IVa. Violin Plot of Cluster Abundance
