@@ -1361,7 +1361,55 @@ ComplexUpset::upset(
 
 dev.off()
 
-# --- 6. save gene-level table
+
+# --- 7. GO on ASAH1_up ∩ Ctrl_down (from status_wide)
+# 1) Gene set and universe
+asah1up_ctrldown_genes <- rownames(status_wide)[status_wide$ASAH1_up == 1 & status_wide$Ctrl_down == 1]
+asah1up_ctrldown_genes <- sort(unique(as.character(asah1up_ctrldown_genes)))
+universe_genes <- sort(unique(as.character(helalysoip_annotated_df$Gene.Symbol)))
+
+# sanity export of input list
+write.csv(data.frame(Symbol = asah1up_ctrldown_genes), file.path(out_dir_lysoip_autophagy, "GO_input_ASAH1up_Ctrldown.csv"), row.names = FALSE)
+
+# 2) Helper (topGO over BP/CC/MF) — saves CSV and dotplot PDFs with labeled points
+run_topGO_set <- function(sym_vec, universe_vec, tag, ont = c("BP","CC","MF"), min_genes = 10, out_dir = out_dir_lysoip_autophagy) {
+  sym_vec <- unique(sym_vec); universe_vec <- unique(universe_vec)
+  if (length(sym_vec) < min_genes) { message("Skip ", tag, ": n=", length(sym_vec), " < ", min_genes); return(invisible(NULL)) }
+  geneList <- factor(as.integer(universe_vec %in% sym_vec)); names(geneList) <- universe_vec
+  for (o in ont) {
+    GOdata <- new("topGOdata", ontology = o, allGenes = geneList, geneSel = function(x) x == 1, annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol")
+    resF <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+    go_tab <- GenTable(GOdata, classicFisher = resF, topNodes = 30) |>
+      dplyr::mutate(raw_pval = score(resF)[GO.ID], log10P = -log10(raw_pval), Significant = as.numeric(Significant), Expected = as.numeric(Expected), Enrichment = Significant / Expected) |>
+      dplyr::filter(!is.na(raw_pval)) |>
+      dplyr::arrange(raw_pval)
+    # genes per term
+    gin <- genesInTerm(GOdata)
+    go_tab$Genes <- vapply(go_tab$GO.ID, function(g) paste(intersect(gin[[g]], sym_vec), collapse = ";"), character(1))
+    # save table + dotplot
+    clean_tag <- gsub("[^A-Za-z0-9]+","_", tag)
+    write.csv(go_tab, file.path(out_dir, paste0("GO_", o, "_", clean_tag, ".csv")), row.names = FALSE)
+    p <- ggplot(go_tab[seq_len(min(10, nrow(go_tab))),], aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+      geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
+      scale_fill_gradient(low = "white", high = "firebrick") +
+      theme_bw(base_size = 8) + theme(panel.grid = element_blank()) +
+      labs(x = "Fold Enrichment", y = "GO Term", size = expression(-log[10]*"P"), title = paste0("GO-", o, " (", tag, ")"))
+    ggsave(file.path(out_dir, paste0("GO_", o, "_", clean_tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
+  }
+}
+
+# 3) Run
+run_topGO_set(asah1up_ctrldown_genes, universe_genes, tag = "ASAH1_up_AND_Ctrl_down")
+
+
+
+
+
+
+
+
+
+# --- 8. save gene-level table
 write.csv(sig_gene_summary_autophagy, file = file.path(out_dir_lysoip_autophagy, "sig_hits_annotation_geneList.csv"),row.names = FALSE)
 write.csv(status_wide, file.path(out_dir_lysoip_autophagy, "autophagy_updown_membership.csv"), row.names = FALSE)
 write_csv(stack_counts, file.path(out_dir_lysoip_autophagy, "sig_hits_autophagy_summary.csv"))
