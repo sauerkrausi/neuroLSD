@@ -1429,13 +1429,15 @@ make_ann_heatmap(
 # Line plots of Sph mutants of interest 
 # plot by genotype and split for iN and iDA
 # --------------------------------------------------- #
+
+# --- 0. Define input groups for selective highlights on plot
 highlight_blue <- c("SMPD1","ASAH1","GBA1","PSAP","HEXA","HEXB")
 highlight_thick <- c("SMPD1","ASAH1","GBA1","CTSD","CLN6","ATP13A2","PPT1")
 
 # --- 1. define plotting function for user-select annotations 
 make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
   
-  # 1. reshape to long
+  # 1.1 reshape to long
   long_df <- df %>%
     pivot_longer(
       cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
@@ -1444,19 +1446,19 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
     ) %>%
     mutate(genotype = sub("_.*", "", Condition))
   
-  # 2. attach annotations
+  # 1.2 attach annotations
   long_df <- long_df %>%
     pivot_longer(cols = all_of(loc_ann),
                  names_to = "Annotation", values_to = "is_annotated") %>%
     filter(is_annotated == 1)
   
-  # 3. summarise mean log2FC per genotype × annotation
+  # 1.3 summarise mean log2FC per genotype × annotation
   plot_df <- long_df %>%
     group_by(genotype, Annotation) %>%
     summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
     mutate(Annotation = factor(Annotation, levels = loc_ann))
   
-  # 4. flag highlight sets
+  # 1.4 flag highlight sets
   plot_df <- plot_df %>%
     mutate(
       highlight_color = case_when(
@@ -1471,7 +1473,7 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
                                genotype, NA)
     )
   
-  # 5. plot
+  # 1.5 plot
   p <- ggplot(plot_df, aes(x = Annotation, y = mean_log2FC, group = genotype)) +
     geom_line(aes(color = highlight_color, size = highlight_size)) +
     scale_color_identity() +
@@ -1496,6 +1498,8 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
   
   return(p)
 }
+
+
 
 # --- 2. Call function and run for both iN and iDA 
 p_iN <- make_lineplot_all(
