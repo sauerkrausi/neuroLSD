@@ -716,7 +716,7 @@ plot_diff_scatter_by_cluster <- function(df, cluster_list, x_vars, y_vars, sig_v
 
 
 # --- 2. call function to plot clusters of interest
-cluster_list <- c(4)
+cluster_list <- c(6)
 plot_diff_scatter_by_cluster(diff118_df_annotated, cluster_list, x_vars, y_vars, sig_vars, out_dir_diff118_scatterplots_cluster)
 
 ```
@@ -788,7 +788,7 @@ plot_diff_scatter_cluster_vs_all <- function(df, cluster_list, x_vars, y_vars, s
           color = "Cluster Significance",
           shape = "Point Type"
         ) +
-       # coord_cartesian(xlim = c(-4, 1)) + # <- add to manually change x-axis
+        #  coord_cartesian(xlim = c(-4, 1)) + # <- add to manually change x-axis
         theme_bw(base_size = 6) +
         theme(
           panel.grid = element_blank(),
@@ -807,7 +807,7 @@ plot_diff_scatter_cluster_vs_all <- function(df, cluster_list, x_vars, y_vars, s
 
 
 # --- 2. call function to plot clusters of interest
-cluster_list <- c(4)
+cluster_list <- c(6)
 plot_diff_scatter_cluster_vs_all(
   diff118_df_annotated, cluster_list, x_vars, y_vars, sig_vars, out_dir_diff118_scatterplots_cluster)
 
