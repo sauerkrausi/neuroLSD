@@ -1432,6 +1432,7 @@ make_ann_heatmap(
 highlight_blue <- c("SMPD1","ASAH1","GBA1","PSAP","HEXA","HEXB")
 highlight_thick <- c("SMPD1","ASAH1","GBA1","CTSD","CLN6","ATP13A2","PPT1")
 
+# --- 1. define plotting function for user-select annotations 
 make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
   
   # 1. reshape to long
@@ -1496,7 +1497,7 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
   return(p)
 }
 
-# Run for iN and iDA
+# --- 2. Call function and run for both iN and iDA 
 p_iN <- make_lineplot_all(
   complete_data_annotated_day50, "iN", loc_ann,
   file.path(out_dir_d50_ascd_avg, "lineplot_allGenotypes_iN.pdf")
@@ -1765,6 +1766,7 @@ p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
 }
 # run for all available annotations
 walk(annotations_to_run, ~ run_synaptic_pca_iDA(.x, n_pcs = n_pcs_plot))
+
 ```
 
 
