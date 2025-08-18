@@ -1687,7 +1687,7 @@ annotations_to_run <- intersect(candidate_annotations, colnames(complete_data_an
 n_pcs_plot <- 5
 
 
-# --- 1. 
+# --- 3. define PCA function for iDA protein abundance  
 run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
   ann_long <- complete_data_annotated_day50 %>%
     filter(.data[[annotation_col]] == 1) %>%
@@ -1708,10 +1708,10 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
   geno_ids <- wide_geno_by_gene$genotype
   mat <- wide_geno_by_gene %>% select(-genotype) %>% as.data.frame()
 
-  # 1) drop genes with any NA across genotypes
+  # 3.1 drop genes with any NA across genotypes
   mat <- mat[, colSums(is.na(mat)) == 0, drop = FALSE]
 
-  # 2) drop zero-variance genes (constant across genotypes)
+  # 3.2 drop zero-variance genes (constant across genotypes)
   sds <- apply(mat, 2, sd)
   const_genes <- names(sds)[!is.finite(sds) | sds == 0]
   if (length(const_genes) > 0) {
@@ -1721,7 +1721,7 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
     mat <- mat[, setdiff(colnames(mat), const_genes), drop = FALSE]
   }
 
-  # 3) keep only genotypes with at least one non-NA left (should already hold)
+  # 3.3 keep only genotypes with at least one non-NA left (should already hold)
   keep_rows <- rowSums(is.na(mat)) < ncol(mat)
   mat <- mat[keep_rows, , drop = FALSE]
   geno_ids <- geno_ids[keep_rows]
@@ -1731,6 +1731,7 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
     return(invisible(NULL))
   }
 
+  # 3.4 center PCA matrix & scale 
   pca_fit <- prcomp(mat, center = TRUE, scale. = TRUE)
 
   pcs_to_use <- min(n_pcs, ncol(pca_fit$x))
@@ -1741,7 +1742,7 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
   loadings_df <- as.data.frame(pca_fit$rotation[, 1:pcs_to_use, drop = FALSE]) %>%
     rownames_to_column("Genes")
 
-  # facet all PC pairings among first n PCs
+  # 3.5 facet all PC pairings among first n PCs
   pc_pairs <- combn(paste0("PC", 1:pcs_to_use), 2, simplify = FALSE)
 plot_df <- purrr::map_dfr(pc_pairs, function(p) {
   tibble(
@@ -1753,39 +1754,42 @@ plot_df <- purrr::map_dfr(pc_pairs, function(p) {
   )
 })
 
-geno_colors <- setNames(
-  ifelse(unique(plot_df$genotype) %in% highlight_genos, "dodgerblue", "grey60"),
-  unique(plot_df$genotype)
-)
+  # 3.6 define colors for highlighed genotypes and background genotypes  
+  geno_colors <- setNames(
+    ifelse(unique(plot_df$genotype) %in% highlight_genos, "dodgerblue", "grey60"),
+    unique(plot_df$genotype)
+  )
 
-p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
-  geom_point(aes(color = genotype), size = 1.6, alpha = 0.85) +
-  geom_text_repel(
-    data = subset(plot_df, highlight),
-    aes(x = x, y = y, label = genotype, color = genotype),
-    size = 2.5,
-    max.overlaps = Inf,
-    min.segment.length = 0,
-    box.padding = 0.3,
-    segment.color = "grey50"
-  ) +
-  scale_color_manual(values = geno_colors) +
-  facet_wrap(~ panel, scales = "free") +
-  labs(x = NULL, y = NULL,
-       title = paste0(annotation_col, " iDA PCA: pairwise PCs (top ", pcs_to_use, ")"),
-       color = "Genotype") +
-  theme_bw() +
-  theme(panel.grid = element_blank())
+  # 3.7 plot PCA facetplot 
+  p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
+    geom_point(aes(color = genotype), size = 1.6, alpha = 0.85) +
+    geom_text_repel(
+      data = subset(plot_df, highlight),
+      aes(x = x, y = y, label = genotype, color = genotype),
+      size = 2.5,
+      max.overlaps = Inf,
+      min.segment.length = 0,
+      box.padding = 0.3,
+      segment.color = "grey50"
+    ) +
+    scale_color_manual(values = geno_colors) +
+    facet_wrap(~ panel, scales = "free") +
+    labs(x = NULL, y = NULL,
+         title = paste0(annotation_col, " iDA PCA: pairwise PCs (top ", pcs_to_use, ")"),
+         color = "Genotype") +
+    theme_bw() +
+    theme(panel.grid = element_blank())
 
-  # save
+  # 3.7 save PCA scores, loadings and plot  
   readr::write_csv(scores_df,   file.path(pca_out_dir, paste0(annotation_col, "_iDA_PCA_scores.csv")))
   readr::write_csv(loadings_df, file.path(pca_out_dir, paste0(annotation_col, "_iDA_PCA_loadings.csv")))
-  ggsave(file.path(pca_out_dir, paste0(annotation_col, "_iDA_PCA_PCpairs_facet.pdf")),
-         p_facets, width = 7.5, height = 6.0, units = "in")
+  ggsave(file.path(pca_out_dir, paste0(annotation_col, "_iDA_PCA_PCpairs_facet.pdf")), p_facets, width = 7.5, height = 6.0, units = "in")
 
   invisible(list(scores = scores_df, loadings = loadings_df))
 }
-# run for all available annotations
+
+
+# --- 4. run for all available annotations (use walk() from purr)
 walk(annotations_to_run, ~ run_synaptic_pca_iDA(.x, n_pcs = n_pcs_plot))
 
 ```
@@ -1798,13 +1802,13 @@ highlight_genos <- c("ASAH1","CLN8","GBA1","ATP13A2","PSAP","SMPD1","HEXA","HEXB
 
 annotations_to_combine <- c("Svexocytosis","Svendocytosis","vATPase","SVfusion")
 
-# Step 1: get combined gene set
+# --- 1. get combined gene set
 combined_genes <- complete_data_annotated_day50 %>%
   filter(rowSums(select(., all_of(annotations_to_combine))) > 0) %>%
   pull(Genes) %>%
   unique()
 
-# Step 2: subset iDA log2FC data
+# --- 2. subset iDA log2FC data
 ida_df <- complete_data_annotated_day50 %>%
   filter(Genes %in% combined_genes) %>%
   select(Genes, matches("_iDA_log2_fold_change$")) %>%
@@ -1815,23 +1819,25 @@ ida_df <- complete_data_annotated_day50 %>%
 
 geno_ids <- ida_df$genotype
 mat <- ida_df %>% select(-genotype) %>% as.data.frame()
-# Ensure all features are numeric
+
+# 2.1 Ensure all features are numeric
 mat <- mat %>% mutate(across(everything(), as.numeric))
 
-# Remove genes with any NA across genotypes
+# 2.2 Remove genes with any NA across genotypes
 mat <- mat[, colSums(is.na(mat)) == 0, drop = FALSE]
 
-# Calculate SDs
+# 2.3 Calculate SDs
 sds <- apply(mat, 2, sd, na.rm = TRUE)
 
-# Drop zero-variance (constant) genes
+# 2.4 Drop zero-variance (constant) genes
 mat <- mat[, sds > 0, drop = FALSE]
 
-# Step 3: run PCA
+
+# --- 3. run PCA
 pca_combined <- prcomp(mat, center = TRUE, scale. = TRUE)
 
-# Step 4: PC permutations plot
-# scores for genotypes
+# --- 4. PC permutations plot
+# 4.1 scores for genotypes
 scores_df <- as.data.frame(pca_combined$x) %>%
   mutate(genotype = geno_ids) %>%
   relocate(genotype)
@@ -1839,7 +1845,7 @@ scores_df <- as.data.frame(pca_combined$x) %>%
 pcs_to_use <- min(5, ncol(pca_combined$x))
 pc_names   <- paste0("PC", 1:pcs_to_use)
 
-# build all PC pair panels with x = first, y = second
+# 4.2 build all PC pair panels with x = first, y = second
 pc_pairs <- combn(pc_names, 2, simplify = FALSE)
 plot_df <- purrr::map_dfr(pc_pairs, function(p) {
   tibble(
@@ -1851,13 +1857,14 @@ plot_df <- purrr::map_dfr(pc_pairs, function(p) {
   )
 })
 
-# color map: highlights in dodgerblue, others grey60
+# 4.3 color map: highlights in dodgerblue, others grey60
 geno_levels <- unique(scores_df$genotype)
 geno_colors <- setNames(
   ifelse(geno_levels %in% highlight_genos, "dodgerblue", "grey60"),
   geno_levels
 )
 
+# 4.4 define plotting function for facets 
 p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
   geom_point(aes(color = genotype), size = 1.6, alpha = 0.85) +
   geom_text_repel(
@@ -1879,16 +1886,15 @@ p_facets <- ggplot(plot_df, aes(x = x, y = y)) +
   theme_bw() +
   theme(panel.grid = element_blank())
 
-# save PDF (uses your existing pca_out_dir)
-ggsave(file.path(pca_out_dir, "iDA_union_annotations_PCA_PCpairs_facet.pdf"),
-       p_facets, width = 7.5, height = 6.0, units = "in")
+# 4.5 save PDF 
+ggsave(file.path(pca_out_dir, "iDA_union_annotations_PCA_PCpairs_facet.pdf"), p_facets, width = 7.5, height = 6.0, units = "in")
 
 
 
-# Step 5: main drivers for each PC behind GBA1 and ASAH1
+# --- 5. Save main drivers for each PC behind GBA1 and ASAH1
 scores_df <- as.data.frame(pca_combined$x) %>% mutate(genotype = geno_ids)
 
-# Example for ASAH1, PC of interest = PC where ASAH1 has extreme score
+# --- 6. Call function for ASAH1, PC of interest = PC where ASAH1 has sig. score (check on PCA plots)
 pc_for_asah1 <- which.max(abs(scores_df %>% filter(genotype == "ASAH1") %>% select(PC3)))
 top_asah1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_asah1, drop = FALSE] %>%
   rownames_to_column("Genes") %>%
@@ -1899,7 +1905,7 @@ top_asah1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_asah1, drop =
 write_csv(top_asah1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_drivers_", "ASAH1", "_PC", pc_for_asah1, ".csv")))
 
 
-# Repeat for GBA1
+# --- 7. Repeat for GBA1
 pc_for_gba1 <- which.max(abs(scores_df %>% filter(genotype == "GBA1") %>% select(PC3)))
 top_gba1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_gba1, drop = FALSE] %>%
   rownames_to_column("Genes") %>%
