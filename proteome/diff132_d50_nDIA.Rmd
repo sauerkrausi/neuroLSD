@@ -1668,18 +1668,26 @@ make_topvar_heatmap_iDA(
 
 #### VIg. PCA on iDA Svendocytosis","vATPase","SVfusion","Svexocytosis in separate iterations 
 ```{r}
-# --- PCA drivers for synaptic-angle annotations in iDA ---
+# --------------------------------------------------- #
+# --- PCA drivers for synaptic-angle annotations in iDA
+# --------------------------------------------------- #
+
 library(tidyverse)
 library(ggplot2)
 
-# --- 1. define 
+# --- 1. define genotypes to highlight in PCA plots => mostly Sph-Mutants 
 highlight_genos <- c("ASAH1","CLN8","GBA1","ATP13A2","PSAP","SMPD1","HEXA","HEXB")
 
+
+# --- 2. Define output dir and also user-select annotations which IDs will be PCA run on
+# plot PC1 - PC5 in all pairwise permutations --> facet-wrap them
 pca_out_dir <- out_dir_d50_ascd_avg_SV
 candidate_annotations <- unique(c("Svendocytosis","vATPase","SVfusion","Svexocytosis"))
 annotations_to_run <- intersect(candidate_annotations, colnames(complete_data_annotated_day50))
 n_pcs_plot <- 5
 
+
+# --- 1. 
 run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
   ann_long <- complete_data_annotated_day50 %>%
     filter(.data[[annotation_col]] == 1) %>%
