@@ -2129,7 +2129,7 @@ diff136_df_annotated <- diff136_df_annotated %>%
   mutate(RoR_ASAH1_Soma = log2FC_ASAH1_Soma.ASAH1 - log2FC_Ctrl_Soma.Ctrl)
 
 
-
+# --- 1. define plotting functon for three annotations with specific colors 
 plot_ror_rainbow3 <- function(
   df,
   gene_sets,                       # length 3; vector of annotation cols OR named list of gene vectors
@@ -2139,14 +2139,15 @@ plot_ror_rainbow3 <- function(
   color_map = c("Label1" = "grey70", "Label2" = "firebrick", "Label3" = "dodgerblue3"),
   xlim_override = NULL
 ) {
-  # 0) Ensure RoR column exists
+  
+  # 1.1 Ensure RoR column exists
   if (!ror_col %in% names(df)) {
     stopifnot(all(c("log2FC_ASAH1_Axon.ASAH1","log2FC_Ctrl_Axon.Ctrl") %in% names(df)))
     df <- df %>%
       dplyr::mutate(RoR_ASAH1_Axon = log2FC_ASAH1_Axon.ASAH1 - log2FC_Ctrl_Axon.Ctrl)
   }
 
-  # 1) Normalize gene_sets -> tibble(Gene.Symbol, y_group)
+  # 1.2 Normalize gene_sets -> tibble(Gene.Symbol, y_group)
   if (is.character(gene_sets) && is.null(names(gene_sets))) {
     if (length(gene_sets) != 3) stop("Provide exactly three annotation columns.")
     gene_sets <- setNames(gene_sets, gene_sets)
@@ -2163,12 +2164,12 @@ plot_ror_rainbow3 <- function(
   group_levels <- unique(gene_df$y_group)
   if (length(group_levels) != 3) stop("After processing, there must be exactly three groups.")
 
-  # 2) One value per gene for the RoR column
+  # 1.3 One value per gene for the RoR column
   df_gene <- df %>%
     dplyr::group_by(Gene.Symbol) %>%
     dplyr::summarise(!!ror_col := mean(.data[[ror_col]], na.rm = TRUE), .groups = "drop")
 
-  # 3) Join and filter
+  # 1.4 Join and filter
   fc_df <- df_gene %>%
     dplyr::inner_join(gene_df, by = "Gene.Symbol") %>%
     dplyr::filter(is.finite(.data[[ror_col]])) %>%
@@ -2178,59 +2179,56 @@ plot_ror_rainbow3 <- function(
     warning("No finite RoR values found for the provided groups."); return(invisible(NULL))
   }
 
-  # 4) Label top/bottom per group (rank by RoR itself)
+  # 1.5 Label top/bottom per group (rank by RoR itself)
   label_df <- dplyr::bind_rows(
     fc_df %>% dplyr::group_by(y_group) %>% dplyr::slice_max(order_by = .data[[ror_col]], n = n_top_labels, with_ties = FALSE),
     fc_df %>% dplyr::group_by(y_group) %>% dplyr::slice_min(order_by = .data[[ror_col]], n = n_top_labels, with_ties = FALSE)
   ) %>% dplyr::ungroup() %>%
     dplyr::transmute(Gene.Symbol, y_group, value = .data[[ror_col]])
 
-  # 5) Colors: use first 3 provided
+  # 1.6 Add colors 
   pal_vals <- unname(color_map)
   if (length(pal_vals) < 3) pal_vals <- c("grey70","firebrick","dodgerblue3")
   present_colors <- setNames(pal_vals[seq_len(3)], group_levels)
 
-  # 6) Axis limits
+  # 1.7 Axis limits
   xlims <- if (is.null(xlim_override)) range(fc_df[[ror_col]], na.rm = TRUE) else xlim_override
 
-  # 7) Plot (Vb optics)
-  p <- ggplot2::ggplot(fc_df, ggplot2::aes(y = .data[[ror_col]], x = y_group, fill = y_group)) +
+# 1.8 Plot
+  p <- ggplot(fc_df, aes(y = .data[[ror_col]], x = y_group, fill = y_group)) +
     gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
     ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
-    ggplot2::geom_boxplot(width = 0.15, outlier.shape = NA) +
+    geom_boxplot(width = 0.15, outlier.shape = NA) +
     ggrepel::geom_text_repel(
       data = label_df,
-      ggplot2::aes(label = Gene.Symbol, y = value, x = y_group),
-      position = ggplot2::position_nudge(x = -0.25),
+      aes(label = Gene.Symbol, y = value, x = y_group),
+      position = position_nudge(x = -0.25),
       size = 2, min.segment.length = 0, max.overlaps = Inf,
       box.padding = 0.2, point.padding = 0.1, segment.size = 0.2
     ) +
-    ggplot2::scale_fill_manual(values = present_colors) +
-    ggplot2::coord_flip(ylim = xlims, clip = "off") +
-    ggplot2::theme_bw(base_size = 6) +
-    ggplot2::labs(
+    scale_fill_manual(values = present_colors) +
+    coord_flip(ylim = xlims, clip = "off") +
+    theme_bw(base_size = 6) +
+    labs(
       y = "RoR (ASAH1 Axon − Ctrl Axon, WC-normalized)",
       x = NULL,
-      title = paste0("RoR Localization: ", paste(as.character(group_levels), collapse = " vs "))
+      title = paste0("RoR Localization: ", paste(as.character(group_levels), collapse = " vs ")),
+      caption = "Negative RoR = ASAH1 enriched; Positive RoR = Ctrl enriched"
     ) +
-    ggplot2::theme(panel.grid = element_blank(), legend.position = "none")
+    theme(panel.grid = element_blank(), legend.position = "none",
+          plot.caption = element_text(hjust = 0, size = 6))
 
-  # 8) Save
-  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
-  clean_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
-  out_file <- file.path(out_dir, paste0(
-    "rainbow3_RoR_ASAH1_over_Ctrl_projections_",
-    paste(clean_name(as.character(group_levels)), collapse = "_"),
-    ".pdf"
+  # 1.9 Save
+  out_file <- file.path(out_dir, paste0("rainbow3_RoR_ASAH1_over_Ctrl_projections_",paste(as.character(group_levels), collapse = "_"),".pdf"
   ))
-  grDevices::cairo_pdf(out_file, width = 8, height = 3); print(p); grDevices::dev.off()
+  cairo_pdf(out_file, width = 8, height = 3); print(p); dev.off()
 }
 
 
 
 
-# Ensure the two log2FC columns exist; the function will create RoR if missing
+# --- 2. Ensure the two log2FC columns exist; the function will create RoR if missing
 plot_ror_rainbow3(
   df        = diff136_df_annotated,
   gene_sets = c("MitoIMS","OXPHOS","mtComplexI"),  
