@@ -74,34 +74,34 @@ library(tibble)
 
 # output dirs overview:
 ```{r}
-out_dir_lysoip_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/dataframes"
+out_dir_lysoip_dataframes <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/dataframes"
 dir.create(out_dir_lysoip_dataframes, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/heatmaps"
+out_dir_lysoip_heatmap  <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/heatmaps"
 dir.create(out_dir_lysoip_heatmap, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Organelle_CrossCorr"
+out_dir_lysoip_corrplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Organelle_CrossCorr"
 dir.create(out_dir_lysoip_corrplots, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Organelle_Distribution"
+out_dir_lysoip_organelle_dist <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Organelle_Distribution"
 dir.create(out_dir_lysoip_organelle_dist, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_organelle_rainfall <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Rainfall"
+out_dir_lysoip_organelle_rainfall <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/Rainfall"
 dir.create(out_dir_lysoip_organelle_rainfall, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_venn <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn"
+out_dir_lysoip_venn <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn"
 dir.create(out_dir_lysoip_venn, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_venn_coenrichment  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn/coenrichment"
+out_dir_lysoip_venn_coenrichment  <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/venn/coenrichment"
 dir.create(out_dir_lysoip_venn_coenrichment, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_autophagy <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/autophagy"
+out_dir_lysoip_autophagy <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/autophagy"
 dir.create(out_dir_lysoip_autophagy, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/GO"
+out_dir_lysoip_GO <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/GO"
 dir.create(out_dir_lysoip_GO, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lysoip_GOcoenrichment <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/GO/coenrichment"
+out_dir_lysoip_GOcoenrichment <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/GO/coenrichment"
 dir.create(out_dir_lysoip_GOcoenrichment, recursive = TRUE, showWarnings = FALSE)
 
 
@@ -122,7 +122,7 @@ k-means clustering was performed on data, is in column "cluster"
 ```{r}
 # read in df
 helalysoip_df <- read.csv(
-  "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/datasets/20241130_HeLaLysoIP_ASAH1_All_results_stats_localizationAdded.csv",
+  "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/Eval/datasets/20241130_HeLaLysoIP_ASAH1_All_results_stats_localizationAdded.csv",
   header = TRUE
 )
 
@@ -148,7 +148,7 @@ lysohydrolases <- c(
 
 # 2. Process subcellular annotation
 cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
-subcell_df <- read.csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", stringsAsFactors = FALSE)[, cols_to_read]
+subcell_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", stringsAsFactors = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
 long_subcell_df <- subcell_df %>%
@@ -1147,7 +1147,7 @@ ggsave(filename = file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_
 # ─────────────────────────────────────────────────────────────────────────────
 
 # --- Step 1: read in .csv file containing the genes which are sig down in proteomics
-lysoIPvenn <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_venn.csv', 
+lysoIPvenn <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_venn.csv', 
                    header=T, sep = ",", , stringsAsFactors = FALSE)
 
 
@@ -1221,11 +1221,11 @@ overlap_endosome_endocurated <- intersect(endosome_set, endocurated_set)
 
 # --- Step 8: Save the results to CSV files
 write.csv(data.frame(Overlap_Lyso_Endosome = overlap_lyso_endosome),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Lyso_Endosome.csv', row.names = FALSE)
+          '/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Lyso_Endosome.csv', row.names = FALSE)
 write.csv(data.frame(Overlap_Lyso_EndoCurated = overlap_lyso_endocurated),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Lyso_EndoCurated.csv', row.names = FALSE)
+          '/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Lyso_EndoCurated.csv', row.names = FALSE)
 write.csv(data.frame(Overlap_Endosome_EndoCurated = overlap_endosome_endocurated),
-          '/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Endosome_EndoCurated.csv', row.names = FALSE)
+          '/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/Overlap_Endosome_EndoCurated.csv', row.names = FALSE)
 
 
 
@@ -1234,7 +1234,7 @@ write.csv(data.frame(Overlap_Endosome_EndoCurated = overlap_endosome_endocurated
 # Analysis for enriched protein (log2FC >0.5) in Ctrl over untagged
 # ─────────────────────────────────────────────────────────────────────────────
 # --- Step 9: Read in .csv file containing the genes which are sig down in proteomics
-lysoIPvennCtrl <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_vennCtrl.csv', 
+lysoIPvennCtrl <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_vennCtrl.csv', 
                    header=T, sep = ",", , stringsAsFactors = FALSE)
 
 
@@ -1294,7 +1294,7 @@ write.csv(data.frame(Overlap_Ctrl_Endosome_EndoCurated = overlap_Ctrl_endosome_e
 # Analysis for enriched protein (log2FC >0.5) in ASAH1 over untagged 
 # ─────────────────────────────────────────────────────────────────────────────
 # --- Step 13: Read in .csv file containing the genes which are sig down in proteomics
-lysoIPvennASAH1 <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_vennASAH1.csv', 
+lysoIPvennASAH1 <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20241119_HeLa_Ctrl-ASAH1_LysoIP/MSstats/OrganelleEval/EndoLysoIP_vennASAH1.csv', 
                    header=T, sep = ",", , stringsAsFactors = FALSE)
 
 
