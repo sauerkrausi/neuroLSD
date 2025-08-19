@@ -47,7 +47,7 @@ library(rlang)
 
 # --- 1. Path to your metrics
 metrics_dir <- "/Volumes/Expansion/Harvard/NIC/LucilleTwo/Project_neuroLSD/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay/pyeval/metrics"
-outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay/pyEval"
+outdir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20250121_HeLa-Ctrl-ASAH1_TFN-488_uptakeAssay/pyEval"
 
 # --- 2. read files
 coloc_df <- read_csv(file.path(metrics_dir, "pairwise_colocalization.csv"), show_col_types = FALSE) %>%
@@ -265,7 +265,7 @@ readr::write_csv(stats_tbl_tfn,  file.path(outdir, "TFN_coloc_wilcoxon_by_treatm
 # ------------------------------------------
 
 # --- 1. User inputs and outputs
-hela_base_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250613_HeLa-Ctrl-ASAH1_EndoLysoStains/cpsamEL/eval"
+hela_base_dir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20250613_HeLa-Ctrl-ASAH1_EndoLysoStains/cpsamEL/eval"
 
 hela_genotype_colors <- c(
   "Control" = "grey80",
