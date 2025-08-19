@@ -65,16 +65,16 @@ library(gptstudio)
 
 # II. output dirs overview:
 ```{r}
-out_dir_lipids_HeLaWC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaWC"
+out_dir_lipids_HeLaWC <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaWC"
 dir.create(out_dir_lipids_HeLaWC, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lipids_HeLaLysoIP <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaLysoIP"
+out_dir_lipids_HeLaLysoIP <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/Eval/HeLaLysoIP"
 dir.create(out_dir_lipids_HeLaLysoIP, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lipids_iNWC <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNWC"
+out_dir_lipids_iNWC <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/Eval/iNWC"
 dir.create(out_dir_lipids_iNWC, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_lipids_iNEndoIP <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/Eval/iNEndoIP"
+out_dir_lipids_iNEndoIP <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/Eval/iNEndoIP"
 dir.create(out_dir_lipids_iNEndoIP, recursive = TRUE, showWarnings = FALSE)
 
 
@@ -99,7 +99,7 @@ got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 # ----------------------------
 
 # --- Step 1. read in csv file
-lyso_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
+lyso_df <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-IP-lipidomics_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 # Rename LBPA to LBPA-BMPs
 lyso_df <- lyso_df %>%
@@ -208,7 +208,7 @@ got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 # ----------------------------
 
 # --- Step 1. Load data
-HeLaWCIP_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-WholeCell-lipidomics_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
+HeLaWCIP_df <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-HeLa-WholeCell-lipidomics_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 
 # --- Step 2. Rename lipid class
@@ -313,7 +313,7 @@ ggsave(file.path(out_dir_lipids_HeLaWC, "Volcano_WC_CtrlvsASAH1.pdf"), HeLaWC_ct
 # ----------------------------
 
 # --- Step 1. read in csv file
-endo_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/iNeuron_iNd21_EndoIP_normalized_data.csv', header=T, sep=',', stringsAsFactors = FALSE)
+endo_df <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/datasets/iNeuron_iNd21_EndoIP_normalized_data.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 # Define replicate columns for ASAH1 and Ctrl
 asah1_cols <- paste0("ASAH..._", 1:5)
@@ -374,7 +374,7 @@ got the log2FC and -log10 p-value form LipidCruncher (Walther/Ferese lab)
 # ----------------------------
 
 # --- Step 1. read in csv file
-iNd21_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-wholecell-iNeuron_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
+iNd21_df <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Lipidomics/datasets/Felix-wholecell-iNeuron_cleaned_norm.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 # --- Step 2. Define replicate columns and calculate log2FC
 asah1_cols <- paste0("ASAH1", 1:5)
