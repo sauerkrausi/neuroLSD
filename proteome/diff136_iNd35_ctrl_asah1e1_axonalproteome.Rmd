@@ -1746,8 +1746,7 @@ sig_plot_abs <- ggplot(filter(sig_summary, Type == "Absolute"),
   labs(x = NULL, y = "# Significant Hits", title = "Absolute Comparisons (4-way call)") +
   theme_bw(base_size = 8) + theme(panel.grid = element_blank())
 
-ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_absolute_barplot_4colors.pdf"),
-       sig_plot_abs, width = 5, height = 8, device = cairo_pdf)
+ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_absolute_barplot_4colors.pdf"),sig_plot_abs, width = 5, height = 8, device = cairo_pdf)
 
 # --- Step 11. Plot RoR
 sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
@@ -1758,15 +1757,12 @@ sig_plot_ror <- ggplot(filter(sig_summary, Type == "RatioOfRatio"),
   labs(x = NULL, y = "# Significant Hits", title = "RoR Comparisons (4-way call)") +
   theme_bw(base_size = 8) + theme(panel.grid = element_blank())
 
-ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_ror_barplot_4colors.pdf"),
-       sig_plot_ror, width = 6, height = 8, device = cairo_pdf)
+ggsave(file.path(out_dir_diff136_organelle_dist_ror_norm,"diff136_sig_hits_ror_barplot_4colors.pdf"), sig_plot_ror, width = 6, height = 8, device = cairo_pdf)
 
 # --- Step 12. Save CSVs
-write.csv(sig_gene_summary,
-          file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_geneList_withSig.csv"),row.names = FALSE)
+write.csv(sig_gene_summary,file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_annotation_geneList_withSig.csv"),row.names = FALSE)
 
-write.csv(sig_long_df,
-          file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_long_withSig.csv"),row.names = FALSE)
+write.csv(sig_long_df,file = file.path(out_dir_diff136_organelle_dist_ror_norm, "diff136_sig_hits_long_withSig.csv"),row.names = FALSE)
 
 
 ```
@@ -2092,7 +2088,7 @@ plot_annotation_rainbow3 <- function(
 gene_sets3 <- c("Lysosome","OXPHOS", "mtComplexI")
 gene_sets3 <- c("SynapseSVs","Svexocytosis", "SVfusion")
 gene_sets3 <- c("Endo_iN_curated_Hundley","EarlyEndosome", "RecyclingEndosome")
-
+gene_sets3 <- c("OXPHOS","MitoIMS", "mtComplexI")
 
 # --- Step 3. Define log2FC datasets to be plotted 
 # log2fc_cols <- c(
@@ -2106,9 +2102,9 @@ gene_sets3 <- c("Endo_iN_curated_Hundley","EarlyEndosome", "RecyclingEndosome")
 plot_annotation_rainbow3(
   df          = diff136_df_annotated,
   gene_sets   = gene_sets3,
-  log2fc_col  = "log2FC_Ctrl_Axon.Ctrl_Soma",
+  log2fc_col  = "log2FC_ASAH1_Axon.ASAH1_Soma",
   out_dir     = out_dir_diff136_rainbow_3anno,
-  reference_fc = "log2FC_Ctrl_Axon.Ctrl_Soma",
+  reference_fc = "log2FC_ASAH1_Axon.ASAH1_Soma",
   n_top_labels = 5)
 
 
@@ -2124,6 +2120,133 @@ plot_annotation_rainbow3(
 
 ```
 
+
+### ?? RoR rainbowplot (3 annotations) — ASAH1/Ctrl in projections, WC-normalized
+```{r}
+# --- 1. Add RoR column (if not yet present)
+diff136_df_annotated <- diff136_df_annotated %>%
+  mutate(RoR_ASAH1_Axon = log2FC_ASAH1_Axon.ASAH1 - log2FC_Ctrl_Axon.Ctrl) %>% 
+  mutate(RoR_ASAH1_Soma = log2FC_ASAH1_Soma.ASAH1 - log2FC_Ctrl_Soma.Ctrl)
+
+
+
+plot_ror_rainbow3 <- function(
+  df,
+  gene_sets,                       # length 3; vector of annotation cols OR named list of gene vectors
+  out_dir,
+  ror_col = "RoR_ASAH1_Axon",      # log2FC_ASAH1_Axon.ASAH1 - log2FC_Ctrl_Axon.Ctrl
+  n_top_labels = 5,
+  color_map = c("Label1" = "grey70", "Label2" = "firebrick", "Label3" = "dodgerblue3"),
+  xlim_override = NULL
+) {
+  # 0) Ensure RoR column exists
+  if (!ror_col %in% names(df)) {
+    stopifnot(all(c("log2FC_ASAH1_Axon.ASAH1","log2FC_Ctrl_Axon.Ctrl") %in% names(df)))
+    df <- df %>%
+      dplyr::mutate(RoR_ASAH1_Axon = log2FC_ASAH1_Axon.ASAH1 - log2FC_Ctrl_Axon.Ctrl)
+  }
+
+  # 1) Normalize gene_sets -> tibble(Gene.Symbol, y_group)
+  if (is.character(gene_sets) && is.null(names(gene_sets))) {
+    if (length(gene_sets) != 3) stop("Provide exactly three annotation columns.")
+    gene_sets <- setNames(gene_sets, gene_sets)
+    gene_df <- purrr::imap_dfr(gene_sets, \(col_name, grp)
+      tibble::tibble(Gene.Symbol = df$Gene.Symbol[df[[col_name]] == 1], y_group = grp)
+    )
+  } else {
+    if (length(gene_sets) != 3) stop("Provide exactly three annotation groups.")
+    gene_df <- purrr::imap_dfr(gene_sets, \(genes, grp)
+      tibble::tibble(Gene.Symbol = genes, y_group = grp)
+    )
+  }
+  gene_df <- dplyr::distinct(gene_df, Gene.Symbol, y_group)
+  group_levels <- unique(gene_df$y_group)
+  if (length(group_levels) != 3) stop("After processing, there must be exactly three groups.")
+
+  # 2) One value per gene for the RoR column
+  df_gene <- df %>%
+    dplyr::group_by(Gene.Symbol) %>%
+    dplyr::summarise(!!ror_col := mean(.data[[ror_col]], na.rm = TRUE), .groups = "drop")
+
+  # 3) Join and filter
+  fc_df <- df_gene %>%
+    dplyr::inner_join(gene_df, by = "Gene.Symbol") %>%
+    dplyr::filter(is.finite(.data[[ror_col]])) %>%
+    dplyr::mutate(y_group = factor(y_group, levels = group_levels))
+
+  if (nrow(fc_df) == 0) {
+    warning("No finite RoR values found for the provided groups."); return(invisible(NULL))
+  }
+
+  # 4) Label top/bottom per group (rank by RoR itself)
+  label_df <- dplyr::bind_rows(
+    fc_df %>% dplyr::group_by(y_group) %>% dplyr::slice_max(order_by = .data[[ror_col]], n = n_top_labels, with_ties = FALSE),
+    fc_df %>% dplyr::group_by(y_group) %>% dplyr::slice_min(order_by = .data[[ror_col]], n = n_top_labels, with_ties = FALSE)
+  ) %>% dplyr::ungroup() %>%
+    dplyr::transmute(Gene.Symbol, y_group, value = .data[[ror_col]])
+
+  # 5) Colors: use first 3 provided
+  pal_vals <- unname(color_map)
+  if (length(pal_vals) < 3) pal_vals <- c("grey70","firebrick","dodgerblue3")
+  present_colors <- setNames(pal_vals[seq_len(3)], group_levels)
+
+  # 6) Axis limits
+  xlims <- if (is.null(xlim_override)) range(fc_df[[ror_col]], na.rm = TRUE) else xlim_override
+
+  # 7) Plot (Vb optics)
+  p <- ggplot2::ggplot(fc_df, ggplot2::aes(y = .data[[ror_col]], x = y_group, fill = y_group)) +
+    gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+    ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
+    ggplot2::geom_boxplot(width = 0.15, outlier.shape = NA) +
+    ggrepel::geom_text_repel(
+      data = label_df,
+      ggplot2::aes(label = Gene.Symbol, y = value, x = y_group),
+      position = ggplot2::position_nudge(x = -0.25),
+      size = 2, min.segment.length = 0, max.overlaps = Inf,
+      box.padding = 0.2, point.padding = 0.1, segment.size = 0.2
+    ) +
+    ggplot2::scale_fill_manual(values = present_colors) +
+    ggplot2::coord_flip(ylim = xlims, clip = "off") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::labs(
+      y = "RoR (ASAH1 Axon − Ctrl Axon, WC-normalized)",
+      x = NULL,
+      title = paste0("RoR Localization: ", paste(as.character(group_levels), collapse = " vs "))
+    ) +
+    ggplot2::theme(panel.grid = element_blank(), legend.position = "none")
+
+  # 8) Save
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  clean_name <- function(x) gsub("[^A-Za-z0-9]+", "_", x)
+  out_file <- file.path(out_dir, paste0(
+    "rainbow3_RoR_ASAH1_over_Ctrl_projections_",
+    paste(clean_name(as.character(group_levels)), collapse = "_"),
+    ".pdf"
+  ))
+  grDevices::cairo_pdf(out_file, width = 8, height = 3); print(p); grDevices::dev.off()
+}
+
+
+
+
+# Ensure the two log2FC columns exist; the function will create RoR if missing
+plot_ror_rainbow3(
+  df        = diff136_df_annotated,
+  gene_sets = c("MitoIMS","OXPHOS","mtComplexI"),  
+  out_dir   = out_dir_diff136_rainbow_RoR,
+  ror_col   = "RoR_ASAH1_Axon",    # ASAH1 Axon vs Ctrl Axon, each normalized to WC in genotype
+  n_top_labels = 5
+)
+
+
+# Annotations:
+# "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"     
+
+
+
+
+```
 
 
 
