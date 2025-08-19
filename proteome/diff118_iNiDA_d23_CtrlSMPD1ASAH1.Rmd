@@ -56,29 +56,29 @@ library(org.Hs.eg.db)
 
 # output dirs overview:
 ```{r}
-out_dir_diff118_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/dataframes"
+out_dir_diff118_dataframes <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/dataframes"
 dir.create(out_dir_diff118_dataframes, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff118_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/heatmaps"
+out_dir_diff118_heatmap  <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/heatmaps"
 dir.create(out_dir_diff118_heatmap, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff118_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Organelle_CrossCorr"
+out_dir_diff118_corrplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Organelle_CrossCorr"
 dir.create(out_dir_diff118_corrplots, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff118_scatterplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Scatterplots"
+out_dir_diff118_scatterplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Scatterplots"
 dir.create(out_dir_diff118_scatterplots, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff118_scatterplots_cluster<- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Scatterplots/cluster"
+out_dir_diff118_scatterplots_cluster<- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/Scatterplots/cluster"
 dir.create(out_dir_diff118_scatterplots_cluster, recursive = TRUE, showWarnings = FALSE)
 
 
-out_dir_diff118_bar <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/barplots"
+out_dir_diff118_bar <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/barplots"
 dir.create(out_dir_diff118_bar, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff118_violin <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/violins"
+out_dir_diff118_violin <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/violins"
 dir.create(out_dir_diff118_violin, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff118_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/GO"
+out_dir_diff118_GO <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/GO"
 dir.create(out_dir_diff118_GO, recursive = TRUE, showWarnings = FALSE)
 
 
@@ -104,7 +104,7 @@ k-means clustering was performed on data, is in column "cluster"
 # 1.  read the data  
 # ─────────────────────────────────────────────────────────────────────────────
 
-diff118_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/datasets/diff118_All_results_stats_localizationAdded.csv', header=T, sep=',', stringsAsFactors = FALSE)
+diff118_df <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/datasets/diff118_All_results_stats_localizationAdded.csv', header=T, sep=',', stringsAsFactors = FALSE)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ contaminant_genes <- c(
 
 # --- Step 2: Load and process subcellular annotation
 cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
-subcell_df <- read_csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
+subcell_df <- read_csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
 long_subcell_df <- subcell_df %>%
