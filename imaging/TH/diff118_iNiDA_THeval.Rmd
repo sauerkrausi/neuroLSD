@@ -51,12 +51,12 @@ library(dplyr)
 # -------------------
 # DEFINE INPUT  
 # -------------------
-th_summary <- read.csv("/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/results/TH_quantification_summary.csv")
+th_summary <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/results/TH_quantification_summary.csv")
 
 # -------------------
 # DEFINE OUTPUT DIR  
 # -------------------
-theval_outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/eval"
+theval_outdir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/THeval/eval"
 dir.create(theval_outdir, showWarnings = FALSE, recursive = TRUE)
 
 ```
