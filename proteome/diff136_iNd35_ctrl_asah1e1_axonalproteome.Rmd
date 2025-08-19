@@ -49,58 +49,58 @@ library(devtools)
 
 # output dirs overview:
 ```{r}
-out_dir_diff136_dataframes <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes"
+out_dir_diff136_dataframes <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/dataframes"
 dir.create(out_dir_diff136_dataframes, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
+out_dir_diff136_heatmap  <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
 dir.create(out_dir_diff136_heatmap, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_corrplots <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
+out_dir_diff136_corrplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_CrossCorr"
 dir.create(out_dir_diff136_corrplots, recursive = TRUE, showWarnings = FALSE)
 
 
-out_dir_diff136_organelle_dist <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
+out_dir_diff136_organelle_dist <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution"
 dir.create(out_dir_diff136_organelle_dist, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_organelle_dist_bar <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_general"
+out_dir_diff136_organelle_dist_bar <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_general"
 dir.create(out_dir_diff136_organelle_dist_bar, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_organelle_dist_barnorm <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm"
+out_dir_diff136_organelle_dist_barnorm <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm"
 dir.create(out_dir_diff136_organelle_dist_barnorm, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_organelle_dist_norm_ranked <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked"
+out_dir_diff136_organelle_dist_norm_ranked <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked"
 dir.create(out_dir_diff136_organelle_dist_norm_ranked, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_organelle_dist_norm_composite <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked_composite"
+out_dir_diff136_organelle_dist_norm_composite <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked_composite"
 dir.create(out_dir_diff136_organelle_dist_norm_composite, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_organelle_dist_norm_composite_euler <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked_composite/euer_plots"
+out_dir_diff136_organelle_dist_norm_composite_euler <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/barplots_WC_norm_ranked_composite/euer_plots"
 dir.create(out_dir_diff136_organelle_dist_norm_composite_euler, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_organelle_dist_ror_norm <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/RoR_norm"
+out_dir_diff136_organelle_dist_ror_norm <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution/RoR_norm"
 dir.create(out_dir_diff136_organelle_dist_ror_norm, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_rainbow <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
+out_dir_diff136_rainbow <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow"
 dir.create(out_dir_diff136_rainbow, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_rainbow_3anno <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/3anno"
+out_dir_diff136_rainbow_3anno <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/3anno"
 dir.create(out_dir_diff136_rainbow_3anno, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_rainbow_RoR <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/ror"
+out_dir_diff136_rainbow_RoR <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/Organelle_Distribution_Rainbow/ror"
 dir.create(out_dir_diff136_rainbow_RoR, recursive = TRUE, showWarnings = FALSE)
 
 
 
-out_dir_diff136_GO <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
+out_dir_diff136_GO <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO"
 dir.create(out_dir_diff136_GO, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_GOcluster <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/heatmapclusters"
+out_dir_diff136_GOcluster <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/heatmapclusters"
 dir.create(out_dir_diff136_GOcluster, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_GOror <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/RoR"
+out_dir_diff136_GOror <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/RoR"
 dir.create(out_dir_diff136_GOror, recursive = TRUE, showWarnings = FALSE)
 
-out_dir_diff136_GOranked <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/ranking_sensitivity"
+out_dir_diff136_GOranked <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/GO/ranking_sensitivity"
 dir.create(out_dir_diff136_GOranked, recursive = TRUE, showWarnings = FALSE)
 
 ```
@@ -123,7 +123,7 @@ k-means clustering was performed on data, is in column "cluster"
 # 1.  read the data  
 # ─────────────────────────────────────────────────────────────────────────────
 
-diff136_df <- read.csv('/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/datasets/diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_All_results_stats_localizationAdded.csv', header=T)
+diff136_df <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/datasets/diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_All_results_stats_localizationAdded.csv', header=T)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ contaminant_genes <- c(
 
 # --- Step 2: Load and process subcellular annotation
 cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
-subcell_df <- read_csv("/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
+subcell_df <- read_csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", show_col_types = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
 long_subcell_df <- subcell_df %>%
@@ -202,7 +202,7 @@ write.csv(diff136_df_annotated,
 # ─────────────────────────────────────────────────────────────────────────────
 # Heatmap (z-norm rows, cluster by cluster)
 # ─────────────────────────────────────────────────────────────────────────────
-out_dir_diff136_heatmap  <- "/Users/felix/Dropbox (HMS)/Felix/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
+out_dir_diff136_heatmap  <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20250603_diff136_iN_d35_Ctrl-ASAH1E1_AxonalProteomics/diff136renv/heatmaps"
 pdf_file <- file.path(out_dir_diff136_heatmap, "diff136_heatmap_axonalProt_ctrl_asah1.pdf")
 
 # --- 1. set annotations and sample names 
