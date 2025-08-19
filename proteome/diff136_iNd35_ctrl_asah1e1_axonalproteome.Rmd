@@ -2089,6 +2089,7 @@ gene_sets3 <- c("Lysosome","OXPHOS", "mtComplexI")
 gene_sets3 <- c("SynapseSVs","Svexocytosis", "SVfusion")
 gene_sets3 <- c("Endo_iN_curated_Hundley","EarlyEndosome", "RecyclingEndosome")
 gene_sets3 <- c("OXPHOS","MitoIMS", "mtComplexI")
+gene_sets3 <- c("Mito","MitoMatrix", "mtComplexI")
 
 # --- Step 3. Define log2FC datasets to be plotted 
 # log2fc_cols <- c(
@@ -2102,9 +2103,9 @@ gene_sets3 <- c("OXPHOS","MitoIMS", "mtComplexI")
 plot_annotation_rainbow3(
   df          = diff136_df_annotated,
   gene_sets   = gene_sets3,
-  log2fc_col  = "log2FC_ASAH1_Axon.ASAH1_Soma",
+  log2fc_col  = "log2FC_Ctrl_Axon.Ctrl_Soma",
   out_dir     = out_dir_diff136_rainbow_3anno,
-  reference_fc = "log2FC_ASAH1_Axon.ASAH1_Soma",
+  reference_fc = "log2FC_Ctrl_Axon.Ctrl_Soma",
   n_top_labels = 5)
 
 
@@ -2231,7 +2232,7 @@ plot_ror_rainbow3 <- function(
 # --- 2. Ensure the two log2FC columns exist; the function will create RoR if missing
 plot_ror_rainbow3(
   df        = diff136_df_annotated,
-  gene_sets = c("Mito","MitoMatrix","MitoMOM"),       
+  gene_sets = c("Endo_iN_curated_Hundley","EarlyEndosome","Svendocytosis"),       
   out_dir   = out_dir_diff136_rainbow_RoR,
   ror_col   = "RoR_ASAH1_Axon",    # ASAH1 Axon vs Ctrl Axon, each normalized to WC in genotype
   n_top_labels = 5
@@ -2244,6 +2245,7 @@ plot_ror_rainbow3(
 # c("MitoIMS","OXPHOS","mtComplexI"),  
 # c("Mito","MitoMatrix","MitoMIM"), 
 # c("Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome"),  
+# c("Endo_iN_curated_Hundley","EarlyEndosome","Svendocytosis"),  
 # c("SVfusion","Svendocytosis","vATPase"),  
 # c("SynapseSVs","Presynaptic","Postsynaptic"),  
 # c("SVfusion","Svendocytosis","Svexocytosis"), 
