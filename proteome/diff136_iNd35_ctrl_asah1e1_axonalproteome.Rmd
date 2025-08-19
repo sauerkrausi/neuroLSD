@@ -930,7 +930,7 @@ ggsave(file.path(out_dir_diff136_organelle_dist_barnorm, "diff136_loc_dist_overv
 ```
 
 
-### IVbb. Resorted RoR, EulerTop5
+### ?????? IVbb. Resorted RoR, EulerTop5
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # IIIb-plus. Resort by RoR, save sorted plot, extract top-5 annotations,
@@ -1565,6 +1565,55 @@ summary_sv_df <- diff136_df_annotated %>%
     sem  = sd(log2FC, na.rm = TRUE) / sqrt(n()),
     .groups = "drop"
   )
+# --- Step 2b. Prepare per-gene data for stats (before summarise)
+sv_long_df <- diff136_df_annotated %>%
+  filter(Gene.Symbol %in% vatpase_genes | 
+           rowSums(across(all_of(selected_annotations)), na.rm = TRUE) > 0) %>%
+  dplyr::select(Gene.Symbol, all_of(plot_cols), all_of(selected_annotations)) %>%
+  pivot_longer(cols = all_of(plot_cols), names_to = "Comparison", values_to = "log2FC") %>%
+  pivot_longer(cols = all_of(selected_annotations), names_to = "Annotation", values_to = "is_annotated") %>%
+  filter(is_annotated == 1, is.finite(log2FC)) %>%
+  mutate(Condition = recode(Comparison, !!!condition_labels))
+
+# --- Step 2c. Pairwise tests Ctrl vs ASAH1 per annotation
+stat_results <- sv_long_df %>%
+  group_by(Annotation) %>%
+  summarise(
+    n_ASAH1 = sum(Condition == "ASAH1"),
+    n_Ctrl  = sum(Condition == "Ctrl"),
+    .test   = list({
+      x <- log2FC[Condition == "ASAH1"]
+      y <- log2FC[Condition == "Ctrl"]
+      if (length(x) > 1 & length(y) > 1) {
+        wt <- wilcox.test(x, y, exact = FALSE)  # Mann-Whitney
+        tibble(
+          method = wt$method,
+          p_value = wt$p.value,
+          median_ASAH1 = median(x, na.rm=TRUE),
+          median_Ctrl  = median(y, na.rm=TRUE),
+          delta_median = median(x, na.rm=TRUE) - median(y, na.rm=TRUE)
+        )
+      } else {
+        tibble(method = NA, p_value = NA,
+               median_ASAH1 = NA, median_Ctrl = NA, delta_median = NA)
+      }
+    }),
+    .groups = "drop"
+  ) %>%
+  unnest(cols = .test) %>%
+  mutate(
+    p_adj_BH  = p.adjust(p_value, method = "BH"),
+    p_adj_FDR = p.adjust(p_value, method = "fdr"),
+    signif_label = case_when(
+      p_value <= 0.001 ~ "***",
+      p_value <= 0.01  ~ "**",
+      p_value <= 0.05  ~ "*",
+      TRUE             ~ "ns"
+    )
+  )
+
+# --- Step 2d. Save stats
+readr::write_csv(stat_results,file.path(out_dir_diff136_organelle_dist,"diff136_synaptic_annotation_ASAH1_vs_Ctrl_tests.csv"))
 
 
 # --- Step 3. Plot means + SEM
