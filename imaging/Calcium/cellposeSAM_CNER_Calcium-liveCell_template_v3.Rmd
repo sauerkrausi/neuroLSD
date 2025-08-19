@@ -74,7 +74,7 @@ library(dplyr)
 # BASE DIR & OUTPUT DIRs
 # -----------------------------------------
 # Path to root directory where input data and output folders are/will be stored
-base_path <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/test"
+base_path <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20250710_diff138_iN_d38_Ctrl-ASAH1_Flou4/cpsam_d38/test"
 
 # Path to save all plots
 ca_results_dir <- file.path(base_path, "calcium_analysis_results")
