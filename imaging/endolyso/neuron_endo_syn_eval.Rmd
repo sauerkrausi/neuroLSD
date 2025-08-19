@@ -47,8 +47,8 @@ library(rlang)
 # ------------------------------------------
 
 # --- 1. Path to your metrics
-metrics_dir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
-outdir <- "/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
+metrics_dir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
+outdir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20240417_diff118_iN-iDA_test_d23_Ctrl-SMPD1-ASAH1/EEA1eval/results/metrics"
 
 # --- 2. data
 eea1_neuron_df <- read_csv(file.path(metrics_dir, "per_image_summary.csv"), show_col_types = FALSE)
