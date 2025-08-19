@@ -943,7 +943,7 @@ ror_sort_order_vec <- ratio_df %>%
   pull(Annotation)
 
 # 1.1 mark which facets get the restricted range
-combined_df_sortedByRoR <- combined_df_sortedByRoR %>%
+combined_df_sortedByRoR <- combined_df %>%
   mutate(y_clamped = ifelse(Log2FC %in% c("log2FC_ASAH1_Axon.ASAH1",
                                           "log2FC_Ctrl_Axon.Ctrl"),
                             pmax(pmin(mean_log2FC, 0.5), -0.5),
@@ -1050,7 +1050,7 @@ csv_top5_genes_path <- file.path(out_dir_diff136_organelle_dist_barnorm, "top5_b
 write.csv(top5_gene_overlap_tbl, csv_top5_genes_path, row.names = FALSE)
 
 
-# --- 3: Create & save Euler plots per annotation
+# --- 3. Create & save Euler plots per annotation
 invisible(lapply(top5_annotations_by_ror, function(ann_term) {
   gs <- get_internal_norm_gene_sets(ann_term, diff136_df_annotated)
   fit2 <- eulerr::euler(list(ASAH1 = gs$ASAH1_all, Ctrl = gs$Ctrl_all))
@@ -1929,7 +1929,7 @@ scatter_df <- diff136_df_annotated %>%
     Nucleus == 1 |
     Lysosome == 1
   ) %>%
-  mutate(
+  dplyr::mutate(
     y_group = case_when(
       Gene.Symbol %in% lysohydrolases ~ "Hydrolases",
       Gene.Symbol %in% vatpase_genes  ~ "vATPase",
