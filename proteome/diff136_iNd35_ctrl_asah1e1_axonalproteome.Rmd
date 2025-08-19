@@ -1773,13 +1773,15 @@ write.csv(sig_long_df,file = file.path(out_dir_diff136_organelle_dist_ror_norm, 
 ```{r}
 # --------------------------------------------------
 # GO on RoR hits split into four Call classes
-# calculates for: Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down
+# Calculates: Ctrl_up, Ctrl_down, ASAH1_up, ASAH1_down
+# Keeps only GO terms with Significant >= 5, finite Enrichment, raw_pval < 0.05
 # --------------------------------------------------
 
 # --- 1. Guard and background
 stopifnot("Call" %in% names(sig_long_df))
 background_genes_vec <- unique(diff136_df_annotated$Gene.Symbol)
 min_genes_for_go <- 5
+alpha_go <- 0.05
 
 # --- 2. Count RoR hits per Annotation × Call, get top-5 per Call
 ror_counts_by_call <- sig_long_df %>%
@@ -1799,10 +1801,8 @@ go_ror_long <- sig_long_df %>%
   dplyr::distinct()
 
 # --- 4. Save manifests
-readr::write_csv(ror_counts_by_call,
-                 file.path(out_dir_diff136_GOror, "RoR_top5_annotation_counts_byCall_manifest.csv"))
-readr::write_csv(go_ror_long,
-                 file.path(out_dir_diff136_GOror, "GO_inputs_RoR_top5_byCall_long.csv"))
+readr::write_csv(ror_counts_by_call, file.path(out_dir_diff136_GOror, "RoR_top5_annotation_counts_byCall_manifest.csv"))
+readr::write_csv(go_ror_long,       file.path(out_dir_diff136_GOror, "GO_inputs_RoR_top5_byCall_long.csv"))
 
 # --- 5. Run GO for each Call × Annotation if set size >= threshold, for BP/MF/CC
 calls_order <- c("Ctrl_up","Ctrl_down","ASAH1_up","ASAH1_down")
@@ -1823,78 +1823,77 @@ invisible(lapply(calls_order, function(call_flag) {
 
     # Save exact input list (unchanged)
     readr::write_csv(tibble::tibble(GeneSymbol = gene_vec),
-                     file.path(out_dir_diff136_GOror,
-                               paste0("GO_inputs_RoR_top5_", call_flag, "_", ann_term, ".csv")))
+                     file.path(out_dir_diff136_GOror, paste0("GO_inputs_RoR_top5_", call_flag, "_", ann_term, ".csv")))
 
-    if (length(gene_vec) >= min_genes_for_go) {
-      # Background indicator
-      geneList <- as.integer(background_genes_vec %in% gene_vec)
-      names(geneList) <- background_genes_vec
+    # Skip groups with <5 genes
+    if (length(gene_vec) < min_genes_for_go) return(NULL)
 
-      lapply(ontologies_vec, function(ont_flag) {
-        GOdata <- new("topGOdata",
-                      ontology = ont_flag,
-                      allGenes = geneList,
-                      geneSel  = function(x) x == 1,
-                      annot    = annFUN.org,
-                      mapping  = "org.Hs.eg.db",
-                      ID       = "symbol")
+    # Background indicator
+    geneList <- as.integer(background_genes_vec %in% gene_vec)
+    names(geneList) <- background_genes_vec
 
-        resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+    lapply(ontologies_vec, function(ont_flag) {
+      GOdata <- new("topGOdata",
+                    ontology = ont_flag,
+                    allGenes = geneList,
+                    geneSel  = function(x) x == 1,
+                    annot    = annFUN.org,
+                    mapping  = "org.Hs.eg.db",
+                    ID       = "symbol")
 
-        go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30) %>%
-          dplyr::mutate(
-            raw_pval    = score(resultFisher)[GO.ID],
-            Significant = as.numeric(Significant),
-            Expected    = as.numeric(Expected),
-            Enrichment  = Significant / Expected,
-            log10P      = -log10(raw_pval)
-          ) %>%
-          dplyr::filter(!is.na(raw_pval)) %>%
-          dplyr::arrange(raw_pval) %>%
-          dplyr::slice_head(n = 10)
+      resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
 
-        # Attach gene members per GO term
-        go_genes <- genesInTerm(GOdata)
-        go_table$Genes <- vapply(go_table$GO.ID, function(go_id) {
-          paste(intersect(unname(go_genes[[go_id]]), gene_vec), collapse = ";")
-        }, character(1))
+      go_table <- GenTable(GOdata, classicFisher = resultFisher, topNodes = 30) %>%
+        dplyr::mutate(
+          raw_pval    = score(resultFisher)[GO.ID],
+          Significant = as.numeric(Significant),
+          Expected    = as.numeric(Expected),
+          Enrichment  = Significant / Expected,
+          log10P      = -log10(raw_pval)
+        ) %>%
+        dplyr::filter(!is.na(raw_pval),
+                      raw_pval < alpha_go,
+                      Significant >= min_genes_for_go,
+                      is.finite(Enrichment)) %>%   # drop Inf/NaN enrichment
+        dplyr::arrange(raw_pval) %>%
+        dplyr::slice_head(n = 10)
 
-        tag_str <- paste0("RoR_top5_", call_flag, "_", ann_term, "_", ont_flag)
-        out_file <- file.path(out_dir_diff136_GOror, paste0("GO_results_", tag_str, ".csv"))
-        readr::write_csv(go_table, out_file)
+      # If nothing passes filters, skip saving
+      if (nrow(go_table) == 0) return(NULL)
 
-        all_go_results[[length(all_go_results) + 1]] <<-
-          dplyr::mutate(go_table,
-                        Call = call_flag,
-                        Annotation = ann_term,
-                        Ontology = ont_flag,
-                        Tag = tag_str)
-        NULL
-      })
-    }
+      # Attach gene members per GO term
+      go_genes <- genesInTerm(GOdata)
+      go_table$Genes <- vapply(go_table$GO.ID, function(go_id) {
+        paste(intersect(unname(go_genes[[go_id]]), gene_vec), collapse = ";")
+      }, character(1))
+
+      tag_str <- paste0("RoR_top5_", call_flag, "_", ann_term, "_", ont_flag)
+      readr::write_csv(go_table, file.path(out_dir_diff136_GOror, paste0("GO_results_", tag_str, ".csv")))
+
+      all_go_results[[length(all_go_results) + 1]] <<-
+        dplyr::mutate(go_table,
+                      Call = call_flag,
+                      Annotation = ann_term,
+                      Ontology = ont_flag,
+                      Tag = tag_str)
+      NULL
+    })
     NULL
   })
 }))
 
-# --- 6. Save master GO CSV with Call, Annotation, Ontology
+# --- 6. Save master GO CSV with Call, Annotation, Ontology (apply same filters)
 if (length(all_go_results) > 0) {
-  master_go <- dplyr::bind_rows(all_go_results)
-  readr::write_csv(master_go,
-                   file.path(out_dir_diff136_GOror, "GO_results_RoR_top5_byCall_MASTER_BP_MF_CC.csv"))
+  master_go <- dplyr::bind_rows(all_go_results) %>%
+    dplyr::filter(Significant >= min_genes_for_go,
+                  is.finite(Enrichment),
+                  raw_pval < alpha_go)
+  readr::write_csv(master_go, file.path(out_dir_diff136_GOror, "GO_results_RoR_top5_byCall_MASTER_BP_MF_CC.csv"))
 }
 
-
-# --- 7. GO per Annotation × Call × Ontology (BP/MF/CC), CSV + dotplot
-#library(topGO); library(org.Hs.eg.db); library(forcats)
-
-calls_order    <- c("Ctrl_up","Ctrl_down","ASAH1_up","ASAH1_down")
-ontologies_vec <- c("BP","MF","CC")
-min_genes_for_go <- 5
-background_genes_vec <- unique(diff136_df_annotated$Gene.Symbol)
-
-# helper: one ontology -> returns tidy table (top 10 by p)
-run_topgo_one <- function(gene_set, background_genes, ontology_flag) {
+# --- 7. GO per Annotation × Call × Ontology (BP/MF/CC), CSV + dotplot in IIc style (with same filters)
+# helper: one ontology -> returns tidy table (top 10 by p), filtered as above
+run_topgo_one <- function(gene_set, background_genes, ontology_flag, min_n = 5, alpha = 0.05) {
   geneList <- factor(as.integer(background_genes %in% gene_set)); names(geneList) <- background_genes
   GOdata <- new("topGOdata", ontology = ontology_flag, allGenes = geneList,
                 geneSel = function(x) x == 1, annot = annFUN.org,
@@ -1908,11 +1907,13 @@ run_topgo_one <- function(gene_set, background_genes, ontology_flag) {
       Enrichment  = Significant / Expected,
       log10P      = -log10(raw_pval)
     ) %>%
-    dplyr::filter(!is.na(raw_pval)) %>%
+    dplyr::filter(!is.na(raw_pval),
+                  raw_pval < alpha,
+                  Significant >= min_n,
+                  is.finite(Enrichment)) %>%
     dplyr::arrange(raw_pval) %>%
     dplyr::slice_head(n = 10)
-
-  # attach member genes
+  if (nrow(tab) == 0) return(NULL)
   go_genes <- genesInTerm(GOdata)
   tab$Genes <- vapply(tab$GO.ID, function(go_id) paste(intersect(unname(go_genes[[go_id]]), gene_set), collapse = ";"), character(1))
   tab
@@ -1925,7 +1926,6 @@ ror_hits <- sig_long_df %>%
   dplyr::distinct()
 
 ann_list <- sort(unique(ror_hits$Annotation))
-
 run_manifest <- list()
 
 for (ann_term in ann_list) {
@@ -1936,26 +1936,28 @@ for (ann_term in ann_list) {
       dplyr::pull(Gene.Symbol) %>%
       unique()
 
+    # Skip Annotation×Call groups with <5 genes
     if (length(gene_vec) < min_genes_for_go) {
-      run_manifest[[length(run_manifest)+1]] <- data.frame(Annotation=ann_term, Call=call_flag, Ontology=NA, status="skipped_too_few_genes", n_genes=length(gene_vec))
+      run_manifest[[length(run_manifest)+1]] <- data.frame(Annotation=ann_term, Call=call_flag, Ontology=NA, status="skipped_input_n<5", n_genes=length(gene_vec))
       next
     }
 
     for (ont_flag in ontologies_vec) {
-      go_tbl <- run_topgo_one(gene_vec, background_genes_vec, ont_flag)
+
+      go_tbl <- run_topgo_one(gene_vec, background_genes_vec, ont_flag, min_n = min_genes_for_go, alpha = alpha_go)
       if (is.null(go_tbl) || nrow(go_tbl) == 0) {
-        run_manifest[[length(run_manifest)+1]] <- data.frame(Annotation=ann_term, Call=call_flag, Ontology=ont_flag, status="no_terms", n_genes=length(gene_vec))
+        run_manifest[[length(run_manifest)+1]] <- data.frame(Annotation=ann_term, Call=call_flag, Ontology=ont_flag, status="no_terms_after_filters", n_genes=length(gene_vec))
         next
       }
 
       tag_str <- paste0("RoR_", ann_term, "_", call_flag, "_", ont_flag)
       readr::write_csv(go_tbl, file.path(out_dir_diff136_GOror, paste0("GO_results_", tag_str, ".csv")))
 
-      # IIc dotplot style
+      # GO dotplot (Enrichment on x, size = -log10P, fill = Enrichment)
       p <- ggplot(go_tbl, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
         geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
         scale_fill_gradient(low = "white", high = "firebrick") +
-        theme_bw(base_size = 8) +
+        theme_bw(base_size = 6) +
         labs(x = "Fold Enrichment", y = "GO Term", size = expression(-log[10]*"P"),
              title = paste0("Top GO Terms (", tag_str, ")")) +
         theme(panel.grid = element_blank())
@@ -1969,8 +1971,6 @@ for (ann_term in ann_list) {
 if (length(run_manifest) > 0) {
   readr::write_csv(dplyr::bind_rows(run_manifest), file.path(out_dir_diff136_GOror, "GO_RoR_run_manifest.csv"))
 }
-
-
 
 
 ```
