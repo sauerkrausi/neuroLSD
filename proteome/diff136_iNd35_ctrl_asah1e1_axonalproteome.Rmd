@@ -2231,7 +2231,7 @@ plot_ror_rainbow3 <- function(
 # --- 2. Ensure the two log2FC columns exist; the function will create RoR if missing
 plot_ror_rainbow3(
   df        = diff136_df_annotated,
-  gene_sets = c("MitoIMS","OXPHOS","mtComplexI"),  
+  gene_sets = c("Mito","MitoMatrix","MitoMOM"),       
   out_dir   = out_dir_diff136_rainbow_RoR,
   ror_col   = "RoR_ASAH1_Axon",    # ASAH1 Axon vs Ctrl Axon, each normalized to WC in genotype
   n_top_labels = 5
@@ -2241,8 +2241,12 @@ plot_ror_rainbow3(
 # Annotations:
 # "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis","vATPase"     
 
-
-
+# c("MitoIMS","OXPHOS","mtComplexI"),  
+# c("Mito","MitoMatrix","MitoMIM"), 
+# c("Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome"),  
+# c("SVfusion","Svendocytosis","vATPase"),  
+# c("SynapseSVs","Presynaptic","Postsynaptic"),  
+# c("SVfusion","Svendocytosis","Svexocytosis"), 
 
 ```
 
