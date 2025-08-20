@@ -3106,11 +3106,10 @@ ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd3
 
 ### ???VIIXXXXX. day 30 vs 50:  ASAH1 time course comparison
 ```{r}
-ann_vec <- c(
-  "MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
+ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
   "Lysosome","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic",
   "Postsynaptic","EarlyEndosome","RecyclingEndosome","SVfusion",
-  "Svendocytosis","Svexocytosis","vATPase"
+  "Svendocytosis","Svexocytosis","vATPase", "Autophagy"
 )
 
 # Helper: extract one day × neuron block as long data from log2FC column
@@ -3205,6 +3204,58 @@ plot_violin_asah1_log2 <- function(neuron_label) {
 
 p_iN  <- plot_violin_asah1_log2("iN")
 p_iDA <- plot_violin_asah1_log2("iDA")
+
+
+
+# Combined iN + iDA violins in one plot (per-Annotation facets)
+plot_violin_asah1_log2_both <- function() {
+  stopifnot(all(c("Neuron","Day","Annotation","log2FC_capped") %in% names(asah1_timecourse_log2_df)))
+
+  dfp <- asah1_timecourse_log2_df %>%
+    mutate(
+      CombinedGroup = factor(
+        paste0(Neuron, "_", Day),
+        levels = c("iN_d30","iN_d50","iDA_d30","iDA_d50")
+      )
+    )
+
+  col_map <- c(
+    "iN_d30"  = "dodgerblue3",
+    "iN_d50"  = "dodgerblue",
+    "iDA_d30" = "grey50",
+    "iDA_d50" = "grey70"
+  )
+
+  p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC_capped, fill = CombinedGroup)) +
+    geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
+    geom_jitter(color = "red", alpha = 0.4, size = 0.6, width = 0.15, show.legend = FALSE) +
+    geom_violin(trim = FALSE, scale = "width", linewidth = 0.2, color = "black") +
+    geom_boxplot(width = 0.18, fill = "white", outlier.shape = NA, linewidth = 0.25) +
+    scale_fill_manual(values = col_map, drop = FALSE) +
+    labs(
+      title = "ASAH1 log2FC iN and iDA (day 30 and 50)",
+      x = NULL, y = "log2FC (KO / Ctrl)"
+    ) +
+    facet_wrap(~ Annotation, scales = "free_y") +
+    theme_bw(base_size = 6) +
+    theme(
+      legend.position = "none",
+      panel.grid = element_blank(),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+
+  cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_log2FC_violin_iN_iDA_combined.pdf"),
+                   width = 8, height = 6)
+  print(p)
+  dev.off()
+  p
+}
+
+# Run it
+p_both <- plot_violin_asah1_log2_both()
+
+
 ```
 
 
