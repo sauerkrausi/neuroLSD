@@ -3108,6 +3108,12 @@ ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd3
 
 ### VIIId. day 30 vs 50:  GBA1 - ASAH1 time course comparison
 ```{r}
+# --------------------------------------------------- #
+# Section here is for analysis of ASAH1 and GBA1 proteome across timecourse (dayp30,50)
+# currently implemented as log2FC of KO vs Ctrl
+# 
+# --------------------------------------------------- #
+
 # --- Step 1. define input annotations of choice 
 ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
   "Lysosome","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic",
@@ -3115,7 +3121,12 @@ ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtCompl
   "Svendocytosis","Svexocytosis","vATPase", "Autophagy"
 )
 
-# Helper: extract one day × neuron block as long data from log2FC column
+
+
+# --------------------------
+## ASAH1: build timecourse DF
+# --------------------------
+# --- Step 2. Helper function: extract day × neuron block in long data format from log2FC column
 .asah1_log2_block <- function(df_wide, day_label, neuron_label) {
   stopifnot(neuron_label %in% c("iN","iDA"))
   log2_col <- paste0("ASAH1_", neuron_label, "_log2_fold_change")
@@ -3135,7 +3146,7 @@ ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtCompl
     )
 }
 
-# Build combined long DF (iN + iDA; day 30 + 50)
+# --- Step 3. Create combined long df (iN + iDA; day 30 + 50)
 asah1_log2_iN_d30  <- .asah1_log2_block(complete_data_annotated_day30, 30, "iN")
 asah1_log2_iDA_d30 <- .asah1_log2_block(complete_data_annotated_day30, 30, "iDA")
 asah1_log2_iN_d50  <- .asah1_log2_block(complete_data_annotated_day50, 50, "iN")
@@ -3152,7 +3163,7 @@ asah1_timecourse_log2_df <- bind_rows(
     )
   )
 
-# Outlier capping per Annotation × Neuron × Day (1st/99th percentiles)
+# --- Step 4. Implement outlier capping per Annotation × Neuron × Day (1st/99th percentiles)
 asah1_timecourse_log2_df <- asah1_timecourse_log2_df %>%
   group_by(Annotation, Neuron, Day) %>%
   mutate(
@@ -3163,21 +3174,25 @@ asah1_timecourse_log2_df <- asah1_timecourse_log2_df %>%
   ungroup() %>%
   select(-p01, -p99)
 
-# Save CSV
+# --- Step 5. save df as csv
 readr::write_csv(
   asah1_timecourse_log2_df,
   file.path(out_dir_d50_timecourse, "ASAH1_log2FC_timecourse_iN_iDA_byAnnotation.csv")
 )
 
-# Plot function (per neuron)
+
+
+# --- Step 6. define plotting function (define on per neuron level)
 plot_violin_asah1_log2 <- function(neuron_label) {
   dfp <- filter(asah1_timecourse_log2_df, Neuron == neuron_label)
 
+  # 6.1 color range
   col_map <- c(
     "asah1_d30" = "dodgerblue3",
     "asah1_d50" = "dodgerblue"
   )
 
+  # 6.2 actual plotting function 
   p <- ggplot(dfp, aes(x = PlotGroup, y = log2FC_capped, fill = PlotGroup)) +
     geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
     geom_jitter(color = "red", alpha = 0.4, size = 0.6, width = 0.15, show.legend = FALSE) +
@@ -3205,12 +3220,13 @@ plot_violin_asah1_log2 <- function(neuron_label) {
   p
 }
 
+# 6.3 pipe into vars for later calling and saving 
 p_iN  <- plot_violin_asah1_log2("iN")
 p_iDA <- plot_violin_asah1_log2("iDA")
 
 
 
-# Combined iN + iDA violins in one plot (per-Annotation facets)
+# --- Step 7. combined iN + iDA violins in one plot (per-Annotation facet level for direct comparison in one plots)
 plot_violin_asah1_log2_both <- function() {
   stopifnot(all(c("Neuron","Day","Annotation","log2FC_capped") %in% names(asah1_timecourse_log2_df)))
 
@@ -3222,6 +3238,7 @@ plot_violin_asah1_log2_both <- function() {
       )
     )
 
+  # 7.1 color range
   col_map <- c(
     "iN_d30"  = "dodgerblue3",
     "iN_d50"  = "dodgerblue",
@@ -3229,6 +3246,7 @@ plot_violin_asah1_log2_both <- function() {
     "iDA_d50" = "grey70"
   )
 
+  # 7.2 combined plotting function. facet by annotation with free y for per-annotation scaling)
   p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC_capped, fill = CombinedGroup)) +
     geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
     geom_jitter(color = "red", alpha = 0.4, size = 0.6, width = 0.15, show.legend = FALSE) +
@@ -3248,25 +3266,19 @@ plot_violin_asah1_log2_both <- function() {
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
 
-  cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_log2FC_violin_iN_iDA_combined.pdf"),
-                   width = 8, height = 6)
-  print(p)
+  cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_log2FC_violin_iN_iDA_combined.pdf"),width = 8, height = 6)
   dev.off()
-  p
 }
 
-# Run it
+# --- Step 8. Run function for combined plots
 p_both <- plot_violin_asah1_log2_both()
 
 
 
 
-
-
-
-## =========================
+# --------------------------
 ## GBA1: build timecourse DF
-## =========================
+# --------------------------
 .gba1_log2_block <- function(df_wide, day_label, neuron_label) {
   stopifnot(neuron_label %in% c("iN","iDA"))
   log2_col <- paste0("GBA1_", neuron_label, "_log2_fold_change")
