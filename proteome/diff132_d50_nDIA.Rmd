@@ -2786,7 +2786,7 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_s
 
 
 # VIII. Time course evaluations
-### VIId. day 30 vs 50: Abundance of neuromarkers in Ctrl iN/iDA 
+### VIIIa. day 30 vs 50: Abundance of neuromarkers in Ctrl iN/iDA 
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -2903,7 +2903,7 @@ Neuro_QC_Lineplot_norm <- plot_ctrl_markers_norm(cleaned_df, out_dir_d50_timecou
 ```
 
 
-### VIIe. day 30 vs 50:Pre/Post Synaptic Markers in Ctrl iN/iDA
+### VIIIb. day 30 vs 50:Pre/Post Synaptic Markers in Ctrl iN/iDA
 ``` {r}
 # --------------------------------------------------- #dev_plot_line_df
 # neuro QC plots
@@ -3001,7 +3001,7 @@ ggsave(file.path(out_dir_d50_timecourse,"diff132_SynapticMarkers_ctrl_d30_d50.pd
 ```
 
 
-### VIIf. day 30 vs 50: "NeuroDev" protein-list trajectory for select genotypes
+### VIIIc. day 30 vs 50: "NeuroDev" protein-list trajectory for select genotypes
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3104,8 +3104,9 @@ ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd3
 ```
 
 
-### ???VIIXXXXX. day 30 vs 50:  ASAH1 time course comparison
+### VIIId. day 30 vs 50:  ASAH1 time course comparison
 ```{r}
+# --- Step 1. define input annotations of choice 
 ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
   "Lysosome","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic",
   "Postsynaptic","EarlyEndosome","RecyclingEndosome","SVfusion",
@@ -3394,69 +3395,73 @@ p_gba1_both <- plot_violin_gba1_log2_both()
 ## Heatmaps: mean log2FC per Annotation × (iN/iDA × d30/d50)
 ## One heatmap per genotype (ASAH1 and GBA1)
 ## ============================================================
-plot_heatmap_mean_log2 <- function(genotype_label, df_timecourse, outfile_basename) {
-  stopifnot(all(c("Annotation","Neuron","Day","log2FC_capped") %in% names(df_timecourse)))
+plot_heatmap_both_genotypes <- function() {
+  stopifnot(all(c("Annotation","Neuron","Day","log2FC_capped","GenotypeGroup") %in% names(asah1_timecourse_log2_df)))
+  stopifnot(all(c("Annotation","Neuron","Day","log2FC_capped","GenotypeGroup") %in% names(gba1_timecourse_log2_df)))
 
-  mean_df <- df_timecourse %>%
-    dplyr::group_by(Annotation, Neuron, Day) %>%
+  df_all <- dplyr::bind_rows(asah1_timecourse_log2_df, gba1_timecourse_log2_df)
+
+  mean_df <- df_all %>%
+    dplyr::group_by(Annotation, GenotypeGroup, Neuron, Day) %>%
     dplyr::summarise(mean_log2FC = mean(log2FC_capped, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(CombinedGroup = paste0(Neuron, "_", Day)) %>%
-    dplyr::select(Annotation, CombinedGroup, mean_log2FC) %>%
-    tidyr::pivot_wider(names_from = CombinedGroup, values_from = mean_log2FC) %>%
-    dplyr::relocate(Annotation) %>%
-    dplyr::mutate(Annotation = factor(Annotation, levels = sort(unique(Annotation)))) %>%
-    dplyr::arrange(Annotation)
+    dplyr::mutate(Column = paste(GenotypeGroup, Neuron, Day, sep = "_")) %>%
+    dplyr::select(Annotation, Column, mean_log2FC) %>%
+    tidyr::pivot_wider(names_from = Column, values_from = mean_log2FC)
 
+  # Ensure consistent column order
+  desired_cols <- c("ASAH1_iN_d30","ASAH1_iDA_d30","ASAH1_iN_d50","ASAH1_iDA_d50",
+                    "GBA1_iN_d30","GBA1_iDA_d30","GBA1_iN_d50","GBA1_iDA_d50")
+  present_cols <- intersect(desired_cols, colnames(mean_df))
   mat <- mean_df %>%
-    dplyr::select(`iN_d30`, `iDA_d30`, `iN_d50`, `iDA_d50`) %>%
-    as.data.frame() %>%
-    as.matrix()
-  rownames(mat) <- as.character(mean_df$Annotation)
+    dplyr::select(dplyr::all_of(present_cols)) %>%
+    as.data.frame() %>% as.matrix()
+  rownames(mat) <- mean_df$Annotation
 
-  # Color scale centered at 0
-  rng <- range(mat, na.rm = TRUE)
-  lim <- max(abs(rng), na.rm = TRUE)
-  breaks <- seq(-lim, lim, length.out = 101)
-  palette_fun <- grDevices::colorRampPalette(c("navy", "white", "firebrick3"))
+  # Column annotations
+  parse_col <- tibble::tibble(colname = colnames(mat)) %>%
+    tidyr::separate(colname, into = c("Genotype","Neuron","Day"), sep = "_", remove = FALSE)
+  annotation_col <- data.frame(
+    Genotype = parse_col$Genotype,
+    Neuron   = parse_col$Neuron,
+    Day      = parse_col$Day
+  )
+  rownames(annotation_col) <- parse_col$colname
 
-  pheatmap::pheatmap(
-    mat,
-    color = palette_fun(length(breaks) - 1),
-    breaks = breaks,
-    cluster_rows = TRUE,
-    cluster_cols = FALSE,
-    fontsize = 7,
-    main = paste0(genotype_label, " mean log2FC (KO / Ctrl)"),
-    display_numbers = FALSE,
-    angle_col = 45,
-    border_color = NA
+  ann_colors <- list(
+    Genotype = c(ASAH1 = "#7B3294", GBA1 = "#008837"),
+    Neuron   = c(iN = "dodgerblue3", iDA = "grey50"),
+    Day      = c(d30 = "#FDB863", d50 = "#B2ABD2")
   )
 
-  cairo_pdf(file.path(out_dir_d50_timecourse, paste0(outfile_basename, ".pdf")),
-                   width = 5.5, height = 6.5)
+  # Heatmap with your style
+  # Save PDF and CSV
+  cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_GBA1_mean_log2FC_heatmap.pdf"),
+                   width = 6.5, height = 7.5)
   pheatmap::pheatmap(
-    mat,
-    color = palette_fun(length(breaks) - 1),
-    breaks = breaks,
+    mat = mat,
+    scale = "column",
+    color = colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")))(100),
+    annotation_col = annotation_col,
+    annotation_colors = ann_colors,
+    breaks = seq(-4, 4, length.out = 101),
     cluster_rows = TRUE,
-    cluster_cols = FALSE,
-    fontsize = 7,
-    main = paste0(genotype_label, " mean log2FC (KO / Ctrl)"),
-    display_numbers = FALSE,
-    angle_col = 45,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    use_raster = FALSE,
+    angle_col = "90",
+    main = "ASAH1 and GBA1: iN/iDA across day 30 and 50",
+    fontsize = 10,
     border_color = NA
   )
   grDevices::dev.off()
 
-  readr::write_csv(
-    tibble::as_tibble(rownames_to_column(as.data.frame(mat), var = "Annotation")),
-    file.path(out_dir_d50_timecourse, paste0(outfile_basename, "_matrix.csv"))
-  )
+  out_mat <- tibble::as_tibble(mat, rownames = "Annotation")
+  readr::write_csv(out_mat, file.path(out_dir_d50_timecourse, "ASAH1_GBA1_mean_log2FC_heatmap_matrix.csv"))
 }
 
-## Run heatmaps
-plot_heatmap_mean_log2("ASAH1", asah1_timecourse_log2_df, "ASAH1_mean_log2FC_heatmap")
-plot_heatmap_mean_log2("GBA1",  gba1_timecourse_log2_df,  "GBA1_mean_log2FC_heatmap")
+# Run
+plot_heatmap_both_genotypes()
 
 ```
 
@@ -3464,8 +3469,8 @@ plot_heatmap_mean_log2("GBA1",  gba1_timecourse_log2_df,  "GBA1_mean_log2FC_heat
 
 
 
-
-### VIIg. Violin Plot Function for LSD Organelle Proteomics
+# IX. Violin / Volcano plots select annotations / genotypes
+### IXa. Violin Plot Function for LSD Organelle Proteomics
 ``` {r}
 # --------------------------------------------------- #
 # Violin Plot Function for LSD Organelle Proteomics 
@@ -3562,7 +3567,7 @@ ggsave(file.path(out_dir_d50_violins,
 
 
 
-### VIIh. Volcano plot of select genotype w/ annotation hiighlights 
+### IXb. Volcano plot of select genotype w/ annotation hiighlights 
 ```{r}
 # --------------------------------------------------- #
 # Volcano Plot Function for LSD Organelle Proteomics 
