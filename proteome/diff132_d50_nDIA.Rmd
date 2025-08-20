@@ -2785,7 +2785,7 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_s
 ```
 
 
-
+# VIII. Time course evaluations
 ### VIId. day 30 vs 50: Abundance of neuromarkers in Ctrl iN/iDA 
 ```{r}
 # --------------------------------------------------- #
@@ -3382,7 +3382,7 @@ plot_violin_gba1_log2_both <- function() {
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )
 
-  Cairo::cairo_pdf(file.path(out_dir_d50_timecourse, "GBA1_log2FC_violin_iN_iDA_combined.pdf"),
+  cairo_pdf(file.path(out_dir_d50_timecourse, "GBA1_log2FC_violin_iN_iDA_combined.pdf"),
                    width = 8, height = 6)
   print(p); grDevices::dev.off()
   p
@@ -3432,7 +3432,7 @@ plot_heatmap_mean_log2 <- function(genotype_label, df_timecourse, outfile_basena
     border_color = NA
   )
 
-  Cairo::cairo_pdf(file.path(out_dir_d50_timecourse, paste0(outfile_basename, ".pdf")),
+  cairo_pdf(file.path(out_dir_d50_timecourse, paste0(outfile_basename, ".pdf")),
                    width = 5.5, height = 6.5)
   pheatmap::pheatmap(
     mat,
