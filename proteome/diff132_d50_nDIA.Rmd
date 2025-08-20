@@ -3535,16 +3535,23 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
 ### VIIIe. Barplot for select protein day30&50
 ```{r}
-# --- 1. Gene-level barplot of log2FC across iN/iDA × d30/d50 for a genotype
+# --------------------------------------------------- #
+# Function for creating barplot of seleced protein ID across day 30 and day 50
+# currently implemented for log2FC of KO vs Ctrl
+# code is for ASAH1 and GBA1 Kos, but can be adapted 
+# --------------------------------------------------- #
+
+# --- 1. Create df of ASAH1 and GBA1 Log2FC in both iN/iDA × d30/d50 for a genotype
 .get_gene_log2fc_timecourse <- function(gene_symbol, genotype_label = "ASAH1") {
   stopifnot(genotype_label %in% c("ASAH1","GBA1"))
-  # locate gene (case-insensitive) in both day tables
+  
+  # 1.1 locate gene (case-insensitive) in both day tables
   match_idx_30 <- which(toupper(complete_data_annotated_day30$Genes) == toupper(gene_symbol))
   match_idx_50 <- which(toupper(complete_data_annotated_day50$Genes) == toupper(gene_symbol))
   if (length(match_idx_30) == 0 && length(match_idx_50) == 0) {
     stop(sprintf("Gene '%s' not found in day30 or day50 tables.", gene_symbol))
   }
-  # pick first match if duplicates
+  # 1.2 pick first match if duplicates
   r30 <- if (length(match_idx_30) > 0) complete_data_annotated_day30[match_idx_30[1], ] else NULL
   r50 <- if (length(match_idx_50) > 0) complete_data_annotated_day50[match_idx_50[1], ] else NULL
 
@@ -3563,13 +3570,14 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
     log2FC = c(get_val(r30,"iN"),  get_val(r50,"iN"),
                get_val(r30,"iDA"), get_val(r50,"iDA"))
   ) %>%
-    dplyr::mutate(CombinedGroup = factor(paste0(Neuron,"_",Day),
-                                         levels = c("iN_d30","iN_d50","iDA_d30","iDA_d50")))
+    dplyr::mutate(CombinedGroup = factor(paste0(Neuron,"_",Day), levels = c("iN_d30","iN_d50","iDA_d30","iDA_d50")))
 }
 
+# --- 2. Define plotting function for create barplots 
 plot_gene_bar_log2fc <- function(gene_symbol, genotype_label = "ASAH1") {
   dfp <- .get_gene_log2fc_timecourse(gene_symbol, genotype_label)
 
+  # 2.1 define color maps 
   col_map <- c(
     "iN_d30"  = "dodgerblue3",
     "iN_d50"  = "dodgerblue",
@@ -3577,6 +3585,7 @@ plot_gene_bar_log2fc <- function(gene_symbol, genotype_label = "ASAH1") {
     "iDA_d50" = "grey70"
   )
 
+  # 2.2 actual plotting call 
   p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC, fill = CombinedGroup)) +
     geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
     geom_col(width = 0.7, color = "black", linewidth = 0.2) +
@@ -3591,13 +3600,13 @@ plot_gene_bar_log2fc <- function(gene_symbol, genotype_label = "ASAH1") {
       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
     )
 
-  # save
-  safe_gene <- gsub("[^A-Za-z0-9_]+", "_", dfp$Gene[1])
+  # 2.3 save as pdf 
+  safe_gene <- gsub("[^A-Za-z0-9_]+", "-", dfp$Gene[1])
   pdf(file.path(out_dir_d50_timecourse, paste0(genotype_label, "_", safe_gene, "_log2FC_bar_timecourse.pdf")),width = 1, height = 2)
 dev.off()
 }
 
-# Examples:
+# --- 3. Call function for example SYP in ASAH1-/-
 plot_gene_bar_log2fc("SYP", "ASAH1")
 # plot_gene_bar_log2fc("SYN1", "GBA1")
 ```
