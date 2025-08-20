@@ -1972,6 +1972,8 @@ write.csv(mat_vals,
     show_rownames = TRUE,
     show_colnames = TRUE,
     fontsize = 6,
+    cellheight = 8,
+    cellwidth = 8,
     main = paste0("Top variable ", out_prefix, " proteins in iDA (log2FC)")
   )
   dev.off()
@@ -3104,7 +3106,7 @@ ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd3
 ```
 
 
-### VIIId. day 30 vs 50:  ASAH1 time course comparison
+### VIIId. day 30 vs 50:  GBA1 - ASAH1 time course comparison
 ```{r}
 # --- Step 1. define input annotations of choice 
 ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
@@ -3401,23 +3403,22 @@ plot_heatmap_both_genotypes <- function() {
 
   df_all <- dplyr::bind_rows(asah1_timecourse_log2_df, gba1_timecourse_log2_df)
 
-  mean_df <- df_all %>%
+  mean_long <- df_all %>%
     dplyr::group_by(Annotation, GenotypeGroup, Neuron, Day) %>%
     dplyr::summarise(mean_log2FC = mean(log2FC_capped, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(Column = paste(GenotypeGroup, Neuron, Day, sep = "_")) %>%
+    dplyr::mutate(Column = paste(GenotypeGroup, Neuron, Day, sep = "_"))
+
+  desired_cols <- c("ASAH1_iN_d30","ASAH1_iDA_d30","ASAH1_iN_d50","ASAH1_iDA_d50",
+                    "GBA1_iN_d30","GBA1_iDA_d30","GBA1_iN_d50","GBA1_iDA_d50")
+
+  mean_df <- mean_long %>%
     dplyr::select(Annotation, Column, mean_log2FC) %>%
     tidyr::pivot_wider(names_from = Column, values_from = mean_log2FC)
 
-  # Ensure consistent column order
-  desired_cols <- c("ASAH1_iN_d30","ASAH1_iDA_d30","ASAH1_iN_d50","ASAH1_iDA_d50",
-                    "GBA1_iN_d30","GBA1_iDA_d30","GBA1_iN_d50","GBA1_iDA_d50")
   present_cols <- intersect(desired_cols, colnames(mean_df))
-  mat <- mean_df %>%
-    dplyr::select(dplyr::all_of(present_cols)) %>%
-    as.data.frame() %>% as.matrix()
+  mat <- mean_df %>% dplyr::select(dplyr::all_of(present_cols)) %>% as.data.frame() %>% as.matrix()
   rownames(mat) <- mean_df$Annotation
 
-  # Column annotations
   parse_col <- tibble::tibble(colname = colnames(mat)) %>%
     tidyr::separate(colname, into = c("Genotype","Neuron","Day"), sep = "_", remove = FALSE)
   annotation_col <- data.frame(
@@ -3433,10 +3434,26 @@ plot_heatmap_both_genotypes <- function() {
     Day      = c(d30 = "#FDB863", d50 = "#B2ABD2")
   )
 
-  # Heatmap with your style
-  # Save PDF and CSV
-  cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_GBA1_mean_log2FC_heatmap.pdf"),
-                   width = 6.5, height = 7.5)
+  # Draw and record clustered order
+  res <- pheatmap::pheatmap(
+    mat = mat,
+    scale = "column",
+    color = colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")))(100),
+    annotation_col = annotation_col,
+    annotation_colors = ann_colors,
+    breaks = seq(-4, 4, length.out = 101),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    use_raster = FALSE,
+    angle_col = "90",
+    main = "ASAH1 and GBA1: iN/iDA across day 30 and 50",
+    fontsize = 10,
+    border_color = NA
+  )
+
+  cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_GBA1_mean_log2FC_heatmap.pdf"),width = 6.5, height = 7.5)
   pheatmap::pheatmap(
     mat = mat,
     scale = "column",
@@ -3456,12 +3473,56 @@ plot_heatmap_both_genotypes <- function() {
   )
   grDevices::dev.off()
 
-  out_mat <- tibble::as_tibble(mat, rownames = "Annotation")
-  readr::write_csv(out_mat, file.path(out_dir_d50_timecourse, "ASAH1_GBA1_mean_log2FC_heatmap_matrix.csv"))
+  col_order <- if (!is.null(res$tree_col)) colnames(mat)[res$tree_col$order] else colnames(mat)
+
+  invisible(list(
+    mat = mat,
+    mean_long = mean_long,
+    col_order = col_order
+  ))
 }
 
-# Run
-plot_heatmap_both_genotypes()
+## Line plot preserving heatmap column order
+plot_lines_from_heatmap_order <- function(heatmap_res) {
+  stopifnot(all(c("mat","mean_long","col_order") %in% names(heatmap_res)))
+  mat <- heatmap_res$mat
+  mean_long <- heatmap_res$mean_long
+  col_order <- heatmap_res$col_order
+
+  df_plot <- mean_long %>%
+    dplyr::filter(Column %in% colnames(mat)) %>%
+    dplyr::mutate(
+      Column = factor(Column, levels = col_order),
+      color_group = dplyr::if_else(Annotation %in% c("OXPHOS","mtComplexI","vATPase","MitoIMS"),
+                                   "highlight","other")
+    )
+
+  p_line_comp <- ggplot2::ggplot(df_plot, ggplot2::aes(x = Column, y = mean_log2FC, group = Annotation)) +
+    ggplot2::geom_line(ggplot2::aes(
+      color = color_group,
+      alpha = color_group,
+      linewidth = color_group
+    )) +
+    ggplot2::scale_color_manual(values = c(highlight = "dodgerblue3", other = "grey50")) +
+    ggplot2::scale_alpha_manual(values = c(highlight = 0.95, other = 0.35), guide = "none") +
+    ggplot2::scale_linewidth_manual(values = c(highlight = 0.6, other = 0.25), guide = "none") +
+    ggplot2::labs(x = NULL, y = "mean log2FC (KO / Ctrl)",
+                  title = "ASAH1 and GBA1: mean log2FC by clustered (Genotype × Neuron × Day)") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(
+      legend.position = "none",
+      panel.grid = element_blank(),
+      axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
+    )
+
+  cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_GBA1_mean_log2FC_lines.pdf"), width = 7.5, height = 5)
+  print(p_line_comp); grDevices::dev.off()
+  p_line_comp
+}
+
+## Run
+heatmap_res <- plot_heatmap_both_genotypes()
+p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
 ```
 
