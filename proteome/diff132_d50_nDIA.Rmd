@@ -79,6 +79,10 @@ library(lintr)
 out_dir_d50_QC <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC"
 dir.create(out_dir_d50_QC, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d50_timecourse <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/timecourse"
+dir.create(out_dir_d50_timecourse, recursive = TRUE, showWarnings = FALSE)
+
+
 out_dir_d50_euler <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC/euler_annotations"
 dir.create(out_dir_d50_euler, recursive = TRUE, showWarnings = FALSE)
 
