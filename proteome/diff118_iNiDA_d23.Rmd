@@ -552,6 +552,8 @@ dev.off()
 
 ```
 
+
+
 # III. Scatterplots of selected annotations 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -662,7 +664,10 @@ plot_volcano_scatter_diff118_sig <- function(df,
                                              annotation_list_scatter,
                                              out_dir = out_dir_diff118_scatterplots,
                                              highlight_sig = c("up","down"),
-                                             n_per_annotation_dir = 10) {
+                                             n_per_annotation_dir = 10, 
+                                             xlim_manual = NULL,           # NEW: set like c(-3, 3)
+                                             same_xlim_across_all = FALSE
+){
   # --- 1a. Basic checks
   stopifnot(length(x_vars) == length(y_vars), length(x_vars) == length(sig_vars))
   stopifnot(all(c("Gene.Symbol", x_vars, y_vars, sig_vars) %in% names(df)))
@@ -748,12 +753,11 @@ annotation_list_scatter <- c("SynapseSVs","SVfusion","Presynaptic","Postsynaptic
 annotation_list_scatter <- c("Endo_iN_curated_Hundley","RecyclingEndosome","EarlyEndosome","Lysosome")
 plot_volcano_scatter_diff118_sig(
   df = diff118_df_annotated,
-  x_vars = x_vars,
-  y_vars = y_vars,
-  sig_vars = sig_vars,
+  x_vars = x_vars, y_vars = y_vars, sig_vars = sig_vars,
   annotation_list_scatter = annotation_list_scatter,
   out_dir = out_dir_diff118_scatterplots,
-  n_per_annotation_dir = 10
+  n_per_annotation_dir = 10,
+  xlim_manual = c(-4, 1) # or set TRUE if automatic
 )
 
 
@@ -1058,9 +1062,7 @@ diff118_clusterPlot <- ggplot(violin_diff118_df, aes(x = Sample, y = log2FC, fil
 diff118_clusterPlot
 
 # --- 5. save plot as PDF
-ggsave(file.path(out_dir_diff118_violin, 
-  "diff118_clusterPlot.pdf"), 
-  diff118_clusterPlot, width = 6, height = 6, device = cairo_pdf)
+ggsave(file.path(out_dir_diff118_violin, "diff118_clusterPlot.pdf"), diff118_clusterPlot, width = 4, height = 6, device = cairo_pdf)
 
 
 
@@ -1108,9 +1110,7 @@ diff118_clusterPlot_asah1 <- ggplot(violin_diff118_asah1_df, aes(x = Sample, y =
 diff118_clusterPlot_asah1
 
 # --- 10. save plot as PDF
-ggsave(file.path(out_dir_diff118_violin, 
-  "diff118_clusterPlot_asah1.pdf"), 
-  diff118_clusterPlot_asah1, width = 6, height = 8, device = cairo_pdf)
+ggsave(file.path(out_dir_diff118_violin, "diff118_clusterPlot_asah1.pdf"), diff118_clusterPlot_asah1, width = 6, height = 8, device = cairo_pdf)
 
 
 ```
