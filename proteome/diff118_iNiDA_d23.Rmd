@@ -744,7 +744,8 @@ plot_volcano_scatter_diff118_sig <- function(df,
 }
 
 # --- 5. Define annotations of choice and call function
-annotation_list_scatter <- c("SynapseSVs","SVfusion","Endo_iN_curated_Hundley","Lysosome","RecyclingEndosome")
+annotation_list_scatter <- c("SynapseSVs","SVfusion","Presynaptic","Postsynaptic")
+annotation_list_scatter <- c("Endo_iN_curated_Hundley","RecyclingEndosome","EarlyEndosome","Lysosome")
 plot_volcano_scatter_diff118_sig(
   df = diff118_df_annotated,
   x_vars = x_vars,
