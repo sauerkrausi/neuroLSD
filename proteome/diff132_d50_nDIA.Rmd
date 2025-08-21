@@ -3446,6 +3446,7 @@ plot_heatmap_both_genotypes <- function() {
     dplyr::select(Annotation, Column, mean_log2FC) %>%
     tidyr::pivot_wider(names_from = Column, values_from = mean_log2FC)
 
+  # 13.3 filter for columns of choice and create matrix for heatmap plotting 
   present_cols <- intersect(desired_cols, colnames(mean_df))
   mat <- mean_df %>% dplyr::select(dplyr::all_of(present_cols)) %>% as.data.frame() %>% as.matrix()
   rownames(mat) <- mean_df$Annotation
@@ -3459,14 +3460,14 @@ plot_heatmap_both_genotypes <- function() {
   )
   rownames(annotation_col) <- parse_col$colname
 
-  # 13.
+  # 13.4 color definition for annotatons etc
   ann_colors <- list(
     Genotype = c(ASAH1 = "#7B3294", GBA1 = "#008837"),
     Neuron   = c(iN = "dodgerblue3", iDA = "grey50"),
     Day      = c(d30 = "#FDB863", d50 = "#B2ABD2")
   )
 
-  # Draw and record clustered order
+  # 13.5 Draw and record clustered order ==> for line plot later down the line 
   res <- pheatmap::pheatmap(
     mat = mat,
     scale = "column",
@@ -3485,6 +3486,7 @@ plot_heatmap_both_genotypes <- function() {
     border_color = NA
   )
 
+  # 13.6 plot heatmap and save as pdf 
   cairo_pdf(file.path(out_dir_d50_timecourse, "ASAH1_GBA1_mean_log2FC_heatmap.pdf"),width = 6.5, height = 7.5)
   pheatmap::pheatmap(
     mat = mat,
@@ -3514,7 +3516,7 @@ plot_heatmap_both_genotypes <- function() {
   ))
 }
 
-## Line plot preserving heatmap column order
+# --- Step 14. Line plot preserving heatmap column order
 plot_lines_from_heatmap_order <- function(heatmap_res) {
   stopifnot(all(c("mat","mean_long","col_order") %in% names(heatmap_res)))
   mat <- heatmap_res$mat
@@ -3552,7 +3554,7 @@ plot_lines_from_heatmap_order <- function(heatmap_res) {
   p_line_comp
 }
 
-## Run
+# --- Step 15. call both heatmap and lineplot function and run them
 heatmap_res <- plot_heatmap_both_genotypes()
 p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
