@@ -947,7 +947,60 @@ diff118_clusterPlot
 ggsave(file.path(out_dir_diff118_violin, 
   "diff118_clusterPlot.pdf"), 
   diff118_clusterPlot, width = 6, height = 6, device = cairo_pdf)
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Violin Plot of Cluster Abundance ASAH1
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 6. define & select sample labels for plotting  
+sample_cols_diff118_violin_asah1 <- c(
+  "log2FC_ASAH1_d23_iN.Ctrl_d23_iN",
+  "log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA"
+)
+
+
+# --- 7. Drop cluster 0 and NA
+violin_diff118_asah1_df <- diff118_df_annotated %>%
+  filter(!is.na(cluster) & cluster != 0) %>%
+  pivot_longer(cols = all_of(sample_cols_diff118_violin_asah1), names_to = "Sample", values_to = "log2FC") %>%
+  filter(!is.na(log2FC))
+
+# --- 8. Consistent y-axis scale
+y_limits <- range(violin_diff118_asah1_df$log2FC, na.rm = TRUE)
+
+# --- 9. plot facet wrap
+diff118_clusterPlot_asah1 <- ggplot(violin_diff118_asah1_df, aes(x = Sample, y = log2FC, fill = Sample)) +
+  geom_jitter(
+    aes(color = "red"), size = 0.5, alpha = 0.2, width = 0.2, height = 0
+  ) +
+  geom_violin(scale = "width", trim = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  # facet_wrap(~ cluster, scales = "fixed") +
+  #   coord_cartesian(ylim = c(-2, 2)) +
+  facet_wrap(~ cluster, scales = "free_y") +
+  scale_fill_manual(values = c(
+    "log2FC_ASAH1_d23_iN.Ctrl_d23_iN" = "#f1eef6",
+    "log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA" = "#bdc9e1"
+  )) +
+  theme_bw(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "none", 
+        panel.grid = element_blank()
+        ) +
+  labs(title = "log2FC by Sample per Cluster", x = NULL, y = "log2FC")
+
+diff118_clusterPlot_asah1
+
+# --- 10. save plot as PDF
+ggsave(file.path(out_dir_diff118_violin, 
+  "diff118_clusterPlot_asah1.pdf"), 
+  diff118_clusterPlot_asah1, width = 6, height = 8, device = cairo_pdf)
+
+
 ```
+
 
 
 
