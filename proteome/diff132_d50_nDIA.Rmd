@@ -3124,7 +3124,7 @@ ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtCompl
 
 
 # --------------------------
-## ASAH1: build timecourse DF
+## ASAH1: build timecourse df + plotting call 
 # --------------------------
 # --- Step 2. Helper function: extract day × neuron block in long data format from log2FC column
 .asah1_log2_block <- function(df_wide, day_label, neuron_label) {
@@ -3277,8 +3277,9 @@ p_both <- plot_violin_asah1_log2_both()
 
 
 # --------------------------
-## GBA1: build timecourse DF
+## GBA1: build timecourse df + plotting call 
 # --------------------------
+# --- Step 9. Helper function: extract day × neuron block in long data format from log2FC column
 .gba1_log2_block <- function(df_wide, day_label, neuron_label) {
   stopifnot(neuron_label %in% c("iN","iDA"))
   log2_col <- paste0("GBA1_", neuron_label, "_log2_fold_change")
@@ -3298,6 +3299,7 @@ p_both <- plot_violin_asah1_log2_both()
     )
 }
 
+# 9.1 pull out day30/50 data for both neuron types & concentrate on one df
 gba1_log2_iN_d30  <- .gba1_log2_block(complete_data_annotated_day30, 30, "iN")
 gba1_log2_iDA_d30 <- .gba1_log2_block(complete_data_annotated_day30, 30, "iDA")
 gba1_log2_iN_d50  <- .gba1_log2_block(complete_data_annotated_day50, 50, "iN")
@@ -3322,6 +3324,7 @@ gba1_timecourse_log2_df <- dplyr::bind_rows(
   dplyr::ungroup() %>%
   dplyr::select(-p01, -p99)
 
+# 9.2 save composite df as csv
 readr::write_csv(
   gba1_timecourse_log2_df,
   file.path(out_dir_d50_timecourse, "GBA1_log2FC_timecourse_iN_iDA_byAnnotation.csv")
