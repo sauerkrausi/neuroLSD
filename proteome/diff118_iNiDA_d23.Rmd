@@ -199,7 +199,7 @@ expr_cols <- c(
 mat <- diff118_df %>%
   filter(!is.na(Gene.Symbol)) %>%
   mutate(Gene.Symbol = make.unique(as.character(Gene.Symbol))) %>%
-  select(Gene.Symbol, cluster, all_of(expr_cols))
+  dplyr::select(Gene.Symbol, cluster, all_of(expr_cols))
 
 # Store and remove cluster for sorting
 row_cluster <- mat$cluster
@@ -304,7 +304,7 @@ expr_cols <- c(
 mat_norm <- diff118_df %>%
   filter(!is.na(Gene.Symbol)) %>%
   mutate(Gene.Symbol = make.unique(as.character(Gene.Symbol))) %>%
-  select(Gene.Symbol, cluster, all_of(expr_cols))
+  dplyr::select(Gene.Symbol, cluster, all_of(expr_cols))
 
 # Store and remove cluster for sorting
 row_cluster <- mat_norm$cluster
@@ -438,7 +438,7 @@ org_diff118_corr_df <- map_dfr(annotation_corr_cols, function(ann) {
 
 # --- 3. Summary heatmap (log2FC × Organelle)
 org_diff118_corr_mat <- org_diff118_corr_df %>%
-  select(log2FC_Column, Organelle, r) %>%
+  dplyr::select(log2FC_Column, Organelle, r) %>%
   pivot_wider(names_from = Organelle, values_from = r) %>%
   column_to_rownames("log2FC_Column") %>%
   as.matrix()
@@ -492,9 +492,7 @@ pdf(file.path(out_dir_diff118_corrplots, "axonprotCorr.pdf"),
 print(diff118_iNiDACorr)
 dev.off()
 
- write.csv(org_diff118_corr_mat,
-          file = file.path(out_dir_diff118_corrplots, "axonprotCorr.csv"),
-          row.names = TRUE)
+ write.csv(org_diff118_corr_mat,file = file.path(out_dir_diff118_corrplots, "axonprotCorr.csv"),row.names = TRUE)
 
 
 
@@ -544,8 +542,7 @@ n_rows <- ceiling(n_plots / plots_per_row)
 grob_list <- lapply(heatmap_list, function(p) p$gtable)
 
 # Save all plots on a single PDF page
-pdf(file.path(out_dir_diff118_corrplots, "diff118_log2FC_annotation_corr_grid.pdf"),
-    width = 45, height = 45, useDingbats = FALSE)
+pdf(file.path(out_dir_diff118_corrplots, "diff118_log2FC_annotation_corr_grid.pdf"),width = 45, height = 45, useDingbats = FALSE)
 
 do.call(gridExtra::grid.arrange, c(grob_list, nrow = n_rows))
 
@@ -587,7 +584,7 @@ sig_vars <- c(
 annotation_list_scatter <- c("SynapseSVs")
 annotation_list_scatter <- c("SVfusion","Svendocytosis","Svexocytosis")
 annotation_list_scatter <- c("SynGO")
-annotation_list_scatter <- c("EndoLyso","EarlyEndosome","RecyclingEndosome")
+annotation_list_scatter <- c("EndoLyso","EarlyEndosome","RecyclingEndosome", "Endo_iN_curated_Hundley", "Lysosome")
 
 # Annotations:
 # "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI","Golgi","Lysosome"               ,"ER","Cytoplasm","Nucleus","Autophagy","Autophagy_det","SynGO","Endo_iN_curated_Hundley" "SynapseSVs","Presynaptic","Postsynaptic","EndoDetailLoac","NeuroDev","EndoLyso","EarlyEndosome","RecyclingEndosome","SVfusion","Svendocytosis","Svexocytosis"    
