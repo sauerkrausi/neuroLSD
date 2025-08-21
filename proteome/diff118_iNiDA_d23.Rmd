@@ -649,96 +649,94 @@ plot_diff_scatter(diff118_df_annotated, annotation_list_scatter, x_vars, y_vars,
 
 ```
 
+
+
+##### IIIa. Volcano scatter, background grey  highlight by sig_vars + annotations
 ```{r}
-# --- IIIx. Volcano scatter (diff118 syntax; background grey, selected annotations colored) ---
-# Depends on objects already defined above:
-#   diff118_df_annotated, x_vars, y_vars, annotation_list_scatter, out_dir_diff118_scatterplots
-# Notes:
-#   - x_vars: log2FC columns like "log2FC_ASAH1_d23_iN.Ctrl_d23_iN"
-#   - y_vars: -log10 q/p columns like "neg_log10_q.val_ASAH1_d23_iN.Ctrl_d23_iN"
-#   - annotation_list_scatter: e.g. c("EndoLyso","EarlyEndosome","RecyclingEndosome","Endo_iN_curated_Hundley","Lysosome")
 
-library(tidyverse)
-library(ggrepel)
-library(Cairo)
 
-plot_volcano_scatter_diff118 <- function(df,
-                                         x_vars,
-                                         y_vars,
-                                         annotation_list_scatter,
-                                         out_dir = out_dir_diff118_scatterplots,
-                                         fc_cutoff = 1,
-                                         sig_cutoff = 1.3,
-                                         n_label = 25) {
-  stopifnot(length(x_vars) == length(y_vars))
-  stopifnot(all(c("Gene.Symbol", x_vars, y_vars) %in% names(df)))
-  stopifnot(all(annotation_list_scatter %in% names(df)))
+plot_volcano_scatter_diff118_sig <- function(df,
+                                             x_vars,
+                                             y_vars,
+                                             sig_vars,
+                                             annotation_list_scatter,
+                                             out_dir = out_dir_diff118_scatterplots,
+                                             n_label = 25,
+                                             highlight_sig = c("up","down")) {
+  stopifnot(length(x_vars) == length(y_vars), length(x_vars) == length(sig_vars))
+  stopifnot(all(c("Gene.Symbol", x_vars, y_vars, sig_vars) %in% names(df)))
   stopifnot(dir.exists(out_dir))
 
-  # helper: compute first matching annotation name per row (else NA for background)
+  # normalize any accidental whitespace in names (harmless)
+  names(df) <- trimws(names(df))
+
+  ann_cols_req  <- unique(trimws(annotation_list_scatter))
+  ann_cols_have <- intersect(ann_cols_req, names(df))
+  ann_cols_miss <- setdiff(ann_cols_req, ann_cols_have)
+  if (length(ann_cols_miss) > 0) message("Missing annotation columns: ", paste(ann_cols_miss, collapse = ", "))
+  if (length(ann_cols_have) == 0) stop("None of the requested annotation columns are present.")
+
   first_annot <- function(row_vals, ann_names) {
     hits <- ann_names[which(row_vals %in% c(1, TRUE))]
-    if (length(hits) == 0) return(NA_character_) else return(hits[1])
+    if (length(hits) == 0) NA_character_ else hits[1]
   }
 
   for (i in seq_along(x_vars)) {
-    x_col <- x_vars[i]
-    y_col <- y_vars[i]
+    x_col <- x_vars[i]; y_col <- y_vars[i]; s_col <- sig_vars[i]
 
-    # minimal working frame
     dat <- df %>%
-      dplyr::select(Gene.Symbol, all_of(x_col), all_of(y_col), all_of(annotation_list_scatter)) %>%
-      dplyr::rename(log2FC = all_of(x_col), negLog = all_of(y_col)) %>%
+      dplyr::select(Gene.Symbol, all_of(x_col), all_of(y_col), all_of(s_col), all_of(ann_cols_have)) %>%
+      dplyr::rename(log2FC = all_of(x_col), negLog = all_of(y_col), sig = all_of(s_col)) %>%
       dplyr::filter(is.finite(log2FC), is.finite(negLog))
 
-    # assign highlight class
-    ann_mat <- as.data.frame(dat[, annotation_list_scatter, drop = FALSE])
-    dat$highlight_class <- pmap_chr(ann_mat, ~ first_annot(c(...), annotation_list_scatter))
+    ann_mat <- as.data.frame(dat[, ann_cols_have, drop = FALSE])
+    dat$highlight_class <- purrr::pmap_chr(ann_mat, ~ first_annot(c(...), ann_cols_have))
+    dat$to_highlight <- !is.na(dat$highlight_class) & dat$sig %in% highlight_sig
 
-    # pick top N labels among highlighted points
     label_df <- dat %>%
-      dplyr::filter(!is.na(highlight_class)) %>%
+      dplyr::filter(to_highlight) %>%
       dplyr::arrange(dplyr::desc(negLog)) %>%
       dplyr::slice_head(n = n_label)
 
-    palette_choice <- if (length(unique(na.omit(dat$highlight_class))) <= 8) "Set2" else "Paired"
+    palette_choice <- if (length(unique(stats::na.omit(dat$highlight_class[dat$to_highlight]))) <= 8) "Set2" else "Paired"
 
-    p <- ggplot(dat, aes(x = log2FC, y = negLog)) +
-      # background: all points, light grey triangles
-      geom_point(shape = 17, size = 0.6, color = "grey80", alpha = 0.35) +
-      # highlighted annotations: colored circles
-      geom_point(data = subset(dat, !is.na(highlight_class)),
-                 aes(color = highlight_class), shape = 16, size = 1.1, alpha = 0.95) +
-      # thresholds
-      geom_vline(xintercept = c(-fc_cutoff, fc_cutoff), linetype = "dashed", color = "black", linewidth = 0.25) +
-      geom_hline(yintercept = sig_cutoff, linetype = "dashed", color = "black", linewidth = 0.25) +
-      # labels on top highlighted
-      geom_text_repel(data = label_df, aes(label = Gene.Symbol),
-                      size = 1.6, max.overlaps = 25, box.padding = 0.25, min.segment.length = 0) +
-      scale_color_brewer(palette = palette_choice, na.translate = FALSE) +
-      theme_bw(base_size = 6) +
-      theme(panel.grid = element_blank(), legend.position = "bottom") +
-      labs(
-        title = paste0("Volcano (scatter) – ", gsub("\\.", "·", x_col)),
-        x = x_col,
-        y = y_col,
-        color = "Annotation"
+    p <- ggplot2::ggplot(dat, aes(x = log2FC, y = negLog)) +
+      ggplot2::geom_point(shape = 17, size = 0.6, color = "grey80", alpha = 0.35) +
+      ggplot2::geom_point(data = subset(dat, to_highlight),
+                          aes(color = highlight_class), shape = 16, size = 1.1, alpha = 0.95) +
+      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.25) +
+      ggrepel::geom_text_repel(data = label_df, aes(label = Gene.Symbol),
+                               size = 1.6, max.overlaps = 25, box.padding = 0.25, min.segment.length = 0) +
+      ggplot2::scale_color_brewer(palette = palette_choice, na.translate = FALSE) +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = element_blank(), legend.position = "bottom") +
+      ggplot2::labs(
+        title = paste0("Volcano scatter ", gsub("\\.", "·", x_col)),
+        x = x_col, y = y_col, color = "Annotation"
       )
 
-    # save
-    out_name <- file.path(out_dir,
-                          paste0("volcanoScatter_", gsub("\\.", "_", x_col), ".pdf"))
-    ggsave(out_name, p, width = 4.5, height = 4.5, device = cairo_pdf)
+    ggsave(
+      filename = file.path(out_dir, paste0("volcanoScatter_", gsub("\\.", "_", x_col), ".pdf")),
+      plot = p, width = 4.5, height = 4.5, device = cairo_pdf
+    )
   }
 }
 
 # --- Example call (uses the objects already defined in your III. block) ---
 annotation_list_scatter <- c("EarlyEndosome","RecyclingEndosome","Endo_iN_curated_Hundley","Lysosome")
-plot_volcano_scatter_diff118(diff118_df_annotated, x_vars, y_vars, annotation_list_scatter, out_dir_diff118_scatterplots)
+
+plot_volcano_scatter_diff118_sig(
+  df = diff118_df_annotated,
+  x_vars = x_vars,
+  y_vars = y_vars,
+  sig_vars = sig_vars,
+  annotation_list_scatter = annotation_list_scatter,
+  out_dir = out_dir_diff118_scatterplots
+)
 ```
 
 
-##### IIIa. Scatterplots of select clusters 
+##### IIIb. Scatterplots of select clusters 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Scatterplot of Selected clusters 
@@ -806,7 +804,7 @@ plot_diff_scatter_by_cluster(diff118_df_annotated, cluster_list, x_vars, y_vars,
 ```
 
 
-##### IIIb. Scatterplots of all background proteome + highlighed clusters of choice 
+##### IIIc. Scatterplots of all background proteome + highlighed clusters of choice 
 ```{r}
 # ─────────────────────────────────────────────────────────────
 # Scatterplot of Selected Cluster vs Whole Proteome Background
