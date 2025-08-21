@@ -1,5 +1,5 @@
 # proteome
-Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons at day 50 of in-vitro differentiation as well as proteomic analysis of isolated lysosomes. 
+Contains Rmd scipts for proteomics evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons. Includes whole cell analysis of in vitro differentiated neurons at day 23 (TMTpro-DDA), 30 and 50 (LFQ-nDIA), TMTpro proteommics of neuronal projections as well as proteomic analysis of isolated lysosomes. 
 
 ## active projects 
 🚧 `Diff118_iNiDA_d23.Rmd`: Pipeline for TMTpro proteome analysis of day 23 iN and iDA whole cell samples
