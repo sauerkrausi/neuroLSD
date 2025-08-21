@@ -838,10 +838,7 @@ plot_diff_scatter_by_cluster <- function(df, cluster_list, x_vars, y_vars, sig_v
         geom_hline(yintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3)
         # coord_cartesian(xlim = c(-4, 1))  # <- add to manually change x-axis 
 
-      ggsave(
-        filename = file.path(out_dir, paste0("scatter_cluster", cl, "_", gsub("\\.", "_", x_col), ".pdf")),
-        plot = p,
-        width = 4, height = 4, device = cairo_pdf
+      ggsave(filename = file.path(out_dir, paste0("scatter_cluster", cl, "_", gsub("\\.", "_", x_col), ".pdf")),plot = p,width = 4, height = 4, device = cairo_pdf
       )
     }
   }
@@ -861,88 +858,164 @@ plot_diff_scatter_by_cluster(diff118_df_annotated, cluster_list, x_vars, y_vars,
 # Scatterplot of Selected Cluster vs Whole Proteome Background
 # ─────────────────────────────────────────────────────────────
 
-# --- 1. Define plotting function for background proteome (triangles) and selected cluster (dots)
-plot_diff_scatter_cluster_vs_all <- function(df, cluster_list, x_vars, y_vars, sig_vars, out_dir) {
+# define plotting function for call 
+# --- 1. define plotting function (no ggplot2:: prefixes; consistent comments)
+plot_diff_volcano_clusters <- function(df, cluster_list, x_vars, y_vars, sig_vars, out_dir,
+                                       cluster_blue_palette = c("dodgerblue", "dodgerblue3", "navy"),
+                                       xlim_manual = NULL) {
   stopifnot(length(x_vars) == length(y_vars), length(x_vars) == length(sig_vars))
-  
-  sig_color_map <- c("up" = "tomato", "down" = "dodgerblue3", "n.s." = "grey70")
-  
+  stopifnot(all(c("cluster","Gene.Symbol") %in% names(df)))
+  stopifnot(dir.exists(out_dir))
+
+  # --- 2. cap clusters at 3 and prepare palette
+  if (length(cluster_list) > length(cluster_blue_palette)) {
+    message("More than 3 clusters requested; using first 3: ",
+            paste(head(cluster_list, 3), collapse = ", "))
+    cluster_list <- head(cluster_list, 3)
+  }
+  multi_cluster <- length(cluster_list) > 1
+  cluster_levels <- paste0("Cluster_", cluster_list)
+  palette_use <- setNames(cluster_blue_palette[seq_along(cluster_list)], cluster_levels)
+
+  # --- 3. loop over comparisons
   for (i in seq_along(x_vars)) {
-    x_col  <- x_vars[i]
-    y_col  <- y_vars[i]
-    sig_col <- sig_vars[i]
-    
-    for (cl in cluster_list) {
-      cluster_label <- paste0("Cluster_", cl)
-      
-      # background: all genes
-      bg_data <- df %>%
-        filter(is.finite(.data[[x_col]]), is.finite(.data[[y_col]])) %>%
-        mutate(Type = "Whole Proteome")
-      
-      # cluster of interest
-      cluster_data <- df %>%
-        filter(cluster == cl, is.finite(.data[[x_col]]), is.finite(.data[[y_col]])) %>%
-        mutate(Type = cluster_label)
-      
-      if (nrow(cluster_data) < 3) next
-      
-      top_genes <- cluster_data %>%
-        slice_max(order_by = .data[[y_col]], n = 25)
-      
-      # define shape mapping as a plain named vector
-      shape_map <- setNames(c(17, 19), c("Whole Proteome", cluster_label))
-      
+    x_col  <- x_vars[i]     # log2FC
+    y_col  <- y_vars[i]     # -log10(q/p)
+    sig_col <- sig_vars[i]  # "up"/"down"/"n.s."
+
+    # background proteome
+    bg_data <- df %>%
+      dplyr::filter(is.finite(.data[[x_col]]), is.finite(.data[[y_col]]))
+
+    # helper: one volcano
+    .one_volcano <- function(bg_df, cl_df, cl_lab, blue_col, file_tag) {
+      if (nrow(cl_df) < 3) return(invisible(NULL))
+      top_genes <- cl_df %>% dplyr::slice_max(order_by = .data[[y_col]], n = 25, with_ties = FALSE)
+
+      sig_color_map <- c("up" = "tomato", "down" = blue_col, "n.s." = "grey70")
+
       p <- ggplot() +
-        # Whole proteome background (grey triangles)
-        geom_point(data = bg_data,
-                   aes(x = .data[[x_col]], y = .data[[y_col]], shape = Type),
-                   color = "grey70", size = 0.8, alpha = 0.4) +
-        # Cluster of interest (colored dots)
-        geom_point(data = cluster_data,
-                   aes(x = .data[[x_col]], y = .data[[y_col]], color = .data[[sig_col]], shape = Type),
-                   size = 1.5, alpha = 0.9) +
-        scale_color_manual(values = sig_color_map, na.translate = FALSE) +
-        scale_shape_manual(values = shape_map) +
-        ggrepel::geom_text_repel(
-          data = top_genes,
-          aes(x = .data[[x_col]], y = .data[[y_col]], label = Gene.Symbol),
-          size = 2,
-          max.overlaps = Inf,
-          box.padding = 0.3,
-          segment.color = "grey60"
-        ) +
+        geom_point(data = bg_df, aes(x = .data[[x_col]], y = .data[[y_col]]),
+                   color = "grey80", shape = 17, size = 0.7, alpha = 0.35) +
+        geom_point(data = cl_df,
+                   aes(x = .data[[x_col]], y = .data[[y_col]], color = .data[[sig_col]]),
+                   size = 1.2, alpha = 0.95) +
+        scale_color_manual(values = sig_color_map, drop = FALSE) +
+        ggrepel::geom_text_repel(data = top_genes,
+                                 aes(x = .data[[x_col]], y = .data[[y_col]], label = .data[["Gene.Symbol"]]),
+                                 size = 1.6, max.overlaps = Inf, box.padding = 0.25,
+                                 segment.color = "grey60") +
         geom_vline(xintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3) +
-        labs(
-          title = paste("Cluster", cl, "vs Whole Proteome"),
-          x = x_col,
-          y = y_col,
-          color = "Cluster Significance",
-          shape = "Point Type"
-        ) +
-        #  coord_cartesian(xlim = c(-4, 1)) + # <- add to manually change x-axis
+        labs(title = paste0("Volcano – ", cl_lab),
+             x = x_col, y = y_col, color = "Significance") +
+        { if (is.numeric(xlim_manual) && length(xlim_manual) == 2)
+            coord_cartesian(xlim = xlim_manual) else coord_cartesian() } +
         theme_bw(base_size = 6) +
-        theme(
-          panel.grid = element_blank(),
-          legend.position = "bottom"
-        )
-    
-      
-      ggsave(
-        filename = file.path(out_dir, paste0("scatter_cluster", cl, "_vsAll_", gsub("\\.", "_", x_col), ".pdf")),
-        plot = p,
-        width = 4, height = 4, device = cairo_pdf
+        theme(panel.grid = element_blank(), legend.position = "bottom")
+
+      ggsave(file.path(out_dir, paste0(file_tag, "_", gsub("\\.", "_", x_col), ".pdf")),
+             p, width = 4.8, height = 4.8, device = cairo_pdf)
+      invisible(p)
+    }
+
+# --- 4. single cluster case -> one volcano
+    if (!multi_cluster) {
+      cl <- cluster_list[1]
+      cl_lab <- paste0("Cluster_", cl)
+      cl_df <- df %>%
+        dplyr::filter(.data[["cluster"]] == cl,
+                      is.finite(.data[[x_col]]), is.finite(.data[[y_col]]))
+      .one_volcano(bg_data, cl_df, cl_lab, "dodgerblue",
+                   file_tag = paste0("volcano_", cl_lab))
+      next
+    }
+
+# --- 5. multi-cluster case -> per-cluster + combined
+    # per-cluster volcanoes
+    for (j in seq_along(cluster_list)) {
+      cl <- cluster_list[j]
+      cl_lab <- paste0("Cluster_", cl)
+      cl_df <- df %>%
+        dplyr::filter(.data[["cluster"]] == cl,
+                      is.finite(.data[[x_col]]), is.finite(.data[[y_col]]))
+      .one_volcano(bg_data, cl_df, cl_lab, palette_use[cl_lab],
+                   file_tag = paste0("volcano_", cl_lab))
+    }
+
+    # combined volcano (different blue per cluster, up=tomato, n.s.=grey70)
+    multi_df <- df %>%
+      dplyr::filter(cluster %in% cluster_list,
+                    is.finite(.data[[x_col]]), is.finite(.data[[y_col]])) %>%
+      dplyr::mutate(Cluster = paste0("Cluster_", cluster))
+
+    if (nrow(multi_df) >= 3) {
+      color_groups <- multi_df %>%
+        dplyr::mutate(color_group = dplyr::case_when(
+          .data[[sig_col]] == "up"   ~ "up",
+          .data[[sig_col]] == "down" ~ paste0("down_", Cluster),
+          TRUE                       ~ "n.s."
+        ))
+
+      color_values <- c(
+        "up" = "tomato",
+        "n.s." = "grey70",
+        setNames(unname(palette_use), paste0("down_", names(palette_use)))
       )
+
+      label_df <- color_groups %>%
+        dplyr::group_by(Cluster) %>%
+        dplyr::slice_max(order_by = .data[[y_col]], n = 25, with_ties = FALSE) %>%
+        dplyr::ungroup()
+
+      p_comb <- ggplot() +
+        geom_point(data = bg_data,
+                   aes(x = .data[[x_col]], y = .data[[y_col]]),
+                   color = "grey80", shape = 17, size = 0.7, alpha = 0.35) +
+        geom_point(data = color_groups,
+                   aes(x = .data[[x_col]], y = .data[[y_col]], color = color_group),
+                   size = 1.2, alpha = 0.95) +
+        scale_color_manual(values = color_values,
+                           breaks = c("up", paste0("down_", cluster_levels), "n.s."),
+                           labels = c("up", paste0("down ", cluster_levels), "n.s.")) +
+        ggrepel::geom_text_repel(data = label_df,
+                                 aes(x = .data[[x_col]], y = .data[[y_col]], label = .data[["Gene.Symbol"]]),
+                                 size = 1.6, max.overlaps = Inf, box.padding = 0.25,
+                                 segment.color = "grey60") +
+        geom_vline(xintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3) +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.3) +
+        labs(title = paste0("Volcano – Combined (", paste(cluster_levels, collapse = ", "), ")"),
+             x = x_col, y = y_col, color = "Sig/Cluster") +
+        { if (is.numeric(xlim_manual) && length(xlim_manual) == 2)
+            coord_cartesian(xlim = xlim_manual) else coord_cartesian() } +
+        theme_bw(base_size = 6) +
+        theme(panel.grid = element_blank(), legend.position = "bottom")
+
+      ggsave(file.path(out_dir, paste0("volcano_combined_", gsub("\\.", "_", x_col), ".pdf")),
+             p_comb, width = 5.2, height = 5.2, device = cairo_pdf)
     }
   }
 }
 
 
-# --- 2. call function to plot clusters of interest
-cluster_list <- c(6)
-plot_diff_scatter_cluster_vs_all(
-  diff118_df_annotated, cluster_list, x_vars, y_vars, sig_vars, out_dir_diff118_scatterplots_cluster)
+
+# --- 6. call function for one cluster
+plot_diff_volcano_clusters(
+  df = diff118_df_annotated,
+  cluster_list = c(4),
+  x_vars = x_vars, y_vars = y_vars, sig_vars = sig_vars,
+  out_dir = out_dir_diff118_scatterplots_cluster
+)
+
+# --- 7. call function two clusters -> three volcanoes (two individual ones and combined), different blue hues on combined
+plot_diff_volcano_clusters(
+  df = diff118_df_annotated,
+  cluster_list = c(4, 6),
+  x_vars = x_vars, y_vars = y_vars, sig_vars = sig_vars,
+  out_dir = out_dir_diff118_scatterplots_cluster,
+  # xlim_manual = c(-4, 1)  # optional fixed x-range
+)
+
 
 ```
 
