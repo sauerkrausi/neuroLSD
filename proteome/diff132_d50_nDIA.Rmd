@@ -3330,17 +3330,19 @@ readr::write_csv(
   file.path(out_dir_d50_timecourse, "GBA1_log2FC_timecourse_iN_iDA_byAnnotation.csv")
 )
 
-## ===========================================
-## GBA1 violin plots (same aesthetics as ASAH1)
-## ===========================================
+
+
+# --- Step 10. define plotting function (define on per neuron level) ==> same as ASAH1 in style etc 
 plot_violin_gba1_log2 <- function(neuron_label) {
   dfp <- dplyr::filter(gba1_timecourse_log2_df, Neuron == neuron_label)
 
+  # 10.1 color maps
   col_map <- c(
     "gba1_d30" = "dodgerblue3",
     "gba1_d50" = "dodgerblue"
   )
 
+  # 10.2 plotting function call 
   p <- ggplot(dfp, aes(x = PlotGroup, y = log2FC_capped, fill = PlotGroup)) +
     geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
     geom_jitter(color = "red", alpha = 0.4, size = 0.6, width = 0.15, show.legend = FALSE) +
@@ -3360,17 +3362,16 @@ plot_violin_gba1_log2 <- function(neuron_label) {
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
 
-  cairo_pdf(file.path(out_dir_d50_timecourse,
-                             paste0("GBA1_log2FC_violin_", neuron_label, ".pdf")),
-                   width = 8, height = 6)
-  print(p); grDevices::dev.off()
-  p
+  cairo_pdf(file.path(out_dir_d50_timecourse,paste0("GBA1_log2FC_violin_", neuron_label, ".pdf")),width = 8, height = 6)
+  grDevices::dev.off()
+
 }
 
 p_gba1_iN  <- plot_violin_gba1_log2("iN")
 p_gba1_iDA <- plot_violin_gba1_log2("iDA")
 
-## Combined iN + iDA for GBA1
+
+# --- Step 11. Combined plotting function for both iN + iDA for GBA1
 plot_violin_gba1_log2_both <- function() {
   stopifnot(all(c("Neuron","Day","Annotation","log2FC_capped") %in% names(gba1_timecourse_log2_df)))
 
@@ -3389,6 +3390,7 @@ plot_violin_gba1_log2_both <- function() {
     "iDA_d50" = "grey70"
   )
 
+  # 11.1 plotting call for having both neuron types and timepoints in same graph
   p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC_capped, fill = CombinedGroup)) +
     geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
     geom_jitter(color = "red", alpha = 0.4, size = 0.6, width = 0.15, show.legend = FALSE) +
@@ -3407,20 +3409,28 @@ plot_violin_gba1_log2_both <- function() {
 
   cairo_pdf(file.path(out_dir_d50_timecourse, "GBA1_log2FC_violin_iN_iDA_combined.pdf"),
                    width = 8, height = 6)
-  print(p); grDevices::dev.off()
-  p
-}
+  grDevices::dev.off()
+  }
 
+# --- Step 12. Call function for plotting  
 p_gba1_both <- plot_violin_gba1_log2_both()
 
-## ============================================================
-## Heatmaps: mean log2FC per Annotation × (iN/iDA × d30/d50)
-## One heatmap per genotype (ASAH1 and GBA1)
-## ============================================================
+
+
+
+
+
+# --------------------------
+# Heatmapps for plotting mean log2FC per Annotation × (iN/iDA × d30/d50)
+# One heatmap per genotype (ASAH1 and GBA1)
+# --------------------------
+
+# --- Step 13. Define heatmap function that plots same data as violinplots, but in one cleaner heatmap for overview purposes  
 plot_heatmap_both_genotypes <- function() {
   stopifnot(all(c("Annotation","Neuron","Day","log2FC_capped","GenotypeGroup") %in% names(asah1_timecourse_log2_df)))
   stopifnot(all(c("Annotation","Neuron","Day","log2FC_capped","GenotypeGroup") %in% names(gba1_timecourse_log2_df)))
 
+  # 13.1 reuse both genotype data to create new, combined dataframe 
   df_all <- dplyr::bind_rows(asah1_timecourse_log2_df, gba1_timecourse_log2_df)
 
   mean_long <- df_all %>%
@@ -3431,6 +3441,7 @@ plot_heatmap_both_genotypes <- function() {
   desired_cols <- c("ASAH1_iN_d30","ASAH1_iDA_d30","ASAH1_iN_d50","ASAH1_iDA_d50",
                     "GBA1_iN_d30","GBA1_iDA_d30","GBA1_iN_d50","GBA1_iDA_d50")
 
+  # 13.2 calculate mean log2fc for each annotations, sample 
   mean_df <- mean_long %>%
     dplyr::select(Annotation, Column, mean_log2FC) %>%
     tidyr::pivot_wider(names_from = Column, values_from = mean_log2FC)
@@ -3448,6 +3459,7 @@ plot_heatmap_both_genotypes <- function() {
   )
   rownames(annotation_col) <- parse_col$colname
 
+  # 13.
   ann_colors <- list(
     Genotype = c(ASAH1 = "#7B3294", GBA1 = "#008837"),
     Neuron   = c(iN = "dodgerblue3", iDA = "grey50"),
@@ -3469,7 +3481,7 @@ plot_heatmap_both_genotypes <- function() {
     use_raster = FALSE,
     angle_col = "90",
     main = "ASAH1 and GBA1: iN/iDA across day 30 and 50",
-    fontsize = 10,
+    fontsize = 6,
     border_color = NA
   )
 
@@ -3488,7 +3500,7 @@ plot_heatmap_both_genotypes <- function() {
     use_raster = FALSE,
     angle_col = "90",
     main = "ASAH1 and GBA1: iN/iDA across day 30 and 50",
-    fontsize = 10,
+    fontsize = 6,
     border_color = NA
   )
   grDevices::dev.off()
