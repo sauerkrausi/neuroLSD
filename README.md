@@ -25,7 +25,7 @@ Lipidomic profiling of HeLa and day‑21 iNeurons (Ctrl vs ASAH1‑/‑) across 
 ## 🧪 proteomics
 Contains Rmd scipts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons at day 50 of in-vitro differentiation.
 
-- `diff118_iNiDA_d23_CtrlSMPD1ASAH1.Rmd`: TMTpro-based proteomic analysis of day 23 iN and iDA cells across control, SMPD1-/-, and ASAH1-/- conditions.
+- `diff118_iNiDA_d23.Rmd`: TMTpro-based proteomic analysis of day 23 iN and iDA cells across Control and ASAH1-/- conditions.
 - `diff132_d50_nDIA.Rmd`: nDIA proteomics of whole-cell iNeurons and iDA neurons at day 50, including organelle-level annotation and HeLa cross-comparison.
 - `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: TMTpro analysis of whole-cell, soma, and axonal fractions in iNeurons with axonal enrichment and RoR modeling.
 - `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Proteomic analysis of isolated lysosomes from HeLa cells comparing control and ASAH1-/- lines, with detailed lysosomal and autophagy annotation.
