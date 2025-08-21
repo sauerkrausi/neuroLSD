@@ -20,8 +20,8 @@ Contains Rmd scipts for proteomics evaluation of stem-cell derived cortical-like
 - Integrates organelle annotations and correlates KO profiles by organelle enrichment.
 - Generates cluster heatmaps, GO term enrichments, and cross-cell-type correlation plots (HeLa vs neuron).
 
-🚧 `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of whole cell, soma and axonal fractions of iNeurons
--	TMTpro-based proteome of iNeuron whole-cell, soma, and axonal fractions at day 35.
+🚧 `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of neuronal whole cell, soma and projections fractions of iNeurons
+-	TMTpro-based proteome of iNeuron whole-cell, soma, and projection fractions at day 35.
 -	Evaluates compartment-specific KO effects using log2FC and RoR metrics.
 -	Correlates subcellular enrichment (e.g., endo/lyso/synaptic) with KO-induced localization shifts.
 -	Visualizes data via heatmaps, barplots, violin plots, and custom “rainfall” plots for spatial proteomic mapping.
