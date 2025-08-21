@@ -1013,7 +1013,7 @@ plot_diff_volcano_clusters(
   cluster_list = c(4, 6),
   x_vars = x_vars, y_vars = y_vars, sig_vars = sig_vars,
   out_dir = out_dir_diff118_scatterplots_cluster,
-  # xlim_manual = c(-4, 1)  # optional fixed x-range
+  xlim_manual = c(-4, 1)  # optional fixed x-range
 )
 
 
