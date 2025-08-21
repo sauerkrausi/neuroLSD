@@ -655,6 +655,10 @@ plot_diff_scatter(diff118_df_annotated, annotation_list_scatter, x_vars, y_vars,
 
 ##### IIIa. Volcano scatter with highlighted selected annotations
 ```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Volcano plots with highlighted selected annotations
+# ─────────────────────────────────────────────────────────────────────────────
+
 # --- 1. Define plotting function: background = non-selected (grey); selected annotations = colored
 #       Labeling rule: top n_per_annotation_dir per annotation and per direction (up/down), by highest negLog
 plot_volcano_scatter_diff118_sig <- function(df,
@@ -664,10 +668,10 @@ plot_volcano_scatter_diff118_sig <- function(df,
                                              annotation_list_scatter,
                                              out_dir = out_dir_diff118_scatterplots,
                                              highlight_sig = c("up","down"),
-                                             n_per_annotation_dir = 10, 
-                                             xlim_manual = NULL,           # NEW: set like c(-3, 3)
-                                             same_xlim_across_all = FALSE
-){
+                                             n_per_annotation_dir = 10,
+                                             xlim_manual = NULL,          # NULL=no manual; TRUE=auto symmetric per-plot; c(a,b)=fixed
+                                             same_xlim_across_all = FALSE # if TRUE and xlim_manual is NULL -> auto symmetric across ALL
+) {
   # --- 1a. Basic checks
   stopifnot(length(x_vars) == length(y_vars), length(x_vars) == length(sig_vars))
   stopifnot(all(c("Gene.Symbol", x_vars, y_vars, sig_vars) %in% names(df)))
@@ -685,50 +689,63 @@ plot_volcano_scatter_diff118_sig <- function(df,
     if (length(hits) == 0) NA_character_ else hits[1]
   }
 
+  # --- 1d. Global x-limits if requested
+  xlim_global <- NULL
+  if (isTRUE(same_xlim_across_all) && is.null(xlim_manual)) {
+    x_abs_max <- max(abs(as.matrix(dplyr::select(df, dplyr::all_of(x_vars)))), na.rm = TRUE)
+    xlim_global <- c(-x_abs_max, x_abs_max)
+  } else if (isTRUE(same_xlim_across_all) && is.numeric(xlim_manual) && length(xlim_manual) == 2) {
+    xlim_global <- xlim_manual
+  }
+
   # --- 2. Iterate over comparisons
   for (i in seq_along(x_vars)) {
-    x_col <- x_vars[i]   # log2FC column
-    y_col <- y_vars[i]   # -log10(q) or -log10(p)
-    s_col <- sig_vars[i] # significance class: "up", "down", "n.s."
+    x_col <- x_vars[i]; y_col <- y_vars[i]; s_col <- sig_vars[i]
 
-    # --- 2a. Prepare data for this comparison
+    # 2a. Prepare data
     dat <- df %>%
       dplyr::select(Gene.Symbol, all_of(x_col), all_of(y_col), all_of(s_col), all_of(ann_cols_have)) %>%
       dplyr::rename(log2FC = all_of(x_col), negLog = all_of(y_col), sig = all_of(s_col)) %>%
       dplyr::filter(is.finite(log2FC), is.finite(negLog))
 
-    # --- 2b. Assign selection and color class
+    # 2b. Selection + color class
     ann_mat <- as.data.frame(dat[, ann_cols_have, drop = FALSE])
     dat$highlight_class <- purrr::pmap_chr(ann_mat, ~ first_annot(c(...), ann_cols_have))
     dat$in_selected     <- !is.na(dat$highlight_class)
     dat$to_label        <- dat$in_selected & dat$sig %in% highlight_sig
 
-    # --- 2c. Build label set: top n_per_annotation_dir per annotation and per direction by negLog
+    # 2c. Label set: top n per annotation × direction
     label_df <- dat %>%
       dplyr::filter(to_label) %>%
       dplyr::group_by(highlight_class, sig) %>%
       dplyr::slice_max(order_by = negLog, n = n_per_annotation_dir, with_ties = FALSE) %>%
       dplyr::ungroup()
 
-    # --- 2d. Color palette choice
+    # 2d. Colors
     palette_choice <- if (length(unique(stats::na.omit(dat$highlight_class))) <= 8) "Set2" else "Paired"
 
-    # --- 3. Plot
+    # 2e. Decide x-limits for this plot
+    xlim_this <- NULL
+    if (is.numeric(xlim_manual) && length(xlim_manual) == 2) {
+      xlim_this <- xlim_manual
+    } else if (!is.null(xlim_global)) {
+      xlim_this <- xlim_global
+    } else if (isTRUE(xlim_manual)) {
+      m <- max(abs(dat$log2FC), na.rm = TRUE)
+      xlim_this <- c(-m, m)
+    }
+
+    # --- 3. Plot & label top 10 hits with ggrepel 
     p <- ggplot2::ggplot(dat, aes(x = log2FC, y = negLog)) +
-      # background: not in selected annotations (grey triangles)
       ggplot2::geom_point(data = subset(dat, !in_selected),
                           shape = 17, size = 0.6, color = "grey80", alpha = 0.35) +
-      # selected but not labeled (colored, lighter alpha)
       ggplot2::geom_point(data = subset(dat, in_selected & !to_label),
                           aes(color = highlight_class),
                           shape = 16, size = 0.9, alpha = 0.5) +
-      # selected and labeled (colored, stronger)
       ggplot2::geom_point(data = subset(dat, to_label),
                           aes(color = highlight_class),
                           shape = 16, size = 1.1, alpha = 0.95) +
-      # center line
       ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.25) +
-      # labels: only the selected top hits per annotation and direction
       ggrepel::geom_text_repel(data = label_df, aes(label = Gene.Symbol),
                                size = 1.6, max.overlaps = Inf, box.padding = 0.25,
                                min.segment.length = 0, segment.color = "grey60") +
@@ -738,9 +755,10 @@ plot_volcano_scatter_diff118_sig <- function(df,
       ggplot2::labs(
         title = paste0("Volcano scatter ", gsub("\\.", "·", x_col)),
         x = x_col, y = y_col, color = "Annotation"
-      )
+      ) +
+      { if (!is.null(xlim_this)) ggplot2::coord_cartesian(xlim = xlim_this) else ggplot2::coord_cartesian() }
 
-    # --- 4. Save PDF with Cairo
+    # --- 4. Save PDF with ciaro
     ggsave(
       filename = file.path(out_dir, paste0("volcanoScatter_", gsub("\\.", "_", x_col), ".pdf")),
       plot = p, width = 4.5, height = 4.5, device = cairo_pdf
@@ -749,17 +767,17 @@ plot_volcano_scatter_diff118_sig <- function(df,
 }
 
 # --- 5. Define annotations of choice and call function
-annotation_list_scatter <- c("SynapseSVs","SVfusion","Presynaptic","Postsynaptic")
+#annotation_list_scatter <- c("SynapseSVs","SVfusion","Presynaptic","Postsynaptic")
 annotation_list_scatter <- c("Endo_iN_curated_Hundley","RecyclingEndosome","EarlyEndosome","Lysosome")
+
 plot_volcano_scatter_diff118_sig(
   df = diff118_df_annotated,
   x_vars = x_vars, y_vars = y_vars, sig_vars = sig_vars,
   annotation_list_scatter = annotation_list_scatter,
   out_dir = out_dir_diff118_scatterplots,
   n_per_annotation_dir = 10,
-  xlim_manual = c(-4, 1) # or set TRUE if automatic
+  xlim_manual = c(-4, 1)
 )
-
 
 # annotation_cols <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
 #                      "Golgi","Lysosome","ER","Cytoplasm","Nucleus","Autophagy","SynGO",
