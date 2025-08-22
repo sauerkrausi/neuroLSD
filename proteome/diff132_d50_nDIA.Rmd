@@ -188,6 +188,8 @@ dir.create(out_dir_d70_pca, recursive = TRUE, showWarnings = FALSE)
 out_dir_d70_violins <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/violins"
 dir.create(out_dir_d70_violins, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d70_corr <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/corr"
+dir.create(out_dir_d70_corr, recursive = TRUE, showWarnings = FALSE)
 
 
 ```
@@ -4128,7 +4130,7 @@ pca_d70 <- ggplot(scores70, aes(PC1, PC2, color = interaction(genotype, neuron, 
 ggsave(file.path(out_dir_d70_pca, "PCA_day70_ctrl_ASAH1_iN_iDA_PC1_PC2_labeled.pdf"),pca_d70, width = 4, height = 4)
 
 
-# --- 9.e Day70 PC1–PC4 pairwise score plots (to inspect separation)
+# --- 9.4 Day70 PC1–PC4 pairwise score plots (to inspect separation)
 pc_pairs <- tibble::tibble(
   x = c("PC1","PC1","PC1","PC2","PC2","PC3"),
   y = c("PC2","PC3","PC4","PC3","PC4","PC4")
@@ -4189,14 +4191,7 @@ write.csv(pca_input_transposed_annot, out_file_transposed, row.names = FALSE)
 ```
 
 
-### IXd. Pairwise correlations of annotations
-```{r}
-
-```
-
-
-
-### IXe. Violinplots for selected annotations across timecourse 
+### IXd. Violinplots for selected annotations across timecourse 
 ```{r}
 # --- Step 1. annotations of choice (as specified)
 ann_vec <- c(
@@ -4335,6 +4330,174 @@ p_asah1_iDA <- plot_violin_asah1_timecourse("iDA")
 p_asah1_both <- plot_violin_asah1_timecourse_both()
 
 ```
+
+
+
+
+### IXe. Pairwise correlations of annotations
+```{r}
+# --------------------------------------------------- #
+# Pairwise correlations of annotations for day30-d50-d70
+# --------------------------------------------------- #
+
+# --- 1. Annotations of interest
+ann_vec <- c(
+  "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
+  "Lysosome","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic",
+  "Postsynaptic","EarlyEndosome","RecyclingEndosome","SVfusion",
+  "Svendocytosis","Svexocytosis","vATPase","Autophagy"
+)
+
+# --- 2. Helper: annotation table per day; unique non-blank genes
+.get_ann_df_for_day <- function(day_label) {
+  df <- switch(day_label,
+               d30 = complete_data_annotated_day30,
+               d50 = complete_data_annotated_day50,
+               d70 = diff132_d70_df_annotated,
+               stop("day_label must be one of d30/d50/d70"))
+  keep_cols <- intersect(ann_vec, colnames(df))
+  df %>%
+    dplyr::select(Genes, dplyr::all_of(keep_cols)) %>%
+    dplyr::mutate(Genes = as.character(Genes)) %>%
+    dplyr::filter(!is.na(Genes), Genes != "") %>%
+    dplyr::distinct(Genes, .keep_all = TRUE)
+}
+
+# --- 3. Helper: genes present per neuron × day (from ASAH1 timecourse table)
+.get_present_genes <- function(neuron_label, day_label) {
+  col_needed <- paste0("ASAH1_", day_label, "_", neuron_label, "_log2_fold_change")
+  stopifnot(col_needed %in% colnames(asah1_timecourse_annotated))
+  asah1_timecourse_annotated %>%
+    dplyr::select(Genes, !!rlang::sym(col_needed)) %>%
+    dplyr::filter(!is.na(.data[[col_needed]])) %>%
+    dplyr::pull(Genes) %>%
+    unique()
+}
+
+# --- 4. Compute φ (Pearson on 0/1) correlation matrix for a day × neuron
+.compute_ann_corr <- function(day_label, neuron_label) {
+  ann_df <- .get_ann_df_for_day(day_label)
+  genes_present <- .get_present_genes(neuron_label, day_label)
+  ann_df_sub <- ann_df %>% dplyr::filter(Genes %in% genes_present)
+
+  ann_cols <- setdiff(colnames(ann_df_sub), "Genes")
+  stopifnot(length(ann_cols) >= 2L)
+
+  M <- ann_df_sub %>%
+    dplyr::select(dplyr::all_of(ann_cols)) %>%
+    dplyr::mutate(dplyr::across(everything(), ~ as.numeric(.x %in% c(TRUE, 1)))) %>%
+    as.matrix()
+
+  keep_var <- apply(M, 2, function(v) { s <- sd(v, na.rm = TRUE); is.finite(s) && s > 0 })
+  M <- M[, keep_var, drop = FALSE]
+  if (ncol(M) < 2L) stop("All annotation columns are constant for this subset.")
+
+  C <- suppressWarnings(stats::cor(M, method = "pearson", use = "pairwise.complete.obs"))
+  diag(C) <- 1
+  C[!is.finite(C)] <- 0
+  C
+}
+
+# --- 5. Plot & save correlation matrix for a day × neuron
+.plot_and_save_ann_corr <- function(C, day_label, neuron_label) {
+  pdf(file.path(out_dir_d70_corr, paste0("ann_pair_corr_", neuron_label, "_", day_label, ".pdf")),
+      width = 8, height = 8)
+  pheatmap::pheatmap(
+    C,
+    color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+    breaks = seq(-0.25, 0.25, length.out = 102),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    border_color = NA,
+    main = paste("Annotation–annotation φ:", neuron_label, day_label),
+    fontsize = 8,
+    angle_col = 90
+  )
+  dev.off()
+
+  utils::write.csv(C,file = file.path(out_dir_d70_corr,paste0("ann_pair_corr_", neuron_label, "_", day_label, ".csv")),row.names = TRUE)
+}
+
+# --- 6. Run for all 6 slices (iN/iDA × d30/d50/d70)
+for (day_label in c("d30","d50","d70")) {
+  for (neuron_label in c("iN","iDA")) {
+    C <- .compute_ann_corr(day_label, neuron_label)
+    .plot_and_save_ann_corr(C, day_label, neuron_label)
+  }
+}
+
+# --- 7. Summary heatmap: annotation vs ASAH1 effects (iN/iDA × d30/d50/d70)
+# define input columns for computation & plotting
+ko_cols <- c(
+  "ASAH1_d30_iN_log2_fold_change","ASAH1_d50_iN_log2_fold_change","ASAH1_d70_iN_log2_fold_change",
+  "ASAH1_d30_iDA_log2_fold_change","ASAH1_d50_iDA_log2_fold_change","ASAH1_d70_iDA_log2_fold_change"
+)
+ann_keep <- intersect(ann_vec, colnames(asah1_timecourse_annotated))
+stopifnot(all(ko_cols %in% colnames(asah1_timecourse_annotated)))
+
+corr_long <- purrr::map_dfr(ann_keep, function(ann) {
+  purrr::map_dfr(ko_cols, function(ko) {
+    x <- as.numeric(asah1_timecourse_annotated[[ko]])
+    y <- as.numeric(asah1_timecourse_annotated[[ann]])
+    keep <- is.finite(x) & is.finite(y)
+    if (sum(keep) < 5) return(tibble::tibble(Annotation = ann, Effect = ko, r = NA_real_, p = NA_real_))
+    ct <- suppressWarnings(cor.test(x[keep], y[keep], method = "spearman"))
+    tibble::tibble(Annotation = ann, Effect = ko, r = unname(ct$estimate), p = ct$p.value)
+  })
+})
+
+# --- 8. Wide matrix (rows = annotations, cols = effects)
+corr_mat <- corr_long %>%
+  dplyr::select(Annotation, Effect, r) %>%
+  tidyr::pivot_wider(names_from = Effect, values_from = r) %>%
+  dplyr::arrange(Annotation) %>%
+  tibble::column_to_rownames("Annotation") %>%
+  as.matrix()
+corr_mat[is.na(corr_mat)] <- 0
+
+# --- 9. Plot summary heatmap
+colnames(corr_mat) <- sub("^ASAH1_(d[0-9]+)_(iN|iDA)_.*$", "\\1_\\2", colnames(corr_mat))
+col_ids <- colnames(corr_mat)
+annotation_col <- data.frame(
+  Day    = sub("^(d[0-9]+)_(iN|iDA)$", "\\1", col_ids),
+  Neuron = sub("^(d[0-9]+)_(iN|iDA)$", "\\2", col_ids),
+  row.names = col_ids,
+  stringsAsFactors = FALSE
+)
+ann_colors <- list(
+  Day    = setNames(RColorBrewer::brewer.pal(3, "Set2"), c("d30","d50","d70")),
+  Neuron = c(iN = "dodgerblue3", iDA = "grey50")
+)
+
+pdf(file.path(out_dir_d70_corr, "ASAH1_annotation_vs_effect_correlation_heatmap.pdf"),
+    width = 6.5, height = 7.5)
+pheatmap::pheatmap(
+  corr_mat,
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100),
+  breaks = seq(-0.25, 0.25, length.out = 101),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  angle_col = 90,
+  fontsize = 6,
+  cellheight = 8,
+  cellwidth  = 8,
+  border_color = NA
+)
+dev.off()
+
+# --- 10. Save summary matrix
+write.csv(corr_mat,file.path(out_dir_d70_corr, "ASAH1_annotation_vs_effect_correlation_matrix.csv"),row.names = TRUE)
+
+
+```
+
+
+
+
 
 
 # IX. Violin / Volcano plots select annotations / genotypes
