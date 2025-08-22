@@ -3651,8 +3651,168 @@ plot_gene_bar_log2fc("SYP", "ASAH1")
 # plot_gene_bar_log2fc("SYN1", "GBA1")
 ```
 
-# XI. Long diff: d30-50-70
+# IX. Long diff: d30-50-70
 ```{r}
+# --------------------------------------------------- #
+# Day 70 integration + ASAH1 timecourse (d30, d50, d70)
+# --------------------------------------------------- #
+
+# --- 0. read in day 70 data file
+diff132_d70_df_full <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/datasets/report.pg_matrix.csv', 
+                                    header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+
+
+# --- 1. Clean column names to something readable 
+clean_names_d70 <- function(v) {
+  v2 <- v
+  v2 <- gsub("\\.raw$", "", v2)
+  # extract neuron, genotype, rep
+  # pattern captures ..._d70_(iN|iDA)_(Ctrl|ASAH1)_repN
+  v2 <- sub(".*_d70_(iN|iDA)_(Ctrl|ASAH1)_rep([0-9]+).*", "d70_\\1_\\2_rep\\3", v2)
+  # if no match, keep original (e.g., metadata columns)
+  idx_unmatched <- grepl("^d70_(iN|iDA)_(Ctrl|ASAH1)_rep[0-9]+$", v2) == FALSE
+  v2[idx_unmatched] <- v[idx_unmatched]
+  v2
+}
+colnames(diff132_d70_df_full) <- clean_names_d70(colnames(diff132_d70_df_full))
+
+# Identify replicate columns
+rep_cols_iN_Ctrl   <- grep("^d70_iN_Ctrl_rep[0-9]+$", colnames(diff132_d70_df_full), value = TRUE)
+rep_cols_iN_ASAH1  <- grep("^d70_iN_ASAH1_rep[0-9]+$", colnames(diff132_d70_df_full), value = TRUE)
+rep_cols_iDA_Ctrl  <- grep("^d70_iDA_Ctrl_rep[0-9]+$", colnames(diff132_d70_df_full), value = TRUE)
+rep_cols_iDA_ASAH1 <- grep("^d70_iDA_ASAH1_rep[0-9]+$", colnames(diff132_d70_df_full), value = TRUE)
+
+
+# --- 2. Per condition means and log2FC (ASAH1 vs Ctrl) per neuron
+diff132_d70_df_proc <- diff132_d70_df_full %>%
+  mutate(
+    d70_iN_Ctrl_mean   = rowMeans(across(all_of(rep_cols_iN_Ctrl)),  na.rm = TRUE),
+    d70_iN_ASAH1_mean  = rowMeans(across(all_of(rep_cols_iN_ASAH1)), na.rm = TRUE),
+    d70_iDA_Ctrl_mean  = rowMeans(across(all_of(rep_cols_iDA_Ctrl)),  na.rm = TRUE),
+    d70_iDA_ASAH1_mean = rowMeans(across(all_of(rep_cols_iDA_ASAH1)), na.rm = TRUE),
+    d70_iN_log2fc_ASAH1  = log2(d70_iN_ASAH1_mean  + 1) - log2(d70_iN_Ctrl_mean  + 1),
+    d70_iDA_log2fc_ASAH1 = log2(d70_iDA_ASAH1_mean + 1) - log2(d70_iDA_Ctrl_mean + 1)
+  )
+
+# --- 3. Add subcell annotations (VIa). Prefer precomputed binary_matrix; otherwise use subcell_df
+add_annotations <- function(df_in) {
+  if (exists("binary_matrix")) {
+    bm <- tibble::rownames_to_column(as.data.frame(binary_matrix), var = "Genes_anno")
+    out <- df_in %>% left_join(bm, by = c("Genes" = "Genes_anno"))
+  } else if (exists("subcell_df")) {
+    ann_long <- subcell_df %>%
+      pivot_longer(cols = everything(), names_to = "Localization", values_to = "Genes") %>%
+      filter(!is.na(Genes)) %>%
+      mutate(val = TRUE)
+    bm <- ann_long %>%
+      distinct(Genes, Localization, .keep_all = TRUE) %>%
+      pivot_wider(names_from = Localization, values_from = val, values_fill = FALSE)
+    out <- df_in %>% left_join(bm, by = "Genes")
+  } else {
+    warning("No binary_matrix or subcell_df found. Proceeding without annotations.")
+    out <- df_in
+  }
+  out
+}
+diff132_d70_df_annotated <- add_annotations(diff132_d70_df_proc)
+
+# --- 4. Save day70 annotated dataframe
+write.csv(diff132_d70_df_annotated,
+          file.path(out_dir_d70_dataframes, "diff132_day70_annotated.csv"),
+          row.names = FALSE)
+
+# --- 5. Build ASAH1 timecourse across d30, d50, d70
+extract_day_fc <- function(clean_df, day_label) {
+  df_fc <- clean_df %>%
+    filter(genotype %in% c("ASAH1", "Ctrl")) %>%
+    filter(genotype == "ASAH1") %>%
+    group_by(Genes, neuron) %>%
+    summarise(log2fc = mean(fold_change, na.rm = TRUE), .groups = "drop") %>%
+    mutate(day = day_label)
+  df_fc
+}
+
+stopifnot(exists("cleaned_df_day30"), exists("cleaned_df_day50"))
+d30_fc <- extract_day_fc(cleaned_df_day30, "d30")
+d50_fc <- extract_day_fc(cleaned_df_day50, "d50")
+
+# Day 70 from the current dataframe
+d70_fc <- diff132_d70_df_annotated %>%
+  select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1) %>%
+  pivot_longer(cols = starts_with("d70_"), names_to = "tmp", values_to = "log2fc") %>%
+  mutate(
+    neuron = ifelse(grepl("_iN_", tmp), "iN", "iDA"),
+    day = "d70"
+  ) %>%
+  select(Genes, neuron, log2fc, day)
+
+asah1_timecourse_df <- bind_rows(d30_fc, d50_fc, d70_fc) %>%
+  mutate(day = factor(day, levels = c("d30", "d50", "d70"))) %>%
+  arrange(Genes, neuron, day) %>%
+  unite(col = "colname", day, neuron, sep = "_", remove = FALSE) %>%
+  select(-colname) %>%
+  pivot_wider(names_from = c(day, neuron), values_from = log2fc) %>%
+  relocate(any_of(c("d30_iN", "d50_iN", "d70_iN",
+                    "d30_iDA", "d50_iDA", "d70_iDA")), .after = Genes)
+
+write.csv(asah1_timecourse_df,
+          file.path(out_dir_d70_timecourse, "ASAH1_timecourse_d30_d50_d70.csv"),
+          row.names = FALSE)
+
+# --- 6. Heatmap of timecourse (pheatmap style)
+heat_cols <- intersect(c("d30_iN", "d50_iN", "d70_iN",
+                         "d30_iDA", "d50_iDA", "d70_iDA"),
+                       colnames(asah1_timecourse_df))
+
+timecourse_mat <- asah1_timecourse_df %>%
+  select(Genes, all_of(heat_cols)) %>%
+  drop_na() %>%
+  tibble::column_to_rownames("Genes") %>%
+  as.matrix()
+
+# Column annotations
+annotation_col <- tibble(sample = colnames(timecourse_mat)) %>%
+  mutate(
+    Day = sub("^(d[0-9]+)_(iN|iDA)$", "\\1", sample),
+    Neuron = sub("^(d[0-9]+)_(iN|iDA)$", "\\2", sample)
+  ) %>%
+  select(-sample) %>%
+  as.data.frame()
+rownames(annotation_col) <- colnames(timecourse_mat)
+
+ann_colors <- list(
+  Day = setNames(RColorBrewer::brewer.pal(3, "Set2"), c("d30", "d50", "d70")),
+  Neuron = c("iN" = "dodgerblue", "iDA" = "#F08080")
+)
+
+pdf(file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap.pdf"), width = 7, height = 9)
+pheatmap(
+  mat = timecourse_mat,
+  scale = "row",
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  breaks = seq(-4, 4, length.out = 101),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = FALSE,
+  show_colnames = TRUE,
+  use_raster = FALSE,
+  angle_col = "90",
+  main = "ASAH1 timecourse iN and iDA",
+  fontsize = 10,
+  border_color = NA
+)
+dev.off()
+
+# Save matrix used for the heatmap
+write.csv(
+  as.data.frame(timecourse_mat),
+  file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap_matrix.csv"),
+  row.names = TRUE
+)
+
 
 ```
 
