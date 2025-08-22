@@ -121,7 +121,8 @@ ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter_pvals.pd
 
 # II. Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
 ```{r}
-# Color map kept here for later plotting
+
+# --- 1. define color maps for plotting 
 group_colors <- c(
   "Ctrl_iN"   = "grey60",
   "Ctrl_iDA"  = "grey80",
@@ -129,73 +130,74 @@ group_colors <- c(
   "ASAH1_iDA" = "dodgerblue"
 )
 
-# ---- User inputs: replace the URLs with your real links or local paths ----
-eval_input_tbl <- tibble::tibble(
-  file_url = c(
-    "https://example.org/control_day30.csv",
-    "https://example.org/asah1_day30.csv",
-    "https://example.org/control_day38.csv",
-    "https://example.org/asah1_day38.csv"
-  ),
-  genotype = c("Ctrl", "ASAH1", "Ctrl", "ASAH1"),
-  day      = c(30, 30, 38, 38)
+# --- 2. parse though HD folders to read in result files 
+# Base directory and subfolders
+eval_base_dir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data"
+
+eval_folders <- c(
+  "20241130_diff129_iNiDA_d30_ASAH1_plate1_SynMarker_MIP/_out/metrics",
+  "20241130_diff129_iNiDA_d30_Ctrl_plate1_SynMarker_MIP/_out/metrics",
+  "20241224_diff129_iNiDA_d38_ASAH1_plate2_SynMarkers_MIP/_out/metrics",
+  "20241224_diff129_iNiDA_d38_Ctrl_plate2_SynMarkers_MIP/_out/metrics"
 )
 
-# ---- Output path ----
-eval_output_dir  <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/combined_eval"
+# Build full paths
+eval_paths <- file.path(eval_base_dir, eval_folders, "per_image_summary.csv")
+
+# Annotate genotype/day
+eval_input_tbl <- tibble(
+  file_path = eval_paths,
+  genotype  = c("ASAH1", "Ctrl", "ASAH1", "Ctrl"),
+  day       = c(30, 30, 38, 38)
+)
+
+# Output
+eval_output_dir  <- file.path(eval_base_dir, "..", "combined_eval")
 eval_output_file <- file.path(eval_output_dir, "combined_per_image_eval.csv")
 
-# ---- Helper: robust reader that preserves columns as best as possible ----
-eval_read_one <- function(file_path_or_url) {
-  readr::read_csv(
-    file = file_path_or_url,
-    col_types = readr::cols(.default = readr::col_guess()),
-    progress = FALSE
-  )
+eval_read_one <- function(file_path) {
+  read_csv(file_path, col_types = cols(.default = col_guess()), progress = FALSE)
 }
 
-# ---- Main: read, annotate, harmonize, write ----
 eval_combine_and_save <- function(input_tbl,
                                   out_file,
                                   out_dir = dirname(out_file)) {
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  safe_read <- purrr::possibly(eval_read_one, otherwise = NULL)
+  safe_read <- possibly(eval_read_one, otherwise = NULL)
 
-  annotated_list <- purrr::pmap(
-    list(input_tbl$file_url, input_tbl$genotype, input_tbl$day),
-    function(u, g, d) {
-      df <- safe_read(u)
+  annotated <- pmap(
+    list(input_tbl$file_path, input_tbl$genotype, input_tbl$day),
+    function(p, g, d) {
+      df <- safe_read(p)
       if (is.null(df)) return(NULL)
       df %>%
         mutate(
-          genotype = g,
-          day = as.integer(d),
-          source_file = as.character(u)
+          genotype   = g,
+          day        = as.integer(d),
+          source_file = as.character(p)
         )
     }
   )
 
-  non_null <- annotated_list[!vapply(annotated_list, is.null, logical(1))]
-  if (length(non_null) == 0L) {
-    stop("No files could be read. Check the URLs or paths.")
-  }
+  non_null <- annotated[!vapply(annotated, is.null, logical(1))]
+  if (length(non_null) == 0L) stop("No files could be read.")
 
-  # bind_rows will union columns across files; missing columns become NA
-  eval_combined_df <- dplyr::bind_rows(non_null)
+  eval_combined_df <- bind_rows(non_null)
 
-  # Optional: enforce a sane column order if common columns exist
+  # Put metadata first
   front_cols <- c("genotype", "day", "source_file")
   ordered_cols <- c(intersect(front_cols, names(eval_combined_df)),
                     setdiff(names(eval_combined_df), front_cols))
-  eval_combined_df <- eval_combined_df[, ordered_cols, drop = FALSE]
+  eval_combined_df <- eval_combined_df[, ordered_cols]
 
-  readr::write_csv(eval_combined_df, out_file)
+  write_csv(eval_combined_df, out_file)
   message("Wrote: ", out_file)
-
   invisible(eval_combined_df)
 }
 
+# Run function once to get combined dataframe
+# combined_df <- eval_combine_and_save(eval_input_tbl, eval_output_file)
 
 
 ```
