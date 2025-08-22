@@ -3651,7 +3651,10 @@ plot_gene_bar_log2fc("SYP", "ASAH1")
 # plot_gene_bar_log2fc("SYN1", "GBA1")
 ```
 
+
+
 # IX. Long diff: d30-50-70
+#### IXa. read in df, log2fc, add annotations and make combined day30-50-70 df 
 ```{r}
 # --------------------------------------------------- #
 # Day 70 integration + ASAH1 timecourse (d30, d50, d70)
@@ -3742,67 +3745,115 @@ diff132_d70_df_annotated <- diff132_d70_df_proc %>%
 # --- 4. Save day70 annotated dataframe
 write.csv(diff132_d70_df_annotated,file.path(out_dir_d70_dataframes, "diff132_day70_annotated.csv"),row.names = FALSE)
 
-# --- 5. Build ASAH1 timecourse across d30, d50, d70
-extract_day_fc <- function(clean_df, day_label) {
-  df_fc <- clean_df %>%
-    filter(genotype %in% c("ASAH1", "Ctrl")) %>%
-    filter(genotype == "ASAH1") %>%
-    group_by(Genes, neuron) %>%
-    summarise(log2fc = mean(fold_change, na.rm = TRUE), .groups = "drop") %>%
-    mutate(day = day_label)
-  df_fc
-}
 
-stopifnot(exists("cleaned_df_day30"), exists("cleaned_df_day50"))
-d30_fc <- extract_day_fc(cleaned_df_day30, "d30")
-d50_fc <- extract_day_fc(cleaned_df_day50, "d50")
+# --- 5. Build ASAH1 timecourse using annotated day30/day50 + day70
+# d30 from annotated wide
+d30_fc <- complete_data_annotated_day30 %>%
+  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
+  rename(d30_iN_log2fc_ASAH1  = ASAH1_iN_log2_fold_change,
+         d30_iDA_log2fc_ASAH1 = ASAH1_iDA_log2_fold_change)
 
-# Day 70 from the current dataframe
+# d50 from annotated wide
+d50_fc <- complete_data_annotated_day50 %>%
+  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
+  rename(d50_iN_log2fc_ASAH1  = ASAH1_iN_log2_fold_change,
+         d50_iDA_log2fc_ASAH1 = ASAH1_iDA_log2_fold_change)
+
+# d70 from current computation
 d70_fc <- diff132_d70_df_annotated %>%
-  select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1) %>%
-  pivot_longer(cols = starts_with("d70_"), names_to = "tmp", values_to = "log2fc") %>%
-  mutate(
-    neuron = ifelse(grepl("_iN_", tmp), "iN", "iDA"),
-    day = "d70"
+  select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1)
+
+# Combine log2FCs across days
+asah1_timecourse_df <- d30_fc %>%
+  full_join(d50_fc, by = "Genes") %>%
+  full_join(d70_fc, by = "Genes") %>%
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
+
+# Add annotations from day70 annotated df (already TRUE/FALSE)
+annotations_d70 <- diff132_d70_df_annotated %>%
+  select(Genes, matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV"))
+
+asah1_timecourse_annotated <- asah1_timecourse_df %>%
+  left_join(annotations_d70, by = "Genes")
+
+# Save
+write.csv(asah1_timecourse_annotated,file.path(out_dir_d70_timecourse, "ASAH1_timecourse_d30_d50_d70.csv"),row.names = FALSE)
+
+
+
+# --- 6. Save ASAH1 log2FC + annotations for day30, day50, day70 
+# 6.1 Day 30
+day30_asah1 <- complete_data_annotated_day30 %>%
+  select(Genes,
+         ASAH1_iN_log2_fold_change,
+         ASAH1_iDA_log2_fold_change,
+         matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV")) %>%
+  rename(
+    ASAH1_d30_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
+    ASAH1_d30_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
   ) %>%
-  select(Genes, neuron, log2fc, day)
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
 
-asah1_timecourse_df <- bind_rows(d30_fc, d50_fc, d70_fc) %>%
-  mutate(day = factor(day, levels = c("d30", "d50", "d70"))) %>%
-  arrange(Genes, neuron, day) %>%
-  unite(col = "colname", day, neuron, sep = "_", remove = FALSE) %>%
-  select(-colname) %>%
-  pivot_wider(names_from = c(day, neuron), values_from = log2fc) %>%
-  relocate(any_of(c("d30_iN", "d50_iN", "d70_iN",
-                    "d30_iDA", "d50_iDA", "d70_iDA")), .after = Genes)
+write.csv(day30_asah1,file.path(out_dir_d70_dataframes, "diff132_day30_ASAH1_log2fc_annotated.csv"),row.names = FALSE)
 
-write.csv(asah1_timecourse_df,
-          file.path(out_dir_d70_timecourse, "ASAH1_timecourse_d30_d50_d70.csv"),
-          row.names = FALSE)
+# 6.2 Day 50
+day50_asah1 <- complete_data_annotated_day50 %>%
+  select(Genes,
+         ASAH1_iN_log2_fold_change,
+         ASAH1_iDA_log2_fold_change,
+         matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV")) %>%
+  rename(
+    ASAH1_d50_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
+    ASAH1_d50_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
+  ) %>%
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
 
-# --- 6. Heatmap of timecourse (pheatmap style)
-heat_cols <- intersect(c("d30_iN", "d50_iN", "d70_iN",
-                         "d30_iDA", "d50_iDA", "d70_iDA"),
-                       colnames(asah1_timecourse_df))
+write.csv(day50_asah1,file.path(out_dir_d70_dataframes, "diff132_day50_ASAH1_log2fc_annotated.csv"),row.names = FALSE)
 
-timecourse_mat <- asah1_timecourse_df %>%
+# 6.3 Day 70
+day70_asah1 <- diff132_d70_df_annotated %>%
+  select(Genes,
+         d70_iN_log2fc_ASAH1,
+         d70_iDA_log2fc_ASAH1,
+         matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV")) %>%
+  rename(
+    ASAH1_d70_iN_log2_fold_change  = d70_iN_log2fc_ASAH1,
+    ASAH1_d70_iDA_log2_fold_change = d70_iDA_log2fc_ASAH1
+  ) %>%
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
+
+write.csv(day70_asah1,file.path(out_dir_d70_dataframes, "diff132_day70_ASAH1_log2fc_annotated.csv"), row.names = FALSE)
+
+
+
+
+# --- 7. Heatmap of timecourse (pheatmap style)
+
+# pick the 6 ASAH1 timecourse columns with new names
+heat_cols <- intersect(
+  c("d30_iN_log2fc_ASAH1", "d50_iN_log2fc_ASAH1", "d70_iN_log2fc_ASAH1",
+    "d30_iDA_log2fc_ASAH1","d50_iDA_log2fc_ASAH1","d70_iDA_log2fc_ASAH1"),
+  colnames(asah1_timecourse_annotated)  # use your merged df with annotations
+)
+
+timecourse_mat <- asah1_timecourse_annotated %>%
   select(Genes, all_of(heat_cols)) %>%
   drop_na() %>%
   tibble::column_to_rownames("Genes") %>%
   as.matrix()
 
-# Column annotations
+# Column annotations (extract Day and Neuron from "dXX_iN/iDA_log2fc_ASAH1")
 annotation_col <- tibble(sample = colnames(timecourse_mat)) %>%
   mutate(
-    Day = sub("^(d[0-9]+)_(iN|iDA)$", "\\1", sample),
-    Neuron = sub("^(d[0-9]+)_(iN|iDA)$", "\\2", sample)
+    Day    = sub("^(d[0-9]+)_(iN|iDA)_.*$", "\\1", sample),
+    Neuron = sub("^(d[0-9]+)_(iN|iDA)_.*$", "\\2", sample)
   ) %>%
   select(-sample) %>%
   as.data.frame()
 rownames(annotation_col) <- colnames(timecourse_mat)
 
 ann_colors <- list(
-  Day = setNames(RColorBrewer::brewer.pal(3, "Set2"), c("d30", "d50", "d70")),
+  Day    = setNames(RColorBrewer::brewer.pal(3, "Set2"), c("d30", "d50", "d70")),
   Neuron = c("iN" = "dodgerblue", "iDA" = "#F08080")
 )
 
@@ -3810,7 +3861,7 @@ pdf(file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap.pdf"), width = 7, h
 pheatmap(
   mat = timecourse_mat,
   scale = "row",
-  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  color = colorRampPalette(rev(brewer.pal(11, name = "RdYlBu")))(100),
   annotation_col = annotation_col,
   annotation_colors = ann_colors,
   breaks = seq(-4, 4, length.out = 101),
