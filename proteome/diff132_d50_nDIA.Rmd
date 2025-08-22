@@ -4405,7 +4405,7 @@ ann_vec <- c(
   pheatmap::pheatmap(
     C,
     color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
-    breaks = seq(-0.25, 0.25, length.out = 102),
+    breaks = seq(-0.75, 0.75, length.out = 102),
     cluster_rows = TRUE,
     cluster_cols = TRUE,
     border_color = NA,
@@ -4497,6 +4497,76 @@ write.csv(corr_mat,file.path(out_dir_d70_corr, "ASAH1_annotation_vs_effect_corre
 
 
 
+### IXf. ChimeraX helper function for mapping abundnace on structure 
+```{r}
+# --------------------------------------------------- #
+# creates hexvalues for mapping on structure of C1 in chimeara
+# --------------------------------------------------- #
+
+# --- 1. mapping (two cols: Gene.Name, ChimeraX or '# in ChimeraX')
+mtci_map <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Strucure/Mapping_mtCi/diff132/mtCi.csv",
+                     stringsAsFactors = FALSE, check.names = FALSE) %>%
+  rename(
+    Gene  = if ("Gene.Name" %in% names(.)) "Gene.Name" else names(.)[1],
+    Chain = if ("ChimeraX" %in% names(.)) "ChimeraX" else if ("# in ChimeraX" %in% names(.)) "# in ChimeraX" else names(.)[2]
+  ) %>%
+  mutate(
+    Gene  = as.character(Gene),
+    Chain = ifelse(grepl("^#", Chain), Chain, paste0("#", Chain))
+  ) %>%
+  filter(!is.na(Gene), Gene != "", !is.na(Chain), Chain != "")
+
+# --- 2. pull the 6 ASAH1 log2FC columns from your combined table
+mtci_vals <- asah1_timecourse_annotated %>%
+  select(Genes,
+         ASAH1_d30_iN_log2_fold_change, ASAH1_d50_iN_log2_fold_change, ASAH1_d70_iN_log2_fold_change,
+         ASAH1_d30_iDA_log2_fold_change,ASAH1_d50_iDA_log2_fold_change,ASAH1_d70_iDA_log2_fold_change) %>%
+  rename(Gene = Genes)
+
+# --- 3. color function (same heatmap palette/domain you have used)
+col_fn <- col_numeric(
+  palette = colorRampPalette(c("#2c7bb6", "white", "#d7191c"))(201),
+  domain  = c(-1, 1),
+  na.color = "#B0B0B0"
+)
+
+# --- 4. join, standardize col names, and build ChimeraX command strings
+mtci_colors_per_condition <- mtci_map %>%
+  left_join(asah1_timecourse_annotated, by = c("Gene" = "Genes")) %>%
+  mutate(
+    iN_d30_cmd  = ifelse(is.na(ASAH1_d30_iN_log2_fold_change),
+                         paste("color", Chain, "#959595FF"),
+                         paste("color", Chain, toupper(col_fn(ASAH1_d30_iN_log2_fold_change)))),
+    iN_d50_cmd  = ifelse(is.na(ASAH1_d50_iN_log2_fold_change),
+                         paste("color", Chain, "#959595FF"),
+                         paste("color", Chain, toupper(col_fn(ASAH1_d50_iN_log2_fold_change)))),
+    iN_d70_cmd  = ifelse(is.na(ASAH1_d70_iN_log2_fold_change),
+                         paste("color", Chain, "#959595FF"),
+                         paste("color", Chain, toupper(col_fn(ASAH1_d70_iN_log2_fold_change)))),
+    iDA_d30_cmd = ifelse(is.na(ASAH1_d30_iDA_log2_fold_change),
+                         paste("color", Chain, "#959595FF"),
+                         paste("color", Chain, toupper(col_fn(ASAH1_d30_iDA_log2_fold_change)))),
+    iDA_d50_cmd = ifelse(is.na(ASAH1_d50_iDA_log2_fold_change),
+                         paste("color", Chain, "#959595FF"),
+                         paste("color", Chain, toupper(col_fn(ASAH1_d50_iDA_log2_fold_change)))),
+    iDA_d70_cmd = ifelse(is.na(ASAH1_d70_iDA_log2_fold_change),
+                         paste("color", Chain, "#959595FF"),
+                         paste("color", Chain, toupper(col_fn(ASAH1_d70_iDA_log2_fold_change))))
+  ) %>%
+  select(Gene, Chain,
+         ASAH1_d30_iN_log2_fold_change, iN_d30_cmd,
+         ASAH1_d50_iN_log2_fold_change, iN_d50_cmd,
+         ASAH1_d70_iN_log2_fold_change, iN_d70_cmd,
+         ASAH1_d30_iDA_log2_fold_change, iDA_d30_cmd,
+         ASAH1_d50_iDA_log2_fold_change, iDA_d50_cmd,
+         ASAH1_d70_iDA_log2_fold_change, iDA_d70_cmd)
+
+# --- 5. save as csv file
+write.csv(mtci_colors_per_condition,"/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Strucure/Mapping_mtCi/diff132/mtci_ChimeraX_meanLog2FC_colors.csv",row.names = FALSE)
+
+
+
+```
 
 
 
