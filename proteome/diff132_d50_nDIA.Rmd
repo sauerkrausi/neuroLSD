@@ -3681,6 +3681,22 @@ clean_names_d70 <- function(v) {
 }
 colnames(diff132_d70_df_full) <- clean_names_d70(colnames(diff132_d70_df_full))
 
+split_genes_rows <- function(df) {
+  df %>%
+    dplyr::mutate(Genes = as.character(Genes)) %>%
+    # normalize common Unicode punctuation to ASCII semicolon
+    dplyr::mutate(Genes = stringr::str_replace_all(
+      Genes,
+      stringr::fixed("\uFF1B"), ";"    # fullwidth semicolon → ;
+    )) %>%
+    # split on ; , | / with optional spaces
+    tidyr::separate_rows(Genes, sep = "\\s*[;,/|]+\\s*") %>%
+    dplyr::mutate(Genes = trimws(Genes)) %>%
+    dplyr::filter(!is.na(Genes), Genes != "") %>%
+    dplyr::distinct()
+}
+
+
 # Identify replicate columns
 rep_cols_iN_Ctrl   <- grep("^d70_iN_Ctrl_rep[0-9]+$", colnames(diff132_d70_df_full), value = TRUE)
 rep_cols_iN_ASAH1  <- grep("^d70_iN_ASAH1_rep[0-9]+$", colnames(diff132_d70_df_full), value = TRUE)
@@ -3709,6 +3725,9 @@ contaminant_genes_d70 <- c(
 diff132_d70_df_proc <- diff132_d70_df_proc %>%
   mutate(Genes = as.character(Genes)) %>%
   filter(!Genes %in% contaminant_genes_d70)
+
+diff132_d70_df_proc <- split_genes_rows(diff132_d70_df_proc)
+
 
 # 3.2 Read and prepare SubCellAnnotation.csv
 cols_to_read_d70 <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
@@ -3746,37 +3765,60 @@ write.csv(diff132_d70_df_annotated,file.path(out_dir_d70_dataframes, "diff132_da
 # --- 5. Build ASAH1 timecourse using annotated day30/day50 + day70
 # d30 from annotated wide
 d30_fc <- complete_data_annotated_day30 %>%
-  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
-  rename(d30_iN_log2fc_ASAH1  = ASAH1_iN_log2_fold_change,
-         d30_iDA_log2fc_ASAH1 = ASAH1_iDA_log2_fold_change)
+  split_genes_rows() %>%
+  dplyr::select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(
+    d30_iN_log2fc_ASAH1  = mean(ASAH1_iN_log2_fold_change,  na.rm = TRUE),
+    d30_iDA_log2fc_ASAH1 = mean(ASAH1_iDA_log2_fold_change, na.rm = TRUE),
+    .groups = "drop"
+  )
+
 
 # d50 from annotated wide
 d50_fc <- complete_data_annotated_day50 %>%
-  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
-  rename(d50_iN_log2fc_ASAH1  = ASAH1_iN_log2_fold_change,
-         d50_iDA_log2fc_ASAH1 = ASAH1_iDA_log2_fold_change)
+  split_genes_rows() %>%
+  dplyr::select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(
+    d50_iN_log2fc_ASAH1  = mean(ASAH1_iN_log2_fold_change,  na.rm = TRUE),
+    d50_iDA_log2fc_ASAH1 = mean(ASAH1_iDA_log2_fold_change, na.rm = TRUE),
+    .groups = "drop"
+)
 
 # d70 from current computation
 d70_fc <- diff132_d70_df_annotated %>%
-  select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1)
+  split_genes_rows() %>%
+  dplyr::select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(
+    d70_iN_log2fc_ASAH1  = mean(d70_iN_log2fc_ASAH1,  na.rm = TRUE),
+    d70_iDA_log2fc_ASAH1 = mean(d70_iDA_log2fc_ASAH1, na.rm = TRUE),
+    .groups = "drop"
+  )
 
-# Combine log2FCs across days
+# combine (now one row per Genes in each → no many-to-many)
 asah1_timecourse_df <- d30_fc %>%
-  full_join(d50_fc, by = "Genes") %>%
-  full_join(d70_fc, by = "Genes") %>%
-  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
+  dplyr::full_join(d50_fc, by = "Genes") %>%
+  dplyr::full_join(d70_fc, by = "Genes") %>%
+  dplyr::mutate(dplyr::across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
 
-# Add annotations from day70 annotated df (already TRUE/FALSE)
+# add annotations once (all logical columns from day70 annotated)
 annotation_cols <- setdiff(colnames(diff132_d70_df_annotated), c("Genes", colnames(asah1_timecourse_df)))
-
-annotations_d70 <- diff132_d70_df_annotated %>%
-  dplyr::select(Genes, all_of(annotation_cols))
+annotations_d70 <- diff132_d70_df_annotated %>% dplyr::select(Genes, dplyr::all_of(annotation_cols)) %>%
+  dplyr::distinct(Genes, .keep_all = TRUE)
 
 asah1_timecourse_annotated <- asah1_timecourse_df %>%
-  left_join(annotations_d70, by = "Genes")
+  dplyr::left_join(annotations_d70, by = "Genes") %>%
+  dplyr::mutate(
+    dplyr::across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
+    dplyr::across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
+  )
 
-# Save
-write.csv(asah1_timecourse_annotated,file.path(out_dir_d70_timecourse, "ASAH1_timecourse_d30_d50_d70.csv"),row.names = FALSE)
+asah1_timecourse_annotated <- asah1_timecourse_annotated %>%
+  filter(!is.na(Genes), Genes != "")
+
+write.csv(asah1_timecourse_annotated, file.path(out_dir_d70_timecourse, "ASAH1_timecourse_d30_d50_d70.csv"), row.names = FALSE)
 
 
 
