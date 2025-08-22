@@ -167,6 +167,8 @@ out_dir_d50_nMOST_nDIAcorrelationS_Circos <- "/Users/felix/Documents/PostDoc/Har
 dir.create(out_dir_d50_nMOST_nDIAcorrelationS_Circos, recursive = TRUE, showWarnings = FALSE)
 
 
+out_dir_d70_dataframes <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/dataframes"
+dir.create(out_dir_d70_dataframes, recursive = TRUE, showWarnings = FALSE)
 ```
 
 
@@ -3562,7 +3564,7 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
 
 
-### VIIIe. Barplot for select protein day30&50
+### VIIIe. day 30 vs 50: Barplot for select proteins
 ```{r}
 # --------------------------------------------------- #
 # Function for creating barplot of seleced protein ID across day 30 and day 50
