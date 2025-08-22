@@ -177,6 +177,8 @@ dir.create(out_dir_d70_heatmap, recursive = TRUE, showWarnings = FALSE)
 out_dir_d70_timecourse <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/timecourse"
 dir.create(out_dir_d70_timecourse, recursive = TRUE, showWarnings = FALSE)
 
+out_dir_d70_pca <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/pca"
+dir.create(out_dir_d70_pca, recursive = TRUE, showWarnings = FALSE)
 
 ```
 
@@ -3665,7 +3667,6 @@ diff132_d70_df_full <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-P
                                     header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
 
-
 # --- 1. Clean column names to something readable 
 clean_names_d70 <- function(v) {
   v2 <- v
@@ -3718,32 +3719,28 @@ subcell_d70_df <- read.csv(
 subcell_d70_df[] <- lapply(subcell_d70_df, as.character)
 
 long_subcell_d70_df <- subcell_d70_df %>%
-  pivot_longer(cols = everything(), names_to = "Localization", values_to = "Genes") %>%
-  filter(!is.na(Genes) & Genes != "") %>%
-  mutate(Genes = trimws(Genes)) %>%
-  distinct()
+  tidyr::pivot_longer(cols = everything(), names_to = "Localization", values_to = "Genes") %>%
+  dplyr::filter(!is.na(Genes) & Genes != "") %>%
+  dplyr::mutate(Genes = trimws(Genes)) %>%
+  dplyr::distinct(Genes, Localization, .keep_all = TRUE)
 
 binary_matrix_d70 <- long_subcell_d70_df %>%
-  mutate(value = TRUE) %>%
-  pivot_wider(
+  dplyr::mutate(value = TRUE) %>%
+  tidyr::pivot_wider(
     id_cols = Genes,
     names_from = Localization,
     values_from = value,
     values_fill = list(value = FALSE)
-  ) %>%
-  mutate(Genes = as.character(Genes)) %>%
-  distinct(Genes, .keep_all = TRUE)
+  )
 
 # 3.3 Join annotations; ensure annotations are strictly TRUE/FALSE, and numeric NAs → 0
 diff132_d70_df_annotated <- diff132_d70_df_proc %>%
-  left_join(binary_matrix_d70, by = "Genes") %>%
-  # any genes not present in annotation become FALSE in all annotation cols
-  mutate(across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))) %>%
-  # replace NAs in numeric assay columns (means, intensities, log2FC, etc.) with 0
-  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
+  dplyr::left_join(binary_matrix_d70, by = "Genes") %>%
+  dplyr::mutate(dplyr::across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))) %>%
+  dplyr::mutate(dplyr::across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
 
 # --- 4. Save day70 annotated dataframe
-write.csv(diff132_d70_df_annotated,file.path(out_dir_d70_dataframes, "diff132_day70_annotated.csv"),row.names = FALSE)
+write.csv(diff132_d70_df_annotated,file.path(out_dir_d70_dataframes, "diff132_day70_raw_log2fc_annotated.csv"),row.names = FALSE)
 
 
 # --- 5. Build ASAH1 timecourse using annotated day30/day50 + day70
@@ -3770,8 +3767,10 @@ asah1_timecourse_df <- d30_fc %>%
   mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
 
 # Add annotations from day70 annotated df (already TRUE/FALSE)
+annotation_cols <- setdiff(colnames(diff132_d70_df_annotated), c("Genes", colnames(asah1_timecourse_df)))
+
 annotations_d70 <- diff132_d70_df_annotated %>%
-  select(Genes, matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV"))
+  dplyr::select(Genes, all_of(annotation_cols))
 
 asah1_timecourse_annotated <- asah1_timecourse_df %>%
   left_join(annotations_d70, by = "Genes")
@@ -3782,47 +3781,56 @@ write.csv(asah1_timecourse_annotated,file.path(out_dir_d70_timecourse, "ASAH1_ti
 
 
 # --- 6. Save ASAH1 log2FC + annotations for day30, day50, day70 
+annotations_master <- diff132_d70_df_annotated %>%
+  select(Genes, where(is.logical)) %>%
+  distinct(Genes, .keep_all = TRUE)
+
 # 6.1 Day 30
 day30_asah1 <- complete_data_annotated_day30 %>%
-  select(Genes,
-         ASAH1_iN_log2_fold_change,
-         ASAH1_iDA_log2_fold_change,
-         matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV")) %>%
+  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
   rename(
     ASAH1_d30_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
     ASAH1_d30_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
   ) %>%
-  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
+  left_join(annotations_master, by = "Genes") %>%
+  mutate(
+    across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
+    across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
+  )
 
 write.csv(day30_asah1,file.path(out_dir_d70_dataframes, "diff132_day30_ASAH1_log2fc_annotated.csv"),row.names = FALSE)
 
 # 6.2 Day 50
 day50_asah1 <- complete_data_annotated_day50 %>%
-  select(Genes,
-         ASAH1_iN_log2_fold_change,
-         ASAH1_iDA_log2_fold_change,
-         matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV")) %>%
+  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
   rename(
     ASAH1_d50_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
     ASAH1_d50_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
   ) %>%
-  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
+  left_join(annotations_master, by = "Genes") %>%
+  mutate(
+    across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
+    across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
+  )
 
 write.csv(day50_asah1,file.path(out_dir_d70_dataframes, "diff132_day50_ASAH1_log2fc_annotated.csv"),row.names = FALSE)
 
 # 6.3 Day 70
 day70_asah1 <- diff132_d70_df_annotated %>%
-  select(Genes,
-         d70_iN_log2fc_ASAH1,
-         d70_iDA_log2fc_ASAH1,
-         matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV")) %>%
+  select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1) %>%
   rename(
     ASAH1_d70_iN_log2_fold_change  = d70_iN_log2fc_ASAH1,
     ASAH1_d70_iDA_log2_fold_change = d70_iDA_log2fc_ASAH1
   ) %>%
-  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
+  left_join(annotations_master, by = "Genes") %>%
+  mutate(
+    across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
+    across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
+  )
+day70_asah1 <- day70_asah1 %>%
+  filter(!is.na(Genes), Genes != "")
 
-write.csv(day70_asah1,file.path(out_dir_d70_dataframes, "diff132_day70_ASAH1_log2fc_annotated.csv"), row.names = FALSE)
+write.csv(day70_asah1,file.path(out_dir_d70_dataframes, "diff132_day70_ASAH1_log2fc_annotated.csv"),row.names = FALSE)
 
 
 # --- 7. Combined ASAH1 timecourse (d30, d50, d70) + annotations
@@ -3865,14 +3873,19 @@ asah1_timecourse_annotated <- asah1_timecourse_annotated %>%
 write.csv(asah1_timecourse_annotated,file.path(out_dir_d70_dataframes, "ASAH1_timecourse_d30_d50_d70_annotated.csv"),row.names = FALSE)
 
 
+```
+
+#### IXb. plot heatmap and save matrix as csv
+```{r}
 # --- 8. Heatmap of timecourse (pheatmap style)
+# 8.1 Pick the six ASAH1 timecourse columns that exist in the combined table
 heat_cols <- intersect(
-  c("d30_iN_log2fc_ASAH1","d50_iN_log2fc_ASAH1","d70_iN_log2fc_ASAH1",
-    "d30_iDA_log2fc_ASAH1","d50_iDA_log2fc_ASAH1","d70_iDA_log2fc_ASAH1"),
+  c("ASAH1_d30_iN_log2_fold_change","ASAH1_d50_iN_log2_fold_change","ASAH1_d70_iN_log2_fold_change",
+    "ASAH1_d30_iDA_log2_fold_change","ASAH1_d50_iDA_log2_fold_change","ASAH1_d70_iDA_log2_fold_change"),
   colnames(asah1_timecourse_annotated)
 )
 
-# Collapse duplicates; sanitize values
+# 8.2 Collapse duplicate Genes; sanitize values
 df_heat <- asah1_timecourse_annotated %>%
   select(Genes, all_of(heat_cols)) %>%
   filter(!is.na(Genes), Genes != "") %>%
@@ -3880,28 +3893,25 @@ df_heat <- asah1_timecourse_annotated %>%
   summarise(across(all_of(heat_cols), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
   mutate(across(all_of(heat_cols), ~ ifelse(is.finite(.x), .x, 0)))
 
-# Drop genes with all zeros
-nonzero_idx <- rowSums(abs(as.matrix(df_heat[ , heat_cols, drop = FALSE]))) > 0
+# 8.3 Drop genes with all zeros and zero-variance rows
+nonzero_idx <- rowSums(abs(as.matrix(df_heat[, heat_cols, drop = FALSE]))) > 0
 df_heat <- df_heat[nonzero_idx, , drop = FALSE]
-
-# Drop zero-variance rows (avoid NaN from scaling)
-row_sd <- apply(df_heat[ , heat_cols, drop = FALSE], 1, sd, na.rm = TRUE)
+row_sd <- apply(df_heat[, heat_cols, drop = FALSE], 1, sd, na.rm = TRUE)
 df_heat <- df_heat[row_sd > 0, , drop = FALSE]
 
-# Build matrix
+# 8.4 Build matrix
 timecourse_mat <- df_heat %>%
   tibble::column_to_rownames("Genes") %>%
   as.matrix()
 
-# Column annotations
-annotation_col <- tibble(sample = colnames(timecourse_mat)) %>%
-  mutate(
-    Day    = sub("^(d[0-9]+)_(iN|iDA)_.*$", "\\1", sample),
-    Neuron = sub("^(d[0-9]+)_(iN|iDA)_.*$", "\\2", sample)
-  ) %>%
-  select(-sample) %>%
-  as.data.frame()
-rownames(annotation_col) <- colnames(timecourse_mat)
+# 8.5 Column annotations (parse "ASAH1_dXX_iN/iDA_log2_fold_change")
+col_ids <- colnames(timecourse_mat)
+annotation_col <- data.frame(
+  Day    = sub("^ASAH1_(d[0-9]+)_(iN|iDA)_.*$", "\\1", col_ids),
+  Neuron = sub("^ASAH1_(d[0-9]+)_(iN|iDA)_.*$", "\\2", col_ids),
+  row.names = col_ids,
+  stringsAsFactors = FALSE
+)
 
 ann_colors <- list(
   Day    = setNames(RColorBrewer::brewer.pal(3, "Set2"), c("d30", "d50", "d70")),
@@ -3933,6 +3943,210 @@ write.csv(as.data.frame(timecourse_mat),file.path(out_dir_d70_heatmap, "ASAH1_ti
 
 ```
 
+
+
+### IXc. PCA plots
+```{r}
+# --- 9. PCA analysis for ASAH1 vs Ctrl across day30, day50, day70
+# day 30 + 50 (already long in cleaned_df)
+df_30_50_long <- cleaned_df %>%
+  filter(day %in% c(30, 50),
+         genotype %in% c("ctrl", "ASAH1"),
+         neuron %in% c("iN", "iDA")) %>%
+  mutate(
+    replicate = as.integer(replicate),
+    sample_id = paste0("d", day, "_", neuron, "_", genotype, "_rep", replicate)
+  ) %>%
+  select(sample_id, day, genotype, neuron, replicate, Genes, quan)
+
+# day 70 → long from wide replicate columns
+df_70_long <- diff132_d70_df_proc %>%
+  select(Genes,
+         starts_with("d70_iN_Ctrl_rep"), starts_with("d70_iN_ASAH1_rep"),
+         starts_with("d70_iDA_Ctrl_rep"), starts_with("d70_iDA_ASAH1_rep")) %>%
+  pivot_longer(-Genes, names_to = "replicate_raw", values_to = "quan") %>%
+  filter(!is.na(quan)) %>%
+  mutate(
+    day       = 70L,
+    neuron    = ifelse(grepl("iN",    replicate_raw), "iN", "iDA"),
+    genotype  = ifelse(grepl("ASAH1", replicate_raw), "ASAH1", "ctrl"),
+    # extract the digits *after* "_rep"
+    replicate = as.integer(sub(".*_rep([0-9]+)$", "\\1", replicate_raw)),
+    sample_id = paste0("d", day, "_", neuron, "_", genotype, "_rep", replicate)
+  ) %>%
+  select(sample_id, day, genotype, neuron, replicate, Genes, quan)
+
+# one long dataframe for all timepoints
+timecourse_pca_long <- bind_rows(df_30_50_long, df_70_long)
+
+# save long form
+write.csv(timecourse_pca_long,file.path(out_dir_d70_pca, "timecourse_pca_asah1.csv"),row.names = FALSE)
+
+
+# pivot once to wide for PCA
+pca_input_wide <- timecourse_pca_long %>%
+  mutate(
+    Genes = trimws(Genes),
+    sample_id = as.character(sample_id)
+  ) %>%
+  filter(!is.na(Genes), Genes != "", !is.na(sample_id), sample_id != "") %>%
+  group_by(sample_id, Genes) %>%
+  summarise(quan = mean(quan, na.rm = TRUE), .groups = "drop") %>%  # or sum(), your call
+  tidyr::pivot_wider(
+    names_from  = Genes,
+    values_from = quan,
+    values_fill = list(quan = 0)
+  )
+
+X <- as.matrix(pca_input_wide %>% select(-sample_id))
+rownames(X) <- pca_input_wide$sample_id
+
+# PCA on log2-intensities
+pca_res <- prcomp(log2(X + 1), scale. = TRUE)
+
+pca_scores <- as.data.frame(pca_res$x[, 1:2]) %>%
+  tibble::rownames_to_column("sample_id") %>%
+  tidyr::separate(sample_id, into = c("day_label","neuron","genotype","rep_raw"),
+                  sep = "_", remove = FALSE) %>%
+  mutate(day_label = factor(day_label, levels = c("d30","d50","d70")))
+
+# plot
+gg <- ggplot(pca_scores, aes(PC1, PC2,
+                             color = interaction(genotype, neuron, sep = "."),
+                             shape = day_label)) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c(
+    "ctrl.iDA"  = "grey50",
+    "ctrl.iN"   = "grey70",
+    "ASAH1.iDA" = "dodgerblue3",
+    "ASAH1.iN"  = "dodgerblue"
+  )) +
+  scale_shape_manual(values = c("d30" = 16, "d50" = 17, "d70" = 15)) +
+  labs(title = "PCA: Ctrl vs ASAH1 (iN/iDA) across d30/d50/d70") +
+  theme_classic()
+
+# save plot
+ggsave(filename = file.path(out_dir_d70_pca, "PCA_ctrl_ASAH1_iN_iDA_d30_d50_d70.pdf"),plot = gg, width = 6, height = 5)
+
+
+
+# --- 9.d Day70-only PCA (plot + loadings CSV)
+# filter to day70 samples already in your wide matrix
+pca_input_wide_d70 <- pca_input_wide %>%
+  filter(grepl("^d70_", sample_id))
+
+X70 <- as.matrix(pca_input_wide_d70 %>% select(-sample_id))
+rownames(X70) <- pca_input_wide_d70$sample_id
+X70 <- X70[, apply(X70, 2, sd, na.rm = TRUE) > 0, drop = FALSE]
+
+pca_res_d70 <- prcomp(log2(X70 + 1), scale. = TRUE)
+
+# scores with metadata
+scores70 <- as.data.frame(pca_res_d70$x[, 1:4]) %>%
+  tibble::rownames_to_column("sample_id") %>%
+  tidyr::separate(sample_id, into = c("day_label","neuron","genotype","rep_raw"),
+                  sep = "_", remove = FALSE)
+
+# loadings (genes x PCs), save first 4 PCs
+loadings70 <- as.data.frame(pca_res_d70$rotation[, 1:4]) %>%
+  tibble::rownames_to_column("Genes")
+write.csv(loadings70,
+          file.path(out_dir_d70_pca, "PCA_day70_loadings_PC1toPC4.csv"),
+          row.names = FALSE)
+
+# day70-only PC1 vs PC2 plot (colors as specified)
+pca_d70 <- ggplot(scores70, aes(PC1, PC2, color = interaction(genotype, neuron, sep = "."))) +
+  geom_point(size = 3) +
+  geom_text_repel(aes(label = sample_id), size = 2, show.legend = FALSE) +
+  scale_color_manual(values = c(
+    "ctrl.iDA"  = "grey50",
+    "ctrl.iN"   = "grey70",
+    "ASAH1.iDA" = "dodgerblue3",
+    "ASAH1.iN"  = "dodgerblue"
+  )) +
+  labs(title = "PCA (day 70): Ctrl vs ASAH1 (iN/iDA)") +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    text = element_text(size = 6),
+    legend.position = "none"   # remove legend completely
+  )
+
+ggsave(file.path(out_dir_d70_pca, "PCA_day70_ctrl_ASAH1_iN_iDA_PC1_PC2_labeled.pdf"),pca_d70, width = 4, height = 4)
+
+
+# --- 9.e Day70 PC1–PC4 pairwise score plots (to inspect separation)
+pc_pairs <- tibble::tibble(
+  x = c("PC1","PC1","PC1","PC2","PC2","PC3"),
+  y = c("PC2","PC3","PC4","PC3","PC4","PC4")
+)
+
+pairs_df <- purrr::pmap_dfr(pc_pairs, function(x, y) {
+  tibble::tibble(
+    xval = scores70[[x]],
+    yval = scores70[[y]],
+    xPC = x, yPC = y,
+    grp = interaction(scores70$genotype, scores70$neuron, sep = ".")
+  )
+})
+
+gg_pairs <- ggplot(pairs_df, aes(x = xval, y = yval, color = grp)) +
+  geom_point(size = 2) +
+  facet_grid(yPC ~ xPC, scales = "free") +
+  scale_color_manual(values = c(
+    "ctrl.iDA"  = "grey50",
+    "ctrl.iN"   = "grey70",
+    "ASAH1.iDA" = "dodgerblue3",
+    "ASAH1.iN"  = "dodgerblue"
+  )) +
+  labs(title = "Day 70 PCA: pairwise PC scores (PC1–PC4)", x = NULL, y = NULL) +
+  theme_bw()
+
+ggsave(file.path(out_dir_d70_pca, "PCA_day70_pairwise_PC1toPC4_scores.pdf"),
+       gg_pairs, width = 9, height = 8)
+
+
+# 1) transpose: rows = Genes, cols = samples
+pca_mat <- as.matrix(pca_input_wide %>% dplyr::select(-sample_id))
+rownames(pca_mat) <- pca_input_wide$sample_id
+pca_input_transposed <- t(pca_mat) %>% 
+  as.data.frame() %>%
+  tibble::rownames_to_column("Genes")
+
+# 2) pick annotations (use day70 set you already built)
+#    Option A: from day70 annotated (wide boolean annotation columns)
+annotations_source <- diff132_d70_df_annotated %>%
+  dplyr::select(
+    Genes,
+    dplyr::matches("Mito|Lysosome|ER|Cytoplasm|Nucleus|Autophagy|SynGO|Endo|Synapse|Presynaptic|Postsynaptic|NeuroDev|SV")
+  ) %>%
+  dplyr::mutate(Genes = as.character(Genes)) %>%
+  dplyr::distinct(Genes, .keep_all = TRUE)
+
+# 3) join annotations; ensure logical NAs -> FALSE
+pca_input_transposed_annot <- pca_input_transposed %>%
+  dplyr::mutate(Genes = as.character(Genes)) %>%
+  dplyr::left_join(annotations_source, by = "Genes") %>%
+  dplyr::mutate(dplyr::across(where(is.logical), ~ tidyr::replace_na(.x, FALSE)))
+
+# 4) save
+out_file_transposed <- file.path(out_dir_d70_dataframes, "pca_input_transposed_genes_by_sample_with_annotations.csv")
+write.csv(pca_input_transposed_annot, out_file_transposed, row.names = FALSE)
+
+```
+
+
+### IXd. annotation correlations
+```{r}
+
+```
+
+
+
+### IXe. Violinplots for selected annotations across timecourse 
+```{r}
+
+```
 
 
 # IX. Violin / Volcano plots select annotations / genotypes
