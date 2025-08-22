@@ -4570,8 +4570,8 @@ write.csv(mtci_colors_per_condition,"/Users/felix/Documents/PostDoc/Harvard/03_L
 
 
 
-# IX. Violin / Volcano plots select annotations / genotypes
-### IXa. Violin Plot Function for LSD Organelle Proteomics
+# X. Violin / Volcano plots select annotations / genotypes
+### Xa. Violin Plot Function for LSD Organelle Proteomics
 ``` {r}
 # --------------------------------------------------- #
 # Violin Plot Function for LSD Organelle Proteomics 
@@ -4668,7 +4668,7 @@ ggsave(file.path(out_dir_d50_violins,
 
 
 
-### IXb. Volcano plot of select genotype w/ annotation hiighlights 
+### Xb. Volcano plot of select genotype w/ annotation hiighlights 
 ```{r}
 # --------------------------------------------------- #
 # Volcano Plot Function for LSD Organelle Proteomics 
@@ -4814,13 +4814,13 @@ plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols
 # --------------------------------------------------  
 
 
-# X. Organelle Cross-DF correlations
+# XI. Organelle Cross-DF correlations
 have now complete_data_annotated_day50, which contains all the organelle annotations across all genotypes
 easiest way now is to calculate the correlations of log2fc across all organelles across all genotypes
 maybe get a heatmap for each organelle? Strategy is to get a function that asks for the organelle / annotation to correlate across the whole set of genotypes. 
 
 
-### X. Correlation: User-Select organelle annotation  
+### XI. Correlation: User-Select organelle annotation  
 ```{r}
 # Load required libraries
 library(dplyr)
@@ -4953,7 +4953,7 @@ correlate_log2fc_annotations(
 ```
 
 
-### Xb. Organelle Impact Scoring from Correlation Analysis
+### XIb. Organelle Impact Scoring from Correlation Analysis
 ```{r}
 ###########################################################
 # Organelle Impact Scoring from Correlation Analysis
@@ -5054,7 +5054,7 @@ dev.off()
 ```
 
 
-### Xc. Correlation: All organelle annotations
+### XIc. Correlation: All organelle annotations
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -5222,7 +5222,7 @@ dev.off()
 
 
 
-### Xd. Avg. correlation per annotation across genotypes
+### XId. Avg. correlation per annotation across genotypes
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -5293,7 +5293,7 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 ```
 
 
-### Xe. Avg. correlation per annotation across genotypes (disease class color)
+### XIe. Avg. correlation per annotation across genotypes (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -5424,7 +5424,7 @@ plots <- plot_bar_corr_split_neurons(
 ```
 
 
-### Xf. Avg. correlation per nMOST GO cluster across genotypes (disease class color)
+### XIf. Avg. correlation per nMOST GO cluster across genotypes (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # nMOST LSD GO signatures of select Clusters (Neurons)
@@ -5549,7 +5549,7 @@ NeuroClusterBarplot(log2FC_iDA_df, cluster_name = plot_cluster, cell_type = "iDA
 
 
 
-### Xg. Avg. correlation per genotype across annotation (disease class color)
+### XIg. Avg. correlation per genotype across annotation (disease class color)
 ```{r}
 # --------------------------------------------------- #
 # For a selected genotype (e.g. GBA1_iN), plot mean 
@@ -5647,7 +5647,7 @@ plot_bar_corr_per_annotation_multi(
 ```
 
 
-### Xh. Bubble plot of annotation corr of iN vs iDA neuron by genotype or annotation
+### XIh. Bubble plot of annotation corr of iN vs iDA neuron by genotype or annotation
 ```{r}
 # --------------------------------------------------- #
 # Scatter plot by disease class 
@@ -6412,7 +6412,7 @@ ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
 # --------------------------------------------------  
 
 
-# XI. Sph mutant investigation
+# XII. Sph mutant investigation
 To achieve in this section:
 make subset of only Sph mutant in day50 dataframe
 plot heatmap w/ z-score norm of genotypes
@@ -6421,7 +6421,7 @@ save the subset with annotation as csv file
 save plots as pdfs 
 use unique variables, so I can calculate the correlation between neurons and nMOST hela later down in the script
 
-### XIa. Make df, add annotations & heatmap & save csv
+### XIIa. Make df, add annotations & heatmap & save csv
 ```{r}
 # --------------------------------------------------- #
 # Sph mutant investigation  
@@ -6530,7 +6530,7 @@ dev.off()
 
 
 
-### XIb. Correlation: User-selected organelle annotations 
+### XIIb. Correlation: User-selected organelle annotations 
 ```{r}
 # --------------------------------------------------- #
 # Sph mutant investigation  
@@ -6646,7 +6646,7 @@ dev.off()
 ```
 
 
-### XIc. Correlation: All organelle annotations 
+### XIIc. Correlation: All organelle annotations 
 ```{r}
 # --------------------------------------------------- #
 # Sph mutant investigation  
@@ -6718,7 +6718,7 @@ dev.off()
 
 
 
-### XIc. diff118 (d23) to diff132 (d50) comparison of ASAH1
+### XIIc. diff118 (d23) to diff132 (d50) comparison of ASAH1
 ```{r}
 # --- Step 1. Load and Inspect Data
 # Define the path to the input CSV file
@@ -6888,7 +6888,7 @@ ggsave(file.path(out_dir_d50_CrossCorr_bubble_ASAH1, "diff118_132_ASAH1vsCtrl_d2
 ```
 
 
-### XIe. Euler plot for overlap of annotations of genotypes  
+### XIIe. Euler plot for overlap of annotations of genotypes  
 ```{r}
 # --------------------------------------------------------- #
 # Euler plot of downregulated genes across genotypes
@@ -7002,7 +7002,7 @@ write_csv(overlap_df, file.path(out_dir_d50_SphMuteuler, "Pairwise_overlap_count
 
 
 
-### XIe. linear model for deciphering drivers of GBA1 / ASAH1 differences in iDA to the rest of the Sph cohort
+### XIIe. linear model for deciphering drivers of GBA1 / ASAH1 differences in iDA to the rest of the Sph cohort
 ```{r}
 # ------------------
 # PCA plot of Sph mutants
@@ -7259,7 +7259,7 @@ all_pairwise_df <- bind_rows(pairwise_results)
 
 
 
-# XII. GRN d30/50 DA neuron investigation
+# XIII. GRN d30/50 DA neuron investigation
 we see that the DA neurons of GRN in both day 30 and day50 have differences in their proteome compared to the other genotypes or the iN of the same genotype
 
 - make dataframe of only Ctrl, GRN, GBA1, ASAH1, SMPD1 for day30 and day 50; both iN and iDA
@@ -7543,14 +7543,14 @@ ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_topHits.pdf"),  day305
 
 
 
-# XIII. Disease-class-based comparison day50
+# XIV. Disease-class-based comparison day50
 Focus on disease classes with good coverage 
 1. Sphigolipidoses
 2. Neuronal.ceroid.lipofucinoses
 3. Integral.membrane.protein.disorders
 
 
-### XIIIa. Annotation-based corr heatmaps
+### XIVa. Annotation-based corr heatmaps
 ```{r}
 # --------------------------------------------------- #
 # Disease-class-based comparison day50  
@@ -7665,7 +7665,7 @@ plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir
 
 ```
 
-### XIIIb.  Annotation-based Circos of correlations
+### XIVb.  Annotation-based Circos of correlations
 ```{r}
 # --------------------------------------------------- #
 # Disease-class-based comparison day50  
@@ -7907,7 +7907,7 @@ plot_annotation_genotype_circos(
 ```
 
 
-### XIIIc. Split Annotation-based Circos of correlations
+### XIVc. Split Annotation-based Circos of correlations
 ```{r}
 # --------------------------------------------------- #
 # Disease-class-based comparison day50  
@@ -8075,8 +8075,8 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 
 
 
-# XIV. Linear regression on neuro nDIA dataset
-### XIVa. Linear regression on gene level across neurontypes
+# XV Linear regression on neuro nDIA dataset
+### XVa. Linear regression on gene level across neurontypes
 ```{r}
 # --------------------------------------------------- #
 # Linear regression on neuro nDIA dataset
@@ -8172,7 +8172,7 @@ write_csv(sig_genes_df, file=file.path(out_dir_d50_LinReg, "diff132_d50_LinReg_s
 ```
 
 
-### XIVb. Stratified linear modeling of genotype effects by neuron type
+### XVb. Stratified linear modeling of genotype effects by neuron type
 ```{r}
 # --------------------------------------------------- #
 # Linear regression on neuro nDIA dataset
@@ -8275,7 +8275,7 @@ write_csv(top_ko_hits, file=file.path(out_dir_d50_LinReg, "diff132_d50_LinReg_si
 ```
 
 
-### XIVc. Limma linear modeling
+### XVc. Limma linear modeling
 Use-Case for limma (Linear Models for Microarray/omics Data)
 
 limma is highly optimized for large-scale omics data where:
@@ -8637,7 +8637,7 @@ ggsave(file.path(out_dir_d50_LinReg_limma,"MAplot_SelectGenotype.pdf"),
 ```
 
 
-#### XIV --- umap attempt of lin model results
+#### XV --- umap attempt of lin model results
 ```{r}
 # UMAP Parameters Explained
 # metric (default: “euclidean”)
@@ -8746,7 +8746,7 @@ write.csv(umap_df, file.path(output_dir_umap , "umap_results_genes.csv"), row.na
 
 
 
-#### XIV --- UMAP embedding of combined features 
+#### XV --- UMAP embedding of combined features 
 ```{r}
 library(uwot)
 
@@ -8861,7 +8861,7 @@ ggplot(umap_df, aes(V1, V2, color = KOeffect)) +
 ```
 
 
-#### XIV --- Cross correlation of gene abunace per annotation for UMAP
+#### XV --- Cross correlation of gene abunace per annotation for UMAP
 https://embed.tidymodels.org/reference/step_umap.html
 
 - do not have organelle IP data, but have very rich proteinIDs from the nDIA
@@ -9174,8 +9174,8 @@ ggsave("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/
 
 
 
-# XV. nMOST whole cell plot correlcation matrix per genotype cluster
-### XVa. nMOST LSD GO signatures of select Clusters for all genotypes
+# XVI. nMOST whole cell plot correlcation matrix per genotype cluster
+### XVIa. nMOST LSD GO signatures of select Clusters for all genotypes
 ```{r}
 # --------------------------------------------------- #
 # HeLa nMOST whole cell correlations
@@ -9300,7 +9300,7 @@ ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation,"nMOST_LSD_Corr_GOCluster8.pd
 
 ```
 
-### XVb. nMOST GO Signatures of select genotype over all GO classes
+### XVIb. nMOST GO Signatures of select genotype over all GO classes
 ``` {r}
 # --------------------------------------------------- #
 # HeLa nMOST whole cell correlations
@@ -9344,7 +9344,7 @@ ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation, "nMOST_LSD_CorrGenotype_GBA.
 
 
 
-# XVI. Neuron - Hela Proteome Correlations 
+# XVII. Neuron - Hela Proteome Correlations 
 use complete_data_annotated_day50 and group into iN and iDA
 read in HeLa nMOST file
 - match KOs and only use the ones found in all df
@@ -9352,7 +9352,7 @@ read in HeLa nMOST file
 - plot corr across genotypes in crircos plot (color based on R corr)
 - also plot heatmaps of pairwise comparisons 
 
-### XVIa. Neuron–HeLa Proteome Correlation Analysis
+### XVIIa. Neuron–HeLa Proteome Correlation Analysis
 ```{r}
 # --------------------------------------------------- #
 # iNeuron - Hela Proteome Correlations 
@@ -9578,7 +9578,7 @@ plot_dual_layer_circos(
 
 
 
-### XVIb. nMOST-nDIA correlation of select genotype 
+### XVIIb. nMOST-nDIA correlation of select genotype 
 ```{r}
 # --------------------------------------------------- #
 # iNeuron - Hela Proteome Correlations 
@@ -9685,8 +9685,8 @@ circos_by_genotype("ASAH1", pos_cut = 0.05, neg_cut = -0.05)
 ```
 
 
-### XVIc. HeLa-nMOST - neuron-nDIA organelle correlation
-##### XVIc1. User-select annotations
+### XVIIc. HeLa-nMOST - neuron-nDIA organelle correlation
+##### XVIIc1. User-select annotations
 ```{r}
 # --------------------------------------------------- #
 # iNeuron,iDA  - Hela Proteome Correlations 
@@ -10001,7 +10001,7 @@ all_corrs <- lapply(selected_annotations, function(ann) {
 ```
 
 
-##### XVIc2. Eval of combined annotations
+##### XVIIc2. Eval of combined annotations
 ```{r}
 # --------------------------------------------------- #
 # iNeuron,iDA - Hela Proteome Correlations 
