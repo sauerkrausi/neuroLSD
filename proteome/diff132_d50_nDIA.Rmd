@@ -93,7 +93,6 @@ out_dir_d50_ascd_avg_SV <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Pro
 dir.create(out_dir_d50_ascd_avg_SV, recursive = TRUE, showWarnings = FALSE)
 
 
-
 out_dir_d50_heatmaps <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/heatmaps"
 dir.create(out_dir_d50_heatmaps, recursive = TRUE, showWarnings = FALSE)
 
@@ -105,6 +104,8 @@ dir.create(out_dir_d50_violins, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_volcano <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Volcano"
 dir.create(out_dir_d50_volcano, recursive = TRUE, showWarnings = FALSE)
+
+
 
 out_dir_d50_SphMut <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/SphMut"
 dir.create(out_dir_d50_SphMut, recursive = TRUE, showWarnings = FALSE)
@@ -120,6 +121,8 @@ dir.create(out_dir_d50_DisClass_circos, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_GRN <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
 dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
+
+
 
 out_dir_d50_CrossCorr <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/Organelle_CrossCorr"
 dir.create(out_dir_d50_CrossCorr, recursive = TRUE, showWarnings = FALSE)
@@ -154,6 +157,8 @@ dir.create(out_dir_d50_LinReg_limma, recursive = TRUE, showWarnings = FALSE)
 out_dir_d50_LinReg_limma_select <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/LinReg/limma_select"
 dir.create(out_dir_d50_LinReg_limma_select, recursive = TRUE, showWarnings = FALSE)
 
+
+
 out_dir_d50_nMOST_nDIAcorrelation <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation"
 dir.create(out_dir_d50_nMOST_nDIAcorrelation, recursive = TRUE, showWarnings = FALSE)
 
@@ -179,6 +184,11 @@ dir.create(out_dir_d70_timecourse, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d70_pca <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/pca"
 dir.create(out_dir_d70_pca, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d70_violins <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/violins"
+dir.create(out_dir_d70_violins, recursive = TRUE, showWarnings = FALSE)
+
+
 
 ```
 
@@ -3875,6 +3885,7 @@ day70_asah1 <- day70_asah1 %>%
 write.csv(day70_asah1,file.path(out_dir_d70_dataframes, "diff132_day70_ASAH1_log2fc_annotated.csv"),row.names = FALSE)
 
 
+
 # --- 7. Combined ASAH1 timecourse (d30, d50, d70) + annotations
 # 7.1 Keep only the ASAH1 log2FC columns from each day table
 d30_pick <- day30_asah1 %>%
@@ -3960,7 +3971,7 @@ ann_colors <- list(
   Neuron = c("iN" = "dodgerblue", "iDA" = "#F08080")
 )
 
-pdf(file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap.pdf"), width = 7, height = 9)
+pdf(file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap.pdf"), width = 5, height = 6)
 pheatmap(
   mat = timecourse_mat,
   scale = "row",
@@ -3975,7 +3986,7 @@ pheatmap(
   use_raster = FALSE,
   angle_col = "90",
   main = "ASAH1 timecourse iN and iDA",
-  fontsize = 10,
+  fontsize = 6,
   border_color = NA
 )
 dev.off()
@@ -4187,6 +4198,141 @@ write.csv(pca_input_transposed_annot, out_file_transposed, row.names = FALSE)
 
 ### IXe. Violinplots for selected annotations across timecourse 
 ```{r}
+# --- Step 1. annotations of choice (as specified)
+ann_vec <- c(
+  "Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComplexI",
+  "Lysosome","SynGO","Endo_iN_curated_Hundley","SynapseSVs","Presynaptic",
+  "Postsynaptic","EarlyEndosome","RecyclingEndosome","SVfusion",
+  "Svendocytosis","Svexocytosis","vATPase","Autophagy"
+)
+
+# --- Step 2. direct color setup for iN and iDA violin plotting
+col_map_neuron_day <- c(
+  "iN_d30"  = "dodgerblue3",
+  "iN_d50"  = "dodgerblue2",
+  "iN_d70"  = "skyblue",
+  "iDA_d30" = "grey30",
+  "iDA_d50" = "grey50",
+  "iDA_d70" = "grey70"
+)
+
+
+# --- Step 3. Build long df for a given neuron from asah1_timecourse_annotated
+.build_asah1_timecourse_long <- function(neuron_label, ann_keep = ann_vec) {
+  stopifnot(neuron_label %in% c("iN","iDA"))
+  stopifnot(all(ann_keep %in% colnames(asah1_timecourse_annotated)))
+
+  # pick the 3 day columns for the chosen neuron
+  day_cols <- paste0("ASAH1_", c("d30","d50","d70"), "_", neuron_label, "_log2_fold_change")
+  if (!all(day_cols %in% colnames(asah1_timecourse_annotated))) {
+    missing <- setdiff(day_cols, colnames(asah1_timecourse_annotated))
+    stop("Missing expected columns: ", paste(missing, collapse = ", "))
+  }
+
+  asah1_timecourse_annotated %>%
+    dplyr::select(Genes, dplyr::all_of(ann_keep), dplyr::all_of(day_cols)) %>%
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(day_cols),
+      names_to = "DayCol",
+      values_to = "log2FC"
+    ) %>%
+    dplyr::mutate(
+      Day = sub("^ASAH1_(d[0-9]+)_.+$", "\\1", DayCol),
+      Neuron = neuron_label,
+      GenotypeGroup = "ASAH1"
+    ) %>%
+    # expand to per-annotation rows (keep only TRUE/1)
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(ann_keep),
+      names_to = "Annotation",
+      values_to = "is_annotated"
+    ) %>%
+    dplyr::filter(is_annotated %in% c(TRUE, 1)) %>%
+    dplyr::select(Genes, Annotation, Neuron, Day, GenotypeGroup, log2FC)
+}
+
+# --- Step 4. Per-neuron violin 
+plot_violin_asah1_timecourse <- function(neuron_label, ann_keep = ann_vec) {
+  dfp <- .build_asah1_timecourse_long(neuron_label, ann_keep) %>%
+    group_by(Annotation, Day) %>%
+    mutate(
+      p01 = quantile(log2FC, 0.01, na.rm = TRUE),
+      p99 = quantile(log2FC, 0.99, na.rm = TRUE),
+      log2FC_capped = pmin(pmax(log2FC, p01), p99),
+      CombinedGroup = factor(paste0(neuron_label, "_", Day),
+                             levels = c("iN_d30","iN_d50","iN_d70","iDA_d30","iDA_d50","iDA_d70"))
+    ) %>%
+    ungroup() %>%
+    select(-p01, -p99)
+
+  p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC_capped, fill = CombinedGroup)) +
+    geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
+    geom_jitter(color = "red", alpha = 0.4, size = 0.6, width = 0.15, show.legend = FALSE) +
+    geom_violin(trim = FALSE, scale = "width", linewidth = 0.2, color = "black") +
+    geom_boxplot(width = 0.18, fill = "white", outlier.shape = NA, linewidth = 0.25) +
+    scale_fill_manual(values = col_map_neuron_day, drop = FALSE) +
+    labs(title = paste0("ASAH1 log2FC: ", neuron_label, " (day 30, 50, 70)"),
+         x = NULL, y = "log2FC (KO / Ctrl)") +
+    facet_wrap(~ Annotation, scales = "free_y") +
+    theme_bw(base_size = 6) +
+    theme(
+      legend.position = "none",
+      panel.grid = element_blank(),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+
+  cairo_pdf(file.path(out_dir_d70_violins,
+                      paste0("ASAH1_log2FC_violin_", neuron_label, "_d30_d50_d70.pdf")),
+            width = 8, height = 6)
+  print(p); dev.off()
+  invisible(p)
+}
+
+# --- Step 5. Combined iN + iDA
+plot_violin_asah1_timecourse_both <- function(ann_keep = ann_vec) {
+  df_iN  <- .build_asah1_timecourse_long("iN",  ann_keep)
+  df_iDA <- .build_asah1_timecourse_long("iDA", ann_keep)
+
+  dfp <- bind_rows(df_iN, df_iDA) %>%
+    group_by(Annotation, Neuron, Day) %>%
+    mutate(
+      p01 = quantile(log2FC, 0.01, na.rm = TRUE),
+      p99 = quantile(log2FC, 0.99, na.rm = TRUE),
+      log2FC_capped = pmin(pmax(log2FC, p01), p99),
+      CombinedGroup = factor(paste0(Neuron, "_", Day),
+                             levels = c("iN_d30","iN_d50","iN_d70","iDA_d30","iDA_d50","iDA_d70"))
+    ) %>%
+    ungroup() %>%
+    select(-p01, -p99)
+
+  p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC_capped, fill = CombinedGroup)) +
+    geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
+    geom_jitter(color = "red", alpha = 0.4, size = 0.6, width = 0.15, show.legend = FALSE) +
+    geom_violin(trim = FALSE, scale = "width", linewidth = 0.2, color = "black") +
+    geom_boxplot(width = 0.18, fill = "white", outlier.shape = NA, linewidth = 0.25) +
+    scale_fill_manual(values = col_map_neuron_day, drop = FALSE) +
+    labs(title = "ASAH1 log2FC iN and iDA (day 30, 50, 70)",
+         x = NULL, y = "log2FC (KO / Ctrl)") +
+    facet_wrap(~ Annotation, scales = "free_y") +
+    theme_bw(base_size = 6) +
+    theme(
+      legend.position = "none",
+      panel.grid = element_blank(),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+
+  cairo_pdf(file.path(out_dir_d70_violins, "ASAH1_log2FC_violin_iN_iDA_d30_d50_d70.pdf"),
+            width = 9, height = 6)
+  print(p); dev.off()
+  invisible(p)
+}
+
+# --- Step 6. Example calls (same style as your VIIId pattern)
+p_asah1_iN  <- plot_violin_asah1_timecourse("iN")
+p_asah1_iDA <- plot_violin_asah1_timecourse("iDA")
+p_asah1_both <- plot_violin_asah1_timecourse_both()
 
 ```
 
