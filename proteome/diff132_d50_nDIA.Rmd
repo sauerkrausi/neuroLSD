@@ -167,8 +167,17 @@ out_dir_d50_nMOST_nDIAcorrelationS_Circos <- "/Users/felix/Documents/PostDoc/Har
 dir.create(out_dir_d50_nMOST_nDIAcorrelationS_Circos, recursive = TRUE, showWarnings = FALSE)
 
 
+
 out_dir_d70_dataframes <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/dataframes"
 dir.create(out_dir_d70_dataframes, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d70_heatmap <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/heatmap"
+dir.create(out_dir_d70_heatmap, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d70_timecourse <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day70/timecourse"
+dir.create(out_dir_d70_timecourse, recursive = TRUE, showWarnings = FALSE)
+
+
 ```
 
 
@@ -3642,6 +3651,10 @@ plot_gene_bar_log2fc("SYP", "ASAH1")
 # plot_gene_bar_log2fc("SYN1", "GBA1")
 ```
 
+# XI. Long diff: d30-50-70
+```{r}
+
+```
 
 
 
