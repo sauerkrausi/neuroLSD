@@ -4189,7 +4189,7 @@ write.csv(pca_input_transposed_annot, out_file_transposed, row.names = FALSE)
 ```
 
 
-### IXd. annotation correlations
+### IXd. Pairwise correlations of annotations
 ```{r}
 
 ```
