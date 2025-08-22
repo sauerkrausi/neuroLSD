@@ -3825,24 +3825,75 @@ day70_asah1 <- diff132_d70_df_annotated %>%
 write.csv(day70_asah1,file.path(out_dir_d70_dataframes, "diff132_day70_ASAH1_log2fc_annotated.csv"), row.names = FALSE)
 
 
+# --- 7. Combined ASAH1 timecourse (d30, d50, d70) + annotations
+# 7.1 Keep only the ASAH1 log2FC columns from each day table
+d30_pick <- day30_asah1 %>%
+  select(Genes, starts_with("ASAH1_d30_"))
+d50_pick <- day50_asah1 %>%
+  select(Genes, starts_with("ASAH1_d50_"))
+d70_pick <- day70_asah1 %>%
+  select(Genes, starts_with("ASAH1_d70_"))
+
+# 7.2 Combine ASAH1 columns across days
+asah1_timecourse_wide <- d30_pick %>%
+  full_join(d50_pick, by = "Genes") %>%
+  full_join(d70_pick, by = "Genes")
+
+# 7.3 Take annotations once (from day70)
+ann_cols_day70 <- setdiff(
+  colnames(day70_asah1),
+  c("Genes", grep("^ASAH1_", colnames(day70_asah1), value = TRUE))
+)
+annotations_once <- day70_asah1 %>%
+  select(Genes, all_of(ann_cols_day70))
+
+# 7.4 Attach annotations; enforce NA→0 for numeric, NA→FALSE for logical
+asah1_timecourse_annotated <- asah1_timecourse_wide %>%
+  left_join(annotations_once, by = "Genes") %>%
+  mutate(
+    across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
+    across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
+  )
+
+# 7.5 collapse duplicate Genes by mean to avoid rowname issues later
+asah1_timecourse_annotated <- asah1_timecourse_annotated %>%
+  group_by(Genes) %>%
+  summarise(across(everything(), ~ if (is.logical(.)) any(.x, na.rm = TRUE) else mean(.x, na.rm = TRUE)),
+            .groups = "drop")
+
+# 7.6 Save combined file
+write.csv(asah1_timecourse_annotated,file.path(out_dir_d70_dataframes, "ASAH1_timecourse_d30_d50_d70_annotated.csv"),row.names = FALSE)
 
 
-# --- 7. Heatmap of timecourse (pheatmap style)
-
-# pick the 6 ASAH1 timecourse columns with new names
+# --- 8. Heatmap of timecourse (pheatmap style)
 heat_cols <- intersect(
-  c("d30_iN_log2fc_ASAH1", "d50_iN_log2fc_ASAH1", "d70_iN_log2fc_ASAH1",
+  c("d30_iN_log2fc_ASAH1","d50_iN_log2fc_ASAH1","d70_iN_log2fc_ASAH1",
     "d30_iDA_log2fc_ASAH1","d50_iDA_log2fc_ASAH1","d70_iDA_log2fc_ASAH1"),
-  colnames(asah1_timecourse_annotated)  # use your merged df with annotations
+  colnames(asah1_timecourse_annotated)
 )
 
-timecourse_mat <- asah1_timecourse_annotated %>%
+# Collapse duplicates; sanitize values
+df_heat <- asah1_timecourse_annotated %>%
   select(Genes, all_of(heat_cols)) %>%
-  drop_na() %>%
+  filter(!is.na(Genes), Genes != "") %>%
+  group_by(Genes) %>%
+  summarise(across(all_of(heat_cols), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
+  mutate(across(all_of(heat_cols), ~ ifelse(is.finite(.x), .x, 0)))
+
+# Drop genes with all zeros
+nonzero_idx <- rowSums(abs(as.matrix(df_heat[ , heat_cols, drop = FALSE]))) > 0
+df_heat <- df_heat[nonzero_idx, , drop = FALSE]
+
+# Drop zero-variance rows (avoid NaN from scaling)
+row_sd <- apply(df_heat[ , heat_cols, drop = FALSE], 1, sd, na.rm = TRUE)
+df_heat <- df_heat[row_sd > 0, , drop = FALSE]
+
+# Build matrix
+timecourse_mat <- df_heat %>%
   tibble::column_to_rownames("Genes") %>%
   as.matrix()
 
-# Column annotations (extract Day and Neuron from "dXX_iN/iDA_log2fc_ASAH1")
+# Column annotations
 annotation_col <- tibble(sample = colnames(timecourse_mat)) %>%
   mutate(
     Day    = sub("^(d[0-9]+)_(iN|iDA)_.*$", "\\1", sample),
@@ -3861,7 +3912,7 @@ pdf(file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap.pdf"), width = 7, h
 pheatmap(
   mat = timecourse_mat,
   scale = "row",
-  color = colorRampPalette(rev(brewer.pal(11, name = "RdYlBu")))(100),
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
   annotation_col = annotation_col,
   annotation_colors = ann_colors,
   breaks = seq(-4, 4, length.out = 101),
@@ -3877,12 +3928,7 @@ pheatmap(
 )
 dev.off()
 
-# Save matrix used for the heatmap
-write.csv(
-  as.data.frame(timecourse_mat),
-  file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap_matrix.csv"),
-  row.names = TRUE
-)
+write.csv(as.data.frame(timecourse_mat),file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap_matrix.csv"),row.names = TRUE)
 
 
 ```
