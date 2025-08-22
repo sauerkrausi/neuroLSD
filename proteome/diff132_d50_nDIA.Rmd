@@ -3695,32 +3695,52 @@ diff132_d70_df_proc <- diff132_d70_df_full %>%
     d70_iDA_log2fc_ASAH1 = log2(d70_iDA_ASAH1_mean + 1) - log2(d70_iDA_Ctrl_mean + 1)
   )
 
-# --- 3. Add subcell annotations (VIa). Prefer precomputed binary_matrix; otherwise use subcell_df
-add_annotations <- function(df_in) {
-  if (exists("binary_matrix")) {
-    bm <- tibble::rownames_to_column(as.data.frame(binary_matrix), var = "Genes_anno")
-    out <- df_in %>% left_join(bm, by = c("Genes" = "Genes_anno"))
-  } else if (exists("subcell_df")) {
-    ann_long <- subcell_df %>%
-      pivot_longer(cols = everything(), names_to = "Localization", values_to = "Genes") %>%
-      filter(!is.na(Genes)) %>%
-      mutate(val = TRUE)
-    bm <- ann_long %>%
-      distinct(Genes, Localization, .keep_all = TRUE) %>%
-      pivot_wider(names_from = Localization, values_from = val, values_fill = FALSE)
-    out <- df_in %>% left_join(bm, by = "Genes")
-  } else {
-    warning("No binary_matrix or subcell_df found. Proceeding without annotations.")
-    out <- df_in
-  }
-  out
-}
-diff132_d70_df_annotated <- add_annotations(diff132_d70_df_proc)
+# --- 3. Add subcell annotations for day70 (from SubCellAnnotation.csv) + contaminant filter
+# 3.1 Remove contaminants 
+contaminant_genes_d70 <- c(
+  "KRT8","KRT19","KRT9","KRT10","KRT2","KRT18","KRT1","KRT5",
+  "COL10A1","COL13A1","COL14A1","COL18A1","COL1A1","COL1A2",
+  "COL26A1","COL2A1","COL4A1","COL4A2","COL5A1","COL6A1","COL6A2"
+)
+diff132_d70_df_proc <- diff132_d70_df_proc %>%
+  mutate(Genes = as.character(Genes)) %>%
+  filter(!Genes %in% contaminant_genes_d70)
+
+# 3.2 Read and prepare SubCellAnnotation.csv
+cols_to_read_d70 <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33)
+subcell_d70_df <- read.csv(
+  "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv",
+  stringsAsFactors = FALSE
+)[, cols_to_read_d70]
+subcell_d70_df[] <- lapply(subcell_d70_df, as.character)
+
+long_subcell_d70_df <- subcell_d70_df %>%
+  pivot_longer(cols = everything(), names_to = "Localization", values_to = "Genes") %>%
+  filter(!is.na(Genes) & Genes != "") %>%
+  mutate(Genes = trimws(Genes)) %>%
+  distinct()
+
+binary_matrix_d70 <- long_subcell_d70_df %>%
+  mutate(value = TRUE) %>%
+  pivot_wider(
+    id_cols = Genes,
+    names_from = Localization,
+    values_from = value,
+    values_fill = list(value = FALSE)
+  ) %>%
+  mutate(Genes = as.character(Genes)) %>%
+  distinct(Genes, .keep_all = TRUE)
+
+# 3.3 Join annotations; ensure annotations are strictly TRUE/FALSE, and numeric NAs → 0
+diff132_d70_df_annotated <- diff132_d70_df_proc %>%
+  left_join(binary_matrix_d70, by = "Genes") %>%
+  # any genes not present in annotation become FALSE in all annotation cols
+  mutate(across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))) %>%
+  # replace NAs in numeric assay columns (means, intensities, log2FC, etc.) with 0
+  mutate(across(where(is.numeric), ~ tidyr::replace_na(.x, 0)))
 
 # --- 4. Save day70 annotated dataframe
-write.csv(diff132_d70_df_annotated,
-          file.path(out_dir_d70_dataframes, "diff132_day70_annotated.csv"),
-          row.names = FALSE)
+write.csv(diff132_d70_df_annotated,file.path(out_dir_d70_dataframes, "diff132_day70_annotated.csv"),row.names = FALSE)
 
 # --- 5. Build ASAH1 timecourse across d30, d50, d70
 extract_day_fc <- function(clean_df, day_label) {
