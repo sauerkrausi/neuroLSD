@@ -3758,81 +3758,72 @@ plot_gene_bar_log2fc("SYP", "ASAH1")
 
 ### VIIIg. Correlation heatmap across annotations (ASAH1 and GBA1, day30 + day50, iN + iDA)
 ```{r}
-
 # --------------------------------------------------- #
-# Correlation: annotations (rows) × KO comparisons (cols)
-# ASAH1 + GBA1, iN/iDA, day30 + day50
+# Annotation × KO heatmap (ASAH1 + GBA1, iN/iDA, d30+d50)
 # --------------------------------------------------- #
 
+# --- Step 1. Combine ASAH1 + GBA1 timecourse (d30 + d50)
 df_timecourse_d3050_asah1_gba1 <- dplyr::bind_rows(
   asah1_timecourse_log2_df,
   gba1_timecourse_log2_df
 )
 
-# --- Step 1. Build KO identifier
-df_corr_input <- df_timecourse_d3050_asah1_gba1 %>%
-  dplyr::mutate(KO = paste(GenotypeGroup, Neuron, Day, sep = "_"))
+# --- Step 2. Compute mean log2FC_capped per Annotation × KO
+df_means <- df_timecourse_d3050_asah1_gba1 %>%
+  dplyr::mutate(KO = paste(GenotypeGroup, Neuron, Day, sep = "_")) %>%
+  dplyr::group_by(Annotation, KO) %>%
+  dplyr::summarise(mean_log2FC = mean(log2FC_capped, na.rm = TRUE), .groups = "drop")
 
-# --- Step 2. Function to calculate correlations
-run_all_organelle_corr <- function(df, annotations) {
-  ko_cols <- unique(df$KO)
+# --- Step 3. Build Annotation × KO matrix
+org_mat <- df_means %>%
+  tidyr::pivot_wider(names_from = KO, values_from = mean_log2FC) %>%
+  tibble::column_to_rownames("Annotation") %>%
+  as.matrix()
+org_mat[is.na(org_mat)] <- 0
 
-  purrr::map_dfr(annotations, function(ann) {
-    purrr::map_dfr(ko_cols, function(ko) {
-      v <- df %>%
-        dplyr::filter(Annotation == ann, KO == ko) %>%
-        dplyr::pull(log2FC_capped)
+# --- Step 4. Define column annotations (Genotype / Neuron / Day)
+parse_col <- tibble::tibble(colname = colnames(org_mat)) %>%
+  tidyr::separate(colname, into = c("Genotype","Neuron","Day"), sep = "_", remove = FALSE)
 
-      y <- rep(1, length(v))  # membership implicit (we're in ann)
-      keep <- is.finite(v) & is.finite(y)
-
-      if (sum(keep) < 5) {
-        tibble::tibble(KO = ko, Organelle = ann, r = NA_real_)
-      } else {
-        ct <- suppressWarnings(cor.test(v[keep], y[keep], method = "spearman"))
-        tibble::tibble(KO = ko, Organelle = ann, r = unname(ct$estimate))
-      }
-    })
-  })
-}
-
-# --- Step 3. Run correlations
-org_corr_df <- run_all_organelle_corr(
-  df_corr_input,
-  annotations = ann_vec
+annotation_col <- data.frame(
+  Genotype = parse_col$Genotype,
+  Neuron   = parse_col$Neuron,
+  Day      = parse_col$Day,
+  row.names = parse_col$colname,
+  stringsAsFactors = FALSE
 )
 
-# --- Step 4. Convert to wide matrix: rows = Annotations, cols = KO comparisons
-org_corr_mat <- org_corr_df %>%
-  dplyr::select(KO, Organelle, r) %>%
-  tidyr::pivot_wider(names_from = KO, values_from = r) %>%
-  tibble::column_to_rownames("Organelle") %>%
-  as.matrix()
+ann_colors <- list(
+  Genotype = c(ASAH1 = "#7B3294", GBA1 = "#008837"),
+  Neuron   = c(iN = "dodgerblue3", iDA = "grey50"),
+  Day      = c(d30 = "#FDB863", d50 = "#B2ABD2")
+)
 
-org_corr_mat[is.na(org_corr_mat)] <- 0
 
-# --- Step 5. Plot heatmap
-pdf(file.path(out_dir_d50_timecourse, "annotation_vs_KO_correlation_d30_d50_ASAH1_GBA1.pdf"),
-    width = 8, height = 8, useDingbats = FALSE)
+# --- Step 5. Plot heatmap (one figure only)
+pdf(file.path(out_dir_d50_timecourse, "Correlation_annotation_vs_KO_d30_d50_ASAH1_GBA1_annot.pdf"),
+    width = 10, height = 8, useDingbats = FALSE)
 pheatmap::pheatmap(
-  org_corr_mat,
-  color = rev(RColorBrewer::brewer.pal(11, "RdYlBu")),
-  breaks = seq(-1, 1, length.out = 102),
+  org_mat,
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+  breaks = seq(-0.25, 0.25, length.out = 102),
   cluster_rows = TRUE,
   cluster_cols = TRUE,
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
   angle_col = 90,
+  fontsize = 7,
   cellheight = 6,
   cellwidth  = 6,
-  main = "Annotation vs KO correlations (ASAH1 + GBA1, iN/iDA, d30+d50)",
-  fontsize = 6,
   border_color = NA,
+  main = "Annotation vs KO (ASAH1 + GBA1, iN/iDA, d30+d50)"
 )
 dev.off()
 
-# --- Step 6. Save CSV
+# --- Step 6. Save matrix as CSV
 write.csv(
-  org_corr_mat,
-  file = file.path(out_dir_d50_timecourse, "annotation_vs_KO_correlation_d30_d50_ASAH1_GBA1.csv"),
+  org_mat,
+  file = file.path(out_dir_d50_timecourse, "Correlation_annotation_vs_KO_d30_d50_ASAH1_GBA1.csv"),
   row.names = TRUE
 )
 
