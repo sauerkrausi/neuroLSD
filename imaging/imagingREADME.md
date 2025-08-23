@@ -67,7 +67,7 @@ Analysis for HeLa endo-lysosomal staining experiments. This folder contains scri
 
 All evaluations and scripts are run inside a **uv-managed virtual environment** for reproducibility and Apple Silicon (MPS) GPU support.  
 
-**1. Setup of virtual environment**
+**Setup of virtual environment**
 
 ```bash
 # Install uv
@@ -107,7 +107,10 @@ EOF
 python -m cellpose --use_gpu --gpu_device mps
 ```
 
-Train cellposeSAM model on your ground truth data and save model. Call model later in python
+Train cellposeSAM model on your ground truth data and save model. Call model later in python.
+
+
+**Call custom models & cellposeSAM in python scripts**
 
 ```bash
 # Start VS code in working dir (change to it w/ cd /path_to_workingdir)
