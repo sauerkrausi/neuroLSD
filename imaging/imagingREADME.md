@@ -67,6 +67,8 @@ Analysis for HeLa endo-lysosomal staining experiments. This folder contains scri
 
 All evaluations and scripts are run inside a **uv-managed virtual environment** for reproducibility and Apple Silicon (MPS) GPU support.  
 
+**1. Setup of virtual environment**
+
 ```bash
 # Install uv
 brew install uv
@@ -103,12 +105,24 @@ EOF
 
 # Launch Cellpose GUI with MPS
 python -m cellpose --use_gpu --gpu_device mps
+```
 
-# Install additional requirements for scripts
+Train cellposeSAM model on your ground truth data and save model. Call model later in python
+
+```bash
+# Start VS code in working dir (change to it w/ cd /path_to_workingdir)
+code . 
+
+# Specify path to custom model 
+model = models.CellposeModel(
+    gpu=True,
+    device=device,
+    pretrained_model="/Users/felix/.cellpose/models/FK_neuroSoma_20250707"
+	
+	
+# Install python requirements for running script 
 uv pip install -r requirements_MPS.txt
 
-# Run segmentation script
+# Run segmentation script either via terminal or in VScode
 python run_cellpose_calcium_remoteHDD_MPS.py
 
-# Check installed packages
-pip list
