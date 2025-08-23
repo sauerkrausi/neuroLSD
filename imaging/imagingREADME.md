@@ -63,7 +63,7 @@ Analysis for HeLa endo-lysosomal staining experiments. This folder contains scri
 - Figures and annotated CSVs: paths configured inside the Rmd (`outdir`); includes plots for `frac_coloc_eea1` and `frac_coloc_tfn` with treatment ordering Control 5 min → Control 45 min → ASAH1 5 min → ASAH1 45 min.
 
 
-## 5. Requirements & Environment Setup (`requirements_MPS.txt`)
+## 5. Requirements & Environment Setup
 
 All evaluations and scripts are run inside a **uv-managed virtual environment** for reproducibility and Apple Silicon (MPS) GPU support.  
 
