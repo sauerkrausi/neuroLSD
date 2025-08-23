@@ -120,7 +120,11 @@ ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter_pvals.pd
 
 
 # II. Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
+### IIa. setup and parse though data 
 ```{r}
+# ------------------------------------------------------------------- #
+# Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
+# ------------------------------------------------------------------- #
 
 # --- 1. define color maps for plotting 
 group_colors <- c(
@@ -133,6 +137,7 @@ group_colors <- c(
 # --- 2. parse though HD folders to read in result files 
 # Base directory and subfolders
 eval_base_dir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data"
+outdir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/Results"
 
 eval_folders <- c(
   "20241130_diff129_iNiDA_d30_ASAH1_plate1_SynMarker_MIP/_out/metrics",
@@ -152,8 +157,7 @@ eval_input_tbl <- tibble(
 )
 
 # Output
-eval_output_dir  <- file.path(eval_base_dir, "..", "combined_eval")
-eval_output_file <- file.path(eval_output_dir, "combined_per_image_eval.csv")
+eval_output_file <- file.path(outdir, "combined_per_image_eval.csv")
 
 eval_read_one <- function(file_path) {
   read_csv(file_path, col_types = cols(.default = col_guess()), progress = FALSE)
@@ -196,9 +200,8 @@ eval_combine_and_save <- function(input_tbl,
   invisible(eval_combined_df)
 }
 
-# Run function once to get combined dataframe
-# combined_df <- eval_combine_and_save(eval_input_tbl, eval_output_file)
-
+# --- 3. Run function once to get combined dataframe
+ combined_syneval_df <- eval_combine_and_save(eval_input_tbl, eval_output_file)
 
 ```
 
