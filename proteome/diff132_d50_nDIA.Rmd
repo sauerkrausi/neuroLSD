@@ -3589,6 +3589,101 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
 
 
+
+### VIIIe. day 30 vs 50: statistical tests on the violin plots
+```{r}
+# --- 1. helper: run wilcoxon tests on a dataframe with log2FC_capped
+# Comparisons (unchanged)
+.timecourse_comparisons <- list(
+  c("iN_d30","iN_d50"),
+  c("iDA_d30","iDA_d50"),
+  c("iN_d30","iDA_d30"),
+  c("iN_d50","iDA_d50")
+)
+
+# --- 2. helper: convert p-values to stars
+.p_to_stars <- function(p) {
+  if (is.na(p)) return("")
+  if (p <= 0.001) return("***")
+  if (p <= 0.01)  return("**")
+  if (p <= 0.05)  return("*")
+  return("ns")
+}
+
+# --- 3. Run Wilcoxon tests for one Annotation block; always return a data frame
+.run_wilcoxon_block <- function(df_block, group_col = "CombinedGroup", value_col = "log2FC_capped") {
+  out <- lapply(.timecourse_comparisons, function(comp) {
+    g1 <- comp[1]; g2 <- comp[2]
+    v1 <- df_block[[value_col]][df_block[[group_col]] == g1]; v1 <- v1[is.finite(v1)]
+    v2 <- df_block[[value_col]][df_block[[group_col]] == g2]; v2 <- v2[is.finite(v2)]
+    if (length(v1) >= 2 && length(v2) >= 2) {
+      wt <- suppressWarnings(wilcox.test(v1, v2, exact = FALSE))
+      data.frame(
+        group1 = g1, group2 = g2,
+        n1 = length(v1), n2 = length(v2),
+        median1 = stats::median(v1), median2 = stats::median(v2),
+        p_value = wt$p.value,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      data.frame(
+        group1 = g1, group2 = g2,
+        n1 = length(v1), n2 = length(v2),
+        median1 = NA_real_, median2 = NA_real_,
+        p_value = NA_real_,
+        stringsAsFactors = FALSE
+      )
+    }
+  })
+  do.call(rbind, out)
+}
+
+# --- 4. Wrapper using split–apply–bind 
+.compute_and_save_tests <- function(df_timecourse, genotype_label, out_dir, outfile) {
+  stopifnot(all(c("Annotation","Neuron","Day","log2FC_capped") %in% names(df_timecourse)))
+  df_tc <- df_timecourse %>%
+    dplyr::mutate(
+      CombinedGroup = factor(
+        paste0(.data$Neuron, "_", .data$Day),
+        levels = c("iN_d30","iN_d50","iDA_d30","iDA_d50")
+      )
+    )
+
+  ann_list <- split(df_tc, df_tc$Annotation)
+
+  stats_list <- lapply(names(ann_list), function(a) {
+    res <- .run_wilcoxon_block(ann_list[[a]])
+    res$Annotation <- a
+    res
+  })
+
+  stats_df <- dplyr::bind_rows(stats_list) %>%
+    dplyr::mutate(
+      Genotype   = genotype_label,
+      Comparison = paste(group1, "vs", group2),
+      p_adj_BH   = p.adjust(p_value, method = "BH"),
+      signif     = vapply(p_value, .p_to_stars, character(1))
+    ) %>%
+    dplyr::relocate(Genotype, Annotation, Comparison,
+                    group1, group2, n1, n2,
+                    median1, median2, p_value, p_adj_BH, signif)
+
+  readr::write_csv(stats_df, file.path(out_dir, outfile))
+  invisible(stats_df)
+}
+
+# --- 5. Run (writes two CSVs)
+asah1_stats <- .compute_and_save_tests(asah1_timecourse_log2_df, "ASAH1", out_dir_d50_timecourse, "ASAH1_Wilcoxon_tests.csv")
+gba1_stats  <- .compute_and_save_tests(gba1_timecourse_log2_df,  "GBA1",  out_dir_d50_timecourse, "GBA1_Wilcoxon_tests.csv")
+
+
+```
+
+
+
+
+
+
 ### VIIIe. day 30 vs 50: Barplot for select proteins
 ```{r}
 # --------------------------------------------------- #
