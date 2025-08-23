@@ -3592,8 +3592,7 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
 ### VIIIe. day 30 vs 50: statistical tests on the violin plots
 ```{r}
-# --- 1. helper: run wilcoxon tests on a dataframe with log2FC_capped
-# Comparisons (unchanged)
+# --- 1. helper: comparisons
 .timecourse_comparisons <- list(
   c("iN_d30","iN_d50"),
   c("iDA_d30","iDA_d50"),
@@ -3601,7 +3600,7 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
   c("iN_d50","iDA_d50")
 )
 
-# --- 2. helper: convert p-values to stars
+# --- 2. helper: convert adjusted p-values to stars
 .p_to_stars <- function(p) {
   if (is.na(p)) return("")
   if (p <= 0.001) return("***")
@@ -3610,7 +3609,7 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
   return("ns")
 }
 
-# --- 3. Run Wilcoxon tests for one Annotation block; always return a data frame
+# --- 3. run Wilcoxon tests for one annotation
 .run_wilcoxon_block <- function(df_block, group_col = "CombinedGroup", value_col = "log2FC_capped") {
   out <- lapply(.timecourse_comparisons, function(comp) {
     g1 <- comp[1]; g2 <- comp[2]
@@ -3626,19 +3625,17 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
         stringsAsFactors = FALSE
       )
     } else {
-      data.frame(
-        group1 = g1, group2 = g2,
-        n1 = length(v1), n2 = length(v2),
-        median1 = NA_real_, median2 = NA_real_,
-        p_value = NA_real_,
-        stringsAsFactors = FALSE
-      )
+      data.frame(group1 = g1, group2 = g2,
+                 n1 = length(v1), n2 = length(v2),
+                 median1 = NA_real_, median2 = NA_real_,
+                 p_value = NA_real_,
+                 stringsAsFactors = FALSE)
     }
   })
   do.call(rbind, out)
 }
 
-# --- 4. Wrapper using split–apply–bind 
+# --- 4. wrapper to compute, adjust, annotate with stars, save
 .compute_and_save_tests <- function(df_timecourse, genotype_label, out_dir, outfile) {
   stopifnot(all(c("Annotation","Neuron","Day","log2FC_capped") %in% names(df_timecourse)))
   df_tc <- df_timecourse %>%
@@ -3662,29 +3659,25 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
       Genotype   = genotype_label,
       Comparison = paste(group1, "vs", group2),
       p_adj_BH   = p.adjust(p_value, method = "BH"),
-      signif     = vapply(p_value, .p_to_stars, character(1))
+      signif     = vapply(p_adj_BH, .p_to_stars, character(1))
     ) %>%
-    dplyr::relocate(Genotype, Annotation, Comparison,
-                    group1, group2, n1, n2,
-                    median1, median2, p_value, p_adj_BH, signif)
+    dplyr::relocate(Genotype, Annotation, Comparison, group1, group2,
+                    n1, n2, median1, median2, p_value, p_adj_BH, signif)
 
   readr::write_csv(stats_df, file.path(out_dir, outfile))
   invisible(stats_df)
 }
 
-# --- 5. Run (writes two CSVs)
-asah1_stats <- .compute_and_save_tests(asah1_timecourse_log2_df, "ASAH1", out_dir_d50_timecourse, "ASAH1_Wilcoxon_tests.csv")
-gba1_stats  <- .compute_and_save_tests(gba1_timecourse_log2_df,  "GBA1",  out_dir_d50_timecourse, "GBA1_Wilcoxon_tests.csv")
+# --- 5. run for both genotypes
+asah1_stats <- .compute_and_save_tests(asah1_timecourse_log2_df, "ASAH1",out_dir_d50_timecourse, "ASAH1_Wilcoxon_tests.csv")
+gba1_stats  <- .compute_and_save_tests(gba1_timecourse_log2_df, "GBA1",out_dir_d50_timecourse, "GBA1_Wilcoxon_tests.csv")
 
 
 ```
 
 
 
-
-
-
-### VIIIe. day 30 vs 50: Barplot for select proteins
+### VIIIf. day 30 vs 50: Barplot for select proteins
 ```{r}
 # --------------------------------------------------- #
 # Function for creating barplot of seleced protein ID across day 30 and day 50
@@ -3763,8 +3756,87 @@ plot_gene_bar_log2fc("SYP", "ASAH1")
 ```
 
 
-### VIIIf. Correlation of annotation across GBA1, ASAH1 day30 & 50
+### VIIIg. Correlation heatmap across annotations (ASAH1 and GBA1, day30 + day50, iN + iDA)
 ```{r}
+
+# --------------------------------------------------- #
+# Correlation: annotations (rows) × KO comparisons (cols)
+# ASAH1 + GBA1, iN/iDA, day30 + day50
+# --------------------------------------------------- #
+
+df_timecourse_d3050_asah1_gba1 <- dplyr::bind_rows(
+  asah1_timecourse_log2_df,
+  gba1_timecourse_log2_df
+)
+
+# --- Step 1. Build KO identifier
+df_corr_input <- df_timecourse_d3050_asah1_gba1 %>%
+  dplyr::mutate(KO = paste(GenotypeGroup, Neuron, Day, sep = "_"))
+
+# --- Step 2. Function to calculate correlations
+run_all_organelle_corr <- function(df, annotations) {
+  ko_cols <- unique(df$KO)
+
+  purrr::map_dfr(annotations, function(ann) {
+    purrr::map_dfr(ko_cols, function(ko) {
+      v <- df %>%
+        dplyr::filter(Annotation == ann, KO == ko) %>%
+        dplyr::pull(log2FC_capped)
+
+      y <- rep(1, length(v))  # membership implicit (we're in ann)
+      keep <- is.finite(v) & is.finite(y)
+
+      if (sum(keep) < 5) {
+        tibble::tibble(KO = ko, Organelle = ann, r = NA_real_)
+      } else {
+        ct <- suppressWarnings(cor.test(v[keep], y[keep], method = "spearman"))
+        tibble::tibble(KO = ko, Organelle = ann, r = unname(ct$estimate))
+      }
+    })
+  })
+}
+
+# --- Step 3. Run correlations
+org_corr_df <- run_all_organelle_corr(
+  df_corr_input,
+  annotations = ann_vec
+)
+
+# --- Step 4. Convert to wide matrix: rows = Annotations, cols = KO comparisons
+org_corr_mat <- org_corr_df %>%
+  dplyr::select(KO, Organelle, r) %>%
+  tidyr::pivot_wider(names_from = KO, values_from = r) %>%
+  tibble::column_to_rownames("Organelle") %>%
+  as.matrix()
+
+org_corr_mat[is.na(org_corr_mat)] <- 0
+
+# --- Step 5. Plot heatmap
+pdf(file.path(out_dir_d50_timecourse, "annotation_vs_KO_correlation_d30_d50_ASAH1_GBA1.pdf"),
+    width = 8, height = 8, useDingbats = FALSE)
+pheatmap::pheatmap(
+  org_corr_mat,
+  color = rev(RColorBrewer::brewer.pal(11, "RdYlBu")),
+  breaks = seq(-1, 1, length.out = 102),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  angle_col = 90,
+  cellheight = 6,
+  cellwidth  = 6,
+  main = "Annotation vs KO correlations (ASAH1 + GBA1, iN/iDA, d30+d50)",
+  fontsize = 6,
+  border_color = NA,
+)
+dev.off()
+
+# --- Step 6. Save CSV
+write.csv(
+  org_corr_mat,
+  file = file.path(out_dir_d50_timecourse, "annotation_vs_KO_correlation_d30_d50_ASAH1_GBA1.csv"),
+  row.names = TRUE
+)
+
+
 
 ```
 
