@@ -61,3 +61,54 @@ Analysis for HeLa endo-lysosomal staining experiments. This folder contains scri
 - Metrics: `pyeval/metrics/per_image_summary.csv`, `pyeval/metrics/pairwise_colocalization.csv`
 - QC overlays: `pyeval/qc_overlays/*.png`
 - Figures and annotated CSVs: paths configured inside the Rmd (`outdir`); includes plots for `frac_coloc_eea1` and `frac_coloc_tfn` with treatment ordering Control 5 min → Control 45 min → ASAH1 5 min → ASAH1 45 min.
+
+
+## 5. Requirements & Environment Setup (`requirements_MPS.txt`)
+
+All evaluations and scripts are run inside a **uv-managed virtual environment** for reproducibility and Apple Silicon (MPS) GPU support.  
+
+```bash
+# Install uv
+brew install uv
+
+# Navigate to working directory
+cd /Users/felix/Desktop/cpdemo
+
+# Remove old environment if necessary
+rm -rf cpdemo_env
+
+# Create and activate fresh environment
+uv venv cpdemo_env
+source cpdemo_env/bin/activate
+
+# Configure VS Code to use this environment
+mkdir -p .vscode
+echo '{ "python.defaultInterpreterPath": "cpdemo_env/bin/python" }' > .vscode/settings.json
+
+# Install PyTorch nightly with MPS
+uv pip install \
+  --pre \
+  --extra-index-url https://download.pytorch.org/whl/nightly/cpu \
+  torch torchvision torchaudio
+
+# Install Cellpose core + GUI dependencies
+uv pip install cellpose
+uv pip install pyqt6 qtpy PyQt6-sip pyqtgraph superqt
+
+# Verify MPS availability
+python - <<EOF
+import torch
+print("MPS enabled:", torch.backends.mps.is_available())
+EOF
+
+# Launch Cellpose GUI with MPS
+python -m cellpose --use_gpu --gpu_device mps
+
+# Install additional requirements for scripts
+uv pip install -r requirements_MPS.txt
+
+# Run segmentation script
+python run_cellpose_calcium_remoteHDD_MPS.py
+
+# Check installed packages
+pip list
