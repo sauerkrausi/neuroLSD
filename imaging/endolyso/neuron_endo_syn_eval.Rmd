@@ -205,3 +205,212 @@ eval_combine_and_save <- function(input_tbl,
 
 ```
 
+
+### IIb.
+```{r}
+# helper: SEM
+.sem_val_fn <- function(x) sd(x, na.rm = TRUE) / sqrt(sum(is.finite(x)))
+
+# helper: convert p to symbols
+.p_to_symbol <- function(p) {
+  case_when(
+    is.na(p)            ~ "",
+    p < 1e-4            ~ "****",
+    p < 1e-3            ~ "***",
+    p < 1e-2            ~ "**",
+    p < 0.05            ~ "*",
+    TRUE                ~ "ns"
+  )
+}
+
+# main function
+make_syn_barplots_with_stats <- function(df_input,
+                                         output_dir,
+                                         stains_keep = c("Bassoon", "SYP", "SYN1", "EEA1"),
+                                         metrics_keep = c("object_count",
+                                                          "avg_perimeter_px",
+                                                          "avg_eccentricity",
+                                                          "avg_solidity")) {
+
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+
+  # standardize and filter
+  df_clean <- df_input %>%
+    filter(stain_name %in% stains_keep,
+           neuron_type %in% c("iN", "iDA"),
+           genotype %in% c("Ctrl", "ASAH1"),
+           day %in% c(30L, 38L)) %>%
+    mutate(
+      group_id = factor(paste(genotype, neuron_type, sep = "_"),
+                        levels = c("Ctrl_iN", "Ctrl_iDA", "ASAH1_iN", "ASAH1_iDA")),
+      day = as.integer(day)
+    )
+
+  # all pairwise comparisons among the 4 groups
+  group_levels <- levels(df_clean$group_id)
+  all_comparisons <- combn(group_levels, 2, simplify = FALSE)
+
+  # collector for all stats (to save as CSV)
+  stats_all_list <- list()
+
+  # iterate metrics
+  for (metric_var_name in metrics_keep) {
+    stopifnot(metric_var_name %in% names(df_clean))
+
+    # iterate days (30 and 38)
+    for (this_day in c(30L, 38L)) {
+      df_day <- df_clean %>% filter(day == this_day)
+
+      # summary per group for bars
+      df_summary <- df_day %>%
+        group_by(stain_name, group_id) %>%
+        summarise(
+          n_images = dplyr::n(),
+          mean_val = mean(.data[[metric_var_name]], na.rm = TRUE),
+          sem_val  = .sem_val_fn(.data[[metric_var_name]]),
+          ymax     = max(.data[[metric_var_name]], na.rm = TRUE),
+          .groups  = "drop"
+        )
+
+      # compute pairwise Wilcoxon within each stain, BH adjust
+      stats_by_stain <- df_day %>%
+        group_split(stain_name, keep = TRUE) %>%
+        map_df(function(df_stain) {
+          sname <- unique(df_stain$stain_name)
+          # run all pairs
+          pair_rows <- map_df(all_comparisons, function(cmp) {
+            g1 <- cmp[1]; g2 <- cmp[2]
+            x1 <- df_stain %>% filter(group_id == g1) %>% pull(.data[[metric_var_name]])
+            x2 <- df_stain %>% filter(group_id == g2) %>% pull(.data[[metric_var_name]])
+            wt <- tryCatch(
+              wilcox.test(x1, x2, exact = FALSE, alternative = "two.sided"),
+              error = function(e) list(p.value = NA_real_)
+            )
+            tibble(
+              stain_name = sname,
+              group1 = g1,
+              group2 = g2,
+              n1 = sum(is.finite(x1)),
+              n2 = sum(is.finite(x2)),
+              p_raw = as.numeric(wt$p.value)
+            )
+          })
+          # BH adjust within this stain
+          pair_rows %>%
+            mutate(p_adj = p.adjust(p_raw, method = "BH"))
+        }) %>%
+        mutate(
+          metric = metric_var_name,
+          day = this_day,
+          p_symbol = .p_to_symbol(p_adj)
+        )
+
+      # store stats to global list
+      stats_all_list[[paste(metric_var_name, this_day, sep = "_")]] <- stats_by_stain
+
+      # build data for ggpubr::stat_pvalue_manual
+      # need: y.position, xmin, xmax, label, and facetting keys (stain_name)
+      # We place comparisons for each stain above its max jitter/bars, staggered
+      y_positions_df <- df_summary %>%
+        group_by(stain_name) %>%
+        summarise(base_y = max(ymax, na.rm = TRUE), .groups = "drop") %>%
+        mutate(base_y = ifelse(is.finite(base_y), base_y, 0))
+
+      # how many comparisons per stain?
+      n_cmp <- length(all_comparisons)
+      # build a per-stain sequence of y positions
+      pval_annot <- stats_by_stain %>%
+        left_join(y_positions_df, by = "stain_name") %>%
+        group_by(stain_name) %>%
+        mutate(
+          # stagger by 5% of base_y (fallback to small constant if base_y is zero)
+          step = ifelse(base_y > 0, 0.05 * base_y, 0.05),
+          y.position = base_y + seq_len(dplyr::n()) * step,
+          xmin = group1,
+          xmax = group2,
+          label = p_symbol
+        ) %>%
+        ungroup()
+
+      # plotting object
+      p_syn <- ggplot(df_summary, aes(x = group_id, y = mean_val, fill = group_id)) +
+        geom_col(width = 0.7) +
+        geom_errorbar(aes(ymin = mean_val - sem_val, ymax = mean_val + sem_val),
+                      width = 0.2) +
+        # jitter of raw values
+        geom_jitter(
+          data = df_day,
+          aes(x = group_id, y = .data[[metric_var_name]]),
+          inherit.aes = FALSE,
+          alpha = 0.5,
+          width = 0.15,
+          height = 0,
+          color = "black"
+        ) +
+        facet_wrap(~ stain_name, scales = "free_y", nrow = 1) +
+        scale_fill_manual(values = group_colors, guide = "none") +
+        labs(
+          x = "Genotype × Neuron type",
+          y = metric_var_name,
+          title = paste0("Day ", this_day, " · ", metric_var_name)
+        ) +
+        theme_bw(base_size = 6) +
+        theme(
+          panel.grid = element_blank(),
+          strip.background = element_blank(),
+          axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
+          plot.title = element_text(face = "bold")
+        )
+
+      # add p-values
+      if (nrow(pval_annot) > 0) {
+        p_syn <- p_syn +
+          stat_pvalue_manual(
+            pval_annot,
+            label = "label",
+            xmin = "xmin",
+            xmax = "xmax",
+            y.position = "y.position",
+            tip.length = 0.01,
+            bracket.size = 0.3,
+            size = 2.2
+          )
+      }
+
+      # save plot
+      plot_fname <- file.path(
+        output_dir,
+        paste0("syn_barplot_", metric_var_name, "_day", this_day, ".pdf")
+      )
+      ggsave(plot_fname, p_syn, width = 7.5, height = 2.2, units = "in", device = cairo_pdf)
+
+      # also handy PNG
+      png_fname <- file.path(
+        output_dir,
+        paste0("syn_barplot_", metric_var_name, "_day", this_day, ".png")
+      )
+      ggsave(png_fname, p_syn, width = 7.5, height = 4.2, units = "in", dpi = 300)
+    }
+  }
+
+  # bind and save stats
+  stats_all_df <- bind_rows(stats_all_list) %>%
+    select(day, metric, stain_name, group1, group2, n1, n2, p_raw, p_adj, p_symbol) %>%
+    arrange(metric, day, stain_name, group1, group2)
+
+  stats_csv <- file.path(output_dir, "syn_barplot_pairwise_stats_BH.csv")
+  write_csv(stats_all_df, stats_csv)
+
+  invisible(list(plots_stats_csv = stats_csv, stats = stats_all_df))
+}
+
+# EXAMPLE CALL:
+make_syn_barplots_with_stats(
+  df_input   = combined_syneval_df,
+  output_dir = outdir
+)
+
+```
+
+
+
