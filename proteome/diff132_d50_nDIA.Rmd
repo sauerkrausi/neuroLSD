@@ -2812,6 +2812,8 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_s
 ```
 
 
+
+
 # VIII. Time course evaluations
 ### VIIIa. day 30 vs 50: Abundance of neuromarkers in Ctrl iN/iDA 
 ```{r}
@@ -3663,6 +3665,12 @@ dev.off()
 # --- 3. Call function for example SYP in ASAH1-/-
 plot_gene_bar_log2fc("SYP", "ASAH1")
 # plot_gene_bar_log2fc("SYN1", "GBA1")
+```
+
+
+### VIIIf. Correlation of annotation across GBA1, ASAH1 day30 & 50
+```{r}
+
 ```
 
 
