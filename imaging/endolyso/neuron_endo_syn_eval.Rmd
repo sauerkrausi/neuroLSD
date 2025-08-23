@@ -206,7 +206,7 @@ eval_combine_and_save <- function(input_tbl,
 ```
 
 
-### IIb.
+### IIb. run stat test on objects and plot 
 ```{r}
 # helper: SEM
 .sem_val_fn <- function(x) sd(x, na.rm = TRUE) / sqrt(sum(is.finite(x)))
@@ -384,12 +384,7 @@ make_syn_barplots_with_stats <- function(df_input,
       )
       ggsave(plot_fname, p_syn, width = 7.5, height = 2.2, units = "in", device = cairo_pdf)
 
-      # also handy PNG
-      png_fname <- file.path(
-        output_dir,
-        paste0("syn_barplot_", metric_var_name, "_day", this_day, ".png")
-      )
-      ggsave(png_fname, p_syn, width = 7.5, height = 4.2, units = "in", dpi = 300)
+    
     }
   }
 
