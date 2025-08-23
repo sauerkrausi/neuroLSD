@@ -306,7 +306,8 @@ make_syn_barplots_with_stats <- function(df_input,
         mutate(step = ifelse(base_y > 0, 0.05 * base_y, 0.05),
                y.position = base_y + seq_len(n()) * step,
                xmin = group1, xmax = group2, label = p_symbol) %>%
-        ungroup()
+       ungroup() %>%
+        filter(!label %in% c("ns","")) 
 
       # Plot: mean ± SEM, jittered raw data, significance brackets
       p_syn <- ggplot(df_summary, aes(x = group_id, y = mean_val, fill = group_id)) +
@@ -337,60 +338,86 @@ make_syn_barplots_with_stats <- function(df_input,
     }
 
     # ---- Merged-days plot (8 groups) ----
-    df_merged <- df_clean %>%
-      mutate(group_day = factor(paste(genotype, neuron_type, paste0("d", day), sep = "_"),
-                                levels = c("Ctrl_iN_d30","Ctrl_iN_d38","Ctrl_iDA_d30","Ctrl_iDA_d38",
-                                           "ASAH1_iN_d30","ASAH1_iN_d38","ASAH1_iDA_d30","ASAH1_iDA_d38")),
-             group_id = factor(group_id, levels = levels(df_clean$group_id)))
+df_merged <- df_clean %>%
+  mutate(group_day = factor(paste(genotype, neuron_type, paste0("d", day), sep = "_"),
+                            levels = c("Ctrl_iN_d30","Ctrl_iN_d38","Ctrl_iDA_d30","Ctrl_iDA_d38",
+                                       "ASAH1_iN_d30","ASAH1_iN_d38","ASAH1_iDA_d30","ASAH1_iDA_d38")),
+         group_id = factor(group_id, levels = levels(df_clean$group_id)))
 
-    all_comparisons_8 <- combn(levels(df_merged$group_day), 2, simplify = FALSE)
+all_comparisons_8 <- combn(levels(df_merged$group_day), 2, simplify = FALSE)
 
-    df_summary_merged <- df_merged %>%
-      group_by(stain_name, group_day, group_id) %>%
-      summarise(n_images = n(),
-                mean_val = mean(.data[[metric_var_name]], na.rm = TRUE),
-                sem_val  = .sem_val_fn(.data[[metric_var_name]]),
-                ymax     = max(.data[[metric_var_name]], na.rm = TRUE),
-                .groups = "drop")
+df_summary_merged <- df_merged %>%
+  group_by(stain_name, group_day, group_id) %>%
+  summarise(n_images = n(),
+            mean_val = mean(.data[[metric_var_name]], na.rm = TRUE),
+            sem_val  = .sem_val_fn(.data[[metric_var_name]]),
+            ymax     = max(.data[[metric_var_name]], na.rm = TRUE),
+            .groups = "drop")
 
-    stats_merged <- df_merged %>%
-      group_split(stain_name, keep = TRUE) %>%
-      map_df(function(df_stain) {
-        sname <- unique(df_stain$stain_name)
-        map_df(all_comparisons_8, function(cmp) {
-          g1 <- cmp[1]; g2 <- cmp[2]
-          x1 <- df_stain %>% filter(group_day == g1) %>% pull(.data[[metric_var_name]])
-          x2 <- df_stain %>% filter(group_day == g2) %>% pull(.data[[metric_var_name]])
-          wt <- tryCatch(wilcox.test(x1, x2, exact = FALSE), error = function(e) list(p.value = NA_real_))
-          tibble(stain_name = sname, group1 = g1, group2 = g2,
-                 n1 = sum(is.finite(x1)), n2 = sum(is.finite(x2)),
-                 p_raw = as.numeric(wt$p.value))
-        }) %>% mutate(p_adj = p.adjust(p_raw, method = "BH"))
-      }) %>%
-      mutate(metric = metric_var_name, day = NA_integer_, p_symbol = .p_to_symbol(p_adj))
+# stats for merged plot
+stats_merged <- df_merged %>%
+  group_split(stain_name, keep = TRUE) %>%
+  map_df(function(df_stain) {
+    sname <- unique(df_stain$stain_name)
+    map_df(all_comparisons_8, function(cmp) {
+      g1 <- cmp[1]; g2 <- cmp[2]
+      x1 <- df_stain %>% filter(group_day == g1) %>% pull(.data[[metric_var_name]])
+      x2 <- df_stain %>% filter(group_day == g2) %>% pull(.data[[metric_var_name]])
+      wt <- tryCatch(wilcox.test(x1, x2, exact = FALSE), error = function(e) list(p.value = NA_real_))
+      tibble(stain_name = sname, group1 = g1, group2 = g2,
+             n1 = sum(is.finite(x1)), n2 = sum(is.finite(x2)),
+             p_raw = as.numeric(wt$p.value))
+    }) %>% mutate(p_adj = p.adjust(p_raw, method = "BH"))
+  }) %>%
+  mutate(metric = metric_var_name, day = NA_integer_, p_symbol = .p_to_symbol(p_adj))
 
-    stats_all_list[[paste(metric_var_name, "merged", sep = "_")]] <- stats_merged
+stats_all_list[[paste(metric_var_name, "merged", sep = "_")]] <- stats_merged
 
-    # Merged plot
-    p_merged <- ggplot(df_summary_merged, aes(x = group_day, y = mean_val, fill = group_id)) +
-      geom_col(width = 0.7) +
-      geom_errorbar(aes(ymin = mean_val - sem_val, ymax = mean_val + sem_val), width = 0.2) +
-      geom_jitter(data = df_merged,
-                  aes(x = group_day, y = .data[[metric_var_name]]),
-                  inherit.aes = FALSE, alpha = 0.5,
-                  width = 0.15, height = 0, color = "black") +
-      facet_wrap(~ stain_name, scales = "free_y", nrow = 1) +
-      scale_fill_manual(values = group_colors, name = NULL) +
-      labs(x = "Genotype × Neuron type × Day", y = metric_var_name,
-           title = paste0("Merged days · ", metric_var_name)) +
-      theme_bw(base_size = 6) +
-      theme(panel.grid = element_blank(),
-            strip.background = element_blank(),
-            axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
-            plot.title = element_text(face = "bold"))
+# build y-positions for significance brackets (per stain)
+y_positions_merged <- df_summary_merged %>%
+  group_by(stain_name) %>%
+  summarise(base_y = max(ymax, na.rm = TRUE), .groups = "drop") %>%
+  mutate(base_y = ifelse(is.finite(base_y), base_y, 0))
 
-    ggsave(file.path(output_dir, paste0("syn_barplot_", metric_var_name, "_merged_days.pdf")),
-           p_merged, width = 10.0, height = 4.2, units = "in", device = cairo_pdf)
+pval_annot_merged <- stats_merged %>%
+  left_join(y_positions_merged, by = "stain_name") %>%
+  group_by(stain_name) %>%
+  mutate(step = ifelse(base_y > 0, 0.05 * base_y, 0.05),
+         y.position = base_y + seq_len(n()) * step,
+         xmin = group1, xmax = group2, label = p_symbol) %>%
+  ungroup() %>% 
+      filter(!label %in% c("ns","")) 
+
+# Plot with legend at bottom + stats brackets
+p_merged <- ggplot(df_summary_merged, aes(x = group_day, y = mean_val, fill = group_id)) +
+  geom_col(width = 0.7) +
+  geom_errorbar(aes(ymin = mean_val - sem_val, ymax = mean_val + sem_val), width = 0.2) +
+  geom_jitter(data = df_merged,
+              aes(x = group_day, y = .data[[metric_var_name]]),
+              inherit.aes = FALSE, alpha = 0.5, width = 0.15, height = 0, color = "black") +
+  facet_wrap(~ stain_name, scales = "free_y", nrow = 1) +
+  scale_fill_manual(values = group_colors, name = NULL) +        # keep legend
+  labs(x = "Genotype × Neuron type × Day", y = metric_var_name,
+       title = paste0("Merged days · ", metric_var_name)) +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(),
+        strip.background = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
+        plot.title = element_text(face = "bold"),
+        legend.position = "bottom") +                            # NEW: legend at bottom
+  stat_pvalue_manual(                                           # NEW: add stats
+    pval_annot_merged,
+    label = "label",
+    xmin = "xmin",
+    xmax = "xmax",
+    y.position = "y.position",
+    tip.length = 0.01,
+    bracket.size = 0.3,
+    size = 2.0
+  )
+
+ggsave(file.path(output_dir, paste0("syn_barplot_", metric_var_name, "_merged_days.pdf")),
+       p_merged, width = 10.0, height = 4.2, units = "in", device = cairo_pdf)
   }
 
   # Combine all stats and save
