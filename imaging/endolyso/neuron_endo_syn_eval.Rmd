@@ -136,7 +136,7 @@ group_colors <- c(
 )
 
 # --- 2. parse though HD folders to read in result files 
-# Base directory and subfolders
+# 2.2 Base directory and subfolders
 eval_base_dir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data"
 outdir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/Results"
 
@@ -147,7 +147,7 @@ eval_folders <- c(
   "20241224_diff129_iNiDA_d38_Ctrl_plate2_SynMarkers_MIP/_out/metrics"
 )
 
-# Build full paths
+# 2.2 Build full paths
 eval_paths <- file.path(eval_base_dir, eval_folders, "per_image_summary.csv")
 
 # Annotate genotype/day
