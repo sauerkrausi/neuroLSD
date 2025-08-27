@@ -157,7 +157,7 @@ eval_input_tbl <- tibble(
   day       = c(30, 30, 38, 38)
 )
 
-# Output
+# 2.3 Output
 eval_output_file <- file.path(outdir, "combined_per_image_eval.csv")
 
 eval_read_one <- function(file_path) {
@@ -190,7 +190,7 @@ eval_combine_and_save <- function(input_tbl,
 
   eval_combined_df <- bind_rows(non_null)
 
-  # Put metadata first
+  # 2.4 Put metadata collumn first in output dataframe
   front_cols <- c("genotype", "day", "source_file")
   ordered_cols <- c(intersect(front_cols, names(eval_combined_df)),
                     setdiff(names(eval_combined_df), front_cols))
