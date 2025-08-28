@@ -522,6 +522,20 @@ def save_qc_overlay_png(out_png: Path,
     fig.savefig(out_png)
     plt.close(fig)
 
+def save_syp_bassoon_overlay_png(out_png: Path, syp_img: np.ndarray, bassoon_img: np.ndarray, dpi: int = 300):
+    # Save a color overlay PNG: SYP (green), Bassoon (magenta)
+    # Inputs are float images [0,1]
+    rgb = np.zeros((*syp_img.shape, 3), dtype=np.float32)
+    rgb[..., 1] = np.clip(syp_img, 0, 1)  # green
+    rgb[..., 0] = np.clip(bassoon_img, 0, 1)  # red
+    rgb[..., 2] = np.clip(bassoon_img, 0, 1)  # blue (magenta = R+B)
+    plt.figure(figsize=(syp_img.shape[1]/dpi, syp_img.shape[0]/dpi), dpi=dpi)
+    plt.imshow(rgb)
+    plt.axis('off')
+    plt.tight_layout(pad=0)
+    plt.savefig(out_png, dpi=dpi, bbox_inches='tight', pad_inches=0)
+    plt.close()
+
 # -----------------------------
 # Main per file
 # -----------------------------
@@ -580,6 +594,8 @@ def process_file(tif_path: Path, out_root: Path,
 
     # Store per-stain object DataFrames for coloc
     stain_obj_dfs = {}
+    # Store per-stain images for overlay
+    stain_img_floats = {}
 
     # iterate stains that are present and in scope
     for stain_name, wl in meta["stains"]:
@@ -614,6 +630,9 @@ def process_file(tif_path: Path, out_root: Path,
         # Store for coloc if SYP or Bassoon
         if stain_name.lower() in {"syp", "bassoon"}:
             stain_obj_dfs[stain_name.lower()] = df_objs.copy()
+        # Store for overlay if SYP or Bassoon
+        if stain_name.lower() in {"syp", "bassoon"}:
+            stain_img_floats[stain_name.lower()] = img_float_by_wl[wl]
         # Only keep labels that passed the filter for overlay
         keep_labels = df_objs["label"].values if not df_objs.empty else None
         # add metadata columns
@@ -667,6 +686,16 @@ def process_file(tif_path: Path, out_root: Path,
                 row["syp_bassoon_coloc_count"] = coloc_count
                 row["syp_bassoon_not_coloc_count"] = not_coloc_count
                 row["syp_bassoon_coloc_percent"] = percent_coloc
+        # Save color overlay PNG of SYP (green) and Bassoon (magenta)
+        if "syp" in stain_img_floats and "bassoon" in stain_img_floats:
+            base = tif_path.stem.replace(" ", "_")
+            out_png = out_root / "qc_overlays" / f"{base}_SYP-Bassoon_color_overlay.png"
+            save_syp_bassoon_overlay_png(
+                out_png,
+                syp_img=stain_img_floats["syp"],
+                bassoon_img=stain_img_floats["bassoon"],
+                dpi=300
+            )
 
 # -----------------------------
 # Runner
