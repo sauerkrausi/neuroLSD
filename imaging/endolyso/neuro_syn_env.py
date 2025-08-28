@@ -30,6 +30,7 @@ from skimage.morphology import remove_small_objects, remove_small_holes, binary_
 from skimage.measure import label as sk_label, regionprops_table
 from skimage.segmentation import find_boundaries
 import matplotlib.pyplot as plt
+from scipy.spatial import cKDTree
 
 # -----------------------------
 # User paths
@@ -430,6 +431,20 @@ def segment_diverse(img_float: np.ndarray, stain_name: str = "") -> np.ndarray:
 # -----------------------------
 # Measurement
 # -----------------------------
+def compute_coloc_stats(syp_df, bassoon_df, radius_px=5):
+    # Returns: coloc_count, not_coloc_count, percent_coloc
+    if syp_df.empty or bassoon_df.empty:
+        return 0, len(syp_df), 0.0
+    syp_centroids = syp_df[["centroid-0", "centroid-1"]].values
+    bassoon_centroids = bassoon_df[["centroid-0", "centroid-1"]].values
+    tree = cKDTree(bassoon_centroids)
+    dists, idxs = tree.query(syp_centroids, distance_upper_bound=radius_px)
+    coloc_mask = dists <= radius_px
+    coloc_count = np.count_nonzero(coloc_mask)
+    not_coloc_count = len(syp_df) - coloc_count
+    percent_coloc = 100.0 * coloc_count / len(syp_df) if len(syp_df) > 0 else 0.0
+    return coloc_count, not_coloc_count, percent_coloc
+
 def measure_regions(lbl: np.ndarray, inten_raw: np.ndarray, inten_cleaned: np.ndarray) -> pd.DataFrame:
     # Measure region properties for each labeled object.
     # Returns a DataFrame with area, intensity, and shape metrics.
@@ -439,7 +454,7 @@ def measure_regions(lbl: np.ndarray, inten_raw: np.ndarray, inten_cleaned: np.nd
             "feret_diameter_max_px", "mean_intensity_raw", "integrated_intensity_raw",
             "mean_intensity_cleaned", "integrated_intensity_cleaned"
         ])
-    props_common = ("label", "area", "perimeter", "eccentricity", "solidity")
+    props_common = ("label", "area", "perimeter", "eccentricity", "solidity", "centroid")
     # try feret if available
     try:
         df_raw = pd.DataFrame(regionprops_table(lbl, intensity_image=inten_raw,
@@ -563,6 +578,9 @@ def process_file(tif_path: Path, out_root: Path,
     # neuronal mask
     neuron_mask = build_neuronal_mask(meta["stains"], wl_present, img_float_by_wl)
 
+    # Store per-stain object DataFrames for coloc
+    stain_obj_dfs = {}
+
     # iterate stains that are present and in scope
     for stain_name, wl in meta["stains"]:
         if wl not in img_float_by_wl:
@@ -592,8 +610,10 @@ def process_file(tif_path: Path, out_root: Path,
             lbl = segment_diverse(cleaned_bg, stain_name=stain_name)
         # measurements
         df_objs = measure_regions(lbl, inten_raw=raw_f, inten_cleaned=cleaned_bg)
-        # Apply size filters for specific stains (including eea1)
         df_objs = apply_size_filter(df_objs, stain_name)
+        # Store for coloc if SYP or Bassoon
+        if stain_name.lower() in {"syp", "bassoon"}:
+            stain_obj_dfs[stain_name.lower()] = df_objs.copy()
         # Only keep labels that passed the filter for overlay
         keep_labels = df_objs["label"].values if not df_objs.empty else None
         # add metadata columns
@@ -631,6 +651,22 @@ def process_file(tif_path: Path, out_root: Path,
             img_raw=raw_f, img_clean=cleaned_f, img_bgsub=cleaned_bg, lbl=lbl,
             keep_labels=keep_labels
         )
+
+    # After all stains: compute SYP/Bassoon coloc if both present
+    if "syp" in stain_obj_dfs and "bassoon" in stain_obj_dfs:
+        syp_df = stain_obj_dfs["syp"]
+        bassoon_df = stain_obj_dfs["bassoon"]
+        coloc_count, not_coloc_count, percent_coloc = compute_coloc_stats(syp_df, bassoon_df, radius_px=5)
+        # Add coloc stats to per_image_rows for SYP and Bassoon
+        for row in per_image_rows:
+            if row["stain_name"].lower() == "syp":
+                row["syp_bassoon_coloc_count"] = coloc_count
+                row["syp_bassoon_not_coloc_count"] = not_coloc_count
+                row["syp_bassoon_coloc_percent"] = percent_coloc
+            if row["stain_name"].lower() == "bassoon":
+                row["syp_bassoon_coloc_count"] = coloc_count
+                row["syp_bassoon_not_coloc_count"] = not_coloc_count
+                row["syp_bassoon_coloc_percent"] = percent_coloc
 
 # -----------------------------
 # Runner
