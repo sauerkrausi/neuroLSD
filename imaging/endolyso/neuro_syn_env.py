@@ -529,7 +529,7 @@ def save_syp_bassoon_overlay_png(
     syp_df: Optional[pd.DataFrame] = None,
     bassoon_df: Optional[pd.DataFrame] = None,
     dpi: int = 300,
-    coloc_radius: float = 5.0,
+    coloc_radius: float = 10.0,  # Updated radius to 10 px
 ):
     # Save a color overlay PNG: SYP (green), Bassoon (magenta), with centroids overlay
     rgb = np.zeros((*syp_img.shape, 3), dtype=np.float32)
@@ -706,17 +706,20 @@ def process_file(tif_path: Path, out_root: Path,
     if "syp" in stain_obj_dfs and "bassoon" in stain_obj_dfs:
         syp_df = stain_obj_dfs["syp"]
         bassoon_df = stain_obj_dfs["bassoon"]
-        coloc_count, not_coloc_count, percent_coloc = compute_coloc_stats(syp_df, bassoon_df, radius_px=5)
+        coloc_count, not_coloc_count, percent_coloc = compute_coloc_stats(syp_df, bassoon_df, radius_px=10)  # Updated radius to 10 px
+
         # Add coloc stats to per_image_rows for SYP and Bassoon
         for row in per_image_rows:
-            if row["stain_name"].lower() == "syp":
-                row["syp_bassoon_coloc_count"] = coloc_count
-                row["syp_bassoon_not_coloc_count"] = not_coloc_count
-                row["syp_bassoon_coloc_percent"] = percent_coloc
-            if row["stain_name"].lower() == "bassoon":
-                row["syp_bassoon_coloc_count"] = coloc_count
-                row["syp_bassoon_not_coloc_count"] = not_coloc_count
-                row["syp_bassoon_coloc_percent"] = percent_coloc
+            if row["file_name"] == tif_path.name:  # Ensure stats are saved for the correct image
+                if row["stain_name"].lower() == "syp":
+                    row["syp_bassoon_coloc_count"] = coloc_count
+                    row["syp_bassoon_not_coloc_count"] = not_coloc_count
+                    row["syp_bassoon_coloc_percent"] = percent_coloc
+                if row["stain_name"].lower() == "bassoon":
+                    row["syp_bassoon_coloc_count"] = coloc_count
+                    row["syp_bassoon_not_coloc_count"] = not_coloc_count
+                    row["syp_bassoon_coloc_percent"] = percent_coloc
+
         # Save color overlay PNG of SYP (green) and Bassoon (magenta) with centroid overlay
         if "syp" in stain_img_floats and "bassoon" in stain_img_floats:
             base = tif_path.stem.replace(" ", "_")
@@ -728,7 +731,7 @@ def process_file(tif_path: Path, out_root: Path,
                 syp_df=syp_df,
                 bassoon_df=bassoon_df,
                 dpi=300,
-                coloc_radius=5.0
+                coloc_radius=10.0  # Updated radius to 10 px
             )
 
 # -----------------------------
