@@ -522,15 +522,46 @@ def save_qc_overlay_png(out_png: Path,
     fig.savefig(out_png)
     plt.close(fig)
 
-def save_syp_bassoon_overlay_png(out_png: Path, syp_img: np.ndarray, bassoon_img: np.ndarray, dpi: int = 300):
-    # Save a color overlay PNG: SYP (green), Bassoon (magenta)
-    # Inputs are float images [0,1]
+def save_syp_bassoon_overlay_png(
+    out_png: Path,
+    syp_img: np.ndarray,
+    bassoon_img: np.ndarray,
+    syp_df: Optional[pd.DataFrame] = None,
+    bassoon_df: Optional[pd.DataFrame] = None,
+    dpi: int = 300,
+    coloc_radius: float = 5.0,
+):
+    # Save a color overlay PNG: SYP (green), Bassoon (magenta), with centroids overlay
     rgb = np.zeros((*syp_img.shape, 3), dtype=np.float32)
     rgb[..., 1] = np.clip(syp_img, 0, 1)  # green
     rgb[..., 0] = np.clip(bassoon_img, 0, 1)  # red
     rgb[..., 2] = np.clip(bassoon_img, 0, 1)  # blue (magenta = R+B)
     plt.figure(figsize=(syp_img.shape[1]/dpi, syp_img.shape[0]/dpi), dpi=dpi)
     plt.imshow(rgb)
+    # Overlay centroids if provided
+    if syp_df is not None and bassoon_df is not None and not syp_df.empty and not bassoon_df.empty:
+        syp_centroids = syp_df[["centroid-1", "centroid-0"]].values  # (x, y)
+        bassoon_centroids = bassoon_df[["centroid-1", "centroid-0"]].values
+        # Find coloc SYP indices (within radius of any Bassoon)
+        tree = cKDTree(bassoon_centroids)
+        dists, idxs = tree.query(syp_centroids, distance_upper_bound=coloc_radius)
+        coloc_mask = dists <= coloc_radius
+        # Plot SYP-only (green)
+        syp_only = syp_centroids[~coloc_mask]
+        if len(syp_only) > 0:
+            plt.scatter(syp_only[:,0], syp_only[:,1], s=18, c='lime', marker='o', edgecolors='k', linewidths=0.5, label='SYP')
+        # Plot coloc (yellow)
+        syp_coloc = syp_centroids[coloc_mask]
+        if len(syp_coloc) > 0:
+            plt.scatter(syp_coloc[:,0], syp_coloc[:,1], s=18, c='yellow', marker='o', edgecolors='k', linewidths=0.5, label='SYP+Bsn')
+        # Plot Bassoon-only (magenta)
+        # Find Bassoon centroids not matched to any SYP coloc
+        # For each Bassoon, see if any SYP colocated to it
+        matched_bsn = set(idxs[coloc_mask])
+        bsn_only_mask = [i not in matched_bsn for i in range(len(bassoon_centroids))]
+        bsn_only = bassoon_centroids[bsn_only_mask]
+        if len(bsn_only) > 0:
+            plt.scatter(bsn_only[:,0], bsn_only[:,1], s=18, c='magenta', marker='o', edgecolors='k', linewidths=0.5, label='Bassoon')
     plt.axis('off')
     plt.tight_layout(pad=0)
     plt.savefig(out_png, dpi=dpi, bbox_inches='tight', pad_inches=0)
@@ -686,7 +717,7 @@ def process_file(tif_path: Path, out_root: Path,
                 row["syp_bassoon_coloc_count"] = coloc_count
                 row["syp_bassoon_not_coloc_count"] = not_coloc_count
                 row["syp_bassoon_coloc_percent"] = percent_coloc
-        # Save color overlay PNG of SYP (green) and Bassoon (magenta)
+        # Save color overlay PNG of SYP (green) and Bassoon (magenta) with centroid overlay
         if "syp" in stain_img_floats and "bassoon" in stain_img_floats:
             base = tif_path.stem.replace(" ", "_")
             out_png = out_root / "qc_overlays" / f"{base}_SYP-Bassoon_color_overlay.png"
@@ -694,7 +725,10 @@ def process_file(tif_path: Path, out_root: Path,
                 out_png,
                 syp_img=stain_img_floats["syp"],
                 bassoon_img=stain_img_floats["bassoon"],
-                dpi=300
+                syp_df=syp_df,
+                bassoon_df=bassoon_df,
+                dpi=300,
+                coloc_radius=5.0
             )
 
 # -----------------------------
