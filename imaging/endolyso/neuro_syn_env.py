@@ -84,7 +84,7 @@ BASSOON_MAX_AREA_UM2 = 100        # Reject Bassoon objects larger than 100 µm²
 # Channel-specific size filters (in µm²)
 SIZE_FILTERS_UM2 = {
     "bassoon":   {"min": 0.5, "max": 10},
-    "syp":       {"min": 2,    "max": 450},
+    "syp":       {"min": 3,    "max": 450},
     "syn1":      {"min": 2,    "max": 450},
     "eea1":      {"min": 3,    "max": None},  
     "tubulin":   {"min": 5,    "max": None},
@@ -613,43 +613,92 @@ def save_syp_bassoon_overlay_png(
       - If coloc_radius is given with DataFrames, draw connecting lines for pairs within that radius.
     Supports calls with either (syp_lbl/bassoon_lbl) or (syp_df/bassoon_df).
     """
-    rgb = np.zeros((*syp_img.shape, 3), dtype=np.float32)
-    rgb[..., 1] = np.clip(syp_img, 0, 1)        # green channel for SYP
-    rgb[..., 0] = np.clip(bassoon_img, 0, 1)    # red channel for Bassoon
-    rgb[..., 2] = np.clip(bassoon_img, 0, 1)    # magenta = R + B
+    # If label images are provided, render labels-only overlay on black background
+    labels_mode = (syp_lbl is not None) and (bassoon_lbl is not None)
 
     plt.figure(figsize=(syp_img.shape[1]/dpi, syp_img.shape[0]/dpi), dpi=dpi)
     ax = plt.gca()
-    ax.imshow(rgb)
     ax.axis('off')
 
-    # If label masks provided, highlight overlap in yellow
-    if syp_lbl is not None and bassoon_lbl is not None:
-        overlap_mask = (syp_lbl > 0) & (bassoon_lbl > 0)
-        # overlay semi-transparent yellow on overlap
-        ov = np.zeros((*overlap_mask.shape, 4), dtype=float)
-        ov[overlap_mask] = [1, 1, 0, 0.6]
-        ax.imshow(ov)
-
-    # If centroid DataFrames provided, plot points and optional links within coloc_radius
-    if syp_df is not None and bassoon_df is not None and not syp_df.empty and not bassoon_df.empty:
-        syp_pts = syp_df[["centroid-1", "centroid-0"]].values  # x,y
-        bas_pts = bassoon_df[["centroid-1", "centroid-0"]].values
-        ax.scatter(syp_pts[:,0], syp_pts[:,1], s=6, edgecolors="none", c="#00FF00")  # green
-        ax.scatter(bas_pts[:,0], bas_pts[:,1], s=6, edgecolors="none", c="#FF00FF")  # magenta
-        if coloc_radius is not None and coloc_radius > 0:
-            tree = cKDTree(bas_pts)
-            dists, idxs = tree.query(syp_pts, distance_upper_bound=coloc_radius)
-            for i, d in enumerate(dists):
-                if np.isfinite(d) and d <= coloc_radius:
-                    j = idxs[i]
-                    x1, y1 = syp_pts[i]
-                    x2, y2 = bas_pts[j]
-                    ax.plot([x1, x2], [y1, y2], color="yellow", linewidth=0.5)
+    if labels_mode:
+        # black background
+        ax.imshow(np.zeros_like(syp_img), cmap='gray', vmin=0, vmax=1)
+        # SYP mask (magenta, semi-transparent)
+        syp_mask = (syp_lbl > 0)
+        if syp_mask.any():
+            ov_syp = np.zeros((*syp_mask.shape, 4), dtype=float)
+            ov_syp[syp_mask] = [1, 0, 1, 0.35]  # RGBA: magenta
+            ax.imshow(ov_syp)
+        # Bassoon mask (green, semi-transparent)
+        bas_mask = (bassoon_lbl > 0)
+        if bas_mask.any():
+            ov_bas = np.zeros((*bas_mask.shape, 4), dtype=float)
+            ov_bas[bas_mask] = [0, 1, 0, 0.35]  # RGBA: green
+            ax.imshow(ov_bas)
+        # Overlap (yellow, less transparent, drawn last)
+        overlap_mask = syp_mask & bas_mask
+        if overlap_mask.any():
+            ov = np.zeros((*overlap_mask.shape, 4), dtype=float)
+            ov[overlap_mask] = [1, 1, 0, 0.6]
+            ax.imshow(ov)
+    else:
+        # Fallback: show raw channels (SYP as green; Bassoon as magenta)
+        rgb = np.zeros((*syp_img.shape, 3), dtype=np.float32)
+        rgb[..., 1] = np.clip(syp_img, 0, 1)        # green channel for SYP
+        rgb[..., 0] = np.clip(bassoon_img, 0, 1)    # red channel for Bassoon
+        rgb[..., 2] = np.clip(bassoon_img, 0, 1)    # magenta = R + B
+        ax.imshow(rgb)
 
     plt.tight_layout(pad=0)
     plt.savefig(out_png, dpi=dpi, bbox_inches='tight', pad_inches=0)
     plt.close()
+# -----------------------------
+# SYP/Bassoon ANY-overlap coloc stats
+# -----------------------------
+def compute_anyoverlap_counts(syp_lbl: np.ndarray,
+                              bassoon_lbl: np.ndarray) -> Dict[str, float]:
+    """
+    Object-level ANY-overlap coloc metrics for both SYP and Bassoon.
+    A SYP (or Bassoon) object is counted as colocalized if ANY pixel of that object
+    overlaps with ANY pixel of the other stain's objects.
+    Returns a dict with total/coloc/single counts and percents for both channels.
+    """
+    syp_total = int(syp_lbl.max())
+    bas_total = int(bassoon_lbl.max())
+    out = {
+        "syp_total": syp_total,
+        "syp_coloc": 0,
+        "syp_single": syp_total,
+        "syp_coloc_percent": 0.0,
+        "syp_single_percent": 0.0,
+        "bassoon_total": bas_total,
+        "bassoon_coloc": 0,
+        "bassoon_single": bas_total,
+        "bassoon_coloc_percent": 0.0,
+        "bassoon_single_percent": 0.0,
+    }
+    if syp_total == 0 and bas_total == 0:
+        return out
+    overlap = (syp_lbl > 0) & (bassoon_lbl > 0)
+    # SYP coloc labels
+    syp_coloc_labels = set()
+    for l in range(1, syp_total + 1):
+        if (overlap & (syp_lbl == l)).any():
+            syp_coloc_labels.add(l)
+    # Bassoon coloc labels
+    bas_coloc_labels = set()
+    for l in range(1, bas_total + 1):
+        if (overlap & (bassoon_lbl == l)).any():
+            bas_coloc_labels.add(l)
+    out["syp_coloc"] = len(syp_coloc_labels)
+    out["syp_single"] = syp_total - out["syp_coloc"]
+    out["bassoon_coloc"] = len(bas_coloc_labels)
+    out["bassoon_single"] = bas_total - out["bassoon_coloc"]
+    out["syp_coloc_percent"] = (100.0 * out["syp_coloc"] / syp_total) if syp_total > 0 else 0.0
+    out["syp_single_percent"] = (100.0 * out["syp_single"] / syp_total) if syp_total > 0 else 0.0
+    out["bassoon_coloc_percent"] = (100.0 * out["bassoon_coloc"] / bas_total) if bas_total > 0 else 0.0
+    out["bassoon_single_percent"] = (100.0 * out["bassoon_single"] / bas_total) if bas_total > 0 else 0.0
+    return out
 
 # -----------------------------
 # Main per file
@@ -804,29 +853,24 @@ def process_file(tif_path: Path, out_root: Path,
         syp_lbl = stain_lbls["syp"]
         bassoon_lbl = stain_lbls["bassoon"]
 
-        # Require at least 20% overlap for colocalization
-        overlap_count, no_overlap_count, percent_overlap = compute_overlap_stats(syp_lbl, bassoon_lbl, min_overlap_percent=20.0)
-
-        # Filter SYP DataFrame for overlapping objects
-        filtered_syp_df = filter_overlap(syp_lbl, bassoon_lbl, stain_obj_dfs["syp"])
-
-        # Add overlap stats to per_image_rows for SYP and Bassoon
+        # ANY-overlap colocalization metrics for both channels
+        stats_any = compute_anyoverlap_counts(syp_lbl, bassoon_lbl)
         for row in per_image_rows:
-            if row["file_name"] == tif_path.name:  # Ensure stats are saved for the correct image
+            if row["file_name"] == tif_path.name:
                 if row["stain_name"].lower() == "syp":
-                    row["syp_bassoon_overlap_count"] = overlap_count
-                    row["syp_bassoon_no_overlap_count"] = no_overlap_count
-                    row["syp_bassoon_overlap_percent"] = percent_overlap
-                if row["stain_name"].lower() == "bassoon":
-                    row["syp_bassoon_overlap_count"] = overlap_count
-                    row["syp_bassoon_no_overlap_count"] = no_overlap_count
-                    row["syp_bassoon_overlap_percent"] = percent_overlap
+                    row["syp_total_objects"] = stats_any["syp_total"]
+                    row["syp_bassoon_coloc_count"] = stats_any["syp_coloc"]
+                    row["syp_single_count"] = stats_any["syp_single"]
+                    row["syp_bassoon_coloc_percent"] = stats_any["syp_coloc_percent"]
+                    row["syp_single_percent"] = stats_any["syp_single_percent"]
+                elif row["stain_name"].lower() == "bassoon":
+                    row["bassoon_total_objects"] = stats_any["bassoon_total"]
+                    row["bassoon_syp_coloc_count"] = stats_any["bassoon_coloc"]
+                    row["bassoon_single_count"] = stats_any["bassoon_single"]
+                    row["bassoon_syp_coloc_percent"] = stats_any["bassoon_coloc_percent"]
+                    row["bassoon_single_percent"] = stats_any["bassoon_single_percent"]
 
-        # Save filtered SYP objects to per_object_rows
-        if not filtered_syp_df.empty:
-            per_object_rows.extend(filtered_syp_df.to_dict(orient="records"))
-
-        # Save color overlay PNG of SYP (green) and Bassoon (magenta) with overlap in yellow
+        # Save color overlay PNG of SYP (magenta), Bassoon (green), overlap (yellow) if both images available
         if "syp" in stain_img_floats and "bassoon" in stain_img_floats:
             base = tif_path.stem.replace(" ", "_")
             out_png = out_root / "qc_overlays" / f"{base}_SYP-Bassoon_overlap_overlay.png"
