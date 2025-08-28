@@ -445,6 +445,36 @@ def compute_coloc_stats(syp_df, bassoon_df, radius_px=5):
     percent_coloc = 100.0 * coloc_count / len(syp_df) if len(syp_df) > 0 else 0.0
     return coloc_count, not_coloc_count, percent_coloc
 
+def compute_overlap_stats(syp_lbl: np.ndarray, bassoon_lbl: np.ndarray, min_overlap_percent: float = 20.0) -> Tuple[int, int, float]:
+    """
+    Compute overlap statistics between SYP and Bassoon segmented objects.
+    A Bassoon object is considered colocalized if at least `min_overlap_percent` of its mask overlaps with SYP.
+    Returns:
+    - overlap_count: Number of Bassoon objects with sufficient overlap with SYP objects.
+    - no_overlap_count: Number of Bassoon objects with insufficient overlap.
+    - percent_overlap: Percentage of Bassoon objects with sufficient overlap.
+    """
+    if syp_lbl.max() == 0 or bassoon_lbl.max() == 0:
+        return 0, bassoon_lbl.max(), 0.0
+
+    overlap_count = 0
+
+    # Iterate over each Bassoon object
+    for bassoon_label in range(1, bassoon_lbl.max() + 1):
+        bassoon_mask = bassoon_lbl == bassoon_label
+        overlap_mask = bassoon_mask & (syp_lbl > 0)
+        overlap_area = np.sum(overlap_mask)
+        bassoon_area = np.sum(bassoon_mask)
+
+        # Check if the overlap area is at least `min_overlap_percent` of the Bassoon area
+        if bassoon_area > 0 and (overlap_area / bassoon_area) * 100 >= min_overlap_percent:
+            overlap_count += 1
+
+    no_overlap_count = bassoon_lbl.max() - overlap_count
+    percent_overlap = 100.0 * overlap_count / bassoon_lbl.max() if bassoon_lbl.max() > 0 else 0.0
+
+    return overlap_count, no_overlap_count, percent_overlap
+
 def measure_regions(lbl: np.ndarray, inten_raw: np.ndarray, inten_cleaned: np.ndarray) -> pd.DataFrame:
     # Measure region properties for each labeled object.
     # Returns a DataFrame with area, intensity, and shape metrics.
@@ -526,42 +556,24 @@ def save_syp_bassoon_overlay_png(
     out_png: Path,
     syp_img: np.ndarray,
     bassoon_img: np.ndarray,
-    syp_df: Optional[pd.DataFrame] = None,
-    bassoon_df: Optional[pd.DataFrame] = None,
+    syp_lbl: np.ndarray,
+    bassoon_lbl: np.ndarray,
     dpi: int = 300,
-    coloc_radius: float = 10.0,  # Updated radius to 10 px
 ):
-    # Save a color overlay PNG: SYP (green), Bassoon (magenta), with centroids overlay
+    """
+    Save a color overlay PNG: SYP (green), Bassoon (magenta), with overlap in yellow.
+    """
     rgb = np.zeros((*syp_img.shape, 3), dtype=np.float32)
     rgb[..., 1] = np.clip(syp_img, 0, 1)  # green
     rgb[..., 0] = np.clip(bassoon_img, 0, 1)  # red
     rgb[..., 2] = np.clip(bassoon_img, 0, 1)  # blue (magenta = R+B)
+
+    # Highlight overlapping regions in yellow
+    overlap_mask = (syp_lbl > 0) & (bassoon_lbl > 0)
+    rgb[overlap_mask, :] = [1, 1, 0]  # yellow
+
     plt.figure(figsize=(syp_img.shape[1]/dpi, syp_img.shape[0]/dpi), dpi=dpi)
     plt.imshow(rgb)
-    # Overlay centroids if provided
-    if syp_df is not None and bassoon_df is not None and not syp_df.empty and not bassoon_df.empty:
-        syp_centroids = syp_df[["centroid-1", "centroid-0"]].values  # (x, y)
-        bassoon_centroids = bassoon_df[["centroid-1", "centroid-0"]].values
-        # Find coloc SYP indices (within radius of any Bassoon)
-        tree = cKDTree(bassoon_centroids)
-        dists, idxs = tree.query(syp_centroids, distance_upper_bound=coloc_radius)
-        coloc_mask = dists <= coloc_radius
-        # Plot SYP-only (green)
-        syp_only = syp_centroids[~coloc_mask]
-        if len(syp_only) > 0:
-            plt.scatter(syp_only[:,0], syp_only[:,1], s=18, c='lime', marker='o', edgecolors='k', linewidths=0.5, label='SYP')
-        # Plot coloc (yellow)
-        syp_coloc = syp_centroids[coloc_mask]
-        if len(syp_coloc) > 0:
-            plt.scatter(syp_coloc[:,0], syp_coloc[:,1], s=18, c='yellow', marker='o', edgecolors='k', linewidths=0.5, label='SYP+Bsn')
-        # Plot Bassoon-only (magenta)
-        # Find Bassoon centroids not matched to any SYP coloc
-        # For each Bassoon, see if any SYP colocated to it
-        matched_bsn = set(idxs[coloc_mask])
-        bsn_only_mask = [i not in matched_bsn for i in range(len(bassoon_centroids))]
-        bsn_only = bassoon_centroids[bsn_only_mask]
-        if len(bsn_only) > 0:
-            plt.scatter(bsn_only[:,0], bsn_only[:,1], s=18, c='magenta', marker='o', edgecolors='k', linewidths=0.5, label='Bassoon')
     plt.axis('off')
     plt.tight_layout(pad=0)
     plt.savefig(out_png, dpi=dpi, bbox_inches='tight', pad_inches=0)
@@ -732,6 +744,45 @@ def process_file(tif_path: Path, out_root: Path,
                 bassoon_df=bassoon_df,
                 dpi=300,
                 coloc_radius=10.0  # Updated radius to 10 px
+            )
+    # After all stains: compute SYP/Bassoon overlap if both present
+    if "syp" in stain_obj_dfs and "bassoon" in stain_obj_dfs:
+        syp_lbl = sk_label(stain_img_floats["syp"] > 0)  # SYP labeled mask
+        bassoon_lbl = sk_label(stain_img_floats["bassoon"] > 0)  # Bassoon labeled mask
+
+        # Require at least 20% overlap for colocalization
+        overlap_count, no_overlap_count, percent_overlap = compute_overlap_stats(syp_lbl, bassoon_lbl, min_overlap_percent=20.0)
+
+        # Filter SYP DataFrame for overlapping objects
+        filtered_syp_df = filter_overlap(syp_lbl, bassoon_lbl, stain_obj_dfs["syp"])
+
+        # Add overlap stats to per_image_rows for SYP and Bassoon
+        for row in per_image_rows:
+            if row["file_name"] == tif_path.name:  # Ensure stats are saved for the correct image
+                if row["stain_name"].lower() == "syp":
+                    row["syp_bassoon_overlap_count"] = overlap_count
+                    row["syp_bassoon_no_overlap_count"] = no_overlap_count
+                    row["syp_bassoon_overlap_percent"] = percent_overlap
+                if row["stain_name"].lower() == "bassoon":
+                    row["syp_bassoon_overlap_count"] = overlap_count
+                    row["syp_bassoon_no_overlap_count"] = no_overlap_count
+                    row["syp_bassoon_overlap_percent"] = percent_overlap
+
+        # Save filtered SYP objects to per_object_rows
+        if not filtered_syp_df.empty:
+            per_object_rows.extend(filtered_syp_df.to_dict(orient="records"))
+
+        # Save color overlay PNG of SYP (green) and Bassoon (magenta) with overlap in yellow
+        if "syp" in stain_img_floats and "bassoon" in stain_img_floats:
+            base = tif_path.stem.replace(" ", "_")
+            out_png = out_root / "qc_overlays" / f"{base}_SYP-Bassoon_overlap_overlay.png"
+            save_syp_bassoon_overlay_png(
+                out_png,
+                syp_img=stain_img_floats["syp"],
+                bassoon_img=stain_img_floats["bassoon"],
+                syp_lbl=syp_lbl,
+                bassoon_lbl=bassoon_lbl,
+                dpi=300
             )
 
 # -----------------------------
