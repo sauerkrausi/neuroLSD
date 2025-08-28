@@ -209,6 +209,7 @@ eval_combine_and_save <- function(input_tbl,
 
 ### IIb. run stat test on objects and plot 
 # TO DO have to add coloc plots for SYN and BSN
+# add % plot for both metrics over time
 ```{r}
 # ------------------------------------------------------------------- #
 # Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
