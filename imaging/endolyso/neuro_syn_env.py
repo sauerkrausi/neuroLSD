@@ -39,9 +39,9 @@ ROOT_DIRS = [
     #Path("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/test"),
     # replace with your paths
     # Path("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/20241130_diff129_iNiDA_d30_ASAH1_plate1_SynMarker_MIP"),
-     Path("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/20241130_diff129_iNiDA_d30_Ctrl_plate1_SynMarker_MIP"),
+    # Path("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/20241130_diff129_iNiDA_d30_Ctrl_plate1_SynMarker_MIP"),
     # Path("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/20241224_diff129_iNiDA_d38_ASAH1_plate2_SynMarkers_MIP"),
-    # Path("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/20241224_diff129_iNiDA_d38_Ctrl_plate2_SynMarkers_MIP"),
+     Path("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Microscopy/20241225_diff129_iN-iDA_d23-d30-d38/Data/20241224_diff129_iNiDA_d38_Ctrl_plate2_SynMarkers_MIP"),
 ]
 
 # -----------------------------
