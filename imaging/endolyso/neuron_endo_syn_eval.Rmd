@@ -161,9 +161,16 @@ eval_input_tbl <- tibble(
 eval_output_file <- file.path(outdir, "combined_per_image_eval.csv")
 
 eval_read_one <- function(file_path) {
-  read_csv(file_path, col_types = cols(.default = col_guess()), progress = FALSE)
+  read_csv(
+    file_path,
+    col_types = cols(
+      .default   = col_guess(),
+      series_id  = col_character(),   # <- key fix
+      wavelength = col_character()    # <- optional: prevents future clashes
+    ),
+    progress = FALSE
+  )
 }
-
 eval_combine_and_save <- function(input_tbl,
                                   out_file,
                                   out_dir = dirname(out_file)) {
@@ -331,6 +338,7 @@ make_syn_barplots_with_stats <- function(df_input,
                xmin=group1,xmax=group2,label=p_symbol) %>%
         ungroup() %>% filter(!label %in% c("ns",""))
 
+      
       # 3.3.4 Plotting
       y_lab <- if (grepl("percent$", metric_var_name)) paste0(metric_var_name," [%]") else metric_var_name
       p_syn <- ggplot(df_summary,aes(x=group_id,y=mean_val,fill=group_id)) +
@@ -351,10 +359,11 @@ make_syn_barplots_with_stats <- function(df_input,
                                             xmin="xmin",xmax="xmax",y.position="y.position",
                                             tip.length=0.01,bracket.size=0.3,size=2.2)
       }
-      ggsave(file.path(output_dir,paste0("syn_barplot_",metric_var_name,"_day",this_day,".pdf")),
-             p_syn,width=7.5,height=4.2,units="in",device=cairo_pdf)
+      ggsave(file.path(output_dir,paste0("syn_barplot_",metric_var_name,"_day",this_day,".pdf")),p_syn,width=3,height=4.2,units="in",device=cairo_pdf)
     }
 
+    
+    
     # 3.4 ---- Merged-days 8-group plots (with stats)
     # 3.4.1 Build df with group_day
     df_merged <- df_clean %>%
@@ -362,6 +371,7 @@ make_syn_barplots_with_stats <- function(df_input,
              group_day=factor(paste(genotype,neuron_type,paste0("d",day),sep="_"),
                               levels=c("Ctrl_iN_d30","Ctrl_iN_d38","Ctrl_iDA_d30","Ctrl_iDA_d38",
                                        "ASAH1_iN_d30","ASAH1_iN_d38","ASAH1_iDA_d30","ASAH1_iDA_d38")))
+    
     # 3.4.2 Summaries
     df_summary_merged <- df_merged %>%
       group_by(facet_group,group_day,group_id) %>%
@@ -373,6 +383,7 @@ make_syn_barplots_with_stats <- function(df_input,
                       group_day=factor(levels(df_merged$group_day),levels=levels(df_merged$group_day)),
                       group_id=factor(levels(df_base$group_id),levels=levels(df_base$group_id)),
                       fill=list(n_images=0,mean_val=0,sem_val=0,ymax=0))
+    
     # 3.4.3 Stats for merged
     all_comparisons_8 <- combn(levels(df_summary_merged$group_day),2,simplify=FALSE)
     stats_merged <- df_merged %>%
@@ -421,8 +432,8 @@ make_syn_barplots_with_stats <- function(df_input,
             plot.title=element_text(face="bold"),legend.position="bottom")+
       stat_pvalue_manual(pval_annot_merged,label="label",xmin="xmin",xmax="xmax",
                          y.position="y.position",tip.length=0.01,bracket.size=0.3,size=2.0)
-    ggsave(file.path(output_dir,paste0("syn_barplot_",metric_var_name,"_merged_days.pdf")),
-           p_merged,width=10.0,height=4.2,units="in",device=cairo_pdf)
+    
+    ggsave(file.path(output_dir,paste0("syn_barplot_",metric_var_name,"_merged_days.pdf")), p_merged, width=3, height=4.2,units="in",device=cairo_pdf)
   }
 
   # 3.5 Combine all stats and save
@@ -430,7 +441,6 @@ make_syn_barplots_with_stats <- function(df_input,
     select(day,metric,facet_group,group1,group2,n1,n2,p_raw,p_adj,p_symbol) %>%
     arrange(metric,day,facet_group,group1,group2)
   write_csv(stats_all_df,file.path(output_dir,"syn_barplot_pairwise_stats_BH.csv"))
-  invisible(stats_all_df)
 }
 
 # --- 4. Call function, define input / output 
