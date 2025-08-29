@@ -119,8 +119,8 @@ ggsave(file.path(outdir, "eea1_neuron_barplot_n_EEA1_nuc_mean_SD_jitter_pvals.pd
 
 
 
-# II. Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
-### IIa. setup and parse though data 
+# III. Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
+### IIIa. setup and parse though data 
 ```{r}
 # ------------------------------------------------------------------- #
 # Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
@@ -203,6 +203,18 @@ eval_combine_and_save <- function(input_tbl,
 
 # --- 3. Run function once to get combined dataframe
  combined_syneval_df <- eval_combine_and_save(eval_input_tbl, eval_output_file)
+
+ 
+ coloc_cols <- c(
+  "bassoon_total_objects","bassoon_syp_coloc_count","bassoon_single_count",
+  "bassoon_syp_coloc_percent","bassoon_single_percent",
+  "syp_total_objects","syp_bassoon_coloc_count","syp_single_count",
+  "syp_bassoon_coloc_percent","syp_single_percent"
+)
+
+combined_syneval_df <- combined_syneval_df %>%
+  mutate(across(any_of(coloc_cols), ~ suppressWarnings(as.numeric(.))))
+
 
 ```
 
@@ -408,8 +420,8 @@ make_syn_barplots_with_stats <- function(df_input,
             strip.background = element_blank(),
             axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
             plot.title = element_text(face = "bold"),
-            legend.position = "bottom") +                            # NEW: legend at bottom
-      stat_pvalue_manual(                                           # NEW: add stats
+            legend.position = "bottom") +                           
+      stat_pvalue_manual(                                           
         pval_annot_merged,
         label = "label",
         xmin = "xmin",
