@@ -229,8 +229,8 @@ combined_syneval_df <- combined_syneval_df %>%
 ### IIIb. run stat test on objects and plot 
 ```{r}
 # ------------------------------------------------------------------- #
-# Synatic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
-# stat test and plotting function 
+# Synaptic marker evaluation iN and iDA, day 30/38 in Ctrl and ASAH1 
+# Bar plots for non-coloc; violin plots only for SYP→Bassoon coloc
 # ------------------------------------------------------------------- #
 
 # --- 1. Helper: standard error of the mean
@@ -248,21 +248,21 @@ combined_syneval_df <- combined_syneval_df %>%
   )
 }
 
-# --- 2.1 Helper: normalize stain names to canonical labels (handles TOMM20/TOM20 etc.)
+# --- 2.1 Helper: normalize stain names
 .normalize_stain <- function(x) {
   x_chr <- as.character(x)
   x_up  <- toupper(x_chr)
   dplyr::case_when(
-    x_up %in% c("TOMM20", "TOM20") ~ "Tom20",
-    x_up %in% c("SYN1", "SYN")     ~ "SYN1",
-    x_up %in% c("SYP")             ~ "SYP",
-    x_up %in% c("BASSOON")         ~ "Bassoon",
-    x_up %in% c("EEA1")            ~ "EEA1",
-    TRUE                           ~ x_chr
+    x_up %in% c("TOMM20","TOM20") ~ "Tom20",
+    x_up %in% c("SYN1","SYN")     ~ "SYN1",
+    x_up %in% c("SYP")            ~ "SYP",
+    x_up %in% c("BASSOON")        ~ "Bassoon",
+    x_up %in% c("EEA1")           ~ "EEA1",
+    TRUE                          ~ x_chr
   )
 }
 
-# --- 3. Main function for eval and plotting of python script results
+# --- 3. Main function
 make_syn_barplots_with_stats <- function(df_input,
                                          output_dir,
                                          stains_keep = c("Bassoon","SYP","SYN1","EEA1","Tom20"),
@@ -270,17 +270,15 @@ make_syn_barplots_with_stats <- function(df_input,
                                            "object_count","avg_perimeter_px","avg_eccentricity",
                                            "avg_solidity","avg_area_px",
                                            "syp_total_objects","syp_single_count",
-                                           "bassoon_syp_coloc_count","syp_bassoon_coloc_count",
-                                           "syp_bassoon_coloc_percent","bassoon_syp_coloc_percent"
+                                           "syp_bassoon_coloc_count","syp_bassoon_coloc_percent"
                                          )) {
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  coloc_metrics <- c("syp_total_objects","syp_single_count",
-                     "bassoon_syp_coloc_count","syp_bassoon_coloc_count",
-                     "syp_bassoon_coloc_percent","bassoon_syp_coloc_percent")
+  # Only keep SYP→Bassoon coloc metrics
+  coloc_metrics <- c("syp_bassoon_coloc_count","syp_bassoon_coloc_percent")
 
-  # 3.1 Filter dataset and create ordered group variable
+  # 3.1 Base dataset
   df_base <- df_input %>%
     filter(neuron_type %in% c("iN","iDA"),
            genotype %in% c("Ctrl","ASAH1"),
@@ -290,287 +288,170 @@ make_syn_barplots_with_stats <- function(df_input,
                           levels = c("Ctrl_iN","Ctrl_iDA","ASAH1_iN","ASAH1_iDA")),
       day        = as.integer(day),
       stain_name = ifelse(is.na(stain_name), "NA", stain_name),
-      stain_norm = .normalize_stain(stain_name)   # <- canonicalized stain label
+      stain_norm = .normalize_stain(stain_name)
     )
 
-  # 3.1.1 Canonicalize the stains_keep vector to match stain_norm
   stains_keep_norm <- .normalize_stain(stains_keep)
-
   stats_all_list <- list()
 
   # 3.2 Loop over metrics
   for (metric_var_name in metrics_keep) {
-
-    # 3.2.1 Keep only rows with finite values for the current metric
     df_metric <- df_base %>% filter(is.finite(.data[[metric_var_name]]))
 
-    # 3.2.2 Facet logic:
-    #       - Coloc metrics use a single facet "SYP-Bassoon"
-    #       - Non-coloc metrics facet by normalized stain and restrict to stains_keep_norm
+    # Decide facets: coloc or non-coloc
     if (metric_var_name %in% coloc_metrics) {
-      df_clean <- df_metric %>%
-        mutate(facet_group = "SYP-Bassoon")
+      df_clean <- df_metric %>% mutate(facet_group = "SYP-Bassoon")
     } else {
       df_clean <- df_metric %>%
         filter(stain_norm %in% stains_keep_norm) %>%
         mutate(facet_group = stain_norm)
     }
-
-    # Guard: if nothing left, skip this metric
     if (nrow(df_clean) == 0L) next
 
-    # 3.3 ---- Per-day plots
+    # 3.3 Per-day, single-facet outputs
     for (this_day in c(30L,38L)) {
       df_day <- df_clean %>% filter(day == this_day)
       if (nrow(df_day) == 0L) next
 
-      # 3.3.1 Summary statistics for barplots
-      df_summary <- df_day %>%
-        group_by(facet_group, group_id) %>%
-        summarise(n_images=n(),
-                  mean_val=mean(.data[[metric_var_name]], na.rm=TRUE),
-                  sem_val=.sem_val_fn(.data[[metric_var_name]]),
-                  ymax=max(.data[[metric_var_name]],na.rm=TRUE),
-                  .groups="drop") %>%
-        tidyr::complete(
-          facet_group,
-          group_id=factor(c("Ctrl_iN","Ctrl_iDA","ASAH1_iN","ASAH1_iDA"),
-                          levels=c("Ctrl_iN","Ctrl_iDA","ASAH1_iN","ASAH1_iDA")),
-          fill=list(n_images=0,mean_val=0,sem_val=0,ymax=0)
-        )
-
-      # 3.3.2 Stats: Wilcoxon pairwise with BH correction
-      all_comparisons_4 <- combn(levels(df_summary$group_id), 2, simplify=FALSE)
-      stats_by_facet <- df_day %>%
-        group_split(facet_group, keep=TRUE) %>%
-        purrr::map_df(function(df_f) {
-          fg <- unique(df_f$facet_group)
-          purrr::map_df(all_comparisons_4, function(cmp) {
-            g1 <- cmp[1]; g2 <- cmp[2]
-            x1 <- df_f %>% filter(group_id==g1) %>% pull(.data[[metric_var_name]])
-            x2 <- df_f %>% filter(group_id==g2) %>% pull(.data[[metric_var_name]])
-            wt <- tryCatch(wilcox.test(x1,x2,exact=FALSE), error=function(e) list(p.value=NA_real_))
-            tibble(facet_group=fg,group1=g1,group2=g2,
-                   n1=sum(is.finite(x1)),n2=sum(is.finite(x2)),
-                   p_raw=as.numeric(wt$p.value))
-          }) %>% mutate(p_adj=p.adjust(p_raw,method="BH"))
-        }) %>%
-        mutate(metric=metric_var_name, day=this_day, p_symbol=.p_to_symbol(p_adj))
-      stats_all_list[[paste(metric_var_name,this_day,sep="_")]] <- stats_by_facet
-
-      # 3.3.3 Positioning of significance bars
-      y_positions_df <- df_summary %>%
-        group_by(facet_group) %>%
-        summarise(base_y=max(ymax,na.rm=TRUE),.groups="drop") %>%
-        mutate(base_y=ifelse(is.finite(base_y),base_y,0))
-      pval_annot <- stats_by_facet %>%
-        left_join(y_positions_df, by="facet_group") %>%
-        group_by(facet_group) %>%
-        mutate(step=ifelse(base_y>0,0.05*base_y,0.05),
-               y.position=base_y+seq_len(n())*step,
-               xmin=group1,xmax=group2,label=p_symbol) %>%
-        ungroup() %>% filter(!label %in% c("ns",""))
-
-      # 3.3.4 Plotting (bar)
-      y_lab <- if (grepl("percent$", metric_var_name)) paste0(metric_var_name," [%]") else metric_var_name
-      p_syn <- ggplot(df_summary,aes(x=group_id,y=mean_val,fill=group_id)) +
-        geom_col(width=0.7) +
-        geom_errorbar(aes(ymin=mean_val-sem_val,ymax=mean_val+sem_val),width=0.2) +
-        geom_jitter(data=df_day,aes(x=group_id,y=.data[[metric_var_name]]),
-                    inherit.aes=FALSE,alpha=0.5,width=0.15,height=0,color="black") +
-        facet_wrap(~facet_group,scales="free_y",nrow=1) +
-        scale_fill_manual(values=group_colors,guide="none") +
-        labs(x="Genotype × Neuron type", y=y_lab,
-             title=paste0("Day ",this_day," · ",metric_var_name)) +
-        theme_bw(base_size=6)+
-        theme(panel.grid=element_blank(),strip.background=element_blank(),
-              axis.text.x=element_text(angle=30,hjust=1,vjust=1),
-              plot.title=element_text(face="bold"))
-      if(nrow(pval_annot)>0){
-        p_syn <- p_syn + stat_pvalue_manual(pval_annot,label="label",
-                                            xmin="xmin",xmax="xmax",y.position="y.position",
-                                            tip.length=0.01,bracket.size=0.3,size=2.2)
-      }
-      
-      ## save pdfs
-      ggsave(file.path(output_dir,paste0("syn_barplot_",metric_var_name,"_day",this_day,".pdf")), p_syn,width=3,height=4.2,units="in",device=cairo_pdf)
-
-      
-      
-      # 3.3.5 Plotting (violin + jitter behind + white box on top)
-      p_syn_violin <- ggplot(df_day, aes(x = group_id, y = .data[[metric_var_name]], fill = group_id)) +
-        geom_jitter(width = 0.15, height = 0, alpha = 0.2, color = "black") +
-        geom_violin(width = 0.85, scale = "width", trim = TRUE) +
-        geom_boxplot(width = 0.25, outlier.shape = NA, fill = "white", color = "black", fatten = 1) +
-        facet_wrap(~ facet_group, scales = "free_y", nrow = 1) +
-        scale_fill_manual(values = group_colors, guide = "none") +
-        labs(x = "Genotype × Neuron type", y = y_lab,
-             title = paste0("Day ", this_day, " · ", metric_var_name, " (violin)")) +
-        theme_bw(base_size = 6) +
-        theme(panel.grid = element_blank(),
-              strip.background = element_blank(),
-              axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
-              plot.title = element_text(face = "bold"))
-      ggsave(file.path(output_dir, paste0("syn_violin_", metric_var_name, "_day", this_day, ".pdf")), p_syn_violin, width = 3, height = 4, units = "in", device = cairo_pdf)
-
-      
-      # 3.3.6 Add significance to violin (reuse pval_annot)
-      if (nrow(pval_annot) > 0) {
-        p_syn_violin_stats <- p_syn_violin +
-          stat_pvalue_manual(
-            pval_annot,
-            label = "label",
-            xmin = "xmin", xmax = "xmax",
-            y.position = "y.position",
-            tip.length = 0.01, bracket.size = 0.3, size = 2.0
-          ) +
-          expand_limits(y = max(pval_annot$y.position, na.rm = TRUE) * 1.02)
-
-        ggsave(file.path(output_dir, paste0("syn_violin_", metric_var_name, "_day", this_day, "_pvals.pdf")), p_syn_violin_stats, width = 3, height = 4, units = "in", device = cairo_pdf)
-      }
-      
-      # 3.3.7 Optional: single-facet violin plots (one per stain/metric/day) with stats
       for (fg in unique(df_day$facet_group)) {
         df_day_fg <- df_day %>% filter(facet_group == fg)
-        pval_annot_fg <- pval_annot %>% filter(facet_group == fg)
-        if (nrow(df_day_fg) == 0) next
+        if (nrow(df_day_fg) == 0L) next
 
-        p_fg <- ggplot(df_day_fg, aes(x = group_id, y = .data[[metric_var_name]], fill = group_id)) +
-          geom_jitter(width = 0.15, height = 0, alpha = 0.2, color = "black") +
-          geom_violin(width = 0.85, scale = "width", trim = TRUE) +
-          geom_boxplot(width = 0.25, outlier.shape = NA, fill = "white", color = "black", fatten = 1) +
-          scale_fill_manual(values = group_colors, guide = "none") +
-          labs(x = "Genotype × Neuron type", y = y_lab,
-               title = paste0("Day ", this_day, " · ", metric_var_name, " · ", fg)) +
-          theme_bw(base_size = 6) +
-          theme(panel.grid = element_blank(),
-                strip.background = element_blank(),
-                axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
-                plot.title = element_text(face = "bold"))
+        # 3.3.1 Summary + stats
+        df_summary_fg <- df_day_fg %>%
+          group_by(group_id) %>%
+          summarise(n_images=n(),
+                    mean_val=mean(.data[[metric_var_name]],na.rm=TRUE),
+                    sem_val=.sem_val_fn(.data[[metric_var_name]]),
+                    ymax=max(.data[[metric_var_name]],na.rm=TRUE),
+                    .groups="drop") %>%
+          tidyr::complete(
+            group_id=factor(c("Ctrl_iN","Ctrl_iDA","ASAH1_iN","ASAH1_iDA"),
+                            levels=c("Ctrl_iN","Ctrl_iDA","ASAH1_iN","ASAH1_iDA")),
+            fill=list(n_images=0,mean_val=0,sem_val=0,ymax=0)
+          )
 
-        if (nrow(pval_annot_fg) > 0) {
-          p_fg <- p_fg + stat_pvalue_manual(
-            pval_annot_fg,
-            label = "label", xmin = "xmin", xmax = "xmax", y.position = "y.position",
-            tip.length = 0.01, bracket.size = 0.3, size = 2.0
-          ) +
-          expand_limits(y = max(pval_annot_fg$y.position, na.rm = TRUE) * 1.02)
-        }
-
-        ggsave(file.path(output_dir,
-                         paste0("syn_violin_", metric_var_name,
-                                "_day", this_day, "_", fg, "_pvals.pdf")),
-               p_fg, width = 3, height = 4, units = "in", device = cairo_pdf)
-      }
-    }
-
-    # 3.4 ---- Merged-days 8-group plots (with stats)
-    # 3.4.1 Build df with group_day
-    df_merged <- df_clean %>%
-      mutate(
-        group_day=factor(paste(genotype,neuron_type,paste0("d",day),sep="_"),
-                         levels=c("Ctrl_iN_d30","Ctrl_iN_d38","Ctrl_iDA_d30","Ctrl_iDA_d38",
-                                  "ASAH1_iN_d30","ASAH1_iN_d38","ASAH1_iDA_d30","ASAH1_iDA_d38"))
-      )
-
-    
-    # 3.4.2 Summaries
-    df_summary_merged <- df_merged %>%
-      group_by(facet_group,group_day,group_id) %>%
-      summarise(n_images=n(),
-                mean_val=mean(.data[[metric_var_name]],na.rm=TRUE),
-                sem_val=.sem_val_fn(.data[[metric_var_name]]),
-                ymax=max(.data[[metric_var_name]],na.rm=TRUE),.groups="drop") %>%
-      tidyr::complete(facet_group,
-                      group_day=factor(levels(df_merged$group_day),levels=levels(df_merged$group_day)),
-                      group_id=factor(levels(df_base$group_id),levels=levels(df_base$group_id)),
-                      fill=list(n_images=0,mean_val=0,sem_val=0,ymax=0))
-
-    # 3.4.3 Stats for merged
-    all_comparisons_8 <- combn(levels(df_summary_merged$group_day),2,simplify=FALSE)
-    stats_merged <- df_merged %>%
-      group_split(facet_group,keep=TRUE) %>%
-      purrr::map_df(function(df_f){
-        fg <- unique(df_f$facet_group)
-        purrr::map_df(all_comparisons_8,function(cmp){
+        all_comparisons_4 <- combn(levels(df_summary_fg$group_id), 2, simplify=FALSE)
+        stats_fg <- purrr::map_df(all_comparisons_4, function(cmp) {
           g1 <- cmp[1]; g2 <- cmp[2]
-          x1 <- df_f %>% filter(group_day==g1) %>% pull(.data[[metric_var_name]])
-          x2 <- df_f %>% filter(group_day==g2) %>% pull(.data[[metric_var_name]])
-          wt <- tryCatch(wilcox.test(x1,x2,exact=FALSE),error=function(e) list(p.value=NA_real_))
+          x1 <- df_day_fg %>% filter(group_id==g1) %>% pull(.data[[metric_var_name]])
+          x2 <- df_day_fg %>% filter(group_id==g2) %>% pull(.data[[metric_var_name]])
+          wt <- tryCatch(wilcox.test(x1,x2,exact=FALSE), error=function(e) list(p.value=NA_real_))
           tibble(facet_group=fg,group1=g1,group2=g2,
                  n1=sum(is.finite(x1)),n2=sum(is.finite(x2)),
                  p_raw=as.numeric(wt$p.value))
-        }) %>% mutate(p_adj=p.adjust(p_raw,method="BH"))
-      }) %>%
-      mutate(metric=metric_var_name,day=NA_integer_,p_symbol=.p_to_symbol(p_adj))
-    stats_all_list[[paste(metric_var_name,"merged",sep="_")]] <- stats_merged
+        }) %>% mutate(p_adj=p.adjust(p_raw,method="BH"),
+                      metric=metric_var_name, day=this_day,
+                      p_symbol=.p_to_symbol(p_adj))
+        stats_all_list[[paste(metric_var_name,this_day,fg,sep="_")]] <- stats_fg
 
-    
-    
-    # 3.4.4 Positioning and plot (bar)
-    y_positions_merged <- df_summary_merged %>%
-      group_by(facet_group) %>%
-      summarise(base_y=max(ymax,na.rm=TRUE),.groups="drop") %>%
-      mutate(base_y=ifelse(is.finite(base_y),base_y,0))
-    pval_annot_merged <- stats_merged %>%
-      left_join(y_positions_merged,by="facet_group") %>%
-      group_by(facet_group) %>%
-      mutate(step=ifelse(base_y>0,0.05*base_y,0.05),
-             y.position=base_y+seq_len(n())*step,
-             xmin=group1,xmax=group2,label=p_symbol) %>%
-      ungroup() %>% filter(!label %in% c("ns",""))
-    y_lab <- if(grepl("percent$",metric_var_name)) paste0(metric_var_name," [%]") else metric_var_name
+        base_y <- max(df_summary_fg$ymax,na.rm=TRUE)
+        if(!is.finite(base_y)) base_y <- 0
+        pval_annot_fg <- stats_fg %>%
+          mutate(step=ifelse(base_y>0,0.05*base_y,0.05),
+                 y.position=base_y+seq_len(n())*step,
+                 xmin=group1,xmax=group2,label=p_symbol) %>%
+          filter(!label %in% c("ns",""))
 
-    p_merged <- ggplot(df_summary_merged,aes(x=group_day,y=mean_val,fill=group_id))+
-      geom_col(width=0.7)+
-      geom_errorbar(aes(ymin=mean_val-sem_val,ymax=mean_val+sem_val),width=0.2)+
-      geom_jitter(data=df_merged,aes(x=group_day,y=.data[[metric_var_name]]),
-                  inherit.aes=FALSE,alpha=0.5,width=0.15,height=0,color="black")+
-      facet_wrap(~facet_group,scales="free_y",nrow=1)+
-      scale_fill_manual(values=group_colors,name=NULL)+
-      labs(x="Genotype × Neuron type × Day", y=y_lab,
-           title=paste0("Merged days · ",metric_var_name))+
-      theme_bw(base_size=6)+
-      theme(panel.grid=element_blank(),strip.background=element_blank(),
-            axis.text.x=element_text(angle=30,hjust=1,vjust=1),
-            plot.title=element_text(face="bold"),legend.position="bottom")+
-      stat_pvalue_manual(pval_annot_merged,label="label",xmin="xmin",xmax="xmax",
-                         y.position="y.position",tip.length=0.01,bracket.size=0.3,size=2.0)
+        y_lab <- if(grepl("percent$",metric_var_name)) paste0(metric_var_name," [%]") else metric_var_name
 
-    ## save pdfs
-    ggsave(file.path(output_dir,paste0("syn_barplot_",metric_var_name,"_merged_days.pdf")), p_merged, width=3, height=4.2, units="in", device=cairo_pdf)
+        if (metric_var_name %in% coloc_metrics) {
+          # 3.3.2 Colocalization: single violin
+          p_fg <- ggplot(df_day_fg, aes(x=group_id,y=.data[[metric_var_name]],fill=group_id)) +
+            geom_jitter(width=0.15,height=0,alpha=0.2,color="black") +
+            geom_violin(width=0.85,scale="width",trim=TRUE) +
+            geom_boxplot(width=0.25,outlier.shape=NA,fill="white",color="black",fatten=1) +
+            scale_fill_manual(values=group_colors,guide="none") +
+            labs(x="Genotype × Neuron type", y=y_lab,
+                 title=paste0("Day ",this_day," · ",metric_var_name," · ",fg)) +
+            theme_bw(base_size=6) +
+            theme(panel.grid=element_blank(),
+                  axis.text.x=element_text(angle=30,hjust=1,vjust=1),
+                  plot.title=element_text(face="bold"))
 
-    # 3.4.5 Violin+jitter+boxplot for merged-days
-    p_merged_violin <- ggplot(df_merged, aes(x = group_day, y = .data[[metric_var_name]], fill = group_id)) +
-      geom_jitter(width = 0.15, height = 0, alpha = 0.2, color = "black") +
-      geom_violin(width = 0.85, scale = "width", trim = TRUE) +
-      geom_boxplot(width = 0.25, outlier.shape = NA, fill = "white", color = "black", fatten = 1) +
-      facet_wrap(~ facet_group, scales = "free_y", nrow = 1) +
-      scale_fill_manual(values = group_colors, name = NULL) +
-      labs(x = "Genotype × Neuron type × Day", y = y_lab,
-           title = paste0("Merged days · ", metric_var_name, " (violin)")) +
-      theme_bw(base_size = 6) +
-      theme(panel.grid = element_blank(),
-            strip.background = element_blank(),
-            axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
-            plot.title = element_text(face = "bold"),
-            legend.position = "bottom")
-    ggsave(file.path(output_dir, paste0("syn_violin_", metric_var_name, "_merged_days.pdf")),
-           p_merged_violin, width = 3, height = 4, units = "in", device = cairo_pdf)
+          if(nrow(pval_annot_fg)>0){
+            p_fg <- p_fg + stat_pvalue_manual(pval_annot_fg,label="label",
+                                              xmin="xmin",xmax="xmax",
+                                              y.position="y.position",
+                                              tip.length=0.01,bracket.size=0.3,size=2.0) +
+              expand_limits(y=max(pval_annot_fg$y.position,na.rm=TRUE)*1.02)
+          }
 
-    # 3.4.6 Add significance to merged violin (reuse pval_annot_merged)
-    if (nrow(pval_annot_merged) > 0) {
-      p_merged_violin_stats <- p_merged_violin +
-        stat_pvalue_manual(
-          pval_annot_merged,
-          label = "label",
-          xmin = "xmin", xmax = "xmax",
-          y.position = "y.position",
-          tip.length = 0.01, bracket.size = 0.3, size = 2.0
-        ) +
-        expand_limits(y = max(pval_annot_merged$y.position, na.rm = TRUE) * 1.02)
+          ggsave(file.path(output_dir,
+                           paste0("syn_violin_",metric_var_name,"_day",this_day,"_",fg,"_pvals.pdf")),
+                 p_fg,width=3,height=4,units="in",device=cairo_pdf)
 
-      ggsave(file.path(output_dir, paste0("syn_violin_", metric_var_name, "_merged_days_pvals.pdf")),  p_merged_violin_stats, width = 3, height = 4, units = "in", device = cairo_pdf)
+          # 3.3.3 Extra: Day 38 Ctrl only (iN vs iDA)
+          if (this_day==38L) {
+            df_ctrl <- df_day_fg %>% filter(genotype=="Ctrl") %>%
+              mutate(group_id=factor(paste(genotype,neuron_type,sep="_"),
+                                     levels=c("Ctrl_iN","Ctrl_iDA")))
+            if(nrow(df_ctrl)>0){
+              wt <- tryCatch(wilcox.test(
+                df_ctrl %>% filter(group_id=="Ctrl_iN") %>% pull(.data[[metric_var_name]]),
+                df_ctrl %>% filter(group_id=="Ctrl_iDA") %>% pull(.data[[metric_var_name]]),
+                exact=FALSE), error=function(e) list(p.value=NA_real_))
+              pval_ctrl <- tibble(group1="Ctrl_iN",group2="Ctrl_iDA",
+                                  p_raw=as.numeric(wt$p.value),
+                                  p_adj=as.numeric(wt$p.value),
+                                  p_symbol=.p_to_symbol(as.numeric(wt$p.value))) %>%
+                mutate(y.position=max(df_ctrl[[metric_var_name]],na.rm=TRUE)*1.1,
+                       xmin=group1,xmax=group2,label=p_symbol)
+
+              p_ctrl <- ggplot(df_ctrl,aes(x=group_id,y=.data[[metric_var_name]],fill=group_id)) +
+                geom_jitter(width=0.15,height=0,alpha=0.2,color="black") +
+                geom_violin(width=0.85,scale="width",trim=TRUE) +
+                geom_boxplot(width=0.25,outlier.shape=NA,fill="white",color="black",fatten=1) +
+                scale_fill_manual(values=group_colors,guide="none") +
+                labs(x="Ctrl: iN vs iDA", y=y_lab,
+                     title=paste0("Day 38 · ",metric_var_name," · ",fg," · Ctrl only")) +
+                theme_bw(base_size=6)+
+                theme(panel.grid=element_blank(),
+                      axis.text.x=element_text(angle=30,hjust=1,vjust=1),
+                      plot.title=element_text(face="bold"))
+
+              if(nrow(pval_ctrl)>0){
+                p_ctrl <- p_ctrl + stat_pvalue_manual(pval_ctrl,label="label",
+                                                      xmin="xmin",xmax="xmax",
+                                                      y.position="y.position",
+                                                      tip.length=0.01,bracket.size=0.3,size=2.0)
+              }
+
+              ggsave(file.path(output_dir,
+                               paste0("syn_violin_",metric_var_name,"_day38_",fg,"_Ctrl_iN_vs_iDA_pvals.pdf")),
+                     p_ctrl,width=3,height=4,units="in",device=cairo_pdf)
+            }
+          }
+
+        } else {
+          # 3.3.4 Non-coloc: single bar
+          p_fg <- ggplot(df_summary_fg,aes(x=group_id,y=mean_val,fill=group_id)) +
+            geom_col(width=0.7) +
+            geom_errorbar(aes(ymin=mean_val-sem_val,ymax=mean_val+sem_val),width=0.2) +
+            geom_jitter(data=df_day_fg,
+                        aes(x=group_id,y=.data[[metric_var_name]]),
+                        inherit.aes=FALSE,alpha=0.5,width=0.15,height=0,color="black") +
+            scale_fill_manual(values=group_colors,guide="none") +
+            labs(x="Genotype × Neuron type", y=y_lab,
+                 title=paste0("Day ",this_day," · ",metric_var_name," · ",fg)) +
+            theme_bw(base_size=6)+
+            theme(panel.grid=element_blank(),
+                  axis.text.x=element_text(angle=30,hjust=1,vjust=1),
+                  plot.title=element_text(face="bold"))
+
+          if(nrow(pval_annot_fg)>0){
+            p_fg <- p_fg + stat_pvalue_manual(pval_annot_fg,label="label",
+                                              xmin="xmin",xmax="xmax",
+                                              y.position="y.position",
+                                              tip.length=0.01,bracket.size=0.3,size=2.0) +
+              expand_limits(y=max(pval_annot_fg$y.position,na.rm=TRUE)*1.02)
+          }
+
+          ggsave(file.path(output_dir,
+                           paste0("syn_bar_",metric_var_name,"_day",this_day,"_",fg,"_pvals.pdf")),
+                 p_fg,width=3,height=4.2,units="in",device=cairo_pdf)
+        }
+      }
     }
   }
 
@@ -581,13 +462,12 @@ make_syn_barplots_with_stats <- function(df_input,
   write_csv(stats_all_df,file.path(output_dir,"syn_barplot_pairwise_stats_BH.csv"))
 }
 
-
-
-# --- 4. Call function, define input / output 
+# --- 4. Call
 make_syn_barplots_with_stats(
   df_input   = combined_syneval_df,
   output_dir = outdir
 )
+
 
 ```
 
