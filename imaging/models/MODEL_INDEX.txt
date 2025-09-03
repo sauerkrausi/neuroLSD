@@ -1,5 +1,5 @@
 FK_neuroSoma_20250707
-Download: https://zenodo.org/record/XXXXXXX
+Download: 10.5281/zenodo.16733440
 
 cpsam_20250713_TH_v1
-Download: https://zenodo.org/record/YYYYYYY
+Download: 10.5281/zenodo.16733440
