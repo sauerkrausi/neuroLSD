@@ -56,6 +56,6 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
   Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files. 
   
   
-  ## ❓ Learn more
-  Are you interested to find out more about what we are doing?  
-  [https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)
+## ❓ Learn more
+ Are you interested to find out more about what we are doing?  
+ [https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)
