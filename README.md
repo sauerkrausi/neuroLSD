@@ -48,6 +48,7 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
 - **R ≥ 4.3.0** with: `tidyverse`, `ComplexHeatmap`, `circlize`, `pheatmap`, `ggpubr`, `cowplot`  
 - **Python ≥ 3.10** with: `cellpose`, `torch`, `numpy`, `pandas`, `scikit-image`  
 
+For more detailed package requirements, please check the manuscript. 
 
 ## Usage
 - **Proteomics:**  
