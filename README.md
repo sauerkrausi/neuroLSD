@@ -55,7 +55,23 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
 - **Calcium Imaging:**  
   Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files. 
   
-  
-## ❓ Learn more
+ 
+## Acknowledgments & Funding
+
+We thank members of the Harper lab for feedback and support.
+
+This project is supported by:  
+- [Aligning Science Across Parkinson’s (ASAP)](https://parkinsonsroadmap.org/) and the [Michael J. Fox Foundation](https://www.michaeljfox.org/)  
+- [Bluefield Project](https://www.bluefieldproject.org/)  
+- National Institutes of Health (NIH) — (see [nih.gov](https://www.nih.gov/))  
+-  [Howard Hughes Medical Institute](https://www.hhmi.org/).
+- [Warren Alpert Foundation](https://www.warrenalpertfoundation.org/)  
+- [Max Planck Society](https://www.mpg.de/en)  
+- Fred & Joan Goldberg Post-doctoral Fellowship (see [Goldberg Fellows](https://cellbio.hms.harvard.edu/goldberg-fellows))  
+- Boehringer Ingelheim Fonds PhD Fellowship (see [BIFonds PhD Fellowships](https://www.bifonds.de/fellowships-grants/phd-fellowships.html))  
+
+We acknowledge the [Core for Imaging Technology and Education (CITE, HMS)](https://cite.hms.harvard.edu/), the Harvard Electron Microscopy Core ([link](https://electron-microscopy.hms.harvard.edu/)), and the Central Electron Microscopy Facility at the Max Planck Institute of Biophysics for imaging support.  
+
+## Interested? Learn more
  Are you interested to find out more about what we are doing?  
  [https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)
