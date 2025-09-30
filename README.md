@@ -70,7 +70,7 @@ This project is supported by:
 - Fred & Joan Goldberg Post-doctoral Fellowship (see [Goldberg Fellows](https://cellbio.hms.harvard.edu/goldberg-fellows))  
 - Boehringer Ingelheim Fonds PhD Fellowship (see [BIFonds PhD Fellowships](https://www.bifonds.de/fellowships-grants/phd-fellowships.html))  
 
-We acknowledge the [Core for Imaging Technology and Education (CITE, HMS)](https://cite.hms.harvard.edu/), the Harvard Electron Microscopy Core ([link](https://electron-microscopy.hms.harvard.edu/)), and the Central Electron Microscopy Facility at the Max Planck Institute of Biophysics for imaging support.  
+We acknowledge the [Core for Imaging Technology and Education (CITE, HMS)](https://cite.hms.harvard.edu/), the [Harvard Electron Microscopy Core](https://electron-microscopy.hms.harvard.edu/)), and the Central Electron Microscopy Facility at the Max Planck Institute of Biophysics for imaging support.  
 
 ## Interested? Learn more
  Are you interested to find out more about what we are doing?  
