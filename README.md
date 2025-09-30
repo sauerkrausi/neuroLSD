@@ -73,5 +73,8 @@ This project is supported by:
 We acknowledge the [Core for Imaging Technology and Education (CITE, HMS)](https://cite.hms.harvard.edu/), the [Harvard Electron Microscopy Core](https://electron-microscopy.hms.harvard.edu/)), and the Central Electron Microscopy Facility at the Max Planck Institute of Biophysics for imaging support.  
 
 ## Interested? Learn more
- Are you interested to find out more about what we are doing?  
- [https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)
+Are you interested to find out more about what we are doing?  
+[Harper Lab](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)
+[Gygi Lab](https://gygi.hms.harvard.edu/)
+[Wilfling Lab](https://www.biophys.mpg.de/mechanisms-cellular-quality-control)
+[ Farese and Walther Lab](https://www.fwlaboratory.org/)
