@@ -64,7 +64,7 @@ This project is supported by:
 - [Aligning Science Across Parkinson’s (ASAP)](https://parkinsonsroadmap.org/) and the [Michael J. Fox Foundation](https://www.michaeljfox.org/)  
 - [Bluefield Project](https://www.bluefieldproject.org/)  
 - National Institutes of Health (NIH) — (see [nih.gov](https://www.nih.gov/))  
--  [Howard Hughes Medical Institute](https://www.hhmi.org/).
+- [Howard Hughes Medical Institute](https://www.hhmi.org/)
 - [Warren Alpert Foundation](https://www.warrenalpertfoundation.org/)  
 - [Max Planck Society](https://www.mpg.de/en)  
 - Fred & Joan Goldberg Post-doctoral Fellowship (see [Goldberg Fellows](https://cellbio.hms.harvard.edu/goldberg-fellows))  
