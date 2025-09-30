@@ -74,7 +74,7 @@ We acknowledge the [Core for Imaging Technology and Education (CITE, HMS)](https
 
 ## Interested? Learn more
 Are you interested to find out more about what we are doing?  
-[Harper Lab](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)
-[Gygi Lab](https://gygi.hms.harvard.edu/)
-[Wilfling Lab](https://www.biophys.mpg.de/mechanisms-cellular-quality-control)
-[ Farese and Walther Lab](https://www.fwlaboratory.org/)
+[Harper Lab](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)  
+[Gygi Lab](https://gygi.hms.harvard.edu/)  
+[Wilfling Lab](https://www.biophys.mpg.de/mechanisms-cellular-quality-control)  
+[ Farese and Walther Lab](https://www.fwlaboratory.org/)  
