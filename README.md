@@ -4,6 +4,9 @@ This repository contains scripts and evaluation-pipelines related to the **neuro
 
 The **neuroLSD** project investigates how lysosomal storage disorder–associated pathways contribute to neurodegeneration using **stem-cell–derived neuronal models**. We integrate **quantitative proteomics** and **calcium imaging** to profile functional and molecular changes in cortical-like iNeurons (iN) and dopaminergic-like iDA neurons.
 
+📖 Preprint: [link coming soon]
+
+
 🚧 work in progress 🚧
 
 ## 🔬 Imaging
@@ -45,3 +48,8 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
   Run Rmd scripts in RStudio. Input: processed TMTpro/nDIA data.  
 - **Calcium Imaging:**  
   Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files. 
+  
+  
+  ## ❓ Learn more
+  Are you interested to find out more about what we are doing?  
+  [https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)
