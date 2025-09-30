@@ -1,8 +1,14 @@
 ![ProjectLogo](/logoNeuroLSD.jpg)
 # neuroLSD
-This repository contains scripts and evaluation-pipelines related to the **neuroLSD** project.
+This repository contains scripts and evaluation pipelines related to the **neuroLSD** project.
 
-The **neuroLSD** project investigates how lysosomal storage disorder–associated pathways contribute to neurodegeneration using **stem-cell–derived neuronal models**. We integrate **quantitative proteomics** and **calcium imaging** to profile functional and molecular changes in cortical-like iNeurons (iN) and dopaminergic-like iDA neurons.
+The **neuroLSD** project investigates how lysosomal storage disorder–associated pathways contribute to neurodegeneration using **stem-cell–derived neuronal models**. We integrate **quantitative proteomics**, **lipidomics**, and **calcium imaging** to profile functional and molecular changes in cortical-like iNeurons (iN) and dopaminergic-like iDA neurons.
+
+Lysosomal Storage Disorders (LSDs) comprise a broad group of diseases affecting lysosomal degradation, ion flux, and lipid catabolism. Within this group, sphingolipidoses genes such as GBA1, SMPD1, and ASAH1 are known or candidate risk factors for Parkinson’s Disease, though the mechanisms remain unclear. Building on prior work in HeLa cells, we generated a human embryonic stem cell library with 23 LSD gene knockouts and differentiated them into cortical and dopaminergic neurons.  
+
+Our proteomic and functional analyses reveal lineage-specific alterations in organellar proteomes, uncovering diverse neuronal vulnerabilities. Notably, GBA1-/- and ASAH1-/- dopaminergic neurons show disruptions in synaptic and mitochondrial compartments, correlating with impaired neuronal firing and presynaptic protein localization.  
+
+This LSD mutant toolkit and associated proteomic landscape provide a resource for decoding how lysosomal dysfunction impacts neuronal health and for exploring mechanistic links between lysosomal storage disorders and Parkinson’s Disease.
 
 📖 Preprint: [link coming soon]
 
