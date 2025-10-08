@@ -10,7 +10,7 @@ Our proteomic and functional analyses reveal lineage-specific alterations in org
 
 This LSD mutant toolkit and associated proteomic landscape provide a resource for decoding how lysosomal dysfunction impacts neuronal health and for exploring mechanistic links between lysosomal storage disorders and Parkinson’s Disease.
 
-📖 Preprint: [link coming soon]
+📖 Preprint: [BioRvix](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
 
 
 🚧 work in progress 🚧
