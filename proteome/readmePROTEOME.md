@@ -1,14 +1,14 @@
-# proteome
-Contains Rmd scipts for proteomics evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopamenergic-like iDA neurons. Includes whole cell analysis of in vitro differentiated neurons at day 23 (TMTpro-DDA), 30 and 50 (LFQ-nDIA), TMTpro proteommics of neuronal projections as well as proteomic analysis of isolated lysosomes. 
+# Proteome
+Contains Rmd scripts for proteomics evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopaminergic-like iDA neurons. Includes whole cell analysis of in vitro differentiated neurons at day 23 (TMTpro-DDA), 30 and 50 (LFQ-nDIA), TMTpro proteomics of neuronal projections as well as proteomic analysis of isolated lysosomes. 
 
 ## active projects 
 🚧 `Diff118_iNiDA_d23.Rmd`: Pipeline for TMTpro proteome analysis of day 23 iN and iDA whole cell samples
 -	TMTpro-based differential proteomic analysis of day 23 iN and iDA samples.
 -	Compares Ctrl, SMPD1-/-, and ASAH1-/- lines across neuronal types.
 -	Outputs log2FC, significance tables, and cluster-based GO term enrichments.
--	Integrates curated subcellular annotations to identify lysosomal and synaptic changes.
+-	Integrates curated sub-cellular annotations to identify lysosomal and synaptic changes.
 
-🚧 `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Pipeline for TMTpro proteome analysis of isolated lysoosmes from HeLa Ctrl and ASAH1 mutants 
+🚧 `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Pipeline for TMTpro proteome analysis of isolated lysosomes from HeLa Ctrl and ASAH1 mutants 
 - Lysosome-enriched fraction proteomics from HeLa Ctrl vs ASAH1-/-.
 - Focus on lysosomal hydrolase abundance, lysosomal-endosomal pathway components, and autophagy markers.
 - Includes cluster-based heatmaps, scaled violin plots, and annotation-wise log2FC summaries.
