@@ -10253,3 +10253,8 @@ pheatmap::pheatmap(
 # -------------------------------------------------- 
 # -------- Protein Protein Interaction / Multimer Evaluation 
 # --------------------------------------------------  
+
+# 1. Define the protein set of interest
+# 2. Build a reference PPI/structural interaction map
+# 3. Map your proteome hits onto the PPI graph
+# 4. Cross-stratify by KO class
