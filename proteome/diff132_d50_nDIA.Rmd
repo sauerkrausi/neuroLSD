@@ -10411,14 +10411,14 @@ ppi_evidence <- ppi_evidence %>%
 
 # Step 6.1. add subcellular annotations using Gene1/Gene2 (to match binary_matrix$Genes nomenclature in df)
 # expects binary_matrix with columns: Genes and organelle flags
-org_cols <- setdiff(colnames(binary_matrix), c("Genes"))
-gene_to_org <- binary_matrix %>% select(Genes, all_of(org_cols))
+organelle_tags <- setdiff(colnames(binary_matrix), c("Genes"))
+gene_to_org <- binary_matrix %>% select(Genes, all_of(organelle_tags))
 
 ppi_evidence <- ppi_evidence %>%
   left_join(gene_to_org, by = c("Gene1" = "Genes")) %>%
-  rename_with(~paste0(.x, "_prot1"), all_of(org_cols)) %>%
+  rename_with(~paste0(.x, "_prot1"), all_of(organelle_tags)) %>%
   left_join(gene_to_org, by = c("Gene2" = "Genes")) %>%
-  rename_with(~paste0(.x, "_prot2"), all_of(org_cols))
+  rename_with(~paste0(.x, "_prot2"), all_of(organelle_tags))
 
 # Step 6.2. filter to union neuronal proteome using gene symbols
 neuronal_genes <- complete_data_annotated_day50 %>% pull(Genes) %>% unique()
@@ -10444,53 +10444,102 @@ baseline_edges_union <- ppi_evidence %>%
 write_csv(baseline_edges_union, file.path(out_dir_ppi_vuln, "tables", "baseline_edges_union.csv"))
 
 
-
-
-# 8) long proteome table to get per KO and neuron log2FC for partners
-# expects columns like GBA1_iN_log2_fold_change etc.
+# ---------------------------------------------------
+# --- Step 8. Proteome long table (KO/neuron parsed robustly)
 prot_long <- complete_data_annotated_day50 %>%
   pivot_longer(-Genes, names_to = "sample", values_to = "log2FC") %>%
   filter(str_detect(sample, "log2_fold_change")) %>%
   mutate(
-    genotype = str_extract(sample, "^[^_]+"),
-    neuron   = str_extract(sample, "(?<=_)iN|iDA(?=_)") %||% str_extract(sample, "_(iN|iDA)") %>% str_remove_all("_"),
-    neuron   = ifelse(is.na(neuron), ifelse(str_detect(sample, "_iN"), "iN",
-                                     ifelse(str_detect(sample, "_iDA"), "iDA", NA)), neuron)
+    genotype = sub("_.*$", "", sample),
+    neuron = case_when(
+      str_detect(sample, "_iDA_") ~ "iDA",
+      str_detect(sample, "_iN_")  ~ "iN",
+      TRUE                        ~ NA_character_
+    )
   ) %>%
   filter(!is.na(neuron))
 
-# 9) compute KO edge states relative to baseline (per KO and neuron)
-# state rules:
-#   lost     = at least one partner Δ < drop_thresh
-#   retained = neither partner Δ < drop_thresh
-#   gained   = not in baseline but appears strong in KO (optional; here we only report baseline edges; gained requires additional predicted edges not in baseline)
-# If you want gained, build a superset_edges from Predictome80 before filtering by neuronal proteome and compare.
-ko_edge_states <- baseline_edges_union %>%
-  select(key, Protein1, Protein2, Predictome_conf, Predictome_conf_bin, IntAct_present, Overlap_flag, starts_with(paste0(org_cols[1], "_"), ignore.case = FALSE):last_col()) %>%
-  # join partner log2FC per KO and neuron
-  left_join(prot_long, by = c("Protein1" = "Genes")) %>%
+# Ensure baseline has gene symbols for both partners
+# Use Name1/Name2 from Predictome (gene symbols) as Gene1/Gene2
+baseline_edges_union <- baseline_edges_union %>%
+  mutate(
+    Gene1 = if ("Gene1" %in% names(.)) Gene1 else Name1,
+    Gene2 = if ("Gene2" %in% names(.)) Gene2 else Name2
+  )
+
+# Helper to compute same-organelle flags per row
+.same_organelle <- function(df, organelle_tags) {
+  prot1_mat <- as.data.frame(df[ paste0(organelle_tags, "_prot1") ])
+  prot2_mat <- as.data.frame(df[ paste0(organelle_tags, "_prot2") ])
+  # coerce to logical; NA -> FALSE for overlap test
+  prot1_mat[] <- lapply(prot1_mat, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+  prot2_mat[] <- lapply(prot2_mat, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+  shared <- prot1_mat & prot2_mat
+  ifelse(rowSums(shared) > 0, "same", "cross")
+}
+# explicit organelle column names in ppi_evidence/baseline_edges_union
+org1_cols <- paste0(organelle_tags, "_prot1")
+org2_cols <- paste0(organelle_tags, "_prot2")
+
+# expand baseline to all KO × neuron contexts
+ko_neuron_grid <- expand_grid(
+  genotype = unique(prot_long$genotype),
+  neuron   = unique(prot_long$neuron)
+)
+
+## Expand baseline_edges_union to every KO × neuron combination
+baseline_expanded <- baseline_edges_union %>%
+  mutate(dummy = 1) %>%
+  left_join(
+    ko_neuron_grid %>% mutate(dummy = 1),
+    by = "dummy",
+    relationship = "many-to-many"
+  ) %>%
+  select(-dummy)
+
+
+# ---------------------------------------------------
+# --- Step 9. KO edge states (match by Gene1/Gene2 + genotype + neuron)
+ko_edge_states <- baseline_expanded %>%
+  select(
+    key, Protein1, Protein2, Gene1, Gene2,
+    Predictome_conf, Predictome_conf_bin, IntAct_present, Overlap_flag,
+    tidyselect::all_of(org1_cols),
+    tidyselect::all_of(org2_cols),
+    genotype, neuron
+  ) %>%
+  left_join(
+    prot_long %>% select(Genes, genotype, neuron, log2FC),
+    by = c("Gene1" = "Genes", "genotype", "neuron")
+  ) %>%
   rename(dA = log2FC) %>%
-  left_join(prot_long, by = c("Protein2" = "Genes", "genotype", "neuron")) %>%
+  left_join(
+    prot_long %>% select(Genes, genotype, neuron, log2FC),
+    by = c("Gene2" = "Genes", "genotype", "neuron")
+  ) %>%
   rename(dB = log2FC) %>%
   mutate(
-    state = case_when(
+    state = dplyr::case_when(
       !is.na(dA) & dA < drop_thresh ~ "lost",
       !is.na(dB) & dB < drop_thresh ~ "lost",
       (!is.na(dA) | !is.na(dB))     ~ "retained",
       TRUE                          ~ "unknown"
     ),
-    OrgPair = case_when(
-      # same-organelle if any shared annotation equals TRUE in both partners
-      rowSums((across(ends_with("_prot1"), ~ .x)) & (across(ends_with("_prot2"), ~ .x))) > 0 ~ "same",
-      TRUE ~ "cross"
-    )
+    OrgPair = .same_organelle(., organelle_tags)
   ) %>%
-  select(key, Protein1, Protein2, genotype, neuron, dA, dB, state,
-         Predictome_conf, Predictome_conf_bin, IntAct_present, Overlap_flag, OrgPair)
+  select(
+    key, Protein1, Protein2, Gene1, Gene2, genotype, neuron, dA, dB, state,
+    Predictome_conf, Predictome_conf_bin, IntAct_present, Overlap_flag, OrgPair
+  )
 
+# save as csv
 write_csv(ko_edge_states, file.path(out_dir_ppi_vuln, "tables", "per_ko_edge_states.csv"))
 
-# 10) summaries
+
+# --- 10. Summary outputs for both whole cell level and also on organelle annotation level 
+#total_baseline_edges = total number of PPI edges considered in the baseline network for that genotype–neuron context.
+#n_lost = number of those edges where either protein partner’s log2FC dropped below your drop_thresh.
+#fraction_lost = n_lost / total_baseline_edges = the proportion of baseline interactions that were lost.
 ko_summary_global <- ko_edge_states %>%
   group_by(genotype, neuron) %>%
   summarise(
@@ -10502,16 +10551,17 @@ ko_summary_global <- ko_edge_states %>%
     .groups = "drop"
   )
 
+# save as csv
 write_csv(ko_summary_global, file.path(out_dir_ppi_vuln, "tables", "ko_summary_global.csv"))
 
 ko_summary_by_organelle <- ko_edge_states %>%
   filter(OrgPair == "same") %>%
-  # tag which organelle shared: pick first TRUE shared among org_cols
+  # tag which organelle shared: pick first TRUE shared among organelle_tags
   rowwise() %>%
   mutate(shared_organelle = {
-    prot1_flags <- baseline_edges_union[match(key, baseline_edges_union$key), paste0(org_cols, "_prot1")]
-    prot2_flags <- baseline_edges_union[match(key, baseline_edges_union$key), paste0(org_cols, "_prot2")]
-    shared <- org_cols[which(as.logical(prot1_flags) & as.logical(prot2_flags))]
+    prot1_flags <- baseline_edges_union[match(key, baseline_edges_union$key), paste0(organelle_tags, "_prot1")]
+    prot2_flags <- baseline_edges_union[match(key, baseline_edges_union$key), paste0(organelle_tags, "_prot2")]
+    shared <- organelle_tags[which(as.logical(prot1_flags) & as.logical(prot2_flags))]
     if (length(shared) == 0) NA_character_ else shared[1]
   }) %>%
   ungroup() %>%
@@ -10524,6 +10574,7 @@ ko_summary_by_organelle <- ko_edge_states %>%
     .groups = "drop"
   )
 
+# save as csv
 write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_summary_by_organelle.csv"))
 
 # 11) single plotting function for global and per-KO
@@ -10574,7 +10625,7 @@ plot_ppi_vulnerability <- function(df_edges,
 
     # compute shared organelle like in the summary step
     shared_lookup <- df_edges %>%
-      select(key, starts_with(paste0(org_cols[1], "_prot1")):last_col())
+      select(key, starts_with(paste0(organelle_tags[1], "_prot1")):last_col())
 
     odf2 <- odf %>%
       rowwise() %>%
