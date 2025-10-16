@@ -10258,7 +10258,7 @@ pheatmap::pheatmap(
 # --------------------------------------------------  
 
 
-# PPI vulnerability pipeline in iN and iDA LSD mutants
+# XVIII. PPI vulnerability pipeline in iN and iDA LSD mutants
 Build a Protein–Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. The goal is to integrate experimental proteome shifts with predicted and experimentally validated interaction data (Predictome 80% and IntAct) to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type–specific effects.
 
 use of the Baker lab's Human interactome
@@ -10266,8 +10266,8 @@ https://www.biorxiv.org/content/10.1101/2024.10.01.615885v1.full
 and InterAct Database
 
 ### PPI input and merging of evidence 
+##### Load Human Interactome & parse 
 ```{r}
-
 # Step 1.  Define Paths and input tables 
 out_dir_ppi_vuln <- out_dir_PPI
 dir.create(file.path(out_dir_ppi_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
@@ -10344,93 +10344,35 @@ predictome_edges <- predictome_raw %>%
   ) %>%
   distinct(key, .keep_all = TRUE)
 
+```
 
 
+##### Load InterAct & parse 
+use select experimental evidence and larger than 0.5 as threshold 
+```{r}
 # Step 4. Load IntAct (already filtered by your MI methods and MIscore >= 0.5 when exporting)
-# If these helpers are not already in your session, keep them; otherwise you can skip redefining.
-.first_uniprot <- function(s) {
-  toks <- unlist(strsplit(as.character(s), "\\|"))
-  u <- toks[grepl("^uniprotkb:", toks, ignore.case = TRUE)]
-  sub("^uniprotkb:", "", ifelse(length(u) > 0, u[1], NA_character_), ignore.case = TRUE)
-}
-.extract_mi_id <- function(s) {
-  m <- regmatches(s, regexpr("MI:\\d{4}", s))
-  ifelse(length(m) == 0, NA_character_, m)
-}
-.extract_miscore <- function(s) {
-  # typical patterns: "intact-miscore:0.56" or "miscore:0.56"
-  if (is.na(s)) return(NA_real_)
-  m <- regmatches(s, regexpr("(intact-)?miscore:([0-9.]+)", s, ignore.case = TRUE))
-  as.numeric(sub(".*miscore:", "", ifelse(length(m) == 0, NA_character_, m), ignore.case = TRUE))
-}
-
-# 1) Load the TSV with original column names preserved
-intact_raw <- read.delim(
-  path_intact_csv,           # <- your interact.tsv path
-  sep = "\t",
-  header = TRUE,
-  quote = "",
-  fill = TRUE,
-  check.names = FALSE
-)
-
-stopifnot(is.data.frame(intact_raw), ncol(intact_raw) > 0)
-
-# 2) Resolve column names robustly (handles slight naming variants)
-nm <- names(intact_raw)
-
-pick_col <- function(patterns) {
-  hit <- NULL
-  for (p in patterns) {
-    cand <- grep(p, nm, value = TRUE, ignore.case = TRUE)
-    if (length(cand) > 0) { hit <- cand[1]; break }
-  }
-  hit
-}
-
-col_idA  <- pick_col(c("^ID\\(s\\) interactor A$", "^ID.*interactor.*A$"))
-col_idB  <- pick_col(c("^ID\\(s\\) interactor B$", "^ID.*interactor.*B$"))
-col_taxA <- pick_col(c("^Taxid interactor A$", "^Taxid.*A$"))
-col_taxB <- pick_col(c("^Taxid interactor B$", "^Taxid.*B$"))
-col_meth <- pick_col(c("^Interaction detection method\\(s\\)$", "^Interaction.*method"))
-col_conf <- pick_col(c("^Confidence value\\(s\\)$", "^Confidence"))
-
-# 3) Allowed MI methods and parse → edge list
-allowed_mi <- c("MI:0030","MI:0096","MI:1314","MI:0114","MI:0410","MI:0019","MI:1313","MI:2339","MI:1247")
-
 intact_edges <- intact_raw %>%
   transmute(
-    Protein1_raw = .data[[col_idA]],
-    Protein2_raw = .data[[col_idB]],
-    TaxA         = .data[[col_taxA]],
-    TaxB         = .data[[col_taxB]],
-    Method       = .data[[col_meth]],
-    ConfAll      = if (!is.null(col_conf)) .data[[col_conf]] else NA_character_
+    Protein1 = sub("^uniprotkb:", "", sub("\\|.*$", "", `ID(s) interactor A`)),
+    Protein2 = sub("^uniprotkb:", "", sub("\\|.*$", "", `ID(s) interactor B`)),
+    DetectionMethod = gsub('psi-mi:|"', "", `Interaction detection method(s)`),
+    IntAct_MIscore = {
+      x <- `Confidence value(s)`
+      x <- sub("^.*miscore:", "", x, ignore.case = TRUE)    # drop 'intact-miscore:' prefix
+      suppressWarnings(as.numeric(x))
+    }
   ) %>%
-  filter(grepl("taxid:9606", TaxA, ignore.case = TRUE),
-         grepl("taxid:9606", TaxB, ignore.case = TRUE)) %>%
   mutate(
-    Protein1       = .first_uniprot(Protein1_raw),
-    Protein2       = .first_uniprot(Protein2_raw),
-    MI_id          = .extract_mi_id(Method),
-    IntAct_MIscore = .extract_miscore(ConfAll)
-  ) %>%
-  filter(!is.na(Protein1), !is.na(Protein2), MI_id %in% allowed_mi) %>%
-  # keep NA scores (some curated entries lack a numeric miscore) or apply ≥0.5 when present
-  filter(is.na(IntAct_MIscore) | IntAct_MIscore >= 0.5) %>%
-  transmute(
-    Protein1, Protein2,
-    IntAct_present  = TRUE,
-    IntAct_MIscore,
-    DetectionMethod = Method,
-    key             = .make_undirected_key(Protein1, Protein2)
+    key = .make_undirected_key(Protein1, Protein2),
+    IntAct_present = TRUE
   ) %>%
   distinct(key, .keep_all = TRUE)
 
+```
 
 
-
-
+##### Merge PPIs and add subcell annotations
+```{r}
 # 4) merge Predictome + IntAct into PPI_evidence (no confidence filtering here)
 ppi_evidence <- full_join(
   predictome_edges %>% select(key, Protein1, Protein2, Name1, Name2, Predictome_conf, Predictome_present, STRING, confDBs, allDBs),
