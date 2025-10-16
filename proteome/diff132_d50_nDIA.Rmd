@@ -10259,11 +10259,6 @@ pheatmap::pheatmap(
 
 
 # PPI vulnerability pipeline in iN and iDA LSD mutants
-<<<<<<< HEAD
-# edit attempt 
-=======
-
->>>>>>> ppi_dev
 ```{r}
 
 # 0) user paths and knobs
