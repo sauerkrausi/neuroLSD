@@ -192,7 +192,7 @@ out_dir_d70_corr <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics
 dir.create(out_dir_d70_corr, recursive = TRUE, showWarnings = FALSE)
 
 
-out_dir_PPI <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/PPI"
+out_dir_PPI <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI"
 dir.create(out_dir_PPI, recursive = TRUE, showWarnings = FALSE)
 
 ```
@@ -10261,7 +10261,7 @@ pheatmap::pheatmap(
 # PPI vulnerability pipeline in iN and iDA LSD mutants
 ```{r}
 
-# 0) user paths and knobs
+# Step 1.  user paths and knobs
 out_dir_ppi_vuln <- out_dir_PPI
 dir.create(file.path(out_dir_ppi_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_ppi_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
