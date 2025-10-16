@@ -10285,6 +10285,11 @@ org_min_n        <- 20
 top_n_links      <- 3000
 
 
+# reformat disease class list to dataframe
+disease_classes_dataframe <- stack(disease_classes)
+colnames(disease_classes_dataframe) <- c("sample", "DiseaseClass")
+
+
 # ---------------------------------------------------
 # --- Step 2: Make helper Functions 
 # Purpose: create a unique, order-independent identifier for each protein pair.
@@ -10536,7 +10541,10 @@ ko_edge_states <- baseline_expanded %>%
 write_csv(ko_edge_states, file.path(out_dir_ppi_vuln, "tables", "per_ko_edge_states.csv"))
 
 
-# --- 10. Summary outputs for both whole cell level and also on organelle annotation level 
+# ---------------------------------------------------
+# --- 10. Summary outputs for both knockout level and also on organelle annotation level 
+
+# 10.1 On each KOxNeuronType level 
 #total_baseline_edges = total number of PPI edges considered in the baseline network for that genotype–neuron context.
 #n_lost = number of those edges where either protein partner’s log2FC dropped below your drop_thresh.
 #fraction_lost = n_lost / total_baseline_edges = the proportion of baseline interactions that were lost.
@@ -10554,6 +10562,7 @@ ko_summary_global <- ko_edge_states %>%
 # save as csv
 write_csv(ko_summary_global, file.path(out_dir_ppi_vuln, "tables", "ko_summary_global.csv"))
 
+# 10.1 On each OrganellexKOxNeuronType level 
 ko_summary_by_organelle <- ko_edge_states %>%
   filter(OrgPair == "same") %>%
   # tag which organelle shared: pick first TRUE shared among organelle_tags
@@ -10577,7 +10586,9 @@ ko_summary_by_organelle <- ko_edge_states %>%
 # save as csv
 write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_summary_by_organelle.csv"))
 
-# 11) single plotting function for global and per-KO
+
+# ---------------------------------------------------
+# --- Step 11. Define single plotting function for global and per-KO
 plot_ppi_vulnerability <- function(df_edges,
                                    df_states,
                                    out_dir = out_dir_ppi_vuln,
@@ -10590,12 +10601,15 @@ plot_ppi_vulnerability <- function(df_edges,
                                    annotations_focus = NULL,
                                    disease_class_df = NULL,
                                    save = TRUE) {
+
+  # --- choose neuron(s) for filtering
   neuron <- match.arg(neuron)
+  neuron_filter <- if (neuron == "both") c("iN", "iDA") else neuron
 
   # global stacked bars
   if ("global" %in% plot_set) {
     gdf <- df_states %>%
-      filter(neuron %in% if (neuron == "both") c("iN","iDA") else neuron) %>%
+      filter(neuron %in% if (neuron_filter == "both") c("iN", "iDA") else neuron_filter) %>%
       mutate(state = factor(state, levels = c("retained","lost","unknown")))
     if (!is.null(disease_class_df)) {
       gdf <- gdf %>% left_join(disease_class_df, by = c("genotype" = "sample"))
@@ -10640,7 +10654,7 @@ plot_ppi_vulnerability <- function(df_edges,
     org_summary_path <- file.path(out_dir, "tables", "ko_summary_by_organelle.csv")
     if (file.exists(org_summary_path)) {
       H <- readr::read_csv(org_summary_path, show_col_types = FALSE)
-      H <- H %>% filter(neuron %in% if (neuron == "both") c("iN","iDA") else neuron)
+      H <- H %>% filter(neuron %in% if (neuron_filter == "both") c("iN", "iDA") else neuron_filter)
       mat <- H %>%
         filter(n_edges >= org_min_n) %>%
         select(genotype, shared_organelle, fraction_lost, neuron) %>%
@@ -10699,23 +10713,26 @@ plot_ppi_vulnerability <- function(df_edges,
   }
 }
 
-# 12) example calls (uncomment when ready)
-# plot_ppi_vulnerability(
-#   df_edges  = baseline_edges_union,
-#   df_states = ko_edge_states,
-#   out_dir   = out_dir_ppi_vuln,
-#   plot_set  = c("global","organelle"),
-#   neuron    = "both",
-#   disease_class_df = disease_classes
-# )
-# plot_ppi_vulnerability(
-#   df_edges  = baseline_edges_union,
-#   df_states = ko_edge_states,
-#   out_dir   = out_dir_ppi_vuln,
-#   plot_set  = c("circos"),
-#   ko        = c("GBA1","ASAH1"),
-#   neuron    = "iDA",
-#   annotations_focus = c("Mito","Lysosome")
-# )
+# --- Step 12. call plotting function
+plot_ppi_vulnerability(
+  df_edges  = baseline_edges_union,
+  df_states = ko_edge_states,
+  out_dir   = out_dir_ppi_vuln,
+  plot_set  = c("global","organelle"),
+  disease_class_df = disease_classes_dataframe
+)
+
+
+plot_ppi_vulnerability(
+  df_edges  = baseline_edges_union,
+  df_states = ko_edge_states,
+  out_dir   = out_dir_ppi_vuln,
+  plot_set  = c("circos"),
+  ko        = c("GBA1","ASAH1"),
+  neuron    = "iDA",
+  annotations_focus = c("Mito","Lysosome")
+)
+
+
 ```
 
