@@ -10259,7 +10259,11 @@ pheatmap::pheatmap(
 
 
 # PPI vulnerability pipeline in iN and iDA LSD mutants
+Build a Protein–Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. The goal is to integrate experimental proteome shifts with predicted and experimentally validated interaction data (Predictome 80% and IntAct) to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type–specific effects.
 
+use of the Baker lab's Human interactome
+https://www.biorxiv.org/content/10.1101/2024.10.01.615885v1.full
+and InterAct Database
 
 ### PPI input and merging of evidence 
 ```{r}
@@ -10271,7 +10275,7 @@ dir.create(file.path(out_dir_ppi_vuln, "plots/by_ko"), recursive = TRUE, showWar
 dir.create(file.path(out_dir_ppi_vuln, "tables"), recursive = TRUE, showWarnings = FALSE)
 
 path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
-path_intact_csv    <- "/Users/felix/Desktop/ppi/interact.tsv"
+path_intact_tsv    <- "/Users/felix/Desktop/ppi/interact.tsv"
 
 drop_thresh      <- -0.5    # partner considered dropped if log2FC < drop_thresh
 gain_up_thresh   <-  0.5    # optional: partner considered gained if log2FC > gain_up_thresh
@@ -10280,48 +10284,152 @@ org_min_n        <- 20
 top_n_links      <- 3000
 
 
-# 1) helpers
+# Step 2: Make helper Functions 
+# Purpose: create a unique, order-independent identifier for each protein pair.
 .make_undirected_key <- function(a, b) {
   ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
 }
+
+# Purpose: convert a continuous confidence score (0–1) into discrete bins.
 .bin_conf <- function(x, bins) {
   cut(x, breaks = bins, include.lowest = TRUE, right = TRUE, labels = FALSE)
 }
 
-# 2) load Predictome80
-predictome_raw <- fread(path_predictome80, sep = "\t", header = TRUE, data.table = FALSE)
+
+# Step 3. load Predictome80 dataframe into environment 
+predictome_raw <- data.table::fread(
+  path_predictome80,
+  sep = "\t",
+  header = TRUE,
+  skip = 28, 
+  fill = TRUE,          # tolerate irregular number of fields
+  quote = "",           # ignore quoted entries
+  data.table = FALSE
+)
+
+# remove metadata rows (those starting with '#')
+predictome_raw <- predictome_raw[!grepl("^#", predictome_raw$Protein1), ]
+
+# define probability columns dynamically
+prob_candidates <- c("RFprob","AFprob","AFMprob","CFprob","AFprob5")
+prob_cols <- intersect(prob_candidates, names(predictome_raw))
+
+# compute composite confidence score
 predictome_edges <- predictome_raw %>%
-  transmute(
-    Protein1 = Protein1,
-    Protein2 = Protein2,
-    Name1 = Name1,
-    Name2 = Name2,
-    RFprob = suppressWarnings(as.numeric(RFprob)),
-    AFprob = suppressWarnings(as.numeric(AFprob)),
-    AFMprob = suppressWarnings(as.numeric(AFMprob)),
-    Predictome_conf = pmax(RFprob, AFprob, AFMprob, na.rm = TRUE),
+  mutate(across(all_of(prob_cols), ~ suppressWarnings(as.numeric(.x)))) %>%
+  mutate(
+    Predictome_conf = do.call(pmax, c(across(all_of(prob_cols)), list(na.rm = TRUE))),
     STRING = suppressWarnings(as.numeric(STRING)),
-    confDBs = confDBs,
-    allDBs  = allDBs,
     key = .make_undirected_key(Protein1, Protein2),
     Predictome_present = TRUE
   ) %>%
+  transmute(
+    Protein1, Protein2, Name1, Name2,
+    across(all_of(prob_cols)),
+    Predictome_conf,
+    STRING,
+    confDBs,
+    allDBs,
+    Source,
+    PDBtemp,
+    Known1, Known2,
+    Count1, Count2,
+    Locality1, Locality2,
+    Disease1, Disease2,
+    Process1, Process2,
+    Function1, Function2,
+    Exact_templates, Ortho_templates, Homo_templates,
+    key,
+    Predictome_present
+  ) %>%
   distinct(key, .keep_all = TRUE)
 
-# 3) load IntAct (already filtered by your MI methods and MIscore >= 0.5 when exporting)
-intact_raw <- fread(path_intact_csv, sep = ",", header = TRUE, data.table = FALSE)
+
+
+# Step 4. Load IntAct (already filtered by your MI methods and MIscore >= 0.5 when exporting)
+# If these helpers are not already in your session, keep them; otherwise you can skip redefining.
+.first_uniprot <- function(s) {
+  toks <- unlist(strsplit(as.character(s), "\\|"))
+  u <- toks[grepl("^uniprotkb:", toks, ignore.case = TRUE)]
+  sub("^uniprotkb:", "", ifelse(length(u) > 0, u[1], NA_character_), ignore.case = TRUE)
+}
+.extract_mi_id <- function(s) {
+  m <- regmatches(s, regexpr("MI:\\d{4}", s))
+  ifelse(length(m) == 0, NA_character_, m)
+}
+.extract_miscore <- function(s) {
+  # typical patterns: "intact-miscore:0.56" or "miscore:0.56"
+  if (is.na(s)) return(NA_real_)
+  m <- regmatches(s, regexpr("(intact-)?miscore:([0-9.]+)", s, ignore.case = TRUE))
+  as.numeric(sub(".*miscore:", "", ifelse(length(m) == 0, NA_character_, m), ignore.case = TRUE))
+}
+
+# 1) Load the TSV with original column names preserved
+intact_raw <- read.delim(
+  path_intact_csv,           # <- your interact.tsv path
+  sep = "\t",
+  header = TRUE,
+  quote = "",
+  fill = TRUE,
+  check.names = FALSE
+)
+
+stopifnot(is.data.frame(intact_raw), ncol(intact_raw) > 0)
+
+# 2) Resolve column names robustly (handles slight naming variants)
+nm <- names(intact_raw)
+
+pick_col <- function(patterns) {
+  hit <- NULL
+  for (p in patterns) {
+    cand <- grep(p, nm, value = TRUE, ignore.case = TRUE)
+    if (length(cand) > 0) { hit <- cand[1]; break }
+  }
+  hit
+}
+
+col_idA  <- pick_col(c("^ID\\(s\\) interactor A$", "^ID.*interactor.*A$"))
+col_idB  <- pick_col(c("^ID\\(s\\) interactor B$", "^ID.*interactor.*B$"))
+col_taxA <- pick_col(c("^Taxid interactor A$", "^Taxid.*A$"))
+col_taxB <- pick_col(c("^Taxid interactor B$", "^Taxid.*B$"))
+col_meth <- pick_col(c("^Interaction detection method\\(s\\)$", "^Interaction.*method"))
+col_conf <- pick_col(c("^Confidence value\\(s\\)$", "^Confidence"))
+
+# 3) Allowed MI methods and parse → edge list
+allowed_mi <- c("MI:0030","MI:0096","MI:1314","MI:0114","MI:0410","MI:0019","MI:1313","MI:2339","MI:1247")
+
 intact_edges <- intact_raw %>%
   transmute(
-    Protein1 = str_remove(`ID(s) interactor A`, "^uniprotkb:"),
-    Protein2 = str_remove(`ID(s) interactor B`, "^uniprotkb:"),
-    IntAct_present = TRUE,
-    # If MIscore present, parse it; else set NA
-    IntAct_MIscore = suppressWarnings(as.numeric(`MIscore`)) %||% NA_real_,
-    DetectionMethod = `Interaction detection method(s)`,
-    key = .make_undirected_key(Protein1, Protein2)
+    Protein1_raw = .data[[col_idA]],
+    Protein2_raw = .data[[col_idB]],
+    TaxA         = .data[[col_taxA]],
+    TaxB         = .data[[col_taxB]],
+    Method       = .data[[col_meth]],
+    ConfAll      = if (!is.null(col_conf)) .data[[col_conf]] else NA_character_
   ) %>%
-  filter(!is.na(Protein1), !is.na(Protein2)) %>%
+  filter(grepl("taxid:9606", TaxA, ignore.case = TRUE),
+         grepl("taxid:9606", TaxB, ignore.case = TRUE)) %>%
+  mutate(
+    Protein1       = .first_uniprot(Protein1_raw),
+    Protein2       = .first_uniprot(Protein2_raw),
+    MI_id          = .extract_mi_id(Method),
+    IntAct_MIscore = .extract_miscore(ConfAll)
+  ) %>%
+  filter(!is.na(Protein1), !is.na(Protein2), MI_id %in% allowed_mi) %>%
+  # keep NA scores (some curated entries lack a numeric miscore) or apply ≥0.5 when present
+  filter(is.na(IntAct_MIscore) | IntAct_MIscore >= 0.5) %>%
+  transmute(
+    Protein1, Protein2,
+    IntAct_present  = TRUE,
+    IntAct_MIscore,
+    DetectionMethod = Method,
+    key             = .make_undirected_key(Protein1, Protein2)
+  ) %>%
   distinct(key, .keep_all = TRUE)
+
+
+
+
 
 # 4) merge Predictome + IntAct into PPI_evidence (no confidence filtering here)
 ppi_evidence <- full_join(
