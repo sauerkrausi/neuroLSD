@@ -192,6 +192,9 @@ out_dir_d70_corr <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics
 dir.create(out_dir_d70_corr, recursive = TRUE, showWarnings = FALSE)
 
 
+out_dir_PPI <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/PPI"
+dir.create(out_dir_PPI, recursive = TRUE, showWarnings = FALSE)
+
 ```
 
 
@@ -10254,9 +10257,334 @@ pheatmap::pheatmap(
 # -------- Protein Protein Interaction / Multimer Evaluation 
 # --------------------------------------------------  
 
-# 1. Define the protein set of interest
-# 2. Build a reference PPI/structural interaction map
-# 3. Map your proteome hits onto the PPI graph
-# 4. Cross-stratify by KO class
-# 5. Integrate organelle annotations
-# 6. Scoring and visualization
+
+# PPI vulnerability pipeline in iN and iDA LSD mutants
+```{r}
+
+# 0) user paths and knobs
+out_dir_ppi_vuln <- out_dir_PPI
+dir.create(file.path(out_dir_ppi_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_vuln, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+path_predictome80 <- "/path/to/final_predictions_80.tsv"
+path_intact_csv    <- "/path/to/interact.csv"
+
+drop_thresh      <- -0.5    # partner considered dropped if log2FC < drop_thresh
+gain_up_thresh   <-  0.5    # optional: partner considered gained if log2FC > gain_up_thresh
+conf_bins        <- c(0, 0.5, 0.75, 0.9, 1)
+org_min_n        <- 20
+top_n_links      <- 3000
+
+# required inputs in memory (you already have these in your session)
+# complete_data_annotated_day50  : wide table with Genes and *_log2_fold_change columns
+# binary_matrix                   : binary organelle annotations keyed by Genes
+# disease_class_df (optional)     : mapping KO sample names to disease class and colors
+
+# 1) helpers
+.make_undirected_key <- function(a, b) {
+  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+}
+.bin_conf <- function(x, bins) {
+  cut(x, breaks = bins, include.lowest = TRUE, right = TRUE, labels = FALSE)
+}
+
+# 2) load Predictome80
+predictome_raw <- fread(path_predictome80, sep = "\t", header = TRUE, data.table = FALSE)
+predictome_edges <- predictome_raw %>%
+  transmute(
+    Protein1 = Protein1,
+    Protein2 = Protein2,
+    Name1 = Name1,
+    Name2 = Name2,
+    RFprob = suppressWarnings(as.numeric(RFprob)),
+    AFprob = suppressWarnings(as.numeric(AFprob)),
+    AFMprob = suppressWarnings(as.numeric(AFMprob)),
+    Predictome_conf = pmax(RFprob, AFprob, AFMprob, na.rm = TRUE),
+    STRING = suppressWarnings(as.numeric(STRING)),
+    confDBs = confDBs,
+    allDBs  = allDBs,
+    key = .make_undirected_key(Protein1, Protein2),
+    Predictome_present = TRUE
+  ) %>%
+  distinct(key, .keep_all = TRUE)
+
+# 3) load IntAct (already filtered by your MI methods and MIscore >= 0.5 when exporting)
+intact_raw <- fread(path_intact_csv, sep = ",", header = TRUE, data.table = FALSE)
+intact_edges <- intact_raw %>%
+  transmute(
+    Protein1 = str_remove(`ID(s) interactor A`, "^uniprotkb:"),
+    Protein2 = str_remove(`ID(s) interactor B`, "^uniprotkb:"),
+    IntAct_present = TRUE,
+    # If MIscore present, parse it; else set NA
+    IntAct_MIscore = suppressWarnings(as.numeric(`MIscore`)) %||% NA_real_,
+    DetectionMethod = `Interaction detection method(s)`,
+    key = .make_undirected_key(Protein1, Protein2)
+  ) %>%
+  filter(!is.na(Protein1), !is.na(Protein2)) %>%
+  distinct(key, .keep_all = TRUE)
+
+# 4) merge Predictome + IntAct into PPI_evidence (no confidence filtering here)
+ppi_evidence <- full_join(
+  predictome_edges %>% select(key, Protein1, Protein2, Name1, Name2, Predictome_conf, Predictome_present, STRING, confDBs, allDBs),
+  intact_edges     %>% select(key, IntAct_present, IntAct_MIscore, DetectionMethod),
+  by = "key"
+) %>%
+  mutate(
+    Predictome_present = replace_na(Predictome_present, FALSE),
+    IntAct_present     = replace_na(IntAct_present, FALSE),
+    Overlap_flag       = Predictome_present & IntAct_present
+  )
+
+# 5) add subcellular annotations for each partner
+# expects binary_matrix with columns: Genes and organelle flags
+org_cols <- setdiff(colnames(binary_matrix), c("Genes"))
+gene_to_org <- binary_matrix %>% select(Genes, all_of(org_cols))
+ppi_evidence <- ppi_evidence %>%
+  left_join(gene_to_org, by = c("Protein1" = "Genes")) %>%
+  rename_with(~paste0(.x, "_prot1"), all_of(org_cols)) %>%
+  left_join(gene_to_org, by = c("Protein2" = "Genes")) %>%
+  rename_with(~paste0(.x, "_prot2"), all_of(org_cols))
+
+# 6) filter to union neuronal proteome
+neuronal_genes <- complete_data_annotated_day50 %>% pull(Genes) %>% unique()
+ppi_evidence <- ppi_evidence %>%
+  filter(Protein1 %in% neuronal_genes, Protein2 %in% neuronal_genes)
+
+# 7) union baseline edges (write once)
+baseline_edges_union <- ppi_evidence %>%
+  mutate(
+    Predictome_conf_bin_id = .bin_conf(pmin(pmax(Predictome_conf, 0, na.rm = TRUE), 1), conf_bins),
+    Predictome_conf_bin = forcats::fct_relabel(factor(Predictome_conf_bin_id),
+                                               ~levels(cut(c(0,1e-6), breaks = conf_bins, include.lowest = TRUE))[.x])
+  ) %>%
+  select(key, Protein1, Protein2, Name1, Name2,
+         Predictome_present, IntAct_present, Overlap_flag,
+         Predictome_conf, Predictome_conf_bin,
+         STRING, confDBs, allDBs, IntAct_MIscore, DetectionMethod,
+         everything())
+
+write_csv(baseline_edges_union, file.path(out_dir_ppi_vuln, "tables", "baseline_edges_union.csv"))
+
+# 8) long proteome table to get per KO and neuron log2FC for partners
+# expects columns like GBA1_iN_log2_fold_change etc.
+prot_long <- complete_data_annotated_day50 %>%
+  pivot_longer(-Genes, names_to = "sample", values_to = "log2FC") %>%
+  filter(str_detect(sample, "log2_fold_change")) %>%
+  mutate(
+    genotype = str_extract(sample, "^[^_]+"),
+    neuron   = str_extract(sample, "(?<=_)iN|iDA(?=_)") %||% str_extract(sample, "_(iN|iDA)") %>% str_remove_all("_"),
+    neuron   = ifelse(is.na(neuron), ifelse(str_detect(sample, "_iN"), "iN",
+                                     ifelse(str_detect(sample, "_iDA"), "iDA", NA)), neuron)
+  ) %>%
+  filter(!is.na(neuron))
+
+# 9) compute KO edge states relative to baseline (per KO and neuron)
+# state rules:
+#   lost     = at least one partner Δ < drop_thresh
+#   retained = neither partner Δ < drop_thresh
+#   gained   = not in baseline but appears strong in KO (optional; here we only report baseline edges; gained requires additional predicted edges not in baseline)
+# If you want gained, build a superset_edges from Predictome80 before filtering by neuronal proteome and compare.
+ko_edge_states <- baseline_edges_union %>%
+  select(key, Protein1, Protein2, Predictome_conf, Predictome_conf_bin, IntAct_present, Overlap_flag, starts_with(paste0(org_cols[1], "_"), ignore.case = FALSE):last_col()) %>%
+  # join partner log2FC per KO and neuron
+  left_join(prot_long, by = c("Protein1" = "Genes")) %>%
+  rename(dA = log2FC) %>%
+  left_join(prot_long, by = c("Protein2" = "Genes", "genotype", "neuron")) %>%
+  rename(dB = log2FC) %>%
+  mutate(
+    state = case_when(
+      !is.na(dA) & dA < drop_thresh ~ "lost",
+      !is.na(dB) & dB < drop_thresh ~ "lost",
+      (!is.na(dA) | !is.na(dB))     ~ "retained",
+      TRUE                          ~ "unknown"
+    ),
+    OrgPair = case_when(
+      # same-organelle if any shared annotation equals TRUE in both partners
+      rowSums((across(ends_with("_prot1"), ~ .x)) & (across(ends_with("_prot2"), ~ .x))) > 0 ~ "same",
+      TRUE ~ "cross"
+    )
+  ) %>%
+  select(key, Protein1, Protein2, genotype, neuron, dA, dB, state,
+         Predictome_conf, Predictome_conf_bin, IntAct_present, Overlap_flag, OrgPair)
+
+write_csv(ko_edge_states, file.path(out_dir_ppi_vuln, "tables", "per_ko_edge_states.csv"))
+
+# 10) summaries
+ko_summary_global <- ko_edge_states %>%
+  group_by(genotype, neuron) %>%
+  summarise(
+    total_baseline_edges = n(),
+    n_lost     = sum(state == "lost", na.rm = TRUE),
+    n_retained = sum(state == "retained", na.rm = TRUE),
+    n_unknown  = sum(state == "unknown", na.rm = TRUE),
+    fraction_lost = n_lost / total_baseline_edges,
+    .groups = "drop"
+  )
+
+write_csv(ko_summary_global, file.path(out_dir_ppi_vuln, "tables", "ko_summary_global.csv"))
+
+ko_summary_by_organelle <- ko_edge_states %>%
+  filter(OrgPair == "same") %>%
+  # tag which organelle shared: pick first TRUE shared among org_cols
+  rowwise() %>%
+  mutate(shared_organelle = {
+    prot1_flags <- baseline_edges_union[match(key, baseline_edges_union$key), paste0(org_cols, "_prot1")]
+    prot2_flags <- baseline_edges_union[match(key, baseline_edges_union$key), paste0(org_cols, "_prot2")]
+    shared <- org_cols[which(as.logical(prot1_flags) & as.logical(prot2_flags))]
+    if (length(shared) == 0) NA_character_ else shared[1]
+  }) %>%
+  ungroup() %>%
+  filter(!is.na(shared_organelle)) %>%
+  group_by(genotype, neuron, shared_organelle) %>%
+  summarise(
+    n_edges = n(),
+    n_lost  = sum(state == "lost", na.rm = TRUE),
+    fraction_lost = n_lost / n_edges,
+    .groups = "drop"
+  )
+
+write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_summary_by_organelle.csv"))
+
+# 11) single plotting function for global and per-KO
+plot_ppi_vulnerability <- function(df_edges,
+                                   df_states,
+                                   out_dir = out_dir_ppi_vuln,
+                                   plot_set = c("global","organelle","circos","matrix"),
+                                   ko = NULL,
+                                   neuron = c("iN","iDA","both"),
+                                   conf_bins = c(0, 0.5, 0.75, 0.9, 1),
+                                   org_min_n = 20,
+                                   top_n_links = 3000,
+                                   annotations_focus = NULL,
+                                   disease_class_df = NULL,
+                                   save = TRUE) {
+  neuron <- match.arg(neuron)
+
+  # global stacked bars
+  if ("global" %in% plot_set) {
+    gdf <- df_states %>%
+      filter(neuron %in% if (neuron == "both") c("iN","iDA") else neuron) %>%
+      mutate(state = factor(state, levels = c("retained","lost","unknown")))
+    if (!is.null(disease_class_df)) {
+      gdf <- gdf %>% left_join(disease_class_df, by = c("genotype" = "sample"))
+    }
+    gsum <- gdf %>%
+      group_by(genotype, neuron, state) %>%
+      summarise(n = n(), .groups = "drop_last") %>%
+      group_by(genotype, neuron) %>%
+      mutate(frac = n / sum(n)) %>%
+      ungroup()
+
+    p_bar <- ggplot(gsum, aes(x = genotype, y = n, fill = state)) +
+      geom_col() +
+      facet_wrap(~neuron, scales = "free_x") +
+      scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
+      labs(x = NULL, y = "edges", title = "Edge outcomes per KO") +
+      theme_bw(base_size = 10) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+    if (save) ggsave(file.path(out_dir, "plots/global", paste0("bars_edge_outcomes_", neuron, ".pdf")),
+                     p_bar, width = 9, height = 5, device = cairo_pdf)
+  }
+
+  # organelle heatmap (fraction lost) 
+  if ("organelle" %in% plot_set) {
+    odf <- df_states %>%
+      filter(OrgPair == "same", neuron %in% if (neuron == "both") c("iN","iDA") else neuron)
+
+    # compute shared organelle like in the summary step
+    shared_lookup <- df_edges %>%
+      select(key, starts_with(paste0(org_cols[1], "_prot1")):last_col())
+
+    odf2 <- odf %>%
+      rowwise() %>%
+      mutate(shared_organelle = {
+        # recompute quickly
+        # if you saved shared_organelle earlier, you can join instead
+        NA_character_
+      }) %>%
+      ungroup()
+
+    # If you already wrote ko_summary_by_organelle, read it instead for plotting
+    org_summary_path <- file.path(out_dir, "tables", "ko_summary_by_organelle.csv")
+    if (file.exists(org_summary_path)) {
+      H <- readr::read_csv(org_summary_path, show_col_types = FALSE)
+      H <- H %>% filter(neuron %in% if (neuron == "both") c("iN","iDA") else neuron)
+      mat <- H %>%
+        filter(n_edges >= org_min_n) %>%
+        select(genotype, shared_organelle, fraction_lost, neuron) %>%
+        mutate(geno_label = paste(genotype, neuron, sep = "_")) %>%
+        select(geno_label, shared_organelle, fraction_lost) %>%
+        pivot_wider(names_from = geno_label, values_from = fraction_lost, values_fill = 0) %>%
+        column_to_rownames("shared_organelle") %>%
+        as.matrix()
+      if (nrow(mat) > 1 && ncol(mat) > 1) {
+        pheatmap::pheatmap(mat,
+                           filename = file.path(out_dir, "plots/global",
+                                                paste0("heatmap_fraction_lost_by_organelle_", neuron, ".pdf")),
+                           clustering_method = "complete",
+                           color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100),
+                           border_color = NA, width = 9, height = 7)
+      }
+    }
+  }
+
+  # circos per KO and neuron
+  if ("circos" %in% plot_set) {
+    ko_vec <- if (is.null(ko)) unique(df_states$genotype) else ko
+    for (k in ko_vec) {
+      for (nt in if (neuron == "both") c("iN","iDA") else neuron) {
+        sub <- df_states %>% filter(genotype == k, neuron == nt)
+        if (!is.null(annotations_focus) && length(annotations_focus) > 0) {
+          # keep edges where both partners share at least one of focus annotations
+          # optional: implement by joining df_edges to sub using key and checking *_prot1 and *_prot2 flags
+        }
+        # encode links: retained grey, lost magenta, unknown light grey
+        sub$col <- ifelse(sub$state == "lost", "#C51B7D80",
+                     ifelse(sub$state == "retained", "#BDBDBD60", "#BDBDBD30"))
+
+        # construct node labels as KO-neuron samples? Here we draw A–B edges among proteins, not samples
+        # For speed and readability, cap
+        if (nrow(sub) > top_n_links) sub <- sub %>% arrange(desc(Overlap_flag), desc(Predictome_conf)) %>% slice_head(n = top_n_links)
+
+        # build chord df
+        chord_df <- sub %>% select(from = Protein1, to = Protein2, col)
+        if (nrow(chord_df) == 0) next
+
+        pdf(file.path(out_dir, "plots/by_ko", paste0("circos_", k, "_", nt, ".pdf")), width = 10, height = 10)
+        circos.clear()
+        circos.par(start.degree = 90, gap.degree = 2)
+        chordDiagram(chord_df, transparency = 0.2, col = chord_df$col, annotationTrack = "grid")
+        circos.clear()
+        dev.off()
+      }
+    }
+  }
+
+  # matrix view for a KO and a supplied protein set or complex (optional stub)
+  if ("matrix" %in% plot_set && !is.null(ko)) {
+    # User can build their own A×B matrix; this is a stub to keep API stable
+    message("matrix view requested – implement for selected complex or hub set")
+  }
+}
+
+# 12) example calls (uncomment when ready)
+# plot_ppi_vulnerability(
+#   df_edges  = baseline_edges_union,
+#   df_states = ko_edge_states,
+#   out_dir   = out_dir_ppi_vuln,
+#   plot_set  = c("global","organelle"),
+#   neuron    = "both",
+#   disease_class_df = NULL
+# )
+# plot_ppi_vulnerability(
+#   df_edges  = baseline_edges_union,
+#   df_states = ko_edge_states,
+#   out_dir   = out_dir_ppi_vuln,
+#   plot_set  = c("circos"),
+#   ko        = c("GBA1","ASAH1"),
+#   neuron    = "iDA",
+#   annotations_focus = c("Mito","Lysosome")
+# )
+```
+
