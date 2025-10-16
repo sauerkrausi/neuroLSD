@@ -10259,16 +10259,19 @@ pheatmap::pheatmap(
 
 
 # PPI vulnerability pipeline in iN and iDA LSD mutants
+
+
+### PPI input and merging of evidence 
 ```{r}
 
-# Step 1.  user paths and knobs
+# Step 1.  Define Paths and input tables 
 out_dir_ppi_vuln <- out_dir_PPI
 dir.create(file.path(out_dir_ppi_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_ppi_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_ppi_vuln, "tables"), recursive = TRUE, showWarnings = FALSE)
 
-path_predictome80 <- "/path/to/final_predictions_80.tsv"
-path_intact_csv    <- "/path/to/interact.csv"
+path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
+path_intact_csv    <- "/Users/felix/Desktop/ppi/interact.tsv"
 
 drop_thresh      <- -0.5    # partner considered dropped if log2FC < drop_thresh
 gain_up_thresh   <-  0.5    # optional: partner considered gained if log2FC > gain_up_thresh
@@ -10276,10 +10279,6 @@ conf_bins        <- c(0, 0.5, 0.75, 0.9, 1)
 org_min_n        <- 20
 top_n_links      <- 3000
 
-# required inputs in memory (you already have these in your session)
-# complete_data_annotated_day50  : wide table with Genes and *_log2_fold_change columns
-# binary_matrix                   : binary organelle annotations keyed by Genes
-# disease_class_df (optional)     : mapping KO sample names to disease class and colors
 
 # 1) helpers
 .make_undirected_key <- function(a, b) {
@@ -10575,7 +10574,7 @@ plot_ppi_vulnerability <- function(df_edges,
 #   out_dir   = out_dir_ppi_vuln,
 #   plot_set  = c("global","organelle"),
 #   neuron    = "both",
-#   disease_class_df = NULL
+#   disease_class_df = disease_classes
 # )
 # plot_ppi_vulnerability(
 #   df_edges  = baseline_edges_union,
