@@ -10608,42 +10608,44 @@ plot_ppi_vulnerability <- function(df_edges,
 
   # global stacked bars
   if ("global" %in% plot_set) {
-    gdf <- df_states %>%
-      filter(neuron %in% if (neuron_filter == "both") c("iN", "iDA") else neuron_filter) %>%
-      mutate(state = factor(state, levels = c("retained","lost","unknown")))
+    ppi_vul_global <- df_states %>%
+      dplyr::filter(neuron %in% neuron_filter) %>%
+      dplyr::mutate(state = factor(state, levels = c("retained","lost","unknown")))
     if (!is.null(disease_class_df)) {
-      gdf <- gdf %>% left_join(disease_class_df, by = c("genotype" = "sample"))
+      ppi_vul_global <- ppi_vul_global %>%
+        dplyr::left_join(disease_class_df, by = c("genotype" = "sample"))
     }
-    gsum <- gdf %>%
-      group_by(genotype, neuron, state) %>%
-      summarise(n = n(), .groups = "drop_last") %>%
-      group_by(genotype, neuron) %>%
-      mutate(frac = n / sum(n)) %>%
-      ungroup()
+    ppi_vul_global_sum <- ppi_vul_global %>%
+      dplyr::group_by(genotype, neuron, state) %>%
+      dplyr::summarise(n = dplyr::n(), .groups = "drop_last") %>%
+      dplyr::group_by(genotype, neuron) %>%
+      dplyr::mutate(frac = n / sum(n)) %>%
+      dplyr::ungroup()
 
-    p_bar <- ggplot(gsum, aes(x = genotype, y = n, fill = state)) +
+    bar_ppi_global <- ggplot(ppi_vul_global_sum, aes(x = genotype, y = n, fill = state)) +
       geom_col() +
       facet_wrap(~neuron, scales = "free_x") +
       scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
       labs(x = NULL, y = "edges", title = "Edge outcomes per KO") +
-      theme_bw(base_size = 10) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+      theme_bw(base_size = 10) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
     if (save) ggsave(file.path(out_dir, "plots/global", paste0("bars_edge_outcomes_", neuron, ".pdf")),
-                     p_bar, width = 9, height = 5, device = cairo_pdf)
+                     bar_ppi_global, width = 9, height = 5, device = cairo_pdf)
   }
 
   # organelle heatmap (fraction lost) 
   if ("organelle" %in% plot_set) {
-    odf <- df_states %>%
-      filter(OrgPair == "same", neuron %in% if (neuron == "both") c("iN","iDA") else neuron)
+    ppi_vul_org <- df_states %>%
+      dplyr::filter(OrgPair == "same", neuron %in% neuron_filter)
 
-    # compute shared organelle like in the summary step
+    # compute shared organelle like in the summary step (placeholder stays as-is)
     shared_lookup <- df_edges %>%
-      select(key, starts_with(paste0(organelle_tags[1], "_prot1")):last_col())
+      dplyr::select(key, starts_with(paste0(organelle_tags[1], "_prot1")):last_col())
 
-    odf2 <- odf %>%
+    ppi_vul_org2 <- ppi_vul_org %>%
       rowwise() %>%
-      mutate(shared_organelle = {
+      dplyr::mutate(shared_organelle = {
         # recompute quickly
         # if you saved shared_organelle earlier, you can join instead
         NA_character_
@@ -10653,23 +10655,59 @@ plot_ppi_vulnerability <- function(df_edges,
     # If you already wrote ko_summary_by_organelle, read it instead for plotting
     org_summary_path <- file.path(out_dir, "tables", "ko_summary_by_organelle.csv")
     if (file.exists(org_summary_path)) {
-      H <- readr::read_csv(org_summary_path, show_col_types = FALSE)
-      H <- H %>% filter(neuron %in% if (neuron_filter == "both") c("iN", "iDA") else neuron_filter)
-      mat <- H %>%
-        filter(n_edges >= org_min_n) %>%
-        select(genotype, shared_organelle, fraction_lost, neuron) %>%
-        mutate(geno_label = paste(genotype, neuron, sep = "_")) %>%
-        select(geno_label, shared_organelle, fraction_lost) %>%
-        pivot_wider(names_from = geno_label, values_from = fraction_lost, values_fill = 0) %>%
-        column_to_rownames("shared_organelle") %>%
-        as.matrix()
-      if (nrow(mat) > 1 && ncol(mat) > 1) {
-        pheatmap::pheatmap(mat,
-                           filename = file.path(out_dir, "plots/global",
-                                                paste0("heatmap_fraction_lost_by_organelle_", neuron, ".pdf")),
-                           clustering_method = "complete",
-                           color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100),
-                           border_color = NA, width = 9, height = 7)
+      ppi_vul_org_summary <- readr::read_csv(org_summary_path, show_col_types = FALSE)
+      ppi_vul_org_summary <- ppi_vul_org_summary %>%
+        dplyr::filter(neuron %in% neuron_filter)
+
+# --- annotations for columns (KO_neuron)
+col_meta <- tibble::tibble(geno_label = colnames(org_heatmap_mat)) %>%
+  tidyr::separate(geno_label, into = c("genotype","neuron"), sep = "_", remove = FALSE)
+
+# add DiseaseClass if provided
+if (!is.null(disease_class_df)) {
+  col_meta <- col_meta %>%
+    dplyr::left_join(disease_class_df, by = c("genotype" = "sample"))
+}
+
+# build pheatmap annotation frames
+annotation_col <- col_meta %>%
+  dplyr::select(-geno_label) %>%
+  as.data.frame()
+rownames(annotation_col) <- col_meta$geno_label
+
+# simple color maps (tweak if you have a palette already)
+ann_colors <- list(
+  neuron = c("iN" = "grey60", "iDA" = "grey80")
+)
+if ("DiseaseClass" %in% colnames(annotation_col)) {
+  dcats <- na.omit(unique(annotation_col$DiseaseClass))
+  pal <- grDevices::rainbow(length(dcats), v = 0.8, s = 0.6)
+  names(pal) <- dcats
+  ann_colors$DiseaseClass = pal
+}
+
+# final heatmap (row-scaled fractions)
+pheatmap::pheatmap(
+  mat = org_heatmap_mat,
+  scale = "row",
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")))(100),
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  breaks = seq(-4, 4, length.out = 101),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = FALSE,
+  show_colnames = TRUE,
+  use_raster = FALSE,
+  angle_col = "90",
+  main = paste0("PPI fraction lost by organelle (", paste(neuron_filter, collapse = "/"), ")"),
+  fontsize = 10,
+  border_color = NA,
+  filename = file.path(out_dir, "plots/global",
+                       paste0("heatmap_fraction_lost_by_organelle_", neuron, ".pdf")),
+  width = 9, height = 7
+)
+        )
       }
     }
   }
@@ -10678,8 +10716,8 @@ plot_ppi_vulnerability <- function(df_edges,
   if ("circos" %in% plot_set) {
     ko_vec <- if (is.null(ko)) unique(df_states$genotype) else ko
     for (k in ko_vec) {
-      for (nt in if (neuron == "both") c("iN","iDA") else neuron) {
-        sub <- df_states %>% filter(genotype == k, neuron == nt)
+      for (nt in neuron_filter) {
+        sub <- df_states %>% dplyr::filter(genotype == k, neuron == nt)
         if (!is.null(annotations_focus) && length(annotations_focus) > 0) {
           # keep edges where both partners share at least one of focus annotations
           # optional: implement by joining df_edges to sub using key and checking *_prot1 and *_prot2 flags
@@ -10688,12 +10726,13 @@ plot_ppi_vulnerability <- function(df_edges,
         sub$col <- ifelse(sub$state == "lost", "#C51B7D80",
                      ifelse(sub$state == "retained", "#BDBDBD60", "#BDBDBD30"))
 
-        # construct node labels as KO-neuron samples? Here we draw A–B edges among proteins, not samples
-        # For speed and readability, cap
-        if (nrow(sub) > top_n_links) sub <- sub %>% arrange(desc(Overlap_flag), desc(Predictome_conf)) %>% slice_head(n = top_n_links)
+        if (nrow(sub) > top_n_links) {
+          sub <- sub %>%
+            dplyr::arrange(desc(Overlap_flag), desc(Predictome_conf)) %>%
+            dplyr::slice_head(n = top_n_links)
+        }
 
-        # build chord df
-        chord_df <- sub %>% select(from = Protein1, to = Protein2, col)
+        chord_df <- sub %>% dplyr::select(from = Protein1, to = Protein2, col)
         if (nrow(chord_df) == 0) next
 
         pdf(file.path(out_dir, "plots/by_ko", paste0("circos_", k, "_", nt, ".pdf")), width = 10, height = 10)
@@ -10706,9 +10745,7 @@ plot_ppi_vulnerability <- function(df_edges,
     }
   }
 
-  # matrix view for a KO and a supplied protein set or complex (optional stub)
   if ("matrix" %in% plot_set && !is.null(ko)) {
-    # User can build their own A×B matrix; this is a stub to keep API stable
     message("matrix view requested – implement for selected complex or hub set")
   }
 }
