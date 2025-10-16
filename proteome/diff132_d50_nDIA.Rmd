@@ -10268,7 +10268,8 @@ and InterAct Database
 ### PPI input and merging of evidence 
 ##### Load Human Interactome & parse 
 ```{r}
-# Step 1.  Define Paths and input tables 
+# ---------------------------------------------------
+# --- Step 1.  Define Paths and input tables 
 out_dir_ppi_vuln <- out_dir_PPI
 dir.create(file.path(out_dir_ppi_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_ppi_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
@@ -10284,7 +10285,8 @@ org_min_n        <- 20
 top_n_links      <- 3000
 
 
-# Step 2: Make helper Functions 
+# ---------------------------------------------------
+# --- Step 2: Make helper Functions 
 # Purpose: create a unique, order-independent identifier for each protein pair.
 .make_undirected_key <- function(a, b) {
   ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
@@ -10296,7 +10298,8 @@ top_n_links      <- 3000
 }
 
 
-# Step 3. load Predictome80 dataframe into environment 
+# ---------------------------------------------------
+# --- Step 3. load Predictome80 dataframe into environment 
 predictome_raw <- data.table::fread(
   path_predictome80,
   sep = "\t",
@@ -10350,7 +10353,8 @@ predictome_edges <- predictome_raw %>%
 ##### Load InterAct & parse 
 use select experimental evidence and larger than 0.5 as threshold 
 ```{r}
-# Step 4. Load IntAct (already filtered by your MI methods and MIscore >= 0.5 when exporting)
+# ---------------------------------------------------
+# --- Step 4. Load IntAct (already filtered by your MI methods and MIscore >= 0.5 when exporting)
 intact_edges <- intact_raw %>%
   transmute(
     Protein1 = sub("^uniprotkb:", "", sub("\\|.*$", "", `ID(s) interactor A`)),
@@ -10373,7 +10377,8 @@ intact_edges <- intact_raw %>%
 
 ##### Merge PPIs and add subcell annotations
 ```{r}
-# Step 5. Merge Predictome + IntAct into PPI_evidence dataframe
+# ---------------------------------------------------
+# --- Step 5. Merge Predictome + IntAct into PPI_evidence dataframe
 ppi_evidence <- full_join(
   predictome_edges %>% select(key, Protein1, Protein2, Name1, Name2, Predictome_conf, Predictome_present, STRING, confDBs, allDBs),
   intact_edges     %>% select(key, IntAct_present, IntAct_MIscore, DetectionMethod),
@@ -10389,35 +10394,57 @@ ppi_evidence <- full_join(
 write_csv(ppi_evidence,"/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/tables/ppi_evidence.csv")
 
 
-# 5) add subcellular annotations for each partner
+# ---------------------------------------------------
+# --- Step 6. add subcellular annotations for each partner
+# Build a UniProt -> Gene map from Predictome (Name1/Name2 are gene symbols)
+map_uni_to_gene <- bind_rows(
+  predictome_raw %>% transmute(uni = Protein1, gene = Name1),
+  predictome_raw %>% transmute(uni = Protein2, gene = Name2)
+) %>%
+  filter(!is.na(uni), !is.na(gene), nzchar(uni), nzchar(gene)) %>%
+  distinct(uni, .keep_all = TRUE)
+
+# Add gene symbols for each partner
+ppi_evidence <- ppi_evidence %>%
+  left_join(map_uni_to_gene, by = c("Protein1" = "uni")) %>% rename(Gene1 = gene) %>%
+  left_join(map_uni_to_gene, by = c("Protein2" = "uni")) %>% rename(Gene2 = gene)
+
+# Step 6.1. add subcellular annotations using Gene1/Gene2 (to match binary_matrix$Genes nomenclature in df)
 # expects binary_matrix with columns: Genes and organelle flags
 org_cols <- setdiff(colnames(binary_matrix), c("Genes"))
 gene_to_org <- binary_matrix %>% select(Genes, all_of(org_cols))
+
 ppi_evidence <- ppi_evidence %>%
-  left_join(gene_to_org, by = c("Protein1" = "Genes")) %>%
+  left_join(gene_to_org, by = c("Gene1" = "Genes")) %>%
   rename_with(~paste0(.x, "_prot1"), all_of(org_cols)) %>%
-  left_join(gene_to_org, by = c("Protein2" = "Genes")) %>%
+  left_join(gene_to_org, by = c("Gene2" = "Genes")) %>%
   rename_with(~paste0(.x, "_prot2"), all_of(org_cols))
 
-# 6) filter to union neuronal proteome
+# Step 6.2. filter to union neuronal proteome using gene symbols
 neuronal_genes <- complete_data_annotated_day50 %>% pull(Genes) %>% unique()
 ppi_evidence <- ppi_evidence %>%
-  filter(Protein1 %in% neuronal_genes, Protein2 %in% neuronal_genes)
+  filter(Gene1 %in% neuronal_genes, Gene2 %in% neuronal_genes)
 
-# 7) union baseline edges (write once)
+# ---------------------------------------------------
+# --- Step 7. Union baseline edges (unchanged, but Predictome_conf_bin simplified for robustness)
 baseline_edges_union <- ppi_evidence %>%
   mutate(
-    Predictome_conf_bin_id = .bin_conf(pmin(pmax(Predictome_conf, 0, na.rm = TRUE), 1), conf_bins),
-    Predictome_conf_bin = forcats::fct_relabel(factor(Predictome_conf_bin_id),
-                                               ~levels(cut(c(0,1e-6), breaks = conf_bins, include.lowest = TRUE))[.x])
+    Predictome_conf_clamped = pmin(pmax(Predictome_conf, 0, na.rm = TRUE), 1),
+    Predictome_conf_bin = cut(Predictome_conf_clamped, breaks = conf_bins, include.lowest = TRUE)
   ) %>%
-  select(key, Protein1, Protein2, Name1, Name2,
-         Predictome_present, IntAct_present, Overlap_flag,
-         Predictome_conf, Predictome_conf_bin,
-         STRING, confDBs, allDBs, IntAct_MIscore, DetectionMethod,
-         everything())
+  select(
+    key, Protein1, Protein2, Gene1, Gene2, Name1, Name2,
+    Predictome_present, IntAct_present, Overlap_flag,
+    Predictome_conf, Predictome_conf_bin,
+    STRING, confDBs, allDBs, IntAct_MIscore, DetectionMethod,
+    everything()
+  )
 
+# save as csv
 write_csv(baseline_edges_union, file.path(out_dir_ppi_vuln, "tables", "baseline_edges_union.csv"))
+
+
+
 
 # 8) long proteome table to get per KO and neuron log2FC for partners
 # expects columns like GBA1_iN_log2_fold_change etc.
