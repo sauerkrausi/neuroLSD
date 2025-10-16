@@ -10373,7 +10373,7 @@ intact_edges <- intact_raw %>%
 
 ##### Merge PPIs and add subcell annotations
 ```{r}
-# 4) merge Predictome + IntAct into PPI_evidence (no confidence filtering here)
+# Step 5. Merge Predictome + IntAct into PPI_evidence dataframe
 ppi_evidence <- full_join(
   predictome_edges %>% select(key, Protein1, Protein2, Name1, Name2, Predictome_conf, Predictome_present, STRING, confDBs, allDBs),
   intact_edges     %>% select(key, IntAct_present, IntAct_MIscore, DetectionMethod),
@@ -10384,6 +10384,10 @@ ppi_evidence <- full_join(
     IntAct_present     = replace_na(IntAct_present, FALSE),
     Overlap_flag       = Predictome_present & IntAct_present
   )
+
+# save csv
+write_csv(ppi_evidence,"/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/tables/ppi_evidence.csv")
+
 
 # 5) add subcellular annotations for each partner
 # expects binary_matrix with columns: Genes and organelle flags
