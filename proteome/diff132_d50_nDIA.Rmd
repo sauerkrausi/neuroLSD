@@ -11043,11 +11043,10 @@ plot_organelle_stacked_bars <- function(df_edges,
       theme_bw(base_size = 10) +
       theme(
         panel.grid = element_blank(),
-        panel.border = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
       )
-    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_fraction_", nt, ".pdf")),
-           p_frac, width = 11, height = 5, device = cairo_pdf)
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_fraction_", nt, ".pdf")), p_frac, width = 11, height = 5, device = cairo_pdf)
   }
 
   plot_one_neuron("iN")
