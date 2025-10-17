@@ -11019,7 +11019,6 @@ plot_ppi_vulnerability(
 
 ##### Plotting function for stacked bargraphs for organelle PPI impact
 ```{r}
-
 # --- Prepare shared_long and correctly named disease_class_df ---
 shared_long <- {
   org1_cols <- grep("_prot1$", names(baseline_edges_union), value = TRUE)
@@ -11040,7 +11039,6 @@ shared_long <- {
 
 # Ensure correct naming
 disease_class_df <- disease_classes_dataframe
-
 
 
 
@@ -11139,12 +11137,15 @@ plot_organelle_stacked_bars <- function(df_states,
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
       )
     ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_fraction_", nt, ".pdf")), p_frac, width = 11, height = 5, device = cairo_pdf)
-  
+  }
 
   plot_one_neuron("iN")
   plot_one_neuron("iDA")
-  }
+  
+  #return(shared_long)
+  
 }
+
 
 # --- Faceted barplot and pie charts by disease class and organelle tag ---
 plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_df, out_dir, disease_class_palette) {
@@ -11174,14 +11175,17 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
     dplyr::filter(!is.na(tag), !is.na(DiseaseClass.x) | !is.na(DiseaseClass.y)) |>
     dplyr::mutate(DiseaseClass = dplyr::coalesce(DiseaseClass.x, DiseaseClass.y))
 
-  # --- Plot 1: Faceted barplot ---
+  # Step 6: Aggregated bar data (tag × disease class × neuron)
   tag_disease_loss <- df_tagged |>
     dplyr::group_by(neuron, DiseaseClass, tag) |>
     dplyr::summarise(n = sum(state == "lost", na.rm = TRUE), .groups = "drop") |>
     dplyr::filter(n > 0)
 
+  
+ # ---- plotting calls of data ---- 
+  # Plot 1: faceted stacked barplot by tag
   p_bar <- ggplot(tag_disease_loss, aes(x = DiseaseClass, y = n, fill = DiseaseClass)) +
-    geom_col(width = 0.7) +
+    geom_col(width = 0.7, color = "black", linewidth = 0.2) +
     facet_wrap(~tag, scales = "free_y") +
     scale_fill_manual(values = disease_class_palette, drop = FALSE) +
     labs(x = NULL, y = "Lost PPIs", title = "Lost PPIs by organelle tag and disease class") +
@@ -11191,10 +11195,54 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
       strip.background = element_rect(fill = "white", color = "black"),
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
-
   ggsave(file.path(out_dir, "plots/global", "bars_organelle_tag_by_diseaseclass.pdf"), p_bar, width = 11, height = 7, device = cairo_pdf)
 
-  # --- Plot 2: Pie charts ---
+  
+  # Plot 2: Normalized Bar Charts by organelle tag and disease class
+  bar_norm_tag_df <- df_tagged |>
+    dplyr::filter(state == "lost") |>
+    dplyr::group_by(neuron, DiseaseClass, tag) |>
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") |>
+    dplyr::left_join(
+      df_tagged |> 
+        dplyr::distinct(KO, DiseaseClass, tag, neuron) |> 
+        dplyr::count(DiseaseClass, tag, neuron, name = "n_KOs"),
+      by = c("DiseaseClass", "tag", "neuron")
+    ) |>
+    dplyr::mutate(n_norm = n_lost / n_KOs) |>
+    dplyr::filter(n_KOs > 0)
+  
+  # Plot function: one faceted barplot per neuron
+  plot_normed_bar_by_tag <- function(nt) {
+    dd <- bar_norm_tag_df |> dplyr::filter(neuron == nt)
+    if (nrow(dd) == 0) return(invisible(NULL))
+  
+    p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
+      geom_col(width = 0.7, color = "black", linewidth = 0.2) +
+      facet_wrap(~tag, scales = "free_y") +
+      scale_fill_manual(values = disease_class_palette, drop = FALSE) +
+      labs(
+        title = paste("Normalized PPI loss per KO by tag –", nt),
+        x = NULL,
+        y = "Lost PPIs per KO"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        strip.background = element_rect(fill = "white", color = "black"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(color = "black", fill = NA)
+      )
+  
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_tag_by_diseaseclass_perKO_", nt, ".pdf")),
+           p, width = 11, height = 7, device = cairo_pdf)
+  }
+  
+  plot_normed_bar_by_tag("iN")
+  plot_normed_bar_by_tag("iDA")
+  
+  
+  # Plot 3: Pie charts iN / iDA
   pie_df <- df_tagged |>
     dplyr::filter(state == "lost") |>
     dplyr::group_by(neuron, DiseaseClass) |>
@@ -11203,6 +11251,7 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
   plot_one_pie <- function(nt) {
     dd <- pie_df |> dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) return(invisible(NULL))
+
     dd$fraction <- dd$n / sum(dd$n)
 
     pie <- ggplot(dd, aes(x = "", y = fraction, fill = DiseaseClass)) +
@@ -11218,79 +11267,7 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
 
   plot_one_pie("iN")
   plot_one_pie("iDA")
-
-  # --- Normalized Pie Charts ---
-  ko_counts <- df_tagged |>
-    dplyr::distinct(KO, DiseaseClass, neuron) |>
-    dplyr::count(DiseaseClass, neuron, name = "n_KOs")
-
-  pie_norm_df <- df_tagged |>
-    dplyr::filter(state == "lost") |>
-    dplyr::count(DiseaseClass, neuron, name = "n_lost") |>
-    dplyr::left_join(ko_counts, by = c("DiseaseClass", "neuron")) |>
-    dplyr::mutate(n_norm = n_lost / n_KOs)
-
-  plot_one_normed_pie <- function(nt) {
-    dd <- pie_norm_df |> dplyr::filter(neuron == nt)
-    if (nrow(dd) == 0) return(invisible(NULL))
-    dd$fraction <- dd$n_norm / sum(dd$n_norm)
-
-    pie <- ggplot(dd, aes(x = "", y = fraction, fill = DiseaseClass)) +
-      geom_col(width = 1, color = "black", linewidth = 0.3) +
-      coord_polar("y") +
-      scale_fill_manual(values = disease_class_palette, drop = FALSE) +
-      labs(title = paste("Normalized PPI loss per KO –", nt), fill = "Disease class") +
-      theme_void(base_size = 6)
-
-    ggsave(file.path(out_dir, "plots/global", paste0("pie_ppi_loss_diseaseclass_perKO_", nt, ".pdf")),
-           pie, width = 4.5, height = 4.5, device = cairo_pdf)
-  }
-
-  plot_one_normed_pie("iN")
-  plot_one_normed_pie("iDA")
-
-  # --- Normalized Bar Charts by organelle tag and disease class ---
-    bar_norm_tag_df <- df_tagged |>
-      dplyr::filter(state == "lost") |>
-      dplyr::group_by(neuron, DiseaseClass, tag) |>
-      dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") |>
-      dplyr::left_join(
-        df_tagged |> 
-          dplyr::distinct(KO, DiseaseClass, tag, neuron) |> 
-          dplyr::count(DiseaseClass, tag, neuron, name = "n_KOs"),
-        by = c("DiseaseClass", "tag", "neuron")
-      ) |>
-      dplyr::mutate(n_norm = n_lost / n_KOs) |>
-      dplyr::filter(n_KOs > 0)
-    
-    # Plot function: one faceted barplot per neuron
-    plot_normed_bar_by_tag <- function(nt) {
-      dd <- bar_norm_tag_df |> dplyr::filter(neuron == nt)
-      if (nrow(dd) == 0) return(invisible(NULL))
-    
-      p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
-        geom_col(width = 0.7, color = "black", linewidth = 0.2) +
-        facet_wrap(~tag, scales = "free_y") +
-        scale_fill_manual(values = disease_class_palette, drop = FALSE) +
-        labs(
-          title = paste("Normalized PPI loss per KO by tag –", nt),
-          x = NULL,
-          y = "Lost PPIs per KO"
-        ) +
-        theme_bw(base_size = 6) +
-        theme(
-          panel.grid = element_blank(),
-          strip.background = element_rect(fill = "white", color = "black"),
-          axis.text.x = element_text(angle = 45, hjust = 1),
-          panel.border = element_rect(color = "black", fill = NA)
-        )
-    
-      ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_tag_by_diseaseclass_perKO_", nt, ".pdf")),
-             p, width = 11, height = 7, device = cairo_pdf)
-    }
-    
-    plot_normed_bar_by_tag("iN")
-    plot_normed_bar_by_tag("iDA")
+  
 }
 
 
@@ -11310,6 +11287,8 @@ plot_ppi_diseaseclass_impact(
   out_dir = out_dir_ppi_vuln,
   disease_class_palette = disease_class_palette
 )
+
+
 ```
 
 
@@ -11318,8 +11297,7 @@ plot_ppi_diseaseclass_impact(
 # to do
 bubble graph on organelle level 
 ppis gained in KOs? that are not there in KO
-also have cricos plot compared to control
-also dependencies on multimers ==> have to get that info from somewhere, like n larger than 3?
+also have cricos plot compared to contrl 
 
 
 
