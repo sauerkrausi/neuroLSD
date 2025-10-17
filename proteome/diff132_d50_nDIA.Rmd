@@ -10734,6 +10734,84 @@ plot_ppi_vulnerability <- function(df_edges,
   }
 
   
+ # ----- GLOBAL KO×KO correlation heatmap (combined iN + iDA; two entries per KO) -----
+  if ("global_corr_combined" %in% plot_set) {
+
+    # Build KO_neuron rows with neuron-tagged features so iN/iDA are distinct
+    lost_long <- df_states %>%
+      dplyr::mutate(
+        ko_neuron = paste(genotype, neuron, sep = "_"),
+        feat_key  = paste(key, neuron, sep = "|"),
+        lost      = as.integer(state == "lost")
+      ) %>%
+      dplyr::select(ko_neuron, genotype, neuron, feat_key, lost)
+
+    if (nrow(lost_long) > 0) {
+      lost_wide <- tidyr::pivot_wider(
+        lost_long,
+        names_from  = feat_key,
+        values_from = lost,
+        values_fill = 0
+      )
+      # feature matrix
+      rn <- lost_wide$ko_neuron
+      X  <- as.matrix(lost_wide[, setdiff(colnames(lost_wide),
+                                          c("ko_neuron","genotype","neuron")), drop = FALSE])
+      rownames(X) <- rn
+
+      if (nrow(X) >= 2 && ncol(X) >= 2) {
+        # Spearman similarity KO_neuron × KO_neuron
+        rho <- suppressWarnings(stats::cor(t(X), method = "spearman", use = "pairwise.complete.obs"))
+
+        # Annotations: DiseaseClass (fixed palette if present) + neuron (grey60/grey80)
+        annotation_df <- as.data.frame(lost_wide[, c("ko_neuron","genotype","neuron"), drop = FALSE])
+        rownames(annotation_df) <- annotation_df$ko_neuron
+        annotation_df$ko_neuron <- NULL
+        if (!is.null(disease_map)) {
+          annotation_df <- annotation_df %>%
+            dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+        }
+        # order to match rho rows/cols exactly
+        annotation_df <- annotation_df[rownames(rho), , drop = FALSE]
+
+        # Build annotation colors with exact column-name matches
+        ann_colors <- list(neuron = c(iN = "grey60", iDA = "grey80"))
+        if ("DiseaseClass" %in% colnames(annotation_df)) {
+          present <- stats::na.omit(unique(annotation_df$DiseaseClass))
+          if (length(present) > 0) {
+            ann_colors$DiseaseClass <- disease_class_palette[present]
+          } else {
+            annotation_df$DiseaseClass <- NULL
+          }
+        }
+
+        pheatmap::pheatmap(
+          mat = rho,
+          scale = "none",
+          color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+          breaks = seq(-1, 1, length.out = 102),
+          na_col = "grey90",
+          clustering_distance_rows = as.dist(1 - rho),
+          clustering_distance_cols = as.dist(1 - rho),
+          clustering_method = "average",
+          show_rownames = TRUE,
+          show_colnames = TRUE,
+          use_raster = FALSE,
+          annotation_col = annotation_df,
+          annotation_row = annotation_df,
+          annotation_colors = ann_colors,
+          angle_col = "90",
+          main = "KO × KO similarity of lost PPIs (combined iN + iDA)",
+          fontsize = 6,
+          cellheight = 6,
+          cellwidth  = 6,
+          border_color = NA,
+          filename = file.path(out_dir, "plots/global", "heatmap_lost_corr_combined.pdf"),
+          width = 8, height = 8
+        )
+      }
+    }
+  }
   
   
   #  ----- PER-KO ORGANELLE HEATMAPS (iN vs iDA; rows = organelles) -----
@@ -10831,7 +10909,7 @@ plot_ppi_vulnerability(
   df_edges  = baseline_edges_union,
   df_states = ko_edge_states,
   out_dir   = out_dir_ppi_vuln,
-  plot_set  = c("global_bar","global_corr","organelle"),
+  plot_set  = c("global_bar","global_corr","global_corr_combined","organelle"),
   neuron    = "both",
   disease_class_df = disease_classes_dataframe
 )
