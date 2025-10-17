@@ -10602,6 +10602,7 @@ write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_sum
 ```
 
 
+### Vizualiztion of PPI loss
 ##### Plotting function for correlation heatmaps and summary stacked bar for PPI impact
 ```{r}
 # ---------------------------------------------------
@@ -11124,14 +11125,80 @@ plot_organelle_stacked_bars <- function(df_edges,
   plot_one_neuron("iDA")
 }
 
+# --- Add-on: Faceted barplot and pie charts by disease class and organelle tag ---
+plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_df, out_dir, disease_class_palette) {
+
+  shared_tags <- shared_long |>
+    dplyr::distinct(key, tag)
+
+  disease_map <- disease_class_df |>
+    dplyr::select(sample, DiseaseClass) |>
+    dplyr::distinct()
+
+  # --- Join: tag info to edge states ---
+  df_tagged <- df_states |>
+    dplyr::filter(OrgPair == "same") |>
+    dplyr::left_join(shared_tags, by = "key") |>
+    dplyr::left_join(disease_map, by = c("genotype" = "sample")) |>
+    dplyr::filter(!is.na(tag), !is.na(DiseaseClass))
+
+  # --- Aggregated bar data (tag × disease class × neuron) ---
+  tag_disease_loss <- df_tagged |>
+    dplyr::group_by(neuron, DiseaseClass, tag) |>
+    dplyr::summarise(n = sum(state == "lost", na.rm = TRUE), .groups = "drop") |>
+    dplyr::filter(n > 0)
+
+  # Plot 1: faceted stacked barplot by tag
+  p_bar <- ggplot(tag_disease_loss, aes(x = DiseaseClass, y = n, fill = DiseaseClass)) +
+    geom_col(width = 0.7) +
+    facet_wrap(~tag, scales = "free_y") +
+    scale_fill_manual(values = disease_class_palette, drop = FALSE) +
+    labs(x = NULL, y = "Lost PPIs", title = "Lost PPIs by organelle tag and disease class") +
+    theme_bw(base_size = 9) +
+    theme(
+      strip.background = element_rect(fill = "white", color = "black"),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  ggsave(file.path(out_dir, "plots/global", "bars_organelle_tag_by_diseaseclass.pdf"), p_bar, width = 11, height = 7, device = cairo_pdf)
+
+  # Plot 2: Pie charts iN / iDA
+  pie_df <- df_tagged |>
+    dplyr::filter(state == "lost") |>
+    dplyr::group_by(neuron, DiseaseClass) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop")
+
+  plot_one_pie <- function(nt) {
+    dd <- pie_df |> dplyr::filter(neuron == nt)
+    if (nrow(dd) == 0) return(invisible(NULL))
+
+    dd$fraction <- dd$n / sum(dd$n)
+
+    pie <- ggplot(dd, aes(x = "", y = fraction, fill = DiseaseClass)) +
+      geom_col(width = 1, color = "white") +
+      coord_polar("y") +
+      scale_fill_manual(values = disease_class_palette, drop = FALSE) +
+      labs(title = paste("PPI loss composition –", nt), fill = "Disease class") +
+      theme_void(base_size = 10)
+
+    ggsave(file.path(out_dir, "plots/global", paste0("pie_ppi_loss_diseaseclass_", nt, ".pdf")),
+           pie, width = 4.5, height = 4.5, device = cairo_pdf)
+  }
+
+  plot_one_pie("iN")
+  plot_one_pie("iDA")
+}
+
+
 # ---- Call (creates 4 PDFs: counts+fractions for iN and iDA) ----
-plot_organelle_stacked_bars(
-  df_edges  = baseline_edges_union,
+plot_ppi_diseaseclass_impact(
   df_states = ko_edge_states,
-  annotation_classes_corrgeno = annotation_classes_corrgeno,
-  annotation_class_colors_corrgeno = annotation_class_colors_corrgeno,
-  out_dir   = out_dir_ppi_vuln
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_ppi_vuln,
+  disease_class_palette = disease_class_palette
 )
+
+
 ```
 
 
