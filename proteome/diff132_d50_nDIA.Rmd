@@ -10666,9 +10666,8 @@ plot_ppi_vulnerability <- function(df_edges,
   }
 
   
-  #  ----- GLOBAL KO×KO CORRELATION HEATMAPS (iN and iDA) -----
+  #  ----- GLOBAL KO×KO CORRELATION HEATMAPS (iN and iDA separately) -----
   #     metric = Spearman correlation of lost-edge indicator vectors
-
   if ("global_corr" %in% plot_set) {
 
     make_corr_for_neuron <- function(nt) {
@@ -10734,10 +10733,11 @@ plot_ppi_vulnerability <- function(df_edges,
     make_corr_for_neuron("iDA")
   }
 
-
+  
+  
+  
   #  ----- PER-KO ORGANELLE HEATMAPS (iN vs iDA; rows = organelles) -----
   #     metric = fraction_lost per organelle; no n_edges shown/used
-
   if ("organelle" %in% plot_set) {
 
     org1_cols <- grep("_prot1$", names(df_edges), value = TRUE)
@@ -10813,7 +10813,9 @@ plot_ppi_vulnerability <- function(df_edges,
           annotation_colors = list(neuron = neuron_palette),
           angle_col = "90",
           main = paste0("Fraction lost by organelle — ", g, " (iN vs iDA)"),
-          fontsize = 10,
+          fontsize = 6,
+          cellwidth = 6,
+          cellheight = 6,
           border_color = NA,
           filename = file.path(out_dir, "plots/by_ko",
                                paste0("heatmap_organelle_fraction_lost_", g, ".pdf")),
