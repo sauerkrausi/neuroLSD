@@ -11370,9 +11370,11 @@ ppis gained in KOs? that are not there in KO
 also have cricos plot compared to contrl 
 
 what about multimers? 
-if A-B have a high conficence ppi, and there is B-C etc. can we check if there is C-A. maybe we should first filter by organelle, if they are all in the same organelle and then do the cuasal chain
- can we have a scatterplot for the confiecnee of ppis in iN and iDA baseline
- color coded by organelle
+if A-B have a high confidence ppi, and there is B-C etc. can we check if there is C-A. maybe we should first filter by organelle, if they are all in the same organelle and then do the cuasal chain
+
+
+
+the scatterplots of AFconficence look the same between iN and iDA. not sure why. follow up on that 
 
 
 
