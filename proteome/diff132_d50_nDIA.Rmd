@@ -10602,7 +10602,7 @@ write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_sum
 ```
 
 
-##### Plotting function for correlation heatmaps 
+##### Plotting function for correlation heatmaps and summary stacked bar for PPI impact
 ```{r}
 # ---------------------------------------------------
 # Plotting: global bars, KO×KO correlations (iN/iDA + combined), per-KO organelle heatmaps
@@ -11001,12 +11001,12 @@ plot_organelle_stacked_bars <- function(df_edges,
     dd <- loss_by_class |> dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) return(invisible(NULL))
 
-    # alphabetical ordering
-    dd <- dd |>
-      dplyr::mutate(
-        genotype = factor(genotype, levels = sort(unique(genotype))),
-        class    = factor(class,    levels = sort(unique(class)))
-      )
+    # alphabetical ordering and plotting bars by annotation
+      dd <- dd |>
+        dplyr::mutate(
+          genotype = factor(genotype, levels = sort(unique(genotype))),
+          class    = factor(class, levels = names(annotation_class_colors_corrgeno))
+        )
 
     # restrict palette to present classes
     present_classes <- levels(dd$class)
