@@ -10750,8 +10750,10 @@ plot_ppi_vulnerability <- function(df_edges,
         geom_col() +
         scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
         labs(x = NULL, y = "edges", title = paste("Edge outcomes per KO –", nt)) +
-        theme_bw(base_size = 10) +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+        theme_bw(base_size = 6) +
+        theme(
+          panel.grid = element_blank(),
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
       if (save) {
         ggsave(file.path(out_dir, "plots/global", paste0("bars_edge_outcomes_", nt, ".pdf")), bar_ppi_global, width = 9, height = 5, device = cairo_pdf)
@@ -10974,9 +10976,7 @@ plot_ppi_vulnerability <- function(df_edges,
           cellheight = 6,
           cellwidth  = 6,
           border_color = NA,
-          filename = file.path(out_dir, "plots/global", "heatmap_lost_corr_combined.pdf"),
-          width = 8, height = 8
-        )
+          filename = file.path(out_dir, "plots/global", "heatmap_lost_corr_combined.pdf"),width = 8, height = 8)
       }
     }
   }
@@ -11063,10 +11063,7 @@ plot_ppi_vulnerability <- function(df_edges,
           cellwidth = 6,
           cellheight = 6,
           border_color = NA,
-          filename = file.path(out_dir, "plots/by_ko",
-                               paste0("heatmap_organelle_fraction_lost_", g, ".pdf")),
-          width = 6, height = 9
-        )
+          filename = file.path(out_dir, "plots/by_ko", paste0("heatmap_organelle_fraction_lost_", g, ".pdf")), width = 6, height = 9)
       }
     }
   }
@@ -11185,7 +11182,7 @@ plot_organelle_stacked_bars <- function(df_states,
       geom_col(width = 0.7, position = "stack", color = NA) +
       scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
       labs(x = NULL, y = "Lost PPIs (count)", title = paste0("Lost PPIs by organelle (", nt, ")")) +
-      theme_bw(base_size = 10) +
+      theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
         panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
@@ -11200,7 +11197,7 @@ plot_organelle_stacked_bars <- function(df_states,
       scale_y_continuous(labels = scales::percent) +
       scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
       labs(x = NULL, y = "Fraction of lost PPIs", title = paste0("Composition of lost PPIs by organelle (", nt, ")")) +
-      theme_bw(base_size = 10) +
+      theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
         panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
@@ -11304,8 +11301,7 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
         panel.border = element_rect(color = "black", fill = NA)
       )
   
-    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_tag_by_diseaseclass_perKO_", nt, ".pdf")),
-           p, width = 11, height = 7, device = cairo_pdf)
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_tag_by_diseaseclass_perKO_", nt, ".pdf")),p, width = 11, height = 7, device = cairo_pdf)
   }
   
   plot_normed_bar_by_tag("iN")
@@ -11331,8 +11327,7 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
       labs(title = paste("PPI loss composition –", nt), fill = "Disease class") +
       theme_void(base_size = 6)
 
-    ggsave(file.path(out_dir, "plots/global", paste0("pie_ppi_loss_diseaseclass_", nt, ".pdf")),
-           pie, width = 4.5, height = 4.5, device = cairo_pdf)
+    ggsave(file.path(out_dir, "plots/global", paste0("pie_ppi_loss_diseaseclass_", nt, ".pdf")),pie, width = 4.5, height = 4.5, device = cairo_pdf)
   }
 
   plot_one_pie("iN")
@@ -11365,16 +11360,24 @@ plot_ppi_diseaseclass_impact(
 
 
 # to do
+- correlations: should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
+- and then we can calculate the corr based on that. but should have two plots. once ∆ plot across the genotypes for iN and iDA (can be one plot). and then calculate the corr based on that ∆ plot 
+
+- plot PPIs number as density plots per organelle. Check shift between control and KOs.also between iN and iDA. maybe better to viz than bargraphs
+- can we plot interactions between A-B in a circos plot in ctrl vs KO. Segments of cirocs could be organelles on both sides. Make it grey if the link is lost 
+
 
 ppis gained in KOs? that are not there in KO
-also have cricos plot compared to contrl 
-
-what about multimers? 
-if A-B have a high confidence ppi, and there is B-C etc. can we check if there is C-A. maybe we should first filter by organelle, if they are all in the same organelle and then do the cuasal chain
 
 
+- what about multimers? 
+if A-B have a high confidence ppi, and there is B-C etc. can we check if there is C-A. maybe we should first filter by organelle, if they are all in the same organelle and then do the causal chain
+maybe we can pull in bioplex3 into the datset for multimers. if there are several direct interactions, then we can assembke a multimer? and check their stability in a KO background?
 
-the scatterplots of AFconficence look the same between iN and iDA. not sure why. follow up on that 
+
+# to fix:
+the scatterplots of AFconficence look the same between iN and iDA. not sure why. follow up on that. there should not be a difference, since that is the composite proteome matching. so we can have only one plot
+QUESTION Is which metric should we use for the PPI? at the moment we use Predictome_conf 
 
 
 
