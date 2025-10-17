@@ -10947,13 +10947,13 @@ plot_organelle_stacked_bars <- function(df_edges,
                                         annotation_class_colors_corrgeno,
                                         out_dir) {
 
-  # Step 1. tag -> class map
+  # Step 1. Asign tag -> class map
   tag_map <- lapply(names(annotation_classes_corrgeno), function(cls) {
     tags <- annotation_classes_corrgeno[[cls]]
     data.frame(tag = tags, class = cls, stringsAsFactors = FALSE)
   }) |> dplyr::bind_rows()
   
-  # 2) shared organelle tags per edge (TRUE in both partners)
+  # Step 2. Shared organelle tags per edge (TRUE in both partners)
   org1_cols <- grep("_prot1$", names(df_edges), value = TRUE)
   org2_cols <- grep("_prot2$", names(df_edges), value = TRUE)
   stopifnot(length(org1_cols) == length(org2_cols), length(org1_cols) > 0)
@@ -10979,7 +10979,7 @@ plot_organelle_stacked_bars <- function(df_edges,
     return(invisible(NULL))
   }
 
-  # 3) map tags -> classes and summarize per genotype/neuron/class
+  # Step 3. Map tags -> classes and summarize per genotype/neuron/class
   shared_class <- shared_long |>
     dplyr::inner_join(tag_map, by = "tag") |>
     dplyr::distinct(key, class)
@@ -10996,7 +10996,7 @@ plot_organelle_stacked_bars <- function(df_edges,
       .groups = "drop"
     )
 
-  # 4) plotting helper (one neuron per PDF; x = genotype; fill = organelle class)
+  # Step 4. Plotting helper (one neuron per PDF; x = genotype; fill = organelle class)
   plot_one_neuron <- function(nt) {
     dd <- loss_by_class |> dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) return(invisible(NULL))
@@ -11013,7 +11013,7 @@ plot_organelle_stacked_bars <- function(df_edges,
     class_cols <- annotation_class_colors_corrgeno[names(annotation_class_colors_corrgeno) %in% present_classes]
     class_cols <- class_cols[present_classes]  # ensure order matches factor levels
 
-    # (1) counts: stacked by organelle class
+    # Plot 4.1 counts: stacked by organelle class
     p_counts <- ggplot(dd, aes(x = genotype, y = n_lost, fill = class)) +
       geom_col(width = 0.7, position = "stack", color = NA) +
       scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
@@ -11021,13 +11021,13 @@ plot_organelle_stacked_bars <- function(df_edges,
       theme_bw(base_size = 10) +
       theme(
         panel.grid = element_blank(),
-        panel.border = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
       )
     ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_counts_", nt, ".pdf")),
            p_counts, width = 11, height = 5, device = cairo_pdf)
 
-    # (2) fractions: composition across organelle classes per genotype
+    # Plot 4.2 fractions: composition across organelle classes per genotype
     p_frac <- ggplot(dd, aes(x = genotype, y = n_lost, fill = class)) +
       geom_col(width = 0.7, position = "fill", color = NA) +
       scale_y_continuous(labels = scales::percent) +
