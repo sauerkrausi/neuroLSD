@@ -10812,3 +10812,7 @@ plot_ppi_vulnerability(
 
 ```
 
+# to do
+change color of disease class to predifined ones
+remove n_edges from heatmaps
+have heatmap for each organelle, not combined 
