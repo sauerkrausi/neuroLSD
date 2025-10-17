@@ -10816,3 +10816,76 @@ plot_ppi_vulnerability(
 change color of disease class to predifined ones
 remove n_edges from heatmaps
 have heatmap for each organelle, not combined 
+i want on a per ko basis the iN vs iDa organelles drop 
+
+
+
+```{r}
+# ---------------------------------------------------
+# --- Plotting function: global bars + organelle heatmaps (separate iN / iDA)
+plot_ppi_vulnerability <- function(df_edges,
+                                   df_states,
+                                   out_dir = out_dir_ppi_vuln,
+                                   plot_set = c("global","organelle","circos","matrix"),
+                                   ko = NULL,
+                                   neuron = "both",
+                                   conf_bins = c(0, 0.5, 0.75, 0.9, 1),
+                                   org_min_n = 20,
+                                   top_n_links = 3000,
+                                   annotations_focus = NULL,
+                                   disease_class_df = NULL,
+                                   save = TRUE) {
+
+  neuron <- match.arg(neuron, c("iN","iDA","both"))
+  neuron_levels <- if (neuron == "both") c("iN","iDA") else neuron
+
+  # one-to-one disease map (avoid many-to-many joins)
+  disease_map <- NULL
+  if (!is.null(disease_class_df)) {
+    disease_map <- disease_class_df %>%
+      dplyr::select(sample, DiseaseClass) %>%
+      dplyr::distinct(sample, .keep_all = TRUE)
+  }
+
+  # ----- GLOBAL STACKED BARS (separate per neuron) -----
+  if ("global" %in% plot_set) {
+    for (nt in neuron_levels) {
+      ppi_vul_global <- df_states %>%
+        dplyr::filter(neuron == nt) %>%
+        dplyr::mutate(state = factor(state, levels = c("retained","lost","unknown")))
+      if (!is.null(disease_map)) {
+        ppi_vul_global <- ppi_vul_global %>%
+          dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+      }
+      ppi_vul_global_sum <- ppi_vul_global %>%
+        dplyr::group_by(genotype, state) %>%
+        dplyr::summarise(n = dplyr::n(), .groups = "drop_last") %>%
+        dplyr::group_by(genotype) %>%
+        dplyr::mutate(frac = n / sum(n)) %>%
+        dplyr::ungroup()
+
+      bar_ppi_global <- ggplot(ppi_vul_global_sum, aes(x = genotype, y = n, fill = state)) +
+        geom_col() +
+        scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
+        labs(x = NULL, y = "edges", title = paste("Edge outcomes per KO –", nt)) +
+        theme_bw(base_size = 10) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+      if (save) {
+        ggsave(file.path(out_dir, "plots/global",
+                         paste0("bars_edge_outcomes_", nt, ".pdf")),
+               bar_ppi_global, width = 9, height = 5, device = cairo_pdf)
+      }
+    }
+  }
+
+  
+
+  
+
+  if ("matrix" %in% plot_set && !is.null(ko)) {
+    message("matrix view requested – implement for selected complex or hub set")
+  }
+}
+```
+
