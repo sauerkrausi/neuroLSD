@@ -11019,44 +11019,62 @@ plot_ppi_vulnerability(
 
 ##### Plotting function for stacked bargraphs for organelle PPI impact
 ```{r}
+
+# --- Prepare shared_long and correctly named disease_class_df ---
+shared_long <- {
+  org1_cols <- grep("_prot1$", names(baseline_edges_union), value = TRUE)
+  org2_cols <- grep("_prot2$", names(baseline_edges_union), value = TRUE)
+  stopifnot(length(org1_cols) == length(org2_cols), length(org1_cols) > 0)
+  tags <- sub("_prot1$", "", org1_cols)
+
+  m1 <- baseline_edges_union[, org1_cols] |> lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) |> as.data.frame()
+  m2 <- baseline_edges_union[, org2_cols] |> lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) |> as.data.frame()
+  shared_mat <- as.matrix(m1) & as.matrix(m2)
+
+  bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
+    idx <- which(shared_mat[i, ])
+    if (!length(idx)) return(NULL)
+    data.frame(key = baseline_edges_union$key[i], tag = tags[idx], stringsAsFactors = FALSE)
+  }))
+}
+
+# Ensure correct naming
+disease_class_df <- disease_classes_dataframe
+
+
 # --- Stacked organelle bars (genotypes on x, organelle classes as fill) ---
-plot_organelle_stacked_bars <- function(df_edges,
-                                        df_states,
+plot_organelle_stacked_bars <- function(df_states,
+                                        shared_long,
                                         annotation_classes_corrgeno,
                                         annotation_class_colors_corrgeno,
                                         out_dir) {
+  if (is.null(shared_long) || nrow(shared_long) == 0) {
+  message("No shared organelle tags found; skipping organelle stacked bars.")
+  return(invisible(NULL))
+}
 
-  # Step 1. Asign tag -> class map
+  # Step 1. Tag -> class map
   tag_map <- lapply(names(annotation_classes_corrgeno), function(cls) {
     tags <- annotation_classes_corrgeno[[cls]]
     data.frame(tag = tags, class = cls, stringsAsFactors = FALSE)
   }) |> dplyr::bind_rows()
-  
-  # Step 2. Shared organelle tags per edge (TRUE in both partners)
-  org1_cols <- grep("_prot1$", names(df_edges), value = TRUE)
-  org2_cols <- grep("_prot2$", names(df_edges), value = TRUE)
-  stopifnot(length(org1_cols) == length(org2_cols), length(org1_cols) > 0)
-  tags <- sub("_prot1$", "", org1_cols)
 
-  flags <- df_edges |>
-    dplyr::select(key, dplyr::all_of(org1_cols), dplyr::all_of(org2_cols))
+  # Step 2. Map tags -> classes and summarize per genotype/neuron/class
+  shared_class <- shared_long |>
+    dplyr::inner_join(tag_map, by = "tag") |>
+    dplyr::distinct(key, class)
 
-  m1 <- as.data.frame(flags[, org1_cols, drop = FALSE])
-  m2 <- as.data.frame(flags[, org2_cols, drop = FALSE])
-  m1[] <- lapply(m1, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
-  m2[] <- lapply(m2, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
-  shared <- as.matrix(m1) & as.matrix(m2)
-
-  shared_long <- lapply(seq_len(nrow(shared)), function(i) {
-    idx <- which(shared[i, ])
-    if (!length(idx)) return(NULL)
-    data.frame(key = flags$key[i], tag = tags[idx], stringsAsFactors = FALSE)
-  }) |> dplyr::bind_rows()
-
-  if (is.null(shared_long) || nrow(shared_long) == 0) {
-    message("No shared organelle tags found; skipping organelle stacked bars.")
-    return(invisible(NULL))
-  }
+  loss_by_class <- df_states |>
+    dplyr::filter(OrgPair == "same") |>
+    dplyr::select(key, genotype, neuron, state) |>
+    dplyr::inner_join(shared_class, by = "key") |>
+    dplyr::group_by(genotype, neuron, class) |>
+    dplyr::summarise(
+      n_tot   = dplyr::n(),
+      n_lost  = sum(state == "lost", na.rm = TRUE),
+      frac_lost = ifelse(n_tot > 0, n_lost / n_tot, NA_real_),
+      .groups = "drop"
+    )
 
   # Step 3. Map tags -> classes and summarize per genotype/neuron/class
   shared_class <- shared_long |>
@@ -11128,42 +11146,58 @@ plot_organelle_stacked_bars <- function(df_edges,
   
 }
 
-# --- Add-on: Faceted barplot and pie charts by disease class and organelle tag ---
+
+# --- Faceted barplot and pie charts by disease class and organelle tag ---
 plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_df, out_dir, disease_class_palette) {
 
+  # Step 1: Extract unique key-tag pairs from shared_long
   shared_tags <- shared_long |>
     dplyr::distinct(key, tag)
 
+  # Step 2: Prepare disease_class_df with uppercase sample column
   disease_map <- disease_class_df |>
+    dplyr::mutate(sample = toupper(sample)) |>
     dplyr::select(sample, DiseaseClass) |>
     dplyr::distinct()
 
-  # --- Join: tag info to edge states ---
+  # Step 3: Merge shared tags and disease class info into df_states
   df_tagged <- df_states |>
     dplyr::filter(OrgPair == "same") |>
+    dplyr::mutate(KO = toupper(gsub("(_.*)$", "", genotype))) |>
     dplyr::left_join(shared_tags, by = "key") |>
-    dplyr::left_join(disease_map, by = c("genotype" = "sample")) |>
-    dplyr::filter(!is.na(tag), !is.na(DiseaseClass))
+    dplyr::left_join(disease_map, by = c("KO" = "sample"))
 
-  # --- Aggregated bar data (tag × disease class × neuron) ---
+  # Step 4: Ensure at least one valid DiseaseClass column exists
+  stopifnot(any(grepl("^DiseaseClass(\\.|$)", colnames(df_tagged))))
+
+  # Step 5: Keep rows with both tag and DiseaseClass (from either suffix)
+  df_tagged <- df_tagged |>
+    dplyr::filter(!is.na(tag), !is.na(DiseaseClass.x) | !is.na(DiseaseClass.y)) |>
+    dplyr::mutate(DiseaseClass = dplyr::coalesce(DiseaseClass.x, DiseaseClass.y))
+
+  # Step 6: Aggregated bar data (tag × disease class × neuron)
   tag_disease_loss <- df_tagged |>
     dplyr::group_by(neuron, DiseaseClass, tag) |>
     dplyr::summarise(n = sum(state == "lost", na.rm = TRUE), .groups = "drop") |>
     dplyr::filter(n > 0)
 
+  
+## plotting 
   # Plot 1: faceted stacked barplot by tag
   p_bar <- ggplot(tag_disease_loss, aes(x = DiseaseClass, y = n, fill = DiseaseClass)) +
     geom_col(width = 0.7) +
     facet_wrap(~tag, scales = "free_y") +
     scale_fill_manual(values = disease_class_palette, drop = FALSE) +
     labs(x = NULL, y = "Lost PPIs", title = "Lost PPIs by organelle tag and disease class") +
-    theme_bw(base_size = 9) +
+    theme_bw(base_size = 6) +
     theme(
+      panel.grid = element_blank(),
       strip.background = element_rect(fill = "white", color = "black"),
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
   ggsave(file.path(out_dir, "plots/global", "bars_organelle_tag_by_diseaseclass.pdf"), p_bar, width = 11, height = 7, device = cairo_pdf)
 
+  
   # Plot 2: Pie charts iN / iDA
   pie_df <- df_tagged |>
     dplyr::filter(state == "lost") |>
@@ -11177,11 +11211,11 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
     dd$fraction <- dd$n / sum(dd$n)
 
     pie <- ggplot(dd, aes(x = "", y = fraction, fill = DiseaseClass)) +
-      geom_col(width = 1, color = "white") +
+      geom_col(width = 1, color = "black") +
       coord_polar("y") +
       scale_fill_manual(values = disease_class_palette, drop = FALSE) +
       labs(title = paste("PPI loss composition –", nt), fill = "Disease class") +
-      theme_void(base_size = 10)
+      theme_void(base_size = 6)
 
     ggsave(file.path(out_dir, "plots/global", paste0("pie_ppi_loss_diseaseclass_", nt, ".pdf")),
            pie, width = 4.5, height = 4.5, device = cairo_pdf)
@@ -11194,19 +11228,19 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
 
 # ---- Call (creates 4 PDFs: counts+fractions for iN and iDA) ----
 plot_organelle_stacked_bars(
-  df_edges  = baseline_edges_union,
   df_states = ko_edge_states,
+  shared_long = shared_long,
   annotation_classes_corrgeno = annotation_classes_corrgeno,
   annotation_class_colors_corrgeno = annotation_class_colors_corrgeno,
-  out_dir   = out_dir_ppi_vuln
+  out_dir = out_dir_ppi_vuln
 )
 
-plot_organelle_stacked_bars(
-  df_edges  = baseline_edges_union,
+plot_ppi_diseaseclass_impact(
   df_states = ko_edge_states,
-  annotation_classes_corrgeno = annotation_classes_corrgeno,
-  annotation_class_colors_corrgeno = annotation_class_colors_corrgeno,
-  out_dir   = out_dir_ppi_vuln
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_ppi_vuln,
+  disease_class_palette = disease_class_palette
 )
 ```
 
