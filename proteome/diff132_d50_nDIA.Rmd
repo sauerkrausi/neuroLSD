@@ -10416,7 +10416,7 @@ ppi_evidence <- ppi_evidence %>%
 
 # Step 6.1. add subcellular annotations using Gene1/Gene2 (to match binary_matrix$Genes nomenclature in df)
 # expects binary_matrix with columns: Genes and organelle flags
-organelle_tags <- setdiff(colnames(binary_matrix), c("Genes"))
+organelle_tags <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
 gene_to_org <- binary_matrix %>% select(Genes, all_of(organelle_tags))
 
 ppi_evidence <- ppi_evidence %>%
@@ -10602,7 +10602,7 @@ write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_sum
 ```
 
 
-##### Plotting function and call data 
+##### Plotting function for correlation heatmaps 
 ```{r}
 # ---------------------------------------------------
 # Plotting: global bars, KO×KO correlations (iN/iDA + combined), per-KO organelle heatmaps
@@ -10748,91 +10748,90 @@ plot_ppi_vulnerability <- function(df_edges,
 
   
 
-# ----- GLOBAL KO×KO CORRELATION HEATMAP (combined iN+iDA; rows = genotype_neuron) -----
-if ("global_corr_combined" %in% plot_set) {
-
-  # --- Build lost-edge matrix across both neuron types ---
-  lost_long <- df_states %>%
-    dplyr::mutate(
-      genotype_neuron = paste(genotype, neuron, sep = "_"),
-      feat_key        = paste(key, neuron, sep = "|"),
-      lost            = as.integer(state == "lost")
-    ) %>%
-    dplyr::select(genotype_neuron, genotype, neuron, feat_key, lost)
-
-  if (nrow(lost_long) > 0) {
-
-    W <- tidyr::pivot_wider(
-      lost_long,
-      names_from  = feat_key,
-      values_from = lost,
-      values_fill = 0
-    )
-
-    rn <- W$genotype_neuron
-    X  <- as.matrix(W[, setdiff(colnames(W), c("genotype_neuron","genotype","neuron")), drop = FALSE])
-    rownames(X) <- rn
-
-    if (nrow(X) >= 2 && ncol(X) >= 2) {
-      # --- Spearman correlation across iN and iDA combined ---
-      rho <- suppressWarnings(stats::cor(t(X), method = "spearman", use = "pairwise.complete.obs"))
-
-      # --- Annotation data frame (align by genotype_neuron) ---
-      annotation_df <- W[, c("genotype_neuron","genotype","neuron"), drop = FALSE]
-      rownames(annotation_df) <- annotation_df$genotype_neuron
-
-      # DiseaseClass map from ko_edge_states (Step 9)
-      dc_map <- ko_edge_states %>%
-        dplyr::distinct(genotype, neuron, DiseaseClass) %>%
-        dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-        dplyr::select(genotype_neuron, DiseaseClass)
-
-      annotation_df <- annotation_df %>%
-        dplyr::left_join(dc_map, by = "genotype_neuron") %>%
-        dplyr::filter(genotype_neuron %in% rownames(rho)) %>%
-        tibble::column_to_rownames("genotype_neuron")
-
-      # --- Annotation colors (fixed palettes) ---
-      ann_colors <- list()
-      ann_colors$neuron <- c(iN = "grey60", iDA = "grey80")
-
-      if ("DiseaseClass" %in% colnames(annotation_df)) {
-        present_classes <- intersect(unique(stats::na.omit(annotation_df$DiseaseClass)),
-                                     names(disease_class_palette))
-        if (length(present_classes) > 0) {
-          ann_colors$DiseaseClass <- disease_class_palette[present_classes]
-        }
-      }
-
-      # --- Plot heatmap ---
-      pheatmap::pheatmap(
-        mat = rho,
-        scale = "none",
-        color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
-        breaks = seq(-1, 1, length.out = 102),
-        na_col = "grey90",
-        clustering_distance_rows = as.dist(1 - rho),
-        clustering_distance_cols = as.dist(1 - rho),
-        clustering_method = "average",
-        show_rownames = TRUE,
-        show_colnames = TRUE,
-        use_raster = FALSE,
-        annotation_col = annotation_df,
-        annotation_row = annotation_df,
-        annotation_colors = ann_colors,
-        angle_col = "90",
-        main = "KO × KO similarity of lost PPIs (combined iN + iDA)",
-        fontsize = 6,
-        cellheight = 6,
-        cellwidth  = 6,
-        border_color = NA,
-        filename = file.path(out_dir, "plots/global", "heatmap_lost_corr_combined.pdf"),
-        width = 8,
-        height = 8
+  # ----- GLOBAL KO×KO CORRELATION HEATMAP (combined iN+iDA; all-by-all Spearman across neuron types) -----
+  if ("global_corr_combined" %in% plot_set) {
+  
+    # build shared PPI feature space (same columns for iN and iDA)
+    lost_long <- df_states %>%
+      dplyr::mutate(lost = as.integer(state == "lost")) %>%
+      dplyr::select(genotype_neuron, genotype, neuron, key, lost)
+  
+    if (nrow(lost_long) > 0) {
+      lost_wide <- tidyr::pivot_wider(
+        lost_long,
+        names_from  = key,   # shared PPI space
+        values_from = lost,
+        values_fill = 0
       )
+  
+      rn <- lost_wide$genotype_neuron
+      X  <- as.matrix(lost_wide[, setdiff(colnames(lost_wide),
+                                          c("genotype_neuron","genotype","neuron")), drop = FALSE])
+      rownames(X) <- rn
+  
+      if (nrow(X) >= 2 && ncol(X) >= 2) {
+  
+        # compute Spearman across all iN/iDA combinations
+        rho <- suppressWarnings(stats::cor(t(X), method = "spearman", use = "pairwise.complete.obs"))
+  
+        # build annotation table: neuron + DiseaseClass
+        annotation_df <- as.data.frame(lost_wide[, c("genotype_neuron","genotype","neuron"), drop = FALSE])
+        rownames(annotation_df) <- annotation_df$genotype_neuron
+        annotation_df$genotype_neuron <- NULL
+  
+        dc_map <- ko_edge_states %>%
+          dplyr::distinct(genotype, neuron, DiseaseClass) %>%
+          dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
+          dplyr::select(genotype_neuron, DiseaseClass)
+  
+        annotation_df$DiseaseClass <- dc_map$DiseaseClass[match(rownames(annotation_df), dc_map$genotype_neuron)]
+  
+        # drop empty columns and align to rho
+        keep_cols <- vapply(annotation_df, function(x) any(!is.na(x)), logical(1))
+        annotation_df <- annotation_df[, keep_cols, drop = FALSE]
+        annotation_df <- annotation_df[rownames(rho), , drop = FALSE]
+  
+        # color maps
+        ann_colors <- list()
+        if ("neuron" %in% colnames(annotation_df))
+          ann_colors$neuron <- c(iN = "grey60", iDA = "grey80")
+        if ("DiseaseClass" %in% colnames(annotation_df)) {
+          present <- intersect(unique(stats::na.omit(annotation_df$DiseaseClass)),
+                               names(disease_class_palette))
+          if (length(present) > 0)
+            ann_colors$DiseaseClass <- disease_class_palette[present]
+        }
+        if (length(ann_colors) == 0) ann_colors <- NULL
+  
+        # plot heatmap
+        pheatmap::pheatmap(
+          mat = rho,
+          scale = "none",
+          color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+          breaks = seq(-1, 1, length.out = 102),
+          na_col = "grey90",
+          clustering_distance_rows = as.dist(1 - rho),
+          clustering_distance_cols = as.dist(1 - rho),
+          clustering_method = "average",
+          show_rownames = TRUE,
+          show_colnames = TRUE,
+          use_raster = FALSE,
+          annotation_col = annotation_df,
+          annotation_row = annotation_df,
+          annotation_colors = ann_colors,
+          angle_col = "90",
+          main = "KO × KO similarity of lost PPIs (combined iN + iDA)",
+          fontsize = 6,
+          cellheight = 6,
+          cellwidth  = 6,
+          border_color = NA,
+          filename = file.path(out_dir, "plots/global", "heatmap_lost_corr_combined.pdf"),
+          width = 8, height = 8
+        )
+      }
     }
   }
-}
+  
   
   # ----- PER-KO ORGANELLE HEATMAPS (rows=organelles; cols=iN,iDA; 0..1) -----
   if ("organelle" %in% plot_set) {
@@ -10938,6 +10937,136 @@ plot_ppi_vulnerability(
 )
 ```
 
+
+##### Plotting function for stacked bargraphs
+```{r}
+# --- Stacked organelle bars (genotypes on x, organelle classes as fill) ---
+# Inputs expected:
+# - df_states  (ko_edge_states): key, genotype, neuron, state ("lost"/"retained"/"unknown"), OrgPair
+# - df_edges   (baseline_edges_union): key, *_prot1 / *_prot2 logical flags
+# - annotation_classes_corrgeno: named list of class -> vector of tags (we drop "NeuroDev")
+# - annotation_class_colors_corrgeno: named vector of class -> color
+# - out_dir: output root (existing)
+
+plot_organelle_stacked_bars <- function(df_edges,
+                                        df_states,
+                                        annotation_classes_corrgeno,
+                                        annotation_class_colors_corrgeno,
+                                        out_dir) {
+
+  # 1) tag -> class map (drop "NeuroDev")
+  tag_map <- lapply(names(annotation_classes_corrgeno), function(cls) {
+    tags <- annotation_classes_corrgeno[[cls]]
+    data.frame(tag = tags[tags != "NeuroDev"], class = cls, stringsAsFactors = FALSE)
+  }) |> dplyr::bind_rows()
+
+  # 2) shared organelle tags per edge (TRUE in both partners)
+  org1_cols <- grep("_prot1$", names(df_edges), value = TRUE)
+  org2_cols <- grep("_prot2$", names(df_edges), value = TRUE)
+  stopifnot(length(org1_cols) == length(org2_cols), length(org1_cols) > 0)
+  tags <- sub("_prot1$", "", org1_cols)
+
+  flags <- df_edges |>
+    dplyr::select(key, dplyr::all_of(org1_cols), dplyr::all_of(org2_cols))
+
+  m1 <- as.data.frame(flags[, org1_cols, drop = FALSE])
+  m2 <- as.data.frame(flags[, org2_cols, drop = FALSE])
+  m1[] <- lapply(m1, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+  m2[] <- lapply(m2, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+  shared <- as.matrix(m1) & as.matrix(m2)
+
+  shared_long <- lapply(seq_len(nrow(shared)), function(i) {
+    idx <- which(shared[i, ])
+    if (!length(idx)) return(NULL)
+    data.frame(key = flags$key[i], tag = tags[idx], stringsAsFactors = FALSE)
+  }) |> dplyr::bind_rows()
+
+  if (is.null(shared_long) || nrow(shared_long) == 0) {
+    message("No shared organelle tags found; skipping organelle stacked bars.")
+    return(invisible(NULL))
+  }
+
+  # 3) map tags -> classes and summarize per genotype/neuron/class
+  shared_class <- shared_long |>
+    dplyr::inner_join(tag_map, by = "tag") |>
+    dplyr::distinct(key, class)
+
+  loss_by_class <- df_states |>
+    dplyr::filter(OrgPair == "same") |>
+    dplyr::select(key, genotype, neuron, state) |>
+    dplyr::inner_join(shared_class, by = "key") |>
+    dplyr::group_by(genotype, neuron, class) |>
+    dplyr::summarise(
+      n_tot   = dplyr::n(),
+      n_lost  = sum(state == "lost", na.rm = TRUE),
+      frac_lost = ifelse(n_tot > 0, n_lost / n_tot, NA_real_),
+      .groups = "drop"
+    )
+
+  # 4) plotting helper (one neuron per PDF; x = genotype; fill = organelle class)
+  plot_one_neuron <- function(nt) {
+    dd <- loss_by_class |> dplyr::filter(neuron == nt)
+    if (nrow(dd) == 0) return(invisible(NULL))
+
+    # alphabetical ordering
+    dd <- dd |>
+      dplyr::mutate(
+        genotype = factor(genotype, levels = sort(unique(genotype))),
+        class    = factor(class,    levels = sort(unique(class)))
+      )
+
+    # restrict palette to present classes
+    present_classes <- levels(dd$class)
+    class_cols <- annotation_class_colors_corrgeno[names(annotation_class_colors_corrgeno) %in% present_classes]
+    class_cols <- class_cols[present_classes]  # ensure order matches factor levels
+
+    # (1) counts: stacked by organelle class
+    p_counts <- ggplot(dd, aes(x = genotype, y = n_lost, fill = class)) +
+      geom_col(width = 0.7, position = "stack", color = NA) +
+      scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
+      labs(x = NULL, y = "Lost PPIs (count)", title = paste0("Lost PPIs by organelle (", nt, ")")) +
+      theme_bw(base_size = 10) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+      )
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_counts_", nt, ".pdf")),
+           p_counts, width = 11, height = 5, device = cairo_pdf)
+
+    # (2) fractions: composition across organelle classes per genotype
+    p_frac <- ggplot(dd, aes(x = genotype, y = n_lost, fill = class)) +
+      geom_col(width = 0.7, position = "fill", color = NA) +
+      scale_y_continuous(labels = scales::percent) +
+      scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
+      labs(x = NULL, y = "Fraction of lost PPIs", title = paste0("Composition of lost PPIs by organelle (", nt, ")")) +
+      theme_bw(base_size = 10) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+      )
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_fraction_", nt, ".pdf")),
+           p_frac, width = 11, height = 5, device = cairo_pdf)
+  }
+
+  plot_one_neuron("iN")
+  plot_one_neuron("iDA")
+}
+
+# ---- Call (creates 4 PDFs: counts+fractions for iN and iDA) ----
+plot_organelle_stacked_bars(
+  df_edges  = baseline_edges_union,
+  df_states = ko_edge_states,
+  annotation_classes_corrgeno = annotation_classes_corrgeno,
+  annotation_class_colors_corrgeno = annotation_class_colors_corrgeno,
+  out_dir   = out_dir_ppi_vuln
+)
+```
+
+
+
+
 # to do
 change color of disease class to predifined ones
 remove n_edges from heatmaps
@@ -10946,72 +11075,4 @@ i want on a per ko basis the iN vs iDa organelles drop
 
 
 
-```{r}
-# ---------------------------------------------------
-# --- Plotting function: global bars + organelle heatmaps (separate iN / iDA)
-plot_ppi_vulnerability <- function(df_edges,
-                                   df_states,
-                                   out_dir = out_dir_ppi_vuln,
-                                   plot_set = c("global","organelle","circos","matrix"),
-                                   ko = NULL,
-                                   neuron = "both",
-                                   conf_bins = c(0, 0.5, 0.75, 0.9, 1),
-                                   org_min_n = 20,
-                                   top_n_links = 3000,
-                                   annotations_focus = NULL,
-                                   disease_class_df = NULL,
-                                   save = TRUE) {
-
-  neuron <- match.arg(neuron, c("iN","iDA","both"))
-  neuron_levels <- if (neuron == "both") c("iN","iDA") else neuron
-
-  # one-to-one disease map (avoid many-to-many joins)
-  disease_map <- NULL
-  if (!is.null(disease_class_df)) {
-    disease_map <- disease_class_df %>%
-      dplyr::select(sample, DiseaseClass) %>%
-      dplyr::distinct(sample, .keep_all = TRUE)
-  }
-
-  # ----- GLOBAL STACKED BARS (separate per neuron) -----
-  if ("global" %in% plot_set) {
-    for (nt in neuron_levels) {
-      ppi_vul_global <- df_states %>%
-        dplyr::filter(neuron == nt) %>%
-        dplyr::mutate(state = factor(state, levels = c("retained","lost","unknown")))
-      if (!is.null(disease_map)) {
-        ppi_vul_global <- ppi_vul_global %>%
-          dplyr::left_join(disease_map, by = c("genotype" = "sample"))
-      }
-      ppi_vul_global_sum <- ppi_vul_global %>%
-        dplyr::group_by(genotype, state) %>%
-        dplyr::summarise(n = dplyr::n(), .groups = "drop_last") %>%
-        dplyr::group_by(genotype) %>%
-        dplyr::mutate(frac = n / sum(n)) %>%
-        dplyr::ungroup()
-
-      bar_ppi_global <- ggplot(ppi_vul_global_sum, aes(x = genotype, y = n, fill = state)) +
-        geom_col() +
-        scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
-        labs(x = NULL, y = "edges", title = paste("Edge outcomes per KO –", nt)) +
-        theme_bw(base_size = 10) +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-
-      if (save) {
-        ggsave(file.path(out_dir, "plots/global",
-                         paste0("bars_edge_outcomes_", nt, ".pdf")),
-               bar_ppi_global, width = 9, height = 5, device = cairo_pdf)
-      }
-    }
-  }
-
-  
-
-  
-
-  if ("matrix" %in% plot_set && !is.null(ko)) {
-    message("matrix view requested – implement for selected complex or hub set")
-  }
-}
-```
 
