@@ -10700,39 +10700,49 @@ plot_ppi_vulnerability <- function(df_edges,
         dplyr::left_join(disease_map, by = c("genotype" = "sample"))
     }
   
-    loss_summary <- ppi_vul_global %>%
-      dplyr::group_by(genotype, neuron) %>%
-      dplyr::summarise(
-        n_tot = dplyr::n(),
-        n_lost = sum(state == "lost", na.rm = TRUE),
-        frac_lost = ifelse(n_tot > 0, n_lost / n_tot, NA_real_),
-        .groups = "drop"
-      ) %>%
-      tidyr::pivot_wider(
-        names_from = neuron,
-        values_from = frac_lost
-      ) %>%
-      dplyr::mutate(
-        diff = abs(iDA - iN),
-        color = dplyr::case_when(
-          is.na(iDA) | is.na(iN) ~ "NA",
-          diff <= 0.1 ~ "within_band",
-          TRUE ~ "outside_band"
-        ),
-        color = factor(color, levels = c("within_band", "outside_band"))
-      )
-  
+      loss_summary <- ppi_vul_global %>%
+        dplyr::group_by(genotype, neuron) %>%
+        dplyr::summarise(
+          n_tot = dplyr::n(),
+          n_lost = sum(state == "lost", na.rm = TRUE),
+          frac_lost = ifelse(n_tot > 0, n_lost / n_tot, NA_real_),
+          .groups = "drop"
+        ) %>%
+        tidyr::pivot_wider(
+          id_cols = genotype,
+          names_from = neuron,
+          values_from = frac_lost
+        ) %>%
+        dplyr::mutate(
+          ratio_in_ida = iN / iDA,
+          ratio_in_ida = dplyr::case_when(
+            is.na(ratio_in_ida) ~ NA_real_,
+            ratio_in_ida > 3 ~ 3,          # cap high outliers
+            ratio_in_ida < 1/3 ~ 1/3,      # cap low outliers
+            TRUE ~ ratio_in_ida
+          ),
+          diff = abs(iDA - iN),
+          color = dplyr::case_when(
+            is.na(iDA) | is.na(iN) ~ "NA",
+            diff <= 0.1 ~ "within_band",
+            TRUE ~ "outside_band"
+          ),
+          color = factor(color, levels = c("within_band", "outside_band"))
+        )
+          
+    print(loss_summary)
     color_map <- c(within_band = "grey60", outside_band = "#C51B7D")
   
     # plot bubble plot
     p <- ggplot(loss_summary, aes(x = iN, y = iDA)) +
-      geom_point(aes(fill = color), shape = 21, size = 4, stroke = 0, alpha = 0.9) +
+      geom_point(aes(fill = color, size = ratio_in_ida), shape = 21, stroke = 0, alpha = 0.9) +
       ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 50, seed = 42) +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.5, alpha = 0.8) +
       geom_abline(slope = 1, intercept = 0.1, linetype = "solid", color = "grey80") +
       geom_abline(slope = 1, intercept = -0.1, linetype = "solid", color = "grey80") +
       scale_fill_manual(values = color_map, drop = FALSE, name = "Deviation") +
-      coord_fixed() +
+      scale_size_continuous(name = "iN/iDA ratio", range = c(2, 6)) +
+      coord_fixed(1) +
       labs(x = "Fraction lost PPIs (iN)", y = "Fraction lost PPIs (iDA)", title = "Genotype-wise PPI loss comparison") +
       theme_bw(base_size = 10) +
       theme(
