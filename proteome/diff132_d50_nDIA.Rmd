@@ -6286,9 +6286,9 @@ future_walk2(
 
 
 
-# ======================================================================
+# --------------------==========
 #  Protein–Protein Correlation Analysis and Heatmap Visualization
-# ======================================================================
+# --------------------==========
 
 # --- Define paths
 stream_dir <- file.path(out_dir_d50_corrProtein, "streamed_blocks")
@@ -10586,15 +10586,19 @@ ko_summary_by_organelle <- ko_edge_states %>%
 # save as csv
 write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_summary_by_organelle.csv"))
 
+```
 
+
+##### Plotting function and call data 
+```{r}
 # ---------------------------------------------------
-# --- Step 11. Define single plotting function for global and per-KO
+# --- Plotting function: global bars + organelle heatmaps (separate iN / iDA)
 plot_ppi_vulnerability <- function(df_edges,
                                    df_states,
                                    out_dir = out_dir_ppi_vuln,
                                    plot_set = c("global","organelle","circos","matrix"),
                                    ko = NULL,
-                                   neuron = c("iN","iDA","both"),
+                                   neuron = "both",
                                    conf_bins = c(0, 0.5, 0.75, 0.9, 1),
                                    org_min_n = 20,
                                    top_n_links = 3000,
@@ -10602,136 +10606,181 @@ plot_ppi_vulnerability <- function(df_edges,
                                    disease_class_df = NULL,
                                    save = TRUE) {
 
-  # --- choose neuron(s) for filtering
-  neuron <- match.arg(neuron)
-  neuron_filter <- if (neuron == "both") c("iN", "iDA") else neuron
+  neuron <- match.arg(neuron, c("iN","iDA","both"))
+  neuron_levels <- if (neuron == "both") c("iN","iDA") else neuron
 
-  # global stacked bars
-  if ("global" %in% plot_set) {
-    ppi_vul_global <- df_states %>%
-      dplyr::filter(neuron %in% neuron_filter) %>%
-      dplyr::mutate(state = factor(state, levels = c("retained","lost","unknown")))
-    if (!is.null(disease_class_df)) {
-      ppi_vul_global <- ppi_vul_global %>%
-        dplyr::left_join(disease_class_df, by = c("genotype" = "sample"))
-    }
-    ppi_vul_global_sum <- ppi_vul_global %>%
-      dplyr::group_by(genotype, neuron, state) %>%
-      dplyr::summarise(n = dplyr::n(), .groups = "drop_last") %>%
-      dplyr::group_by(genotype, neuron) %>%
-      dplyr::mutate(frac = n / sum(n)) %>%
-      dplyr::ungroup()
-
-    bar_ppi_global <- ggplot(ppi_vul_global_sum, aes(x = genotype, y = n, fill = state)) +
-      geom_col() +
-      facet_wrap(~neuron, scales = "free_x") +
-      scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
-      labs(x = NULL, y = "edges", title = "Edge outcomes per KO") +
-      theme_bw(base_size = 10) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-
-    if (save) ggsave(file.path(out_dir, "plots/global", paste0("bars_edge_outcomes_", neuron, ".pdf")),
-                     bar_ppi_global, width = 9, height = 5, device = cairo_pdf)
+  # one-to-one disease map (avoid many-to-many joins)
+  disease_map <- NULL
+  if (!is.null(disease_class_df)) {
+    disease_map <- disease_class_df %>%
+      dplyr::select(sample, DiseaseClass) %>%
+      dplyr::distinct(sample, .keep_all = TRUE)
   }
 
-  # organelle heatmap (fraction lost) 
-  if ("organelle" %in% plot_set) {
-    ppi_vul_org <- df_states %>%
-      dplyr::filter(OrgPair == "same", neuron %in% neuron_filter)
+  # ----- GLOBAL STACKED BARS (separate per neuron) -----
+  if ("global" %in% plot_set) {
+    for (nt in neuron_levels) {
+      ppi_vul_global <- df_states %>%
+        dplyr::filter(neuron == nt) %>%
+        dplyr::mutate(state = factor(state, levels = c("retained","lost","unknown")))
+      if (!is.null(disease_map)) {
+        ppi_vul_global <- ppi_vul_global %>%
+          dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+      }
+      ppi_vul_global_sum <- ppi_vul_global %>%
+        dplyr::group_by(genotype, state) %>%
+        dplyr::summarise(n = dplyr::n(), .groups = "drop_last") %>%
+        dplyr::group_by(genotype) %>%
+        dplyr::mutate(frac = n / sum(n)) %>%
+        dplyr::ungroup()
 
-    # compute shared organelle like in the summary step (placeholder stays as-is)
-    shared_lookup <- df_edges %>%
-      dplyr::select(key, starts_with(paste0(organelle_tags[1], "_prot1")):last_col())
+      bar_ppi_global <- ggplot(ppi_vul_global_sum, aes(x = genotype, y = n, fill = state)) +
+        geom_col() +
+        scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
+        labs(x = NULL, y = "edges", title = paste("Edge outcomes per KO –", nt)) +
+        theme_bw(base_size = 10) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
-    ppi_vul_org2 <- ppi_vul_org %>%
-      rowwise() %>%
-      dplyr::mutate(shared_organelle = {
-        # recompute quickly
-        # if you saved shared_organelle earlier, you can join instead
-        NA_character_
-      }) %>%
-      ungroup()
-
-    # If you already wrote ko_summary_by_organelle, read it instead for plotting
-    org_summary_path <- file.path(out_dir, "tables", "ko_summary_by_organelle.csv")
-    if (file.exists(org_summary_path)) {
-      ppi_vul_org_summary <- readr::read_csv(org_summary_path, show_col_types = FALSE)
-      ppi_vul_org_summary <- ppi_vul_org_summary %>%
-        dplyr::filter(neuron %in% neuron_filter)
-
-# --- annotations for columns (KO_neuron)
-col_meta <- tibble::tibble(geno_label = colnames(org_heatmap_mat)) %>%
-  tidyr::separate(geno_label, into = c("genotype","neuron"), sep = "_", remove = FALSE)
-
-# add DiseaseClass if provided
-if (!is.null(disease_class_df)) {
-  col_meta <- col_meta %>%
-    dplyr::left_join(disease_class_df, by = c("genotype" = "sample"))
-}
-
-# build pheatmap annotation frames
-annotation_col <- col_meta %>%
-  dplyr::select(-geno_label) %>%
-  as.data.frame()
-rownames(annotation_col) <- col_meta$geno_label
-
-# simple color maps (tweak if you have a palette already)
-ann_colors <- list(
-  neuron = c("iN" = "grey60", "iDA" = "grey80")
-)
-if ("DiseaseClass" %in% colnames(annotation_col)) {
-  dcats <- na.omit(unique(annotation_col$DiseaseClass))
-  pal <- grDevices::rainbow(length(dcats), v = 0.8, s = 0.6)
-  names(pal) <- dcats
-  ann_colors$DiseaseClass = pal
-}
-
-# final heatmap (row-scaled fractions)
-pheatmap::pheatmap(
-  mat = org_heatmap_mat,
-  scale = "row",
-  color = colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")))(100),
-  annotation_col = annotation_col,
-  annotation_colors = ann_colors,
-  breaks = seq(-4, 4, length.out = 101),
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
-  show_rownames = FALSE,
-  show_colnames = TRUE,
-  use_raster = FALSE,
-  angle_col = "90",
-  main = paste0("PPI fraction lost by organelle (", paste(neuron_filter, collapse = "/"), ")"),
-  fontsize = 10,
-  border_color = NA,
-  filename = file.path(out_dir, "plots/global",
-                       paste0("heatmap_fraction_lost_by_organelle_", neuron, ".pdf")),
-  width = 9, height = 7
-)
-        )
+      if (save) {
+        ggsave(file.path(out_dir, "plots/global",
+                         paste0("bars_edge_outcomes_", nt, ".pdf")),
+               bar_ppi_global, width = 9, height = 5, device = cairo_pdf)
       }
     }
   }
 
-  # circos per KO and neuron
+  # ----- ORGANELLE HEATMAP (fraction lost; separate per neuron) -----
+  if ("organelle" %in% plot_set) {
+
+    # organelle flag columns
+    org1_cols <- grep("_prot1$", names(df_edges), value = TRUE)
+    org2_cols <- grep("_prot2$", names(df_edges), value = TRUE)
+    if (length(org1_cols) == 0 || length(org2_cols) == 0) {
+      message("No organelle flags (*_prot1/_prot2) found in df_edges; skipping organelle heatmap.")
+    } else {
+      organelle_flags <- sub("_prot1$", "", org1_cols)
+      edges_org_flags <- df_edges %>%
+        dplyr::select(key, dplyr::all_of(org1_cols), dplyr::all_of(org2_cols))
+
+      # vectorized shared-organelle per edge
+      m1 <- as.data.frame(edges_org_flags[, org1_cols, drop = FALSE])
+      m2 <- as.data.frame(edges_org_flags[, org2_cols, drop = FALSE])
+      m1[] <- lapply(m1, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+      m2[] <- lapply(m2, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+      shared_mat <- as.matrix(m1) & as.matrix(m2)
+      idx_first <- apply(shared_mat, 1, function(r) { i <- which(r); if (length(i)) i[1] else NA_integer_ })
+      shared_df <- data.frame(
+        key = edges_org_flags$key,
+        shared_organelle = ifelse(is.na(idx_first), NA_character_, organelle_flags[idx_first]),
+        stringsAsFactors = FALSE
+      )
+
+      for (nt in neuron_levels) {
+        ppi_vul_org <- df_states %>%
+          dplyr::filter(OrgPair == "same", neuron == nt) %>%
+          dplyr::select(key, genotype, neuron, state) %>%
+          dplyr::left_join(shared_df, by = "key") %>%
+          dplyr::filter(!is.na(shared_organelle))
+
+        # summary KO × organelle
+          ppi_vul_org_summary <- ppi_vul_org %>%
+            dplyr::group_by(genotype, shared_organelle) %>%
+            dplyr::summarise(
+              n_edges = dplyr::n(),
+              n_lost  = sum(state == "lost", na.rm = TRUE),
+              fraction_lost = ifelse(n_edges > 0, n_lost / n_edges, NA_real_),
+              .groups = "drop"
+            )
+          
+          # --- build heatmap matrix with unique rownames (handles duplicated organelle labels)
+          org_heatmap_df <- ppi_vul_org_summary %>%
+            dplyr::filter(n_edges >= org_min_n) %>%
+            tidyr::pivot_wider(
+              names_from = genotype, values_from = fraction_lost, values_fill = 0
+            ) %>%
+            # ensure a plain data.frame, then force unique row names
+            as.data.frame()
+          
+          if (!"shared_organelle" %in% names(org_heatmap_df) || nrow(org_heatmap_df) == 0) {
+            message("No organelle cells pass org_min_n for ", nt, "; skipping heatmap.")
+          } else {
+            rownames(org_heatmap_df) <- make.unique(org_heatmap_df$shared_organelle)
+            org_heatmap_df$shared_organelle <- NULL
+          
+            # now convert to matrix
+            org_heatmap_mat <- as.matrix(org_heatmap_df)
+          
+            if (nrow(org_heatmap_mat) > 0 && ncol(org_heatmap_mat) > 0) {
+              # column annotations (genotype ± DiseaseClass)
+              col_meta <- tibble::tibble(genotype = colnames(org_heatmap_mat)) %>%
+                dplyr::mutate(neuron = nt)
+          
+              if (!is.null(disease_map)) {
+                col_meta <- col_meta %>%
+                  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+              }
+              col_meta <- col_meta %>% dplyr::distinct(genotype, .keep_all = TRUE)
+          
+              annotation_col <- col_meta %>% as.data.frame()
+              rownames(annotation_col) <- make.unique(col_meta$genotype)
+          
+              # ensure matrix colnames match annotation rownames
+              colnames(org_heatmap_mat) <- rownames(annotation_col)
+          
+              ann_colors <- list(
+                neuron = c("iN" = "grey60", "iDA" = "grey80")
+              )
+              if ("DiseaseClass" %in% colnames(annotation_col)) {
+                dcats <- stats::na.omit(unique(annotation_col$DiseaseClass))
+                pal <- grDevices::rainbow(length(dcats), v = 0.8, s = 0.6); names(pal) <- dcats
+                ann_colors$DiseaseClass <- pal
+              }
+          
+              pheatmap::pheatmap(
+                mat = org_heatmap_mat,
+                scale = "row",
+                color = colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")))(100),
+                annotation_col = annotation_col,
+                annotation_colors = ann_colors,
+                breaks = seq(-4, 4, length.out = 101),
+                cluster_rows = TRUE,
+                cluster_cols = TRUE,
+                show_rownames = FALSE,
+                show_colnames = TRUE,
+                use_raster = FALSE,
+                angle_col = "90",
+                main = paste0("PPI fraction lost by organelle (", nt, ")"),
+                fontsize = 10,
+                border_color = NA,
+                filename = file.path(out_dir, "plots/global",
+                                     paste0("heatmap_fraction_lost_by_organelle_", nt, ".pdf")),
+                width = 9, height = 7
+              )
+            } else {
+              message("No organelle cells pass org_min_n for ", nt, "; skipping heatmap.")
+            }
+          }
+      }
+    }
+  }
+}
+
+  # ----- CIRCOS (unchanged, still per neuron) -----
   if ("circos" %in% plot_set) {
     ko_vec <- if (is.null(ko)) unique(df_states$genotype) else ko
     for (k in ko_vec) {
-      for (nt in neuron_filter) {
+      for (nt in neuron_levels) {
         sub <- df_states %>% dplyr::filter(genotype == k, neuron == nt)
         if (!is.null(annotations_focus) && length(annotations_focus) > 0) {
-          # keep edges where both partners share at least one of focus annotations
-          # optional: implement by joining df_edges to sub using key and checking *_prot1 and *_prot2 flags
+          # optional: filter by annotations via df_edges$key
         }
-        # encode links: retained grey, lost magenta, unknown light grey
         sub$col <- ifelse(sub$state == "lost", "#C51B7D80",
-                     ifelse(sub$state == "retained", "#BDBDBD60", "#BDBDBD30"))
-
+                          ifelse(sub$state == "retained", "#BDBDBD60", "#BDBDBD30"))
         if (nrow(sub) > top_n_links) {
           sub <- sub %>%
-            dplyr::arrange(desc(Overlap_flag), desc(Predictome_conf)) %>%
+            dplyr::arrange(dplyr::desc(Overlap_flag), dplyr::desc(Predictome_conf)) %>%
             dplyr::slice_head(n = top_n_links)
         }
-
         chord_df <- sub %>% dplyr::select(from = Protein1, to = Protein2, col)
         if (nrow(chord_df) == 0) next
 
@@ -10750,24 +10799,14 @@ pheatmap::pheatmap(
   }
 }
 
-# --- Step 12. call plotting function
+
 plot_ppi_vulnerability(
   df_edges  = baseline_edges_union,
   df_states = ko_edge_states,
   out_dir   = out_dir_ppi_vuln,
   plot_set  = c("global","organelle"),
+  neuron    = "both",
   disease_class_df = disease_classes_dataframe
-)
-
-
-plot_ppi_vulnerability(
-  df_edges  = baseline_edges_union,
-  df_states = ko_edge_states,
-  out_dir   = out_dir_ppi_vuln,
-  plot_set  = c("circos"),
-  ko        = c("GBA1","ASAH1"),
-  neuron    = "iDA",
-  annotations_focus = c("Mito","Lysosome")
 )
 
 
