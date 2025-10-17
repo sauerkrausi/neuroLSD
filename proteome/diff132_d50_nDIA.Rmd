@@ -11123,6 +11123,9 @@ plot_organelle_stacked_bars <- function(df_edges,
 
   plot_one_neuron("iN")
   plot_one_neuron("iDA")
+  
+  return(shared_long)
+  
 }
 
 # --- Add-on: Faceted barplot and pie charts by disease class and organelle tag ---
@@ -11190,15 +11193,21 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
 
 
 # ---- Call (creates 4 PDFs: counts+fractions for iN and iDA) ----
-plot_ppi_diseaseclass_impact(
+plot_organelle_stacked_bars(
+  df_edges  = baseline_edges_union,
   df_states = ko_edge_states,
-  shared_long = shared_long,
-  disease_class_df = disease_class_df,
-  out_dir = out_dir_ppi_vuln,
-  disease_class_palette = disease_class_palette
+  annotation_classes_corrgeno = annotation_classes_corrgeno,
+  annotation_class_colors_corrgeno = annotation_class_colors_corrgeno,
+  out_dir   = out_dir_ppi_vuln
 )
 
-
+plot_organelle_stacked_bars(
+  df_edges  = baseline_edges_union,
+  df_states = ko_edge_states,
+  annotation_classes_corrgeno = annotation_classes_corrgeno,
+  annotation_class_colors_corrgeno = annotation_class_colors_corrgeno,
+  out_dir   = out_dir_ppi_vuln
+)
 ```
 
 
