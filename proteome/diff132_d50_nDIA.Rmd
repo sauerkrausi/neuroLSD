@@ -11211,7 +11211,7 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
     dd$fraction <- dd$n / sum(dd$n)
 
     pie <- ggplot(dd, aes(x = "", y = fraction, fill = DiseaseClass)) +
-      geom_col(width = 1, color = "black") +
+      geom_col(width = 1, color = "black", linewidth = 0.3) +
       coord_polar("y") +
       scale_fill_manual(values = disease_class_palette, drop = FALSE) +
       labs(title = paste("PPI loss composition –", nt), fill = "Disease class") +
@@ -11249,7 +11249,7 @@ plot_ppi_diseaseclass_impact(
 
 # to do
 bubble graph on organelle level 
-
+ppis gained in KOs? that are not there in KO
 also have cricos plot compared to contrl 
 
 
