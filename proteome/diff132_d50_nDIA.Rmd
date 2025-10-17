@@ -10733,8 +10733,18 @@ plot_ppi_vulnerability <- function(df_edges,
     print(loss_summary)
     color_map <- c(within_band = "grey60", outside_band = "#C51B7D")
   
-    # plot bubble plot
+    
+     # Create polygon data for ±0.1 band around x = y
+    band_df <- data.frame(
+      x = c(-0.1, 0.4, 0.4, -0.1),
+      y = c(-0.1 + 0.1, 0.4 + 0.1, 0.4 - 0.1, -0.1 - 0.1)
+    )
+
+    
+    # Plot bubble plot
     p <- ggplot(loss_summary, aes(x = iN, y = iDA)) +
+      geom_polygon(data = band_df, aes(x = x, y = y),
+                   fill = "skyblue", alpha = 0.2, inherit.aes = FALSE) +
       geom_point(aes(fill = color, size = ratio_in_ida), shape = 21, stroke = 0, alpha = 0.9) +
       ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 50, seed = 42) +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.5, alpha = 0.8) +
@@ -10742,9 +10752,9 @@ plot_ppi_vulnerability <- function(df_edges,
       geom_abline(slope = 1, intercept = -0.1, linetype = "solid", color = "grey80") +
       scale_fill_manual(values = color_map, drop = FALSE, name = "Deviation") +
       scale_size_continuous(name = "iN/iDA ratio", range = c(2, 6)) +
-      coord_fixed(1) +
+      coord_fixed(ratio = 1, xlim = c(0, 0.35), ylim = c(0, 0.35), clip = "on") +
       labs(x = "Fraction lost PPIs (iN)", y = "Fraction lost PPIs (iDA)", title = "Genotype-wise PPI loss comparison") +
-      theme_bw(base_size = 10) +
+      theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
         panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
