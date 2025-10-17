@@ -10938,28 +10938,21 @@ plot_ppi_vulnerability(
 ```
 
 
-##### Plotting function for stacked bargraphs
+##### Plotting function for stacked bargraphs for organelle PPI impact
 ```{r}
 # --- Stacked organelle bars (genotypes on x, organelle classes as fill) ---
-# Inputs expected:
-# - df_states  (ko_edge_states): key, genotype, neuron, state ("lost"/"retained"/"unknown"), OrgPair
-# - df_edges   (baseline_edges_union): key, *_prot1 / *_prot2 logical flags
-# - annotation_classes_corrgeno: named list of class -> vector of tags (we drop "NeuroDev")
-# - annotation_class_colors_corrgeno: named vector of class -> color
-# - out_dir: output root (existing)
-
 plot_organelle_stacked_bars <- function(df_edges,
                                         df_states,
                                         annotation_classes_corrgeno,
                                         annotation_class_colors_corrgeno,
                                         out_dir) {
 
-  # 1) tag -> class map (drop "NeuroDev")
+  # Step 1. tag -> class map
   tag_map <- lapply(names(annotation_classes_corrgeno), function(cls) {
     tags <- annotation_classes_corrgeno[[cls]]
-    data.frame(tag = tags[tags != "NeuroDev"], class = cls, stringsAsFactors = FALSE)
+    data.frame(tag = tags, class = cls, stringsAsFactors = FALSE)
   }) |> dplyr::bind_rows()
-
+  
   # 2) shared organelle tags per edge (TRUE in both partners)
   org1_cols <- grep("_prot1$", names(df_edges), value = TRUE)
   org2_cols <- grep("_prot2$", names(df_edges), value = TRUE)
