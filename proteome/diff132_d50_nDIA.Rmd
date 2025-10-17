@@ -10637,31 +10637,31 @@ plot_confidence_scatter <- function(df, score_col, out_dir) {
   df_long <- df |>
     select(key, tag, !!sym(paste0(score_col, "_iN")), !!sym(paste0(score_col, "_iDA"))) |>
     pivot_longer(
-      cols = ends_with(c("_iN", "_iDA")),
+      cols = ends_with("_iN") | ends_with("_iDA"),
       names_to = "neuron",
       values_to = "confidence",
       names_pattern = paste0(score_col, "_(.*)")
     ) |>
-    mutate(row_id = row_number())
+    mutate(neuron = factor(neuron, levels = c("iN", "iDA")),
+           row_id = row_number())
 
   p <- ggplot(df_long, aes(x = row_id, y = confidence, color = neuron)) +
     geom_point(size = 0.7, alpha = 0.8) +
-    scale_color_manual(values = c(iN = "grey60", iDA = "skyblue2")) +
+    facet_wrap(~neuron, nrow = 1, scales = "free_x") +
+    scale_color_manual(values = c(iN = "grey60", iDA = "skyblue2"), guide = "none") +
     labs(
-      title = paste(score_col, "confidence by row index"),
+      title = paste(score_col, "confidence per neuron type"),
       x = "Row Index",
-      y = score_col,
-      color = "Neuron"
+      y = score_col
     ) +
     theme_bw(base_size = 7) +
     theme(
       panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA),
-      legend.position = "bottom"
+      panel.border = element_rect(color = "black", fill = NA)
     )
 
-  ggsave(file.path(out_dir, paste0("scatter_", score_col, "_neuron_rowindex.pdf")),
-         p, width = 5, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("scatter_", score_col, "_neuron_facet.pdf")),
+         p, width = 6, height = 3.5, device = cairo_pdf)
 }
 
 # Step 5: Apply to all 3 score types
