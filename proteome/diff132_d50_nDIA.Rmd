@@ -1859,7 +1859,7 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
       aes(label = highlight_label, color = highlight_color),
       size = 2, nudge_x = 0.5, direction = "y", hjust = 0
     ) +
-    theme_bw(base_size = 7) +
+    theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
       axis.text.x = element_text(angle = 45, hjust = 1)
@@ -10639,7 +10639,7 @@ plot_confidence_distribution <- function(df, score_col, out_dir, org_colors) {
       x = score_col,
       y = "Density"
     ) +
-    theme_bw(base_size = 7) +
+    theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
@@ -10659,7 +10659,7 @@ plot_confidence_distribution <- function(df, score_col, out_dir, org_colors) {
       x = NULL,
       y = score_col
     ) +
-    theme_bw(base_size = 7) +
+    theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
@@ -11521,7 +11521,7 @@ plot_ko_neuron_profile <- function(df, geno, nt, score_col, out_dir, org_colors,
       x = score_col,
       y = "Density"
     ) +
-    theme_bw(base_size = 7) +
+    theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
@@ -11668,7 +11668,7 @@ plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
         x = NULL,
         y = "Number of PPIs"
       ) +
-      theme_bw(base_size = 7) +
+      theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
         panel.border = element_rect(color = "black", fill = NA),
@@ -11678,7 +11678,7 @@ plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
     
     ggsave(
       file.path(out_dir, paste0(ko_label, "_bars_organelle_state_counts.pdf")),
-      p_counts, width = 7, height = 4.5, device = cairo_pdf
+      p_counts, width = 5, height = 5, device = cairo_pdf
     )
     
     # Plot 2: Stacked fractions (proportions)
@@ -11694,7 +11694,7 @@ plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
         x = NULL,
         y = "Fraction of PPIs"
       ) +
-      theme_bw(base_size = 7) +
+      theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
         panel.border = element_rect(color = "black", fill = NA),
@@ -11704,28 +11704,7 @@ plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
     
     ggsave(
       file.path(out_dir, paste0(ko_label, "_bars_organelle_state_fractions.pdf")),
-      p_fractions, width = 7, height = 4.5, device = cairo_pdf
-    )
-    
-    # Plot 3: Side-by-side bars by organelle (colored by organelle)
-    p_organelle_color <- ggplot(df_subset, aes(x = state, y = n, fill = tag)) +
-      geom_col(position = "stack", color = "black", linewidth = 0.2) +
-      scale_fill_manual(values = org_colors, name = "Organelle") +
-      labs(
-        title = paste("Organelle contribution to PPI states –", ko_label),
-        x = "Edge state",
-        y = "Number of PPIs"
-      ) +
-      theme_bw(base_size = 7) +
-      theme(
-        panel.grid = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA),
-        legend.key.size = unit(0.3, "cm")
-      )
-    
-    ggsave(
-      file.path(out_dir, paste0(ko_label, "_bars_state_by_organelle.pdf")),
-      p_organelle_color, width = 6, height = 4.5, device = cairo_pdf
+      p_fractions, width = 5, height = 5, device = cairo_pdf
     )
   }
   
@@ -11735,7 +11714,7 @@ plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
   
   write_csv(
     summary_table,
-    file.path(dirname(out_dir), "tables", "ko_neuron_organelle_state_counts.csv")
+    file.path(out_dir_ppi_vuln, "tables", "ko_neuron_organelle_state_counts.csv")
   )
   
   invisible(summary_table)
@@ -11743,6 +11722,94 @@ plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
 
 # Call the function
 plot_ko_neuron_organelle_bars(
+  df = ko_ppi_profiles,
+  out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
+  org_colors = organelle_colors
+)
+
+
+# --------- NEW: iN vs iDA bubble plots per KO ---------
+plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
+  
+  # Prepare data: count per KO × neuron × organelle × state
+  organelle_counts <- df |>
+    dplyr::group_by(genotype, neuron, tag, state) |>
+    dplyr::summarise(n = n(), .groups = "drop")
+  
+  # Pivot to wide format: iN vs iDA
+  organelle_wide <- organelle_counts |>
+    tidyr::pivot_wider(
+      names_from = neuron,
+      values_from = n,
+      values_fill = 0
+    )
+  
+  # Get all unique KOs
+  all_kos <- unique(organelle_wide$genotype)
+  
+  # Plot for each KO
+  for (geno in all_kos) {
+    
+    df_ko <- organelle_wide |>
+      dplyr::filter(genotype == geno)
+    
+    if (nrow(df_ko) == 0) next
+    
+    # Separate bubble plots for lost and retained
+    for (edge_state in c("lost", "retained")) {
+      
+      df_state <- df_ko |>
+        dplyr::filter(state == edge_state)
+      
+      if (nrow(df_state) == 0) next
+      
+      # Determine axis limits (square plot)
+      max_val <- max(c(df_state$iN, df_state$iDA), na.rm = TRUE)
+      if (max_val == 0) next
+      axis_lim <- c(0, max_val * 1.1)
+      
+      # Create bubble plot
+      p_bubble <- ggplot(df_state, aes(x = iN, y = iDA, fill = tag, size = iN + iDA)) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed", 
+                    color = "black", linewidth = 0.2) +
+        geom_point(shape = 21, alpha = 0.8, stroke = 0.3) +
+        ggrepel::geom_text_repel(
+          aes(label = tag), 
+          size = 2.5, 
+          max.overlaps = 30,
+          min.segment.length = 0,
+          box.padding = 0.3,
+          seed = 42
+        ) +
+        scale_fill_manual(values = org_colors, name = "Organelle") +
+        scale_size_continuous(range = c(2, 10), guide = "none") +
+        coord_fixed(ratio = 1, xlim = axis_lim, ylim = axis_lim, clip = "on") +
+        labs(
+          title = paste0(geno, " – ", edge_state, " PPIs: iN vs iDA"),
+          x = paste0("Number of ", edge_state, " PPIs (iN)"),
+          y = paste0("Number of ", edge_state, " PPIs (iDA)")
+        ) +
+        theme_bw(base_size = 6) +
+        theme(
+          panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+          legend.position = "right",
+          legend.key.size = unit(0.3, "cm")
+        )
+      
+      ggsave(
+        file.path(out_dir, paste0(geno, "_bubble_", edge_state, "_iN_vs_iDA.pdf")),
+        p_bubble, 
+        width = 6, 
+        height = 5, 
+        device = cairo_pdf
+      )
+    }
+  }
+}
+
+# Call the bubble plot function
+plot_ko_bubble_in_vs_ida(
   df = ko_ppi_profiles,
   out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
   org_colors = organelle_colors
@@ -11796,7 +11863,7 @@ p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2, color = DiseaseClass, shape = neur
     x = paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100, 1), "%)"),
     y = paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100, 1), "%)")
   ) +
-  theme_bw(base_size = 7) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA)
@@ -11816,7 +11883,7 @@ p_loadings <- ggplot(loadings_df, aes(x = PC1, y = PC2, label = organelle)) +
                color = "grey30", linewidth = 0.5) +
   geom_text(size = 2.5, hjust = 0, nudge_x = 0.01) +
   labs(title = "PCA loadings: organelle contributions", x = "PC1", y = "PC2") +
-  theme_bw(base_size = 7) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
 ggsave(
@@ -11837,7 +11904,7 @@ if (requireNamespace("umap", quietly = TRUE)) {
     scale_color_manual(values = disease_class_palette, name = "Disease class") +
     scale_shape_manual(values = c(iN = 16, iDA = 17), name = "Neuron type") +
     labs(title = "UMAP of organelle-specific PPI vulnerability", x = "UMAP1", y = "UMAP2") +
-    theme_bw(base_size = 7) +
+    theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
   
   ggsave(
