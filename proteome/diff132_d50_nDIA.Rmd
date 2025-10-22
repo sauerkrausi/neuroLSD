@@ -10671,6 +10671,144 @@ for (score in c("RFprob", "AFprob", "AFMprob")) {
 
 ```
 
+### QC Viz #2
+```{r}
+# --------- PPI QC Scatterplots: Confidence score distributions by organelle ---------
+
+# Step 1: Join baseline edges with organelle annotations
+ppi_qc_df <- baseline_edges_union |>
+  select(key, RFprob, AFprob, AFMprob, Predictome_conf) |>
+  left_join(shared_long, by = "key") |>
+  filter(!is.na(tag))  # keep only edges with organelle annotation
+
+# Step 2: Plotting function for confidence score distributions
+plot_confidence_distribution <- function(df, score_col, out_dir) {
+  
+  # Remove NA values for the specific score
+  df_plot <- df |>
+    filter(!is.na(!!sym(score_col)))
+  
+  if (nrow(df_plot) == 0) {
+    message("No data for ", score_col, "; skipping.")
+    return(invisible(NULL))
+  }
+  
+  # Plot 1: Density plot by organelle
+  p_density <- ggplot(df_plot, aes(x = !!sym(score_col), fill = tag)) +
+    geom_density(alpha = 0.6) +
+    scale_fill_brewer(palette = "Set3", name = "Organelle") +
+    labs(
+      title = paste(score_col, "distribution by organelle"),
+      x = score_col,
+      y = "Density"
+    ) +
+    theme_bw(base_size = 7) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "right"
+    )
+  
+  ggsave(
+    file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")),
+    p_density, width = 7, height = 4, device = cairo_pdf
+  )
+  
+  # Plot 2: Box plot by organelle
+  p_box <- ggplot(df_plot, aes(x = tag, y = !!sym(score_col), fill = tag)) +
+    geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
+    scale_fill_brewer(palette = "Set3", guide = "none") +
+    labs(
+      title = paste(score_col, "by organelle"),
+      x = NULL,
+      y = score_col
+    ) +
+    theme_bw(base_size = 7) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  
+  ggsave(
+    file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle.pdf")),
+    p_box, width = 6, height = 4, device = cairo_pdf
+  )
+  
+  # Plot 3: Scatter plot (row index) - simple QC for score distribution
+  df_plot <- df_plot |>
+    arrange(!!sym(score_col)) |>
+    mutate(row_id = row_number())
+  
+  p_scatter <- ggplot(df_plot, aes(x = row_id, y = !!sym(score_col), color = tag)) +
+    geom_point(size = 0.5, alpha = 0.6) +
+    scale_color_brewer(palette = "Set3", name = "Organelle") +
+    labs(
+      title = paste(score_col, "distribution across all PPIs"),
+      x = "PPI index (sorted)",
+      y = score_col
+    ) +
+    theme_bw(base_size = 7) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA)
+    )
+  
+  ggsave(
+    file.path(out_dir, paste0("scatter_", score_col, "_sorted.pdf")),
+    p_scatter, width = 7, height = 4, device = cairo_pdf
+  )
+}
+
+# Step 3: Apply to all prediction scores
+for (score in c("RFprob", "AFprob", "AFMprob", "Predictome_conf")) {
+  plot_confidence_distribution(
+    ppi_qc_df, 
+    score, 
+    file.path(out_dir_ppi_vuln, "qc")
+  )
+}
+
+# Step 4: Summary statistics table
+qc_summary <- ppi_qc_df |>
+  group_by(tag) |>
+  summarise(
+    n_edges = n(),
+    RFprob_mean = mean(RFprob, na.rm = TRUE),
+    RFprob_median = median(RFprob, na.rm = TRUE),
+    AFprob_mean = mean(AFprob, na.rm = TRUE),
+    AFprob_median = median(AFprob, na.rm = TRUE),
+    AFMprob_mean = mean(AFMprob, na.rm = TRUE),
+    AFMprob_median = median(AFMprob, na.rm = TRUE),
+    Predictome_conf_mean = mean(Predictome_conf, na.rm = TRUE),
+    Predictome_conf_median = median(Predictome_conf, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+write_csv(qc_summary, file.path(out_dir_ppi_vuln, "qc", "confidence_scores_by_organelle.csv"))
+
+# Step 5: Overall score correlation heatmap
+score_cols <- c("RFprob", "AFprob", "AFMprob", "Predictome_conf")
+cor_matrix <- ppi_qc_df |>
+  select(all_of(score_cols)) |>
+  cor(use = "pairwise.complete.obs", method = "spearman")
+
+pheatmap::pheatmap(
+  cor_matrix,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
+  breaks = seq(-1, 1, length.out = 102),
+  main = "Correlation between prediction scores",
+  fontsize = 8,
+  cellwidth = 30,
+  cellheight = 30,
+  border_color = "black",
+  filename = file.path(out_dir_ppi_vuln, "qc", "heatmap_score_correlations.pdf"),
+  width = 5,
+  height = 4
+)
+```
 
 ### Vizualiztion of PPI loss
 ##### Plotting function for correlation heatmaps and summary stacked bar for PPI impact
