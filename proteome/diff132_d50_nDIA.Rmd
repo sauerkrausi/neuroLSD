@@ -11836,6 +11836,7 @@ stopifnot("Metadata rows don't match matrix rows" = nrow(vuln_meta) == nrow(vuln
 
 # Numeric matrix for PCA
 vuln_mat <- as.matrix(vuln_matrix[, -(1:2)])
+vuln_mat <- apply(vuln_mat, 2, as.numeric)
 rownames(vuln_mat) <- vuln_meta$genotype_neuron
 
 # Step 2: PCA
@@ -11884,34 +11885,55 @@ ggsave(
 )
 
 # Step 4: Hierarchical clustering + heatmap
-dist_mat <- dist(vuln_mat, method = "euclidean")
-hclust_res <- hclust(dist_mat, method = "ward.D2")
+# Filter to rows with disease class annotation
+rows_with_disease <- vuln_meta |>
+  dplyr::filter(!is.na(DiseaseClass)) |>
+  dplyr::pull(genotype_neuron)
 
-# Annotation for heatmap
+# Subset matrix and metadata
+vuln_mat_subset <- vuln_mat[rows_with_disease, , drop = FALSE]
+
+# Create annotation dataframe
 dend_anno <- vuln_meta |>
+  dplyr::filter(genotype_neuron %in% rows_with_disease) |>
   dplyr::select(genotype_neuron, neuron, DiseaseClass)
+
 rownames(dend_anno) <- dend_anno$genotype_neuron
 dend_anno$genotype_neuron <- NULL
 
+# Get present disease classes
+# Drop unused levels
+dend_anno$DiseaseClass <- droplevels(dend_anno$DiseaseClass)
+
+# Force drop any tibble/data.frame attributes or S3 classes
+vuln_mat_subset <- as.matrix(vuln_mat_subset)
+storage.mode(vuln_mat_subset) <- "numeric"
+attributes(vuln_mat_subset) <- attributes(matrix(0, nrow = nrow(vuln_mat_subset), ncol = ncol(vuln_mat_subset)))
+rownames(vuln_mat_subset) <- rows_with_disease
+colnames(vuln_mat_subset) <- colnames(vuln_mat)[1:ncol(vuln_mat_subset)]
+
+# Recreate the color list with only existing levels
+present_classes <- levels(dend_anno$DiseaseClass)
 ann_colors_dend <- list(
   neuron = c(iN = "grey60", iDA = "grey80"),
-  DiseaseClass = disease_class_palette[disease_class_palette %in% unique(dend_anno$DiseaseClass)]
+  DiseaseClass = disease_class_palette[present_classes]
 )
 
 pheatmap::pheatmap(
-  vuln_mat,
-  clustering_distance_rows = dist_mat,
+  vuln_mat_subset,
+  clustering_distance_rows = "euclidean",
   clustering_method = "ward.D2",
   scale = "none",
-  color = colorRampPalette(c("white", "#C51B7D"))(100),
-  annotation_row = dend_anno,
-  annotation_colors = ann_colors_dend,
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+  #annotation_row = dend_anno,
+  #annotation_colors = ann_colors_dend,
   show_rownames = TRUE,
   show_colnames = TRUE,
+  border_color = NA,
   fontsize = 6,
   cellwidth = 8,
   cellheight = 8,
-  main = "Organelle vulnerability clustering (KO × neuron)",
+  main = "PPI-loss based organelle vulnerability clustering (KO × neuron)",
   filename = file.path(out_dir_ppi_vuln, "plots/global", "heatmap_organelle_vuln_clustered.pdf"),
   width = 10,
   height = 10
@@ -11924,7 +11946,9 @@ if (requireNamespace("umap", quietly = TRUE)) {
     tibble::rownames_to_column("genotype_neuron") |>
     dplyr::left_join(vuln_meta, by = "genotype_neuron")
   
-  p_umap <- ggplot(umap_df, aes(x = V1, y = V2, color = DiseaseClass, shape = neuron)) +
+  colnames(umap_df)[2:3] <- c("UMAP1", "UMAP2")
+  
+  p_umap <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = DiseaseClass, shape = neuron)) +
     geom_point(size = 3, alpha = 0.8) +
     ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 20) +
     scale_color_manual(values = disease_class_palette, name = "Disease class") +
