@@ -10760,10 +10760,12 @@ p_counts <- ggplot(edge_counts, aes(x = reorder(tag, n_edges), y = n_edges, fill
     panel.border = element_rect(color = "black", fill = NA)
   )
 
-ggsave(file.path(out_dir_ppi_vuln, "qc", "barplot_edge_counts_by_organelle.pdf"),p_counts, width = 6, height = 8, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_vuln, "qc", "barplot_edge_counts_by_organelle.pdf"),p_counts, width = 6, height = 6, device = cairo_pdf)
 
 
 ```
+
+
 
 ### Vizualiztion of PPI loss
 ##### Plotting function for correlation heatmaps and summary stacked bar for PPI impact
@@ -10840,7 +10842,7 @@ plot_ppi_vulnerability <- function(df_edges,
         dplyr::ungroup()
 
       bar_ppi_global <- ggplot(ppi_vul_global_sum, aes(x = genotype, y = n, fill = state)) +
-        geom_col() +
+        geom_col(color = "black", linewidth = 0.2) +
         scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
         labs(x = NULL, y = "edges", title = paste("Edge outcomes per KO –", nt)) +
         theme_bw(base_size = 6) +
@@ -10923,7 +10925,7 @@ plot_ppi_vulnerability <- function(df_edges,
       theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5)
       )
   
     if (save) {
@@ -11272,13 +11274,13 @@ plot_organelle_stacked_bars <- function(df_states,
 
     # Plot 4.1 counts: stacked by organelle class
     p_counts <- ggplot(dd, aes(x = genotype, y = n_lost, fill = class)) +
-      geom_col(width = 0.7, position = "stack", color = NA) +
+      geom_col(width = 0.7, position = "stack", color = "black", linewidth = 0.2) +
       scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
       labs(x = NULL, y = "Lost PPIs (count)", title = paste0("Lost PPIs by organelle (", nt, ")")) +
       theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
       )
     ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_counts_", nt, ".pdf")),
@@ -11286,14 +11288,14 @@ plot_organelle_stacked_bars <- function(df_states,
 
     # Plot 4.2 fractions: composition across organelle classes per genotype
     p_frac <- ggplot(dd, aes(x = genotype, y = n_lost, fill = class)) +
-      geom_col(width = 0.7, position = "fill", color = NA) +
+      geom_col(width = 0.7, position = "fill", color = "black", linewidth =  0.2) +
       scale_y_continuous(labels = scales::percent) +
       scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
       labs(x = NULL, y = "Fraction of lost PPIs", title = paste0("Composition of lost PPIs by organelle (", nt, ")")) +
       theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
       )
     ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_fraction_", nt, ".pdf")), p_frac, width = 11, height = 5, device = cairo_pdf)
