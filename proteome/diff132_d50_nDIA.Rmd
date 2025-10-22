@@ -11808,7 +11808,7 @@ plot_ko_bubble_in_vs_ida(
 ```{r}
 # --------- Global n-space representation via PCA/UMAP ---------
 
-# Step 1: Build feature matrix (KO × neuron as rows; organelles as features)
+# --- Step 1: Build feature matrix (KO × neuron as rows; organelles as features)
 vuln_matrix <- ko_edge_states |>
   dplyr::filter(OrgPair == "same") |>
   dplyr::left_join(shared_long, by = "key", relationship = "many-to-many") |>
@@ -11839,7 +11839,8 @@ vuln_mat <- as.matrix(vuln_matrix[, -(1:2)])
 vuln_mat <- apply(vuln_mat, 2, as.numeric)
 rownames(vuln_mat) <- vuln_meta$genotype_neuron
 
-# Step 2: PCA
+
+# --- Step 2: PCA
 pca_res <- prcomp(vuln_mat, scale. = TRUE, center = TRUE)
 pca_df <- as.data.frame(pca_res$x) |>
   tibble::rownames_to_column("genotype_neuron") |>
@@ -11862,29 +11863,28 @@ p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2, color = DiseaseClass, shape = neur
     panel.border = element_rect(color = "black", fill = NA)
   )
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "plots/global", "pca_organelle_vulnerability.pdf"),
-  p_pca, width = 7, height = 6, device = cairo_pdf
-)
+ggsave(file.path(out_dir_ppi_vuln, "plots/global", "pca_organelle_vulnerability.pdf"),p_pca, width = 7, height = 6, device = cairo_pdf)
 
-# Step 3: Loadings plot (which organelles drive PC1/PC2)
-loadings_df <- as.data.frame(pca_res$rotation[, 1:2]) |>
-  tibble::rownames_to_column("organelle")
 
-p_loadings <- ggplot(loadings_df, aes(x = PC1, y = PC2, label = organelle)) +
-  geom_segment(aes(xend = 0, yend = 0), arrow = arrow(length = unit(0.2, "cm")), 
-               color = "grey30", linewidth = 0.5) +
-  geom_text(size = 2.5, hjust = 0, nudge_x = 0.01) +
-  labs(title = "PCA loadings: organelle contributions", x = "PC1", y = "PC2") +
-  theme_bw(base_size = 7) +
-  theme(panel.grid = element_blank())
+# --- Step 3: Loadings plot (which organelles drive PC1/PC2)
+# loadings_df <- as.data.frame(pca_res$rotation[, 1:2]) |>
+#   tibble::rownames_to_column("organelle")
+# 
+# p_loadings <- ggplot(loadings_df, aes(x = PC1, y = PC2, label = organelle)) +
+#   geom_segment(aes(xend = 0, yend = 0), arrow = arrow(length = unit(0.2, "cm")), 
+#                color = "grey30", linewidth = 0.5) +
+#   geom_text(size = 2.5, hjust = 0, nudge_x = 0.01) +
+#   labs(title = "PCA loadings: organelle contributions", x = "PC1", y = "PC2") +
+#   theme_bw(base_size = 7) +
+#   theme(panel.grid = element_blank())
+# 
+# ggsave(
+#   file.path(out_dir_ppi_vuln, "plots/global", "pca_loadings_organelles.pdf"),
+#   p_loadings, width = 6, height = 6, device = cairo_pdf
+# )
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "plots/global", "pca_loadings_organelles.pdf"),
-  p_loadings, width = 6, height = 6, device = cairo_pdf
-)
 
-# Step 4: Hierarchical clustering + heatmap
+# --- Step 4: Hierarchical clustering + heatmap
 # Filter to rows with disease class annotation
 rows_with_disease <- vuln_meta |>
   dplyr::filter(!is.na(DiseaseClass)) |>
@@ -11905,7 +11905,7 @@ dend_anno$genotype_neuron <- NULL
 # Drop unused levels
 dend_anno$DiseaseClass <- droplevels(dend_anno$DiseaseClass)
 
-# Force drop any tibble/data.frame attributes or S3 classes
+# Force drop any tibble/data.frame attributes or S3 classes in matrix
 vuln_mat_subset <- as.matrix(vuln_mat_subset)
 storage.mode(vuln_mat_subset) <- "numeric"
 attributes(vuln_mat_subset) <- attributes(matrix(0, nrow = nrow(vuln_mat_subset), ncol = ncol(vuln_mat_subset)))
@@ -11919,14 +11919,40 @@ ann_colors_dend <- list(
   DiseaseClass = disease_class_palette[present_classes]
 )
 
+# --- Clean annotation dataframe ---
+dend_anno_df <- as.data.frame(dend_anno)
+dend_anno_df[] <- lapply(dend_anno_df, function(x) {
+  if (is.factor(x)) droplevels(x) else as.character(x)
+})
+
+# Ensure DiseaseClass column is factor with names that match the palette
+dend_anno_df$DiseaseClass <- factor(dend_anno_df$DiseaseClass)
+
+# Verify present levels
+present_classes <- levels(dend_anno_df$DiseaseClass)
+
+# Ensure palette has *exactly* those names
+ann_colors_dend <- list(
+  neuron = c(iN = "grey60", iDA = "grey80"),
+  DiseaseClass = setNames(
+    disease_class_palette[present_classes],
+    present_classes
+  ) 
+)
+
+# Optional: check for NA colors
+print(ann_colors_dend$DiseaseClass)
+any(is.na(ann_colors_dend$DiseaseClass))  # should be FALSE
+
+# Plot heatmap
 pheatmap::pheatmap(
   vuln_mat_subset,
   clustering_distance_rows = "euclidean",
   clustering_method = "ward.D2",
   scale = "none",
   color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
-  #annotation_row = dend_anno,
-  #annotation_colors = ann_colors_dend,
+  annotation_row = dend_anno_df,
+  annotation_colors = ann_colors_dend,
   show_rownames = TRUE,
   show_colnames = TRUE,
   border_color = NA,
@@ -11939,7 +11965,9 @@ pheatmap::pheatmap(
   height = 10
 )
 
-# Step 5: Optional UMAP (requires umap package)
+
+
+# --- Step 5: Optional UMAP (requires umap package)
 if (requireNamespace("umap", quietly = TRUE)) {
   umap_res <- umap::umap(vuln_mat)
   umap_df <- as.data.frame(umap_res$layout) |>
@@ -11957,13 +11985,13 @@ if (requireNamespace("umap", quietly = TRUE)) {
     theme_bw(base_size = 7) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
   
-  ggsave(
-    file.path(out_dir_ppi_vuln, "plots/global", "umap_organelle_vulnerability.pdf"),
-    p_umap, width = 7, height = 6, device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_ppi_vuln, "plots/global", "umap_organelle_vulnerability.pdf"),p_umap, width = 7, height = 6, device = cairo_pdf)
 }
 
 ```
+
+
+
 # to do
 - correlations: should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
 - and then we can calculate the corr based on that. but should have two plots. once ∆ plot across the genotypes for iN and iDA (can be one plot). and then calculate the corr based on that ∆ plot 
@@ -11979,7 +12007,10 @@ ppis gained in KOs? that are not there in KO
 if A-B have a high confidence ppi, and there is B-C etc. can we check if there is C-A. maybe we should first filter by organelle, if they are all in the same organelle and then do the causal chain
 maybe we can pull in bioplex3 into the datset for multimers. if there are several direct interactions, then we can assembke a multimer? and check their stability in a KO background?
 
+- can we plot the organelle vulnerability of PPIs in PCA?
+- PCA loadings make no sense
 
 
 
-
+- bubble plots: 
+remove nucleus
