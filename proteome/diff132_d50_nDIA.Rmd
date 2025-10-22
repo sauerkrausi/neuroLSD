@@ -10681,8 +10681,13 @@ ppi_qc_df <- baseline_edges_union |>
   left_join(shared_long, by = "key") |>
   filter(!is.na(tag))  # keep only edges with organelle annotation
 
-# Step 2: Plotting function for confidence score distributions
-plot_confidence_distribution <- function(df, score_col, out_dir) {
+# Step 2: Generate color palette for all organelle tags
+n_tags <- length(unique(ppi_qc_df$tag))
+organelle_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(n_tags)
+names(organelle_colors) <- sort(unique(ppi_qc_df$tag))
+
+# Step 3: Plotting function for confidence score distributions
+plot_confidence_distribution <- function(df, score_col, out_dir, org_colors) {
   
   # Remove NA values for the specific score
   df_plot <- df |>
@@ -10696,7 +10701,7 @@ plot_confidence_distribution <- function(df, score_col, out_dir) {
   # Plot 1: Density plot by organelle
   p_density <- ggplot(df_plot, aes(x = !!sym(score_col), fill = tag)) +
     geom_density(alpha = 0.6) +
-    scale_fill_brewer(palette = "Set3", name = "Organelle") +
+    scale_fill_manual(values = org_colors, name = "Organelle") +
     labs(
       title = paste(score_col, "distribution by organelle"),
       x = score_col,
@@ -10706,20 +10711,22 @@ plot_confidence_distribution <- function(df, score_col, out_dir) {
     theme(
       panel.grid.minor = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
-      legend.position = "right"
+      legend.position = "right",
+      legend.key.size = unit(0.3, "cm")
     )
   
   ggsave(
     file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")),
-    p_density, width = 7, height = 4, device = cairo_pdf
+    p_density, width = 8, height = 4, device = cairo_pdf
   )
   
   # Plot 2: Box plot by organelle
-  p_box <- ggplot(df_plot, aes(x = tag, y = !!sym(score_col), fill = tag)) +
+  p_box <- ggplot(df_plot, aes(x = reorder(tag, !!sym(score_col), median), 
+                                 y = !!sym(score_col), fill = tag)) +
     geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
-    scale_fill_brewer(palette = "Set3", guide = "none") +
+    scale_fill_manual(values = org_colors, guide = "none") +
     labs(
-      title = paste(score_col, "by organelle"),
+      title = paste(score_col, "by organelle (ordered by median)"),
       x = NULL,
       y = score_col
     ) +
@@ -10732,44 +10739,43 @@ plot_confidence_distribution <- function(df, score_col, out_dir) {
   
   ggsave(
     file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle.pdf")),
-    p_box, width = 6, height = 4, device = cairo_pdf
+    p_box, width = 8, height = 4.5, device = cairo_pdf
   )
   
-  # Plot 3: Scatter plot (row index) - simple QC for score distribution
-  df_plot <- df_plot |>
-    arrange(!!sym(score_col)) |>
-    mutate(row_id = row_number())
-  
-  p_scatter <- ggplot(df_plot, aes(x = row_id, y = !!sym(score_col), color = tag)) +
-    geom_point(size = 0.5, alpha = 0.6) +
-    scale_color_brewer(palette = "Set3", name = "Organelle") +
+  # Plot 3: Histogram with facets by organelle
+  p_hist <- ggplot(df_plot, aes(x = !!sym(score_col), fill = tag)) +
+    geom_histogram(bins = 30, color = "black", linewidth = 0.2) +
+    facet_wrap(~tag, scales = "free_y", ncol = 4) +
+    scale_fill_manual(values = org_colors, guide = "none") +
     labs(
-      title = paste(score_col, "distribution across all PPIs"),
-      x = "PPI index (sorted)",
-      y = score_col
+      title = paste(score_col, "distribution per organelle"),
+      x = score_col,
+      y = "Count"
     ) +
-    theme_bw(base_size = 7) +
+    theme_bw(base_size = 6) +
     theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA)
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      strip.background = element_rect(fill = "white", color = "black")
     )
   
   ggsave(
-    file.path(out_dir, paste0("scatter_", score_col, "_sorted.pdf")),
-    p_scatter, width = 7, height = 4, device = cairo_pdf
+    file.path(out_dir, paste0("histogram_", score_col, "_faceted.pdf")),
+    p_hist, width = 10, height = 8, device = cairo_pdf
   )
 }
 
-# Step 3: Apply to all prediction scores
+# Step 4: Apply to all prediction scores
 for (score in c("RFprob", "AFprob", "AFMprob", "Predictome_conf")) {
   plot_confidence_distribution(
     ppi_qc_df, 
     score, 
-    file.path(out_dir_ppi_vuln, "qc")
+    file.path(out_dir_ppi_vuln, "qc"),
+    organelle_colors
   )
 }
 
-# Step 4: Summary statistics table
+# Step 5: Summary statistics table
 qc_summary <- ppi_qc_df |>
   group_by(tag) |>
   summarise(
@@ -10783,11 +10789,12 @@ qc_summary <- ppi_qc_df |>
     Predictome_conf_mean = mean(Predictome_conf, na.rm = TRUE),
     Predictome_conf_median = median(Predictome_conf, na.rm = TRUE),
     .groups = "drop"
-  )
+  ) |>
+  arrange(desc(n_edges))
 
 write_csv(qc_summary, file.path(out_dir_ppi_vuln, "qc", "confidence_scores_by_organelle.csv"))
 
-# Step 5: Overall score correlation heatmap
+# Step 6: Overall score correlation heatmap
 score_cols <- c("RFprob", "AFprob", "AFMprob", "Predictome_conf")
 cor_matrix <- ppi_qc_df |>
   select(all_of(score_cols)) |>
@@ -10808,6 +10815,34 @@ pheatmap::pheatmap(
   width = 5,
   height = 4
 )
+
+# Step 7: Edge count per organelle barplot
+edge_counts <- ppi_qc_df |>
+  dplyr::count(tag) |>
+  dplyr::rename(n_edges = n) |>
+  dplyr::arrange(desc(n_edges))
+
+p_counts <- ggplot(edge_counts, aes(x = reorder(tag, n_edges), y = n_edges, fill = tag)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = organelle_colors, guide = "none") +
+  coord_flip() +
+  labs(
+    title = "Number of PPIs per organelle",
+    x = NULL,
+    y = "Edge count"
+  ) +
+  theme_bw(base_size = 7) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+  )
+
+ggsave(
+  file.path(out_dir_ppi_vuln, "qc", "barplot_edge_counts_by_organelle.pdf"),
+  p_counts, width = 6, height = 8, device = cairo_pdf
+)
+
+
 ```
 
 ### Vizualiztion of PPI loss
