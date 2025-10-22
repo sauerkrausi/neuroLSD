@@ -10641,16 +10641,13 @@ plot_confidence_distribution <- function(df, score_col, out_dir, org_colors) {
     ) +
     theme_bw(base_size = 7) +
     theme(
-      panel.grid.minor = element_blank(),
+      panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
       legend.position = "right",
       legend.key.size = unit(0.3, "cm")
     )
   
-  ggsave(
-    file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")),
-    p_density, width = 8, height = 4, device = cairo_pdf
-  )
+  ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")),p_density, width = 8, height = 4, device = cairo_pdf)
   
   # Plot 2: Box plot by organelle
   p_box <- ggplot(df_plot, aes(x = reorder(tag, !!sym(score_col), median), 
@@ -10664,15 +10661,12 @@ plot_confidence_distribution <- function(df, score_col, out_dir, org_colors) {
     ) +
     theme_bw(base_size = 7) +
     theme(
-      panel.grid.major.x = element_blank(),
+      panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
   
-  ggsave(
-    file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle.pdf")),
-    p_box, width = 8, height = 4.5, device = cairo_pdf
-  )
+  ggsave(file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle.pdf")),p_box, width = 8, height = 4.5, device = cairo_pdf)
   
   # Plot 3: Histogram with facets by organelle
   p_hist <- ggplot(df_plot, aes(x = !!sym(score_col), fill = tag)) +
@@ -10686,15 +10680,12 @@ plot_confidence_distribution <- function(df, score_col, out_dir, org_colors) {
     ) +
     theme_bw(base_size = 6) +
     theme(
-      panel.grid.minor = element_blank(),
+      panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
       strip.background = element_rect(fill = "white", color = "black")
     )
   
-  ggsave(
-    file.path(out_dir, paste0("histogram_", score_col, "_faceted.pdf")),
-    p_hist, width = 10, height = 8, device = cairo_pdf
-  )
+  ggsave(file.path(out_dir, paste0("histogram_", score_col, "_faceted.pdf")), p_hist, width = 10, height = 8, device = cairo_pdf)
 }
 
 # Step 4: Apply to all prediction scores
@@ -10769,10 +10760,7 @@ p_counts <- ggplot(edge_counts, aes(x = reorder(tag, n_edges), y = n_edges, fill
     panel.border = element_rect(color = "black", fill = NA)
   )
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "qc", "barplot_edge_counts_by_organelle.pdf"),
-  p_counts, width = 6, height = 8, device = cairo_pdf
-)
+ggsave(file.path(out_dir_ppi_vuln, "qc", "barplot_edge_counts_by_organelle.pdf"),p_counts, width = 6, height = 8, device = cairo_pdf)
 
 
 ```
