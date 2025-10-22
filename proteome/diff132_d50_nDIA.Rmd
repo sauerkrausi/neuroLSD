@@ -10603,75 +10603,7 @@ write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_sum
 ```
 
 
-### QC Viz
-```{r}
-# --------- PPI QC Scatterplots: iN vs iDA per confidence score, colored by organelle ---------
-
-# Step 1: Create long-format per PPI × neuron
-ppi_qc_scatter_df <- baseline_edges_union |>
-  select(key, RFprob, AFprob, AFMprob) |>
-  mutate(neuron = "baseline") |>
-  left_join(shared_long, by = "key") |>
-  filter(!is.na(tag))  # tag = organelle
-
-# Step 2: Duplicate into iN and iDA views
-ppi_qc_scatter_df_iN <- ppi_qc_scatter_df |> mutate(neuron = "iN")
-ppi_qc_scatter_df_iDA <- ppi_qc_scatter_df |> mutate(neuron = "iDA")
-
-# Step 3: Wide format with separate columns for iN and iDA per score
-ppi_qc_scatter_df <- full_join(
-  ppi_qc_scatter_df_iN |> 
-    rename_with(~ paste0(.x, "_iN"), .cols = c("RFprob", "AFprob", "AFMprob")) |> 
-    rename(tag_iN = tag),
-  ppi_qc_scatter_df_iDA |> 
-    rename_with(~ paste0(.x, "_iDA"), .cols = c("RFprob", "AFprob", "AFMprob")) |> 
-    rename(tag_iDA = tag),
-  by = "key"
-) |>
-  mutate(tag = coalesce(tag_iN, tag_iDA)) |>
-  select(key, tag, ends_with("_iN"), ends_with("_iDA")) |>
-  filter(!is.na(tag))
-
-# Step 4: Plotting function
-plot_confidence_scatter <- function(df, score_col, out_dir) {
-  df_long <- df |>
-    select(key, tag, !!sym(paste0(score_col, "_iN")), !!sym(paste0(score_col, "_iDA"))) |>
-    pivot_longer(
-      cols = ends_with("_iN") | ends_with("_iDA"),
-      names_to = "neuron",
-      values_to = "confidence",
-      names_pattern = paste0(score_col, "_(.*)")
-    ) |>
-    mutate(neuron = factor(neuron, levels = c("iN", "iDA")),
-           row_id = row_number())
-
-  p <- ggplot(df_long, aes(x = row_id, y = confidence, color = neuron)) +
-    geom_point(size = 0.7, alpha = 0.8) +
-    facet_wrap(~neuron, nrow = 1, scales = "free_x") +
-    scale_color_manual(values = c(iN = "grey60", iDA = "skyblue2"), guide = "none") +
-    labs(
-      title = paste(score_col, "confidence per neuron type"),
-      x = "Row Index",
-      y = score_col
-    ) +
-    theme_bw(base_size = 7) +
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA)
-    )
-
-  ggsave(file.path(out_dir, paste0("scatter_", score_col, "_neuron_facet.pdf")),
-         p, width = 6, height = 3.5, device = cairo_pdf)
-}
-
-# Step 5: Apply to all 3 score types
-for (score in c("RFprob", "AFprob", "AFMprob")) {
-  plot_confidence_scatter(ppi_qc_scatter_df, score, file.path(out_dir_ppi_vuln, "qc"))
-}
-
-```
-
-### QC Viz #2
+### QC Vizualization of prediction mapping based on organelles and annotations
 ```{r}
 # --------- PPI QC Scatterplots: Confidence score distributions by organelle ---------
 
