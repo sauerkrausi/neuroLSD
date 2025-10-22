@@ -11453,7 +11453,281 @@ plot_ppi_diseaseclass_impact(
 
 
 
+### ?? Per-KO PPI vulnerability profiles by confidence scores
+```{r}
+### Per-KO PPI vulnerability profiles by confidence scores
+# --------- Per-KO PPI loss profiles: confidence score distributions for lost vs retained edges ---------
 
+# Step 1: Create output directory structure
+dir.create(file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"), recursive = TRUE, showWarnings = FALSE)
+
+# Step 2: Join ko_edge_states with baseline edge properties + organelle tags
+# Make sure we're selecting the right columns from baseline_edges_union
+ko_ppi_profiles <- ko_edge_states |>
+  dplyr::select(key, genotype, neuron, state, genotype_neuron) |>
+  dplyr::left_join(
+    baseline_edges_union |> 
+      dplyr::select(key, RFprob, AFprob, AFMprob, Predictome_conf),
+    by = "key"
+  ) |>
+  dplyr::left_join(shared_long, by = "key") |>
+  dplyr::filter(!is.na(tag), state %in% c("lost", "retained")) |>
+  dplyr::mutate(
+    state = factor(state, levels = c("retained", "lost"))
+  )
+
+# Check if columns exist
+print("Column names in ko_ppi_profiles:")
+print(colnames(ko_ppi_profiles))
+
+# Check for missing confidence scores
+print("Summary of confidence scores:")
+print(summary(ko_ppi_profiles[, c("RFprob", "AFprob", "AFMprob", "Predictome_conf")]))
+
+# Step 3: Generate color palettes
+n_tags <- length(unique(ko_ppi_profiles$tag))
+organelle_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(n_tags)
+names(organelle_colors) <- sort(unique(ko_ppi_profiles$tag))
+
+state_colors <- c(retained = "grey70", lost = "#C51B7D")
+
+# Step 4: Plotting function per KO × neuron
+plot_ko_neuron_profile <- function(df, geno, nt, score_col, out_dir, org_colors, state_cols) {
+  
+  # Check if score_col exists
+  if (!score_col %in% colnames(df)) {
+    message("Column ", score_col, " not found in data; skipping.")
+    return(invisible(NULL))
+  }
+  
+  df_subset <- df |>
+    dplyr::filter(genotype == geno, neuron == nt) |>
+    dplyr::filter(!is.na(.data[[score_col]]))  # Use .data[[]] for dynamic column reference
+  
+  if (nrow(df_subset) < 10) {
+    message("Insufficient data for ", geno, " ", nt, " (", score_col, "); skipping.")
+    return(invisible(NULL))
+  }
+  
+  ko_label <- paste0(geno, "_", nt)
+  
+  # Plot 1: Density by state (lost vs retained)
+  p_density_state <- ggplot(df_subset, aes(x = .data[[score_col]], fill = state)) +
+    geom_density(alpha = 0.7) +
+    scale_fill_manual(values = state_cols, name = "Edge state") +
+    labs(
+      title = paste(score_col, "– lost vs retained"),
+      subtitle = ko_label,
+      x = score_col,
+      y = "Density"
+    ) +
+    theme_bw(base_size = 7) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "top"
+    )
+  
+  ggsave(
+    file.path(out_dir, paste0(ko_label, "_density_", score_col, "_by_state.pdf")),
+    p_density_state, width = 5, height = 4, device = cairo_pdf
+  )
+  
+  # Plot 2: Box plot by organelle, faceted by state
+  p_box_org <- ggplot(df_subset, aes(x = reorder(tag, .data[[score_col]], median, na.rm = TRUE), 
+                                      y = .data[[score_col]], fill = tag)) +
+    geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.5) +
+    facet_wrap(~state, nrow = 1) +
+    scale_fill_manual(values = org_colors, guide = "none") +
+    labs(
+      title = paste(score_col, "by organelle"),
+      subtitle = ko_label,
+      x = NULL,
+      y = score_col
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      strip.background = element_rect(fill = "white", color = "black"),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  
+  ggsave(
+    file.path(out_dir, paste0(ko_label, "_boxplot_", score_col, "_by_organelle.pdf")),
+    p_box_org, width = 9, height = 4, device = cairo_pdf
+  )
+  
+  # Plot 3: Histogram faceted by organelle + state overlay
+  p_hist_org <- ggplot(df_subset, aes(x = .data[[score_col]], fill = state)) +
+    geom_histogram(bins = 20, position = "identity", alpha = 0.6, color = "black", linewidth = 0.1) +
+    facet_wrap(~tag, scales = "free_y", ncol = 4) +
+    scale_fill_manual(values = state_cols, name = "State") +
+    labs(
+      title = paste(score_col, "distribution per organelle"),
+      subtitle = ko_label,
+      x = score_col,
+      y = "Count"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      strip.background = element_rect(fill = "white", color = "black"),
+      legend.position = "top"
+    )
+  
+  ggsave(
+    file.path(out_dir, paste0(ko_label, "_histogram_", score_col, "_faceted.pdf")),
+    p_hist_org, width = 10, height = 7, device = cairo_pdf
+  )
+}
+
+# Step 5: Loop over all KO × neuron combinations
+ko_neuron_combos <- ko_ppi_profiles |>
+  dplyr::distinct(genotype, neuron)
+
+for (i in seq_len(nrow(ko_neuron_combos))) {
+  geno <- ko_neuron_combos$genotype[i]
+  nt   <- ko_neuron_combos$neuron[i]
+  
+  message("Processing: ", geno, " - ", nt)
+  
+  for (score in c("RFprob", "AFprob", "AFMprob", "Predictome_conf")) {
+    plot_ko_neuron_profile(
+      df = ko_ppi_profiles,
+      geno = geno,
+      nt = nt,
+      score_col = score,
+      out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
+      org_colors = organelle_colors,
+      state_cols = state_colors
+    )
+  }
+}
+
+# Step 6: Summary table per KO × neuron × state
+ko_neuron_score_summary <- ko_ppi_profiles |>
+  dplyr::group_by(genotype, neuron, state) |>
+  dplyr::summarise(
+    n_edges = n(),
+    RFprob_mean = mean(RFprob, na.rm = TRUE),
+    RFprob_median = median(RFprob, na.rm = TRUE),
+    AFprob_mean = mean(AFprob, na.rm = TRUE),
+    AFprob_median = median(AFprob, na.rm = TRUE),
+    AFMprob_mean = mean(AFMprob, na.rm = TRUE),
+    AFMprob_median = median(AFMprob, na.rm = TRUE),
+    Predictome_conf_mean = mean(Predictome_conf, na.rm = TRUE),
+    Predictome_conf_median = median(Predictome_conf, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(genotype, neuron, state)
+
+write_csv(
+  ko_neuron_score_summary,
+  file.path(out_dir_ppi_vuln, "tables", "ko_neuron_confidence_by_state.csv")
+)
+```
+
+
+
+
+
+### ?? Dimensionality reduction of PPI vulnerability landscape
+```{r}
+# --------- Global n-space representation via PCA/UMAP ---------
+
+# Step 1: Build feature matrix (KO × neuron as rows; organelles as features)
+vuln_matrix <- ko_edge_states |>
+  dplyr::filter(OrgPair == "same") |>
+  dplyr::left_join(shared_long, by = "key") |>
+  dplyr::filter(!is.na(tag)) |>
+  dplyr::mutate(lost = as.integer(state == "lost")) |>
+  dplyr::group_by(genotype, neuron, tag) |>
+  dplyr::summarise(frac_lost = sum(lost) / n(), .groups = "drop") |>
+  tidyr::pivot_wider(
+    names_from = tag,
+    values_from = frac_lost,
+    values_fill = 0
+  )
+
+# Extract metadata
+vuln_meta <- vuln_matrix |>
+  dplyr::select(genotype, neuron) |>
+  dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_")) |>
+  dplyr::left_join(disease_classes_dataframe, by = c("genotype" = "sample"))
+
+# Numeric matrix for PCA
+vuln_mat <- as.matrix(vuln_matrix[, -(1:2)])
+rownames(vuln_mat) <- vuln_meta$genotype_neuron
+
+# Step 2: PCA
+pca_res <- prcomp(vuln_mat, scale. = TRUE, center = TRUE)
+pca_df <- as.data.frame(pca_res$x) |>
+  tibble::rownames_to_column("genotype_neuron") |>
+  dplyr::left_join(vuln_meta, by = "genotype_neuron")
+
+# Plot PCA
+p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2, color = DiseaseClass, shape = neuron)) +
+  geom_point(size = 3, alpha = 0.8) +
+  ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 20) +
+  scale_color_manual(values = disease_class_palette, name = "Disease class") +
+  scale_shape_manual(values = c(iN = 16, iDA = 17), name = "Neuron type") +
+  labs(
+    title = "PCA of organelle-specific PPI vulnerability",
+    x = paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100, 1), "%)"),
+    y = paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100, 1), "%)")
+  ) +
+  theme_bw(base_size = 7) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+  )
+
+ggsave(
+  file.path(out_dir_ppi_vuln, "plots/global", "pca_organelle_vulnerability.pdf"),
+  p_pca, width = 7, height = 6, device = cairo_pdf
+)
+
+# Step 3: Loadings plot (which organelles drive PC1/PC2)
+loadings_df <- as.data.frame(pca_res$rotation[, 1:2]) |>
+  tibble::rownames_to_column("organelle")
+
+p_loadings <- ggplot(loadings_df, aes(x = PC1, y = PC2, label = organelle)) +
+  geom_segment(aes(xend = 0, yend = 0), arrow = arrow(length = unit(0.2, "cm")), 
+               color = "grey30", linewidth = 0.5) +
+  geom_text(size = 2.5, hjust = 0, nudge_x = 0.01) +
+  labs(title = "PCA loadings: organelle contributions", x = "PC1", y = "PC2") +
+  theme_bw(base_size = 7) +
+  theme(panel.grid = element_blank())
+
+ggsave(
+  file.path(out_dir_ppi_vuln, "plots/global", "pca_loadings_organelles.pdf"),
+  p_loadings, width = 6, height = 6, device = cairo_pdf
+)
+
+# Step 4: Optional UMAP (requires umap package)
+if (requireNamespace("umap", quietly = TRUE)) {
+  umap_res <- umap::umap(vuln_mat)
+  umap_df <- as.data.frame(umap_res$layout) |>
+    tibble::rownames_to_column("genotype_neuron") |>
+    dplyr::left_join(vuln_meta, by = "genotype_neuron")
+  
+  p_umap <- ggplot(umap_df, aes(x = V1, y = V2, color = DiseaseClass, shape = neuron)) +
+    geom_point(size = 3, alpha = 0.8) +
+    ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 20) +
+    scale_color_manual(values = disease_class_palette, name = "Disease class") +
+    scale_shape_manual(values = c(iN = 16, iDA = 17), name = "Neuron type") +
+    labs(title = "UMAP of organelle-specific PPI vulnerability", x = "UMAP1", y = "UMAP2") +
+    theme_bw(base_size = 7) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  
+  ggsave(
+    file.path(out_dir_ppi_vuln, "plots/global", "umap_organelle_vulnerability.pdf"),
+    p_umap, width = 7, height = 6, device = cairo_pdf
+  )
+}
+```
 # to do
 - correlations: should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
 - and then we can calculate the corr based on that. but should have two plots. once ∆ plot across the genotypes for iN and iDA (can be one plot). and then calculate the corr based on that ∆ plot 
