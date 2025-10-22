@@ -11629,7 +11629,125 @@ write_csv(
 )
 ```
 
+### ??Per-KO × Neuron organelle-specific PPI state bars
+```{r}
+# --------- Stacked bars: lost vs retained PPIs per organelle for each KO × neuron ---------
 
+plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
+  
+  # Prepare data: count lost/retained per KO × neuron × organelle
+  organelle_state_counts <- df |>
+    dplyr::group_by(genotype, neuron, tag, state) |>
+    dplyr::summarise(n = n(), .groups = "drop") |>
+    dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_"))
+  
+  # Get unique KO × neuron combinations
+  ko_neuron_combos <- organelle_state_counts |>
+    dplyr::distinct(genotype, neuron, genotype_neuron)
+  
+  # Plot for each KO × neuron
+  for (i in seq_len(nrow(ko_neuron_combos))) {
+    geno <- ko_neuron_combos$genotype[i]
+    nt   <- ko_neuron_combos$neuron[i]
+    ko_label <- ko_neuron_combos$genotype_neuron[i]
+    
+    df_subset <- organelle_state_counts |>
+      dplyr::filter(genotype == geno, neuron == nt)
+    
+    if (nrow(df_subset) == 0) next
+    
+    # Plot 1: Stacked counts (absolute)
+    p_counts <- ggplot(df_subset, aes(x = reorder(tag, -n, sum), y = n, fill = state)) +
+      geom_col(position = "stack", color = "black", linewidth = 0.2) +
+      scale_fill_manual(
+        values = c(retained = "grey70", lost = "#C51B7D"),
+        name = "State"
+      ) +
+      labs(
+        title = paste("PPI state per organelle –", ko_label),
+        x = NULL,
+        y = "Number of PPIs"
+      ) +
+      theme_bw(base_size = 7) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+      )
+    
+    ggsave(
+      file.path(out_dir, paste0(ko_label, "_bars_organelle_state_counts.pdf")),
+      p_counts, width = 7, height = 4.5, device = cairo_pdf
+    )
+    
+    # Plot 2: Stacked fractions (proportions)
+    p_fractions <- ggplot(df_subset, aes(x = reorder(tag, -n, sum), y = n, fill = state)) +
+      geom_col(position = "fill", color = "black", linewidth = 0.2) +
+      scale_y_continuous(labels = scales::percent) +
+      scale_fill_manual(
+        values = c(retained = "grey70", lost = "#C51B7D"),
+        name = "State"
+      ) +
+      labs(
+        title = paste("PPI state composition per organelle –", ko_label),
+        x = NULL,
+        y = "Fraction of PPIs"
+      ) +
+      theme_bw(base_size = 7) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+      )
+    
+    ggsave(
+      file.path(out_dir, paste0(ko_label, "_bars_organelle_state_fractions.pdf")),
+      p_fractions, width = 7, height = 4.5, device = cairo_pdf
+    )
+    
+    # Plot 3: Side-by-side bars by organelle (colored by organelle)
+    p_organelle_color <- ggplot(df_subset, aes(x = state, y = n, fill = tag)) +
+      geom_col(position = "stack", color = "black", linewidth = 0.2) +
+      scale_fill_manual(values = org_colors, name = "Organelle") +
+      labs(
+        title = paste("Organelle contribution to PPI states –", ko_label),
+        x = "Edge state",
+        y = "Number of PPIs"
+      ) +
+      theme_bw(base_size = 7) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.key.size = unit(0.3, "cm")
+      )
+    
+    ggsave(
+      file.path(out_dir, paste0(ko_label, "_bars_state_by_organelle.pdf")),
+      p_organelle_color, width = 6, height = 4.5, device = cairo_pdf
+    )
+  }
+  
+  # Summary table: counts per KO × neuron × organelle × state
+  summary_table <- organelle_state_counts |>
+    dplyr::arrange(genotype, neuron, tag, state)
+  
+  write_csv(
+    summary_table,
+    file.path(dirname(out_dir), "tables", "ko_neuron_organelle_state_counts.csv")
+  )
+  
+  invisible(summary_table)
+}
+
+# Call the function
+plot_ko_neuron_organelle_bars(
+  df = ko_ppi_profiles,
+  out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
+  org_colors = organelle_colors
+)
+```
 
 
 
