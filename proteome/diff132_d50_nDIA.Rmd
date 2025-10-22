@@ -10754,9 +10754,9 @@ p_counts <- ggplot(edge_counts, aes(x = reorder(tag, n_edges), y = n_edges, fill
     x = NULL,
     y = "Edge count"
   ) +
-  theme_bw(base_size = 7) +
+  theme_bw(base_size = 6) +
   theme(
-    panel.grid.major.y = element_blank(),
+    panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA)
   )
 
