@@ -12189,6 +12189,7 @@ print(head(trimer_broken_org_ko, 20))
 
 
 # --- Step 7: Visualization - barplot of broken trimers per KO ---
+  # Step 7.1: EDGES: Visualization - barplot of broken trimers per KO ---
 p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken), y = n_broken, fill = neuron)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.2) +
   scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
@@ -12207,7 +12208,30 @@ p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken
 ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),p_trimer_bar, width = 9, height = 5, device = cairo_pdf)
 
 
+  # Step 7b: TRIMERS: Visualization – affected trimers per KO ---
+p_trimer_affected_bar <- ggplot(
+  trimer_affected_org_ko |> dplyr::filter(shared_organelle != "Other"),
+  aes(x = reorder(genotype, -frac_affected), y = affected, fill = neuron)
+) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
+  labs(
+    title = "Affected trimers per KO",
+    x = NULL,
+    y = "Number of affected trimers"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_ko.pdf"),p_trimer_affected_bar,width = 9,height = 5,device = cairo_pdf)
+
+
 # --- Step 8: Heatmap - broken trimers by organelle × KO ---
+# Step 8: EDGES: Heatmap - broken trimers by organelle × KO ---
 for (nt in c("iN", "iDA")) {
   trimer_org_wide <- trimer_broken_org_ko |>
     dplyr::filter(neuron == nt) |>
@@ -12239,6 +12263,48 @@ for (nt in c("iN", "iDA")) {
     cellheight = 10,
     main = paste("Broken trimers by organelle –", nt),
     filename = file.path(out_dir_ppi_vuln, "plots/multimer", paste0("heatmap_broken_trimers_by_organelle_", nt, ".pdf")),
+    width = 10,
+    height = 8
+  )
+}
+
+  # Step 8b: TRIMERS: Heatmap – affected trimers by organelle × KO ---
+for (nt in c("iN", "iDA")) {
+  trimer_aff_org_wide <- trimer_affected_org_ko |>
+    dplyr::filter(neuron == nt, shared_organelle != "Other") |>
+    dplyr::group_by(genotype, shared_organelle) |>
+    dplyr::summarise(
+      n_affected = sum(affected, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    tidyr::pivot_wider(
+      names_from = shared_organelle,
+      values_from = n_affected,
+      values_fill = 0
+    )
+
+  if (nrow(trimer_aff_org_wide) < 2 || ncol(trimer_aff_org_wide) < 3) {
+    message("Insufficient data for affected-trimer heatmap (", nt, "); skipping.")
+    next
+  }
+
+  trimer_aff_mat <- as.matrix(trimer_aff_org_wide[, -1])
+  rownames(trimer_aff_mat) <- trimer_aff_org_wide$genotype
+
+  pheatmap::pheatmap(
+    trimer_aff_mat,
+    scale = "none",
+    color = colorRampPalette(c("white", "#C51B7D"))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    border_color = NA,
+    fontsize = 6,
+    cellwidth = 10,
+    cellheight = 10,
+    main = paste("Affected trimers by organelle –", nt),
+    filename = file.path(out_dir_ppi_vuln, "plots/multimer",paste0("heatmap_affected_trimers_by_organelle_", nt, ".pdf")),
     width = 10,
     height = 8
   )
