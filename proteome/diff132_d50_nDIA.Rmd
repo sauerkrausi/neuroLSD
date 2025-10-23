@@ -11627,8 +11627,214 @@ write_csv(ko_neuron_score_summary,file.path(out_dir_ppi_vuln, "tables", "ko_neur
 
 
 
-### Multimer (Trimer) Analysis
 
+##### Per-KO × Neuron organelle-specific PPI state
+```{r}
+# --------- Stacked bars: lost vs retained PPIs per organelle for each KO × neuron ---------
+
+# --- Step 1: Define plotting function for viz PPIs on organelle levels (KO x neurontype)
+plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
+  
+  # Prepare data: count lost/retained per KO × neuron × organelle
+  organelle_state_counts <- df |>
+    dplyr::group_by(genotype, neuron, tag, state) |>
+    dplyr::summarise(n = n(), .groups = "drop") |>
+    dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_"))
+  
+  # Get unique KO × neuron combinations
+  ko_neuron_combos <- organelle_state_counts |>
+    dplyr::distinct(genotype, neuron, genotype_neuron)
+  
+  # Plot for each KO × neuron
+  for (i in seq_len(nrow(ko_neuron_combos))) {
+    geno <- ko_neuron_combos$genotype[i]
+    nt   <- ko_neuron_combos$neuron[i]
+    ko_label <- ko_neuron_combos$genotype_neuron[i]
+    
+    df_subset <- organelle_state_counts |>
+      dplyr::filter(genotype == geno, neuron == nt)
+    
+    if (nrow(df_subset) == 0) next
+    
+    # Plot 1: Stacked counts (absolute)
+    p_counts <- ggplot(df_subset, aes(x = reorder(tag, -n, sum), y = n, fill = state)) +
+      geom_col(position = "stack", color = "black", linewidth = 0.2) +
+      scale_fill_manual(
+        values = c(retained = "grey70", lost = "#C51B7D"),
+        name = "State"
+      ) +
+      labs(
+        title = paste("PPI state per organelle –", ko_label),
+        x = NULL,
+        y = "Number of PPIs"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+      )
+    
+    ggsave(file.path(out_dir, paste0(ko_label, "_bars_organelle_state_counts.pdf")),p_counts, width = 5, height = 5, device = cairo_pdf)
+    
+    # Plot 2: Stacked fractions (proportions)
+    p_fractions <- ggplot(df_subset, aes(x = reorder(tag, -n, sum), y = n, fill = state)) +
+      geom_col(position = "fill", color = "black", linewidth = 0.2) +
+      scale_y_continuous(labels = scales::percent) +
+      scale_fill_manual(
+        values = c(retained = "grey70", lost = "#C51B7D"),
+        name = "State"
+      ) +
+      labs(
+        title = paste("PPI state composition per organelle –", ko_label),
+        x = NULL,
+        y = "Fraction of PPIs"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+      )
+    
+    ggsave(file.path(out_dir, paste0(ko_label, "_bars_organelle_state_fractions.pdf")),p_fractions, width = 5, height = 5, device = cairo_pdf)
+  }
+  
+  # Summary table: counts per KO × neuron × organelle × state
+  summary_table <- organelle_state_counts |>
+    dplyr::arrange(genotype, neuron, tag, state)
+  
+  write_csv(summary_table,file.path(out_dir_ppi_vuln, "tables", "ko_neuron_organelle_state_counts.csv"))
+  
+  invisible(summary_table)
+}
+
+
+# --- Step 2: Call the function
+plot_ko_neuron_organelle_bars(
+  df = ko_ppi_profiles,
+  out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
+  org_colors = organelle_colors
+)
+
+
+
+# --------- iN vs iDA bubble plots per KO ---------
+
+# --- Step 3: Bubble plot of iN vs iDA effect on PPIs loss per organelle annotation
+plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
+  
+  # --- Step 3.1: Count lost PPIs per KO × neuron × organelle
+  organelle_counts <- df |>
+    dplyr::filter(state == "lost") |>
+    dplyr::group_by(genotype, neuron, tag) |>
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
+  
+  # --- Step 3.2: Count total PPIs per KO × neuron × organelle (for normalization)
+  totals <- df |>
+    dplyr::group_by(genotype, neuron, tag) |>
+    dplyr::summarise(n_total = dplyr::n(), .groups = "drop")
+  
+  # --- Step 3.3: Merge totals and compute fraction lost
+  organelle_counts <- organelle_counts |>
+    dplyr::left_join(totals, by = c("genotype", "neuron", "tag")) |>
+    dplyr::mutate(frac_lost = ifelse(n_total > 0, n_lost / n_total, NA_real_)) |>
+    dplyr::filter(tag != "Nucleus")   # optional filter
+  
+  # --- Step 3.4: Pivot to wide format (iN vs iDA)
+  organelle_wide <- organelle_counts |>
+    tidyr::pivot_wider(
+      names_from = neuron,
+      values_from = c(n_lost, frac_lost),
+      values_fill = 0
+    )
+  
+  # --- Step 3.5: Loop over each KO
+  all_kos <- unique(organelle_wide$genotype)
+  
+  for (geno in all_kos) {
+    
+    df_ko <- organelle_wide |>
+      dplyr::filter(genotype == geno)
+    
+    if (nrow(df_ko) == 0) next
+    
+    # ABSOLUTE plot: iN_lost vs iDA_lost
+    df_abs <- df_ko |>
+      dplyr::mutate(
+        total_lost = n_lost_iN + n_lost_iDA
+      )
+    
+    max_val_abs <- max(c(df_abs$n_lost_iN, df_abs$n_lost_iDA), na.rm = TRUE)
+    axis_lim_abs <- c(0, max_val_abs * 1.1)
+    
+    p_abs <- ggplot(df_abs, aes(x = n_lost_iN, y = n_lost_iDA, fill = tag, size = total_lost)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+      geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 30, seed = 42) +
+      scale_fill_manual(values = org_colors, name = "Organelle") +
+      scale_size_continuous(range = c(2, 10), guide = "none") +
+      coord_fixed(ratio = 1, xlim = axis_lim_abs, ylim = axis_lim_abs, clip = "on") +
+      labs(
+        title = paste0(geno, " – Lost PPIs (absolute)"),
+        x = "Lost PPIs in iN",
+        y = "Lost PPIs in iDA"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(),
+            panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+            legend.position = "right",
+            legend.key.size = unit(0.3, "cm"))
+    
+    ggsave(file.path(out_dir, paste0(geno, "_bubble_absolute_iN_vs_iDA.pdf")),p_abs, width = 6, height = 5, device = cairo_pdf)
+    
+    
+    # RELATIVE plot: normalized by total PPIs per neuron: (iDA_lost / total_iDA) ÷ (iN_lost / total_iN)
+    df_rel <- df_ko |>
+      dplyr::mutate(
+        total_lost = n_lost_iN + n_lost_iDA
+      )
+    
+    max_val_rel <- max(c(df_rel$frac_lost_iN, df_rel$frac_lost_iDA), na.rm = TRUE)
+    axis_lim_rel <- c(0, max_val_rel * 1.1)
+    
+    p_rel <- ggplot(df_rel, aes(x = frac_lost_iN, y = frac_lost_iDA, fill = tag, size = total_lost)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+      geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 30, seed = 42) +
+      scale_fill_manual(values = org_colors, name = "Organelle") +
+      scale_size_continuous(range = c(2, 10), guide = "none") +
+      coord_fixed(ratio = 1, xlim = axis_lim_rel, ylim = axis_lim_rel, clip = "on") +
+      labs(
+        title = paste0(geno, " – Lost PPIs (relative to total)"),
+        x = "Fraction lost in iN",
+        y = "Fraction lost in iDA"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(),
+            panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+            legend.position = "right",
+            legend.key.size = unit(0.3, "cm"))
+    
+    ggsave(file.path(out_dir, paste0(geno, "_bubble_relative_iN_vs_iDA.pdf")),p_rel, width = 6, height = 5, device = cairo_pdf)
+  }
+}
+
+
+# --- Step 4: Call the function
+plot_ko_bubble_in_vs_ida(
+  df = ko_ppi_profiles,
+  out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
+  org_colors = organelle_colors
+)
+
+```
+
+
+
+### Multimer (Trimer) Analysis
 ```{r}
 # --------- Trimer identification and vulnerability analysis ---------
 
@@ -11870,10 +12076,7 @@ message("Edge states joined successfully!")
 
 
 # Save detailed trimer states
-write_csv(
-  trimers_ko_states,
-  file.path(out_dir_ppi_vuln, "tables", "trimers_ko_states.csv")
-)
+write_csv(trimers_ko_states,file.path(out_dir_ppi_vuln, "tables", "trimers_ko_states.csv"))
 
 
 # --- Step 5: Summary: broken trimers per KO × neuron ---
@@ -11891,10 +12094,7 @@ trimer_ko_summary <- trimers_ko_states |>
   ) |>
   dplyr::arrange(desc(frac_broken))
 
-write_csv(
-  trimer_ko_summary,
-  file.path(out_dir_ppi_vuln, "tables", "trimer_ko_summary.csv")
-)
+write_csv(trimer_ko_summary,file.path(out_dir_ppi_vuln, "tables", "trimer_ko_summary.csv"))
 
 message("Trimer breakage summary:")
 print(trimer_ko_summary)
@@ -11910,10 +12110,7 @@ trimer_broken_org_ko <- trimers_ko_states |>
   dplyr::summarise(n_broken = n(), .groups = "drop") |>
   dplyr::arrange(desc(n_broken))
 
-write_csv(
-  trimer_broken_org_ko,
-  file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_ko.csv")
-)
+write_csv(trimer_broken_org_ko, file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_ko.csv"))
 
 # Summary by organelle (across all KOs)
 trimer_broken_by_org <- trimer_broken_org_ko |>
@@ -11921,10 +12118,7 @@ trimer_broken_by_org <- trimer_broken_org_ko |>
   dplyr::summarise(n_broken = sum(n_broken), .groups = "drop") |>
   dplyr::arrange(desc(n_broken))
 
-write_csv(
-  trimer_broken_by_org,
-  file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_summary.csv")
-)
+write_csv(trimer_broken_by_org,file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_summary.csv"))
 
 # Partial trimers (1 edge lost)
 trimer_partial_org_ko <- trimers_ko_states |>
@@ -11934,10 +12128,7 @@ trimer_partial_org_ko <- trimers_ko_states |>
   dplyr::summarise(n_partial = n(), .groups = "drop") |>
   dplyr::arrange(desc(n_partial))
 
-write_csv(
-  trimer_partial_org_ko,
-  file.path(out_dir_ppi_vuln, "tables", "trimer_partial_by_organelle_ko.csv")
-)
+write_csv(trimer_partial_org_ko,file.path(out_dir_ppi_vuln, "tables", "trimer_partial_by_organelle_ko.csv"))
 
 # Summary by organelle (across all KOs)
 trimer_partial_by_org <- trimer_partial_org_ko |>
@@ -11970,10 +12161,7 @@ p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
   )
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),
-  p_trimer_bar, width = 9, height = 5, device = cairo_pdf
-)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),p_trimer_bar, width = 9, height = 5, device = cairo_pdf)
 
 
 # --- Step 8: Heatmap - broken trimers by organelle × KO ---
@@ -12002,6 +12190,7 @@ for (nt in c("iN", "iDA")) {
     cluster_cols = TRUE,
     show_rownames = TRUE,
     show_colnames = TRUE,
+    border_color = NA,
     fontsize = 6,
     cellwidth = 10,
     cellheight = 10,
@@ -12011,213 +12200,9 @@ for (nt in c("iN", "iDA")) {
     height = 8
   )
 }
-```
 
-##### Per-KO × Neuron organelle-specific PPI state
-```{r}
-# --------- Stacked bars: lost vs retained PPIs per organelle for each KO × neuron ---------
-
-# --- Step 1: Define plotting function for viz PPIs on organelle levels (KO x neurontype)
-plot_ko_neuron_organelle_bars <- function(df, out_dir, org_colors) {
-  
-  # Prepare data: count lost/retained per KO × neuron × organelle
-  organelle_state_counts <- df |>
-    dplyr::group_by(genotype, neuron, tag, state) |>
-    dplyr::summarise(n = n(), .groups = "drop") |>
-    dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_"))
-  
-  # Get unique KO × neuron combinations
-  ko_neuron_combos <- organelle_state_counts |>
-    dplyr::distinct(genotype, neuron, genotype_neuron)
-  
-  # Plot for each KO × neuron
-  for (i in seq_len(nrow(ko_neuron_combos))) {
-    geno <- ko_neuron_combos$genotype[i]
-    nt   <- ko_neuron_combos$neuron[i]
-    ko_label <- ko_neuron_combos$genotype_neuron[i]
-    
-    df_subset <- organelle_state_counts |>
-      dplyr::filter(genotype == geno, neuron == nt)
-    
-    if (nrow(df_subset) == 0) next
-    
-    # Plot 1: Stacked counts (absolute)
-    p_counts <- ggplot(df_subset, aes(x = reorder(tag, -n, sum), y = n, fill = state)) +
-      geom_col(position = "stack", color = "black", linewidth = 0.2) +
-      scale_fill_manual(
-        values = c(retained = "grey70", lost = "#C51B7D"),
-        name = "State"
-      ) +
-      labs(
-        title = paste("PPI state per organelle –", ko_label),
-        x = NULL,
-        y = "Number of PPIs"
-      ) +
-      theme_bw(base_size = 6) +
-      theme(
-        panel.grid = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "top"
-      )
-    
-    ggsave(file.path(out_dir, paste0(ko_label, "_bars_organelle_state_counts.pdf")),p_counts, width = 5, height = 5, device = cairo_pdf)
-    
-    # Plot 2: Stacked fractions (proportions)
-    p_fractions <- ggplot(df_subset, aes(x = reorder(tag, -n, sum), y = n, fill = state)) +
-      geom_col(position = "fill", color = "black", linewidth = 0.2) +
-      scale_y_continuous(labels = scales::percent) +
-      scale_fill_manual(
-        values = c(retained = "grey70", lost = "#C51B7D"),
-        name = "State"
-      ) +
-      labs(
-        title = paste("PPI state composition per organelle –", ko_label),
-        x = NULL,
-        y = "Fraction of PPIs"
-      ) +
-      theme_bw(base_size = 6) +
-      theme(
-        panel.grid = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "top"
-      )
-    
-    ggsave(file.path(out_dir, paste0(ko_label, "_bars_organelle_state_fractions.pdf")),p_fractions, width = 5, height = 5, device = cairo_pdf)
-  }
-  
-  # Summary table: counts per KO × neuron × organelle × state
-  summary_table <- organelle_state_counts |>
-    dplyr::arrange(genotype, neuron, tag, state)
-  
-  write_csv(summary_table,file.path(out_dir_ppi_vuln, "tables", "ko_neuron_organelle_state_counts.csv"))
-  
-  invisible(summary_table)
-}
-
-
-# --- Step 2: Call the function
-plot_ko_neuron_organelle_bars(
-  df = ko_ppi_profiles,
-  out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
-  org_colors = organelle_colors
-)
-
-
-
-# --------- iN vs iDA bubble plots per KO ---------
-
-# --- Step 3: Bubble plot of iN vs iDA effect on PPIs loss per organelle annotation
-plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
-  
-  # --- Step 3.1: Count lost PPIs per KO × neuron × organelle
-  organelle_counts <- df |>
-    dplyr::filter(state == "lost") |>
-    dplyr::group_by(genotype, neuron, tag) |>
-    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
-  
-  # --- Step 3.2: Count total PPIs per KO × neuron × organelle (for normalization)
-  totals <- df |>
-    dplyr::group_by(genotype, neuron, tag) |>
-    dplyr::summarise(n_total = dplyr::n(), .groups = "drop")
-  
-  # --- Step 3.3: Merge totals and compute fraction lost
-  organelle_counts <- organelle_counts |>
-    dplyr::left_join(totals, by = c("genotype", "neuron", "tag")) |>
-    dplyr::mutate(frac_lost = ifelse(n_total > 0, n_lost / n_total, NA_real_)) |>
-    dplyr::filter(tag != "Nucleus")   # optional filter
-  
-  # --- Step 3.4: Pivot to wide format (iN vs iDA)
-  organelle_wide <- organelle_counts |>
-    tidyr::pivot_wider(
-      names_from = neuron,
-      values_from = c(n_lost, frac_lost),
-      values_fill = 0
-    )
-  
-  # --- Step 3.5: Loop over each KO
-  all_kos <- unique(organelle_wide$genotype)
-  
-  for (geno in all_kos) {
-    
-    df_ko <- organelle_wide |>
-      dplyr::filter(genotype == geno)
-    
-    if (nrow(df_ko) == 0) next
-    
-    # ABSOLUTE plot: iN_lost vs iDA_lost
-    df_abs <- df_ko |>
-      dplyr::mutate(
-        total_lost = n_lost_iN + n_lost_iDA
-      )
-    
-    max_val_abs <- max(c(df_abs$n_lost_iN, df_abs$n_lost_iDA), na.rm = TRUE)
-    axis_lim_abs <- c(0, max_val_abs * 1.1)
-    
-    p_abs <- ggplot(df_abs, aes(x = n_lost_iN, y = n_lost_iDA, fill = tag, size = total_lost)) +
-      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
-      geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
-      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 30, seed = 42) +
-      scale_fill_manual(values = org_colors, name = "Organelle") +
-      scale_size_continuous(range = c(2, 10), guide = "none") +
-      coord_fixed(ratio = 1, xlim = axis_lim_abs, ylim = axis_lim_abs, clip = "on") +
-      labs(
-        title = paste0(geno, " – Lost PPIs (absolute)"),
-        x = "Lost PPIs in iN",
-        y = "Lost PPIs in iDA"
-      ) +
-      theme_bw(base_size = 6) +
-      theme(panel.grid = element_blank(),
-            panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
-            legend.position = "right",
-            legend.key.size = unit(0.3, "cm"))
-    
-    ggsave(file.path(out_dir, paste0(geno, "_bubble_absolute_iN_vs_iDA.pdf")),p_abs, width = 6, height = 5, device = cairo_pdf)
-    
-    
-    # RELATIVE plot: normalized by total PPIs per neuron: (iDA_lost / total_iDA) ÷ (iN_lost / total_iN)
-    df_rel <- df_ko |>
-      dplyr::mutate(
-        total_lost = n_lost_iN + n_lost_iDA
-      )
-    
-    max_val_rel <- max(c(df_rel$frac_lost_iN, df_rel$frac_lost_iDA), na.rm = TRUE)
-    axis_lim_rel <- c(0, max_val_rel * 1.1)
-    
-    p_rel <- ggplot(df_rel, aes(x = frac_lost_iN, y = frac_lost_iDA, fill = tag, size = total_lost)) +
-      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
-      geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
-      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 30, seed = 42) +
-      scale_fill_manual(values = org_colors, name = "Organelle") +
-      scale_size_continuous(range = c(2, 10), guide = "none") +
-      coord_fixed(ratio = 1, xlim = axis_lim_rel, ylim = axis_lim_rel, clip = "on") +
-      labs(
-        title = paste0(geno, " – Lost PPIs (relative to total)"),
-        x = "Fraction lost in iN",
-        y = "Fraction lost in iDA"
-      ) +
-      theme_bw(base_size = 6) +
-      theme(panel.grid = element_blank(),
-            panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
-            legend.position = "right",
-            legend.key.size = unit(0.3, "cm"))
-    
-    ggsave(file.path(out_dir, paste0(geno, "_bubble_relative_iN_vs_iDA.pdf")),p_rel, width = 6, height = 5, device = cairo_pdf)
-  }
-}
-
-
-# --- Step 4: Call the function
-plot_ko_bubble_in_vs_ida(
-  df = ko_ppi_profiles,
-  out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
-  org_colors = organelle_colors
-)
 
 ```
-
-
 
 ### ?? Dimensionality reduction of PPI vulnerability landscape
 ```{r}
@@ -12435,10 +12420,7 @@ maybe we can pull in bioplex3 into the datset for multimers. if there are severa
 
 
 2. Multimers predictions
-- check interactions were Predictome_conf >= 0.95 in ppi_evidence dataframe. we might have to reduce that if the numbers are too low. 
-- lets limit it to trimers (meaning three proteins in one complex) for a start. how many are there where A-B, B-C and A-C where all predictions are above 0.95? check how many there are in baseline (== meaning control)
-- can we also add a filter by annotation. How many of valid timers are there per annotation
-- how many of these trimers are lost in a KO x neuron? and if there are, which annotation is mostly affected? so in other words, compared to baseline, which trimers break apart? 
+- PPI numbers are a bit high 
 
 
 
