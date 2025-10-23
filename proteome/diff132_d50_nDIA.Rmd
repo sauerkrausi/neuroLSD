@@ -11625,6 +11625,264 @@ write_csv(ko_neuron_score_summary,file.path(out_dir_ppi_vuln, "tables", "ko_neur
 ```
 
 
+
+
+### Multimer (Trimer) Analysis
+```{r}
+# --------- Trimer identification and vulnerability analysis ---------
+
+# --- Step 1: Filter high-confidence PPIs ---
+conf_threshold <- 0.95
+
+high_conf_edges <- ppi_evidence |>
+  dplyr::filter(Predictome_conf >= conf_threshold) |>
+  dplyr::select(key, Gene1, Gene2, Predictome_conf)
+
+message("High-confidence edges (≥", conf_threshold, "): ", nrow(high_conf_edges))
+
+# If too few, reduce threshold
+if (nrow(high_conf_edges) < 100) {
+  conf_threshold <- 0.90
+  high_conf_edges <- ppi_evidence |>
+    dplyr::filter(Predictome_conf >= conf_threshold) |>
+    dplyr::select(key, Gene1, Gene2, Predictome_conf)
+  message("Reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
+}
+
+
+# --- Step 2: Find all potential trimers (A-B, B-C, A-C all present) ---
+# Create adjacency list
+edges_df <- high_conf_edges |>
+  dplyr::select(Gene1, Gene2) |>
+  dplyr::distinct()
+
+# Find trimers: for each pair A-B, find all C where B-C and A-C both exist
+trimers_list <- list()
+
+for (i in seq_len(nrow(edges_df))) {
+  A <- edges_df$Gene1[i]
+  B <- edges_df$Gene2[i]
+  
+  # Find all C connected to B
+  C_via_B <- edges_df |>
+    dplyr::filter((Gene1 == B & Gene2 != A) | (Gene2 == B & Gene1 != A)) |>
+    dplyr::mutate(C = ifelse(Gene1 == B, Gene2, Gene1)) |>
+    dplyr::pull(C) |>
+    unique()
+  
+  if (length(C_via_B) == 0) next
+  
+  # Check if A-C edge exists for each C
+  for (C in C_via_B) {
+    ac_exists <- any(
+      (edges_df$Gene1 == A & edges_df$Gene2 == C) |
+      (edges_df$Gene1 == C & edges_df$Gene2 == A)
+    )
+    
+    if (ac_exists) {
+      # Found a trimer! Sort genes to avoid duplicates
+      trimer <- sort(c(A, B, C))
+      trimer_id <- paste(trimer, collapse = "::")
+      trimers_list[[trimer_id]] <- trimer
+    }
+  }
+}
+
+# Convert to dataframe
+trimers_baseline <- tibble::tibble(
+  trimer_id = names(trimers_list),
+  GeneA = sapply(trimers_list, `[`, 1),
+  GeneB = sapply(trimers_list, `[`, 2),
+  GeneC = sapply(trimers_list, `[`, 3)
+)
+
+message("Total trimers found in baseline: ", nrow(trimers_baseline))
+
+# Save baseline trimers
+write_csv(trimers_baseline, file.path(out_dir_ppi_vuln, "tables", "baseline_trimers.csv"))
+
+
+# --- Step 3: Add organelle annotations to trimers ---
+gene_to_org <- binary_matrix |>
+  dplyr::select(Genes, all_of(organelle_tags))
+
+trimers_annotated <- trimers_baseline |>
+  dplyr::left_join(gene_to_org, by = c("GeneA" = "Genes")) |>
+  dplyr::rename_with(~paste0(.x, "_A"), all_of(organelle_tags)) |>
+  dplyr::left_join(gene_to_org, by = c("GeneB" = "Genes")) |>
+  dplyr::rename_with(~paste0(.x, "_B"), all_of(organelle_tags)) |>
+  dplyr::left_join(gene_to_org, by = c("GeneC" = "Genes")) |>
+  dplyr::rename_with(~paste0(.x, "_C"), all_of(organelle_tags))
+
+# Determine shared organelle(s) - all three proteins must be in same organelle
+trimers_annotated <- trimers_annotated |>
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    shared_organelle = {
+      org_A <- organelle_tags[which(c_across(paste0(organelle_tags, "_A")))]
+      org_B <- organelle_tags[which(c_across(paste0(organelle_tags, "_B")))]
+      org_C <- organelle_tags[which(c_across(paste0(organelle_tags, "_C")))]
+      
+      shared <- Reduce(intersect, list(org_A, org_B, org_C))
+      if (length(shared) == 0) NA_character_ else paste(shared, collapse = ";")
+    }
+  ) |>
+  dplyr::ungroup()
+
+# Summary by organelle
+trimer_org_summary <- trimers_annotated |>
+  dplyr::filter(!is.na(shared_organelle)) |>
+  tidyr::separate_rows(shared_organelle, sep = ";") |>
+  dplyr::count(shared_organelle, name = "n_trimers") |>
+  dplyr::arrange(desc(n_trimers))
+
+message("Trimers by organelle:")
+print(trimer_org_summary)
+
+write_csv(trimer_org_summary, file.path(out_dir_ppi_vuln, "tables", "baseline_trimers_by_organelle.csv"))
+
+
+# --- Step 4: Assess trimer integrity per KO × neuron ---
+# A trimer is "lost" if ANY of its three edges is lost
+
+# Get edge keys for each trimer
+trimers_with_keys <- trimers_annotated |>
+  dplyr::mutate(
+    key_AB = .make_undirected_key(GeneA, GeneB),
+    key_BC = .make_undirected_key(GeneB, GeneC),
+    key_AC = .make_undirected_key(GeneA, GeneC)
+  )
+
+# Expand to all KO × neuron contexts
+ko_neuron_combos <- ko_edge_states |>
+  dplyr::distinct(genotype, neuron)
+
+trimers_expanded <- trimers_with_keys |>
+  tidyr::crossing(ko_neuron_combos)
+
+# Join edge states for all three edges
+trimers_ko_states <- trimers_expanded |>
+  dplyr::left_join(
+    ko_edge_states |> dplyr::select(key, genotype, neuron, state),
+    by = c("key_AB" = "key", "genotype", "neuron")
+  ) |>
+  dplyr::rename(state_AB = state) |>
+  dplyr::left_join(
+    ko_edge_states |> dplyr::select(key, genotype, neuron, state),
+    by = c("key_BC" = "key", "genotype", "neuron")
+  ) |>
+  dplyr::rename(state_BC = state) |>
+  dplyr::left_join(
+    ko_edge_states |> dplyr::select(key, genotype, neuron, state),
+    by = c("key_AC" = "key", "genotype", "neuron")
+  ) |>
+  dplyr::rename(state_AC = state) |>
+  dplyr::mutate(
+    trimer_state = dplyr::case_when(
+      state_AB == "lost" | state_BC == "lost" | state_AC == "lost" ~ "broken",
+      state_AB == "retained" & state_BC == "retained" & state_AC == "retained" ~ "intact",
+      TRUE ~ "partial"
+    )
+  )
+
+# Save detailed trimer states
+write_csv(
+  trimers_ko_states,
+  file.path(out_dir_ppi_vuln, "tables", "trimers_ko_states.csv")
+)
+
+
+# --- Step 5: Summary: broken trimers per KO × neuron ---
+trimer_ko_summary <- trimers_ko_states |>
+  dplyr::group_by(genotype, neuron) |>
+  dplyr::summarise(
+    n_total = n(),
+    n_intact = sum(trimer_state == "intact", na.rm = TRUE),
+    n_broken = sum(trimer_state == "broken", na.rm = TRUE),
+    n_partial = sum(trimer_state == "partial", na.rm = TRUE),
+    frac_broken = n_broken / n_total,
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(desc(frac_broken))
+
+write_csv(
+  trimer_ko_summary,
+  file.path(out_dir_ppi_vuln, "tables", "trimer_ko_summary.csv")
+)
+
+message("Trimer breakage summary:")
+print(trimer_ko_summary)
+
+
+# --- Step 6: Broken trimers by organelle × KO × neuron ---
+trimer_org_ko_summary <- trimers_ko_states |>
+  dplyr::filter(!is.na(shared_organelle), trimer_state == "broken") |>
+  tidyr::separate_rows(shared_organelle, sep = ";") |>
+  dplyr::group_by(genotype, neuron, shared_organelle) |>
+  dplyr::summarise(n_broken = n(), .groups = "drop") |>
+  dplyr::arrange(desc(n_broken))
+
+write_csv(
+  trimer_org_ko_summary,
+  file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_ko.csv")
+)
+
+message("Broken trimers by organelle:")
+print(head(trimer_org_ko_summary, 20))
+
+
+# --- Step 7: Visualization - barplot of broken trimers per KO ---
+p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken), y = n_broken, fill = neuron)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
+  labs(
+    title = "Broken trimers per KO",
+    x = NULL,
+    y = "Number of broken trimers"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+
+ggsave(
+  file.path(out_dir_ppi_vuln, "plots/global", "bars_broken_trimers_per_ko.pdf"),
+  p_trimer_bar, width = 9, height = 5, device = cairo_pdf
+)
+
+
+# --- Step 8: Heatmap - broken trimers by organelle × KO ---
+trimer_org_wide <- trimer_org_ko_summary |>
+  dplyr::filter(neuron == "iN") |>  # or facet by neuron
+  tidyr::pivot_wider(
+    names_from = shared_organelle,
+    values_from = n_broken,
+    values_fill = 0
+  )
+
+trimer_org_mat <- as.matrix(trimer_org_wide[, -c(1:2)])
+rownames(trimer_org_mat) <- trimer_org_wide$genotype
+
+pheatmap::pheatmap(
+  trimer_org_mat,
+  scale = "none",
+  color = colorRampPalette(c("white", "#C51B7D"))(100),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize = 6,
+  cellwidth = 10,
+  cellheight = 10,
+  main = "Broken trimers by organelle (iN)",
+  filename = file.path(out_dir_ppi_vuln, "plots/global", "heatmap_broken_trimers_by_organelle_iN.pdf"),
+  width = 10,
+  height = 8
+)
+```
+
 ##### Per-KO × Neuron organelle-specific PPI state
 ```{r}
 # --------- Stacked bars: lost vs retained PPIs per organelle for each KO × neuron ---------
@@ -12025,11 +12283,11 @@ if (requireNamespace("umap", quietly = TRUE)) {
 
 
 - can we plot interactions between A-B in a circos plot in ctrl vs KO. Segments of cirocs could be organelles on both sides. Make it grey if the link is lost 
+- can we use a Sankey plot to show PPIs lost. have Ctrl/baseline in the center and then left iDA and right iN. have for each organelle annotation. grey is retained and magenda for lost 
 
 
 
 - what about multimers? 
-
 maybe we can pull in bioplex3 into the datset for multimers. if there are several direct interactions, then we can assembke a multimer? and check their stability in a KO background?
 
 - can we plot the organelle vulnerability of PPIs in PCA?
@@ -12050,9 +12308,14 @@ maybe we can pull in bioplex3 into the datset for multimers. if there are severa
 - check interactions were Predictome_conf >= 0.95 in ppi_evidence dataframe. we might have to reduce that if the numbers are too low. 
 - lets limit it to trimers (meaning three proteins in one complex) for a start. how many are there where A-B, B-C and A-C where all predictions are above 0.95? check how many there are in baseline (== meaning control)
 - can we also add a filter by annotation. How many of valid timers are there per annotation
-- how many of these trimers are lost in a KO x neuron?
-- long shot: if in an organelle, how many A-B, B-C, C-D etc. continuus predictions with high Predictome_conf are there? 
+- how many of these trimers are lost in a KO x neuron? and if there are, which annotation is mostly affected? so in other words, compared to baseline, which trimers break apart? 
+
 
 
 3. Timecourse data integration ASAH1. PPI stability over time 
+- we have proteomic data for iN and iDA for ASAH1 and control at day 30, day 50 and day 70
+- compute PPIs for control at every timepoint and then see which PPIs are lost in the ASAH1 KO background. plot for KO x neuron x day 
+- save also as csv
+
+
 X. EndoMap integration
