@@ -11721,44 +11721,37 @@ plot_ko_neuron_organelle_bars(
 # --------- iN vs iDA bubble plots per KO ---------
 
 # --- Step 3: Bubble plot of iN vs iDA effect on PPIs loss per organelle annotation
-# Function for both relative (fraction-lost) and absolute plots
-plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors, mode = c("absolute", "fraction")) {
+# One bubble per annotation; two plots per KO: absolute and relative
+plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
   
-  # Select plotting mode: "absolute" = raw counts, "fraction" = PPI-loss fraction per organelle
-  mode <- match.arg(mode)
-  
-  # Prepare data: count per KO × neuron × organelle × state
+  # --- Step 3.1: Count lost PPIs per KO × neuron × organelle
   organelle_counts <- df |>
-    dplyr::group_by(genotype, neuron, tag, state) |>
-    dplyr::summarise(n = n(), .groups = "drop")
-  
-  # Compute total PPIs per KO × neuron × organelle (for normalization)
-  totals <- organelle_counts |>
+    dplyr::filter(state == "lost") |>
     dplyr::group_by(genotype, neuron, tag) |>
-    dplyr::summarise(n_tot = sum(n), .groups = "drop")
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
   
-  # Merge totals and calculate fraction of PPIs in each state
+  # --- Step 3.2: Count total PPIs per KO × neuron × organelle (for normalization)
+  totals <- df |>
+    dplyr::group_by(genotype, neuron, tag) |>
+    dplyr::summarise(n_total = dplyr::n(), .groups = "drop")
+  
+  # --- Step 3.3: Merge totals and compute fraction lost
   organelle_counts <- organelle_counts |>
     dplyr::left_join(totals, by = c("genotype", "neuron", "tag")) |>
-    dplyr::mutate(fraction_lost = ifelse(n_tot > 0, n / n_tot, NA_real_))
+    dplyr::mutate(frac_lost = ifelse(n_total > 0, n_lost / n_total, NA_real_)) |>
+    dplyr::filter(tag != "Nucleus")   # optional filter
   
-  # Choose the metric to plot: count or fraction
-  value_col <- if (mode == "fraction") "fraction_lost" else "n"
-  
-  # Pivot to wide format: iN vs iDA
+  # --- Step 3.4: Pivot to wide format (iN vs iDA)
   organelle_wide <- organelle_counts |>
     tidyr::pivot_wider(
       names_from = neuron,
-      values_from = !!sym(value_col),
+      values_from = c(n_lost, frac_lost),
       values_fill = 0
-    ) |>
-    # Exclude Nucleus from plotting
-    dplyr::filter(tag != "Nucleus")
+    )
   
-  # Get all unique KOs
+  # --- Step 3.5: Loop over each KO
   all_kos <- unique(organelle_wide$genotype)
   
-  # Plot for each KO
   for (geno in all_kos) {
     
     df_ko <- organelle_wide |>
@@ -11766,71 +11759,82 @@ plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors, mode = c("absolute
     
     if (nrow(df_ko) == 0) next
     
-    # Separate bubble plots for lost and retained
-    for (edge_state in c("lost", "retained")) {
-      
-      df_state <- df_ko |>
-        dplyr::filter(state == edge_state)
-      
-      if (nrow(df_state) == 0) next
-      
-      # Determine axis limits (square plot)
-      max_val <- max(c(df_state$iN, df_state$iDA), na.rm = TRUE)
-      if (max_val == 0) next
-      axis_lim <- c(0, max_val * 1.1)
-      
-      # Create bubble plot
-      p_bubble <- ggplot(df_state, aes(x = iN, y = iDA, fill = tag, size = iN + iDA)) +
-        geom_abline(slope = 1, intercept = 0, linetype = "dashed", 
-                    color = "black", linewidth = 0.2) +
-        geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
-        ggrepel::geom_text_repel(
-          aes(label = tag), 
-          size = 2, 
-          max.overlaps = 30,
-          min.segment.length = 0,
-          box.padding = 0.3,
-          seed = 42
-        ) +
-        scale_fill_manual(values = org_colors, name = "Organelle") +
-        scale_size_continuous(range = c(2, 10), guide = "none") +
-        coord_fixed(ratio = 1, xlim = axis_lim, ylim = axis_lim, clip = "on") +
-        labs(
-          title = paste0(geno, " – ", edge_state, " PPIs: iN vs iDA (", mode, ")"),
-          x = if (mode == "fraction") "Fraction of lost PPIs (iN)" else "Number of lost PPIs (iN)",
-          y = if (mode == "fraction") "Fraction of lost PPIs (iDA)" else "Number of lost PPIs (iDA)"
-        ) +
-        theme_bw(base_size = 6) +
-        theme(
-          panel.grid = element_blank(),
-          panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
-          legend.position = "right",
-          legend.key.size = unit(0.3, "cm")
-        )
-      
-      # Save figure
-      ggsave(
-        file.path(out_dir, paste0(geno, "_bubble_", edge_state, "_iN_vs_iDA_", mode, ".pdf")),
-        p_bubble, width = 6, height = 5, device = cairo_pdf
+    # ------------------------------------------------------------
+    # ABSOLUTE plot: iN_lost vs iDA_lost
+    # ------------------------------------------------------------
+    df_abs <- df_ko |>
+      dplyr::mutate(
+        total_lost = n_lost_iN + n_lost_iDA
       )
-    }
+    
+    max_val_abs <- max(c(df_abs$n_lost_iN, df_abs$n_lost_iDA), na.rm = TRUE)
+    axis_lim_abs <- c(0, max_val_abs * 1.1)
+    
+    p_abs <- ggplot(df_abs, aes(x = n_lost_iN, y = n_lost_iDA, fill = tag, size = total_lost)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+      geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 30, seed = 42) +
+      scale_fill_manual(values = org_colors, name = "Organelle") +
+      scale_size_continuous(range = c(2, 10), guide = "none") +
+      coord_fixed(ratio = 1, xlim = axis_lim_abs, ylim = axis_lim_abs, clip = "on") +
+      labs(
+        title = paste0(geno, " – Lost PPIs (absolute)"),
+        x = "Lost PPIs in iN",
+        y = "Lost PPIs in iDA"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(),
+            panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+            legend.position = "right",
+            legend.key.size = unit(0.3, "cm"))
+    
+    ggsave(file.path(out_dir, paste0(geno, "_bubble_absolute_iN_vs_iDA.pdf")),
+           p_abs, width = 6, height = 5, device = cairo_pdf)
+    
+    
+    # ------------------------------------------------------------
+    # RELATIVE plot: normalized by total PPIs per neuron
+    # (iDA_lost / total_iDA) ÷ (iN_lost / total_iN)
+    # ------------------------------------------------------------
+    df_rel <- df_ko |>
+      dplyr::mutate(
+        total_lost = n_lost_iN + n_lost_iDA
+      )
+    
+    max_val_rel <- max(c(df_rel$frac_lost_iN, df_rel$frac_lost_iDA), na.rm = TRUE)
+    axis_lim_rel <- c(0, max_val_rel * 1.1)
+    
+    p_rel <- ggplot(df_rel, aes(x = frac_lost_iN, y = frac_lost_iDA, fill = tag, size = total_lost)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+      geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 30, seed = 42) +
+      scale_fill_manual(values = org_colors, name = "Organelle") +
+      scale_size_continuous(range = c(2, 10), guide = "none") +
+      coord_fixed(ratio = 1, xlim = axis_lim_rel, ylim = axis_lim_rel, clip = "on") +
+      labs(
+        title = paste0(geno, " – Lost PPIs (relative to total)"),
+        x = "Fraction lost in iN",
+        y = "Fraction lost in iDA"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(),
+            panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+            legend.position = "right",
+            legend.key.size = unit(0.3, "cm"))
+    
+    ggsave(file.path(out_dir, paste0(geno, "_bubble_relative_iN_vs_iDA.pdf")),
+           p_rel, width = 6, height = 5, device = cairo_pdf)
   }
 }
 
-# --- Step 4: Call the bubble plot function
-# Absolute (counts)
-plot_ko_bubble_in_vs_ida(
-   df = ko_ppi_profiles, 
-   out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"), 
-   org_colors = organelle_colors, 
-   mode = "absolute")
 
-# Relative (fractions)
+# --- Step 4: Call the function
 plot_ko_bubble_in_vs_ida(
-   df =ko_ppi_profiles, 
-   out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"), 
-   org_colors = organelle_colors, 
-   mode = "fraction")
+  df = ko_ppi_profiles,
+  out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
+  org_colors = organelle_colors
+)
+
 ```
 
 
