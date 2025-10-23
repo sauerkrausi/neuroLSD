@@ -12231,7 +12231,7 @@ ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_
 
 
 # --- Step 8: Heatmap - broken trimers by organelle × KO ---
-# Step 8: EDGES: Heatmap - broken trimers by organelle × KO ---
+  # Step 8: EDGES: Heatmap - broken trimers by organelle × KO ---
 for (nt in c("iN", "iDA")) {
   trimer_org_wide <- trimer_broken_org_ko |>
     dplyr::filter(neuron == nt) |>
@@ -12261,8 +12261,8 @@ for (nt in c("iN", "iDA")) {
     fontsize = 6,
     cellwidth = 10,
     cellheight = 10,
-    main = paste("Broken trimers by organelle –", nt),
-    filename = file.path(out_dir_ppi_vuln, "plots/multimer", paste0("heatmap_broken_trimers_by_organelle_", nt, ".pdf")),
+    main = paste("Broken trimer edges by organelle –", nt),
+    filename = file.path(out_dir_ppi_vuln, "plots/multimer", paste0("heatmap_broken_edges_trimers_by_organelle_", nt, ".pdf")),
     width = 10,
     height = 8
   )
