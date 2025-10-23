@@ -11628,8 +11628,12 @@ write_csv(ko_neuron_score_summary,file.path(out_dir_ppi_vuln, "tables", "ko_neur
 
 
 ### Multimer (Trimer) Analysis
+
 ```{r}
 # --------- Trimer identification and vulnerability analysis ---------
+
+# --- Step 0: Create output directories ---
+dir.create(file.path(out_dir_ppi_vuln, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
 
 # --- Step 1: Filter high-confidence PPIs ---
 conf_threshold <- 0.95
@@ -11724,14 +11728,13 @@ trimers_annotated <- trimers_annotated |>
       org_C <- organelle_tags[which(c_across(paste0(organelle_tags, "_C")))]
       
       shared <- Reduce(intersect, list(org_A, org_B, org_C))
-      if (length(shared) == 0) NA_character_ else paste(shared, collapse = ";")
+      if (length(shared) == 0) "Other" else paste(shared, collapse = ";")
     }
   ) |>
   dplyr::ungroup()
 
 # Summary by organelle
 trimer_org_summary <- trimers_annotated |>
-  dplyr::filter(!is.na(shared_organelle)) |>
   tidyr::separate_rows(shared_organelle, sep = ";") |>
   dplyr::count(shared_organelle, name = "n_trimers") |>
   dplyr::arrange(desc(n_trimers))
@@ -11743,7 +11746,7 @@ write_csv(trimer_org_summary, file.path(out_dir_ppi_vuln, "tables", "baseline_tr
 
 
 # --- Step 4: Assess trimer integrity per KO × neuron ---
-# A trimer is "lost" if ANY of its three edges is lost
+# A trimer is "broken" if 2+ edges are lost, "partial" if 1 edge is lost
 
 # Get edge keys for each trimer
 trimers_with_keys <- trimers_annotated |>
@@ -11778,10 +11781,12 @@ trimers_ko_states <- trimers_expanded |>
   ) |>
   dplyr::rename(state_AC = state) |>
   dplyr::mutate(
+    n_lost = (state_AB == "lost") + (state_BC == "lost") + (state_AC == "lost"),
     trimer_state = dplyr::case_when(
-      state_AB == "lost" | state_BC == "lost" | state_AC == "lost" ~ "broken",
+      n_lost >= 2 ~ "broken",
+      n_lost == 1 ~ "partial",
       state_AB == "retained" & state_BC == "retained" & state_AC == "retained" ~ "intact",
-      TRUE ~ "partial"
+      TRUE ~ "unknown"
     )
   )
 
@@ -11801,6 +11806,7 @@ trimer_ko_summary <- trimers_ko_states |>
     n_broken = sum(trimer_state == "broken", na.rm = TRUE),
     n_partial = sum(trimer_state == "partial", na.rm = TRUE),
     frac_broken = n_broken / n_total,
+    frac_partial = n_partial / n_total,
     .groups = "drop"
   ) |>
   dplyr::arrange(desc(frac_broken))
@@ -11814,21 +11820,57 @@ message("Trimer breakage summary:")
 print(trimer_ko_summary)
 
 
-# --- Step 6: Broken trimers by organelle × KO × neuron ---
-trimer_org_ko_summary <- trimers_ko_states |>
-  dplyr::filter(!is.na(shared_organelle), trimer_state == "broken") |>
+# --- Step 6: Broken trimers by organelle × KO × neuron (NEW: separate files for broken and partial) ---
+# Broken trimers (2+ edges lost)
+trimer_broken_org_ko <- trimers_ko_states |>
+  dplyr::filter(trimer_state == "broken") |>
   tidyr::separate_rows(shared_organelle, sep = ";") |>
   dplyr::group_by(genotype, neuron, shared_organelle) |>
   dplyr::summarise(n_broken = n(), .groups = "drop") |>
   dplyr::arrange(desc(n_broken))
 
 write_csv(
-  trimer_org_ko_summary,
+  trimer_broken_org_ko,
   file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_ko.csv")
 )
 
+# Summary by organelle (across all KOs)
+trimer_broken_by_org <- trimer_broken_org_ko |>
+  dplyr::group_by(shared_organelle) |>
+  dplyr::summarise(n_broken = sum(n_broken), .groups = "drop") |>
+  dplyr::arrange(desc(n_broken))
+
+write_csv(
+  trimer_broken_by_org,
+  file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_summary.csv")
+)
+
+# Partial trimers (1 edge lost)
+trimer_partial_org_ko <- trimers_ko_states |>
+  dplyr::filter(trimer_state == "partial") |>
+  tidyr::separate_rows(shared_organelle, sep = ";") |>
+  dplyr::group_by(genotype, neuron, shared_organelle) |>
+  dplyr::summarise(n_partial = n(), .groups = "drop") |>
+  dplyr::arrange(desc(n_partial))
+
+write_csv(
+  trimer_partial_org_ko,
+  file.path(out_dir_ppi_vuln, "tables", "trimer_partial_by_organelle_ko.csv")
+)
+
+# Summary by organelle (across all KOs)
+trimer_partial_by_org <- trimer_partial_org_ko |>
+  dplyr::group_by(shared_organelle) |>
+  dplyr::summarise(n_partial = sum(n_partial), .groups = "drop") |>
+  dplyr::arrange(desc(n_partial))
+
+write_csv(
+  trimer_partial_by_org,
+  file.path(out_dir_ppi_vuln, "tables", "trimer_partial_by_organelle_summary.csv")
+)
+
 message("Broken trimers by organelle:")
-print(head(trimer_org_ko_summary, 20))
+print(head(trimer_broken_org_ko, 20))
 
 
 # --- Step 7: Visualization - barplot of broken trimers per KO ---
@@ -11848,39 +11890,46 @@ p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken
   )
 
 ggsave(
-  file.path(out_dir_ppi_vuln, "plots/global", "bars_broken_trimers_per_ko.pdf"),
+  file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),
   p_trimer_bar, width = 9, height = 5, device = cairo_pdf
 )
 
 
-# --- Step 8: Heatmap - broken trimers by organelle × KO ---
-trimer_org_wide <- trimer_org_ko_summary |>
-  dplyr::filter(neuron == "iN") |>  # or facet by neuron
-  tidyr::pivot_wider(
-    names_from = shared_organelle,
-    values_from = n_broken,
-    values_fill = 0
+# --- Step 8: Heatmap - broken trimers by organelle × KO (only if sufficient data) ---
+for (nt in c("iN", "iDA")) {
+  trimer_org_wide <- trimer_broken_org_ko |>
+    dplyr::filter(neuron == nt) |>
+    tidyr::pivot_wider(
+      names_from = shared_organelle,
+      values_from = n_broken,
+      values_fill = 0
+    )
+  
+  if (nrow(trimer_org_wide) < 2 || ncol(trimer_org_wide) < 3) {
+    message("Insufficient data for heatmap (", nt, "); skipping.")
+    next
+  }
+  
+  trimer_org_mat <- as.matrix(trimer_org_wide[, -c(1:2)])
+  rownames(trimer_org_mat) <- trimer_org_wide$genotype
+  
+  pheatmap::pheatmap(
+    trimer_org_mat,
+    scale = "none",
+    color = colorRampPalette(c("white", "#C51B7D"))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    fontsize = 6,
+    cellwidth = 10,
+    cellheight = 10,
+    main = paste("Broken trimers by organelle –", nt),
+    filename = file.path(out_dir_ppi_vuln, "plots/multimer", paste0("heatmap_broken_trimers_by_organelle_", nt, ".pdf")),
+    width = 10,
+    height = 8
   )
-
-trimer_org_mat <- as.matrix(trimer_org_wide[, -c(1:2)])
-rownames(trimer_org_mat) <- trimer_org_wide$genotype
-
-pheatmap::pheatmap(
-  trimer_org_mat,
-  scale = "none",
-  color = colorRampPalette(c("white", "#C51B7D"))(100),
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
-  show_rownames = TRUE,
-  show_colnames = TRUE,
-  fontsize = 6,
-  cellwidth = 10,
-  cellheight = 10,
-  main = "Broken trimers by organelle (iN)",
-  filename = file.path(out_dir_ppi_vuln, "plots/global", "heatmap_broken_trimers_by_organelle_iN.pdf"),
-  width = 10,
-  height = 8
-)
+}
 ```
 
 ##### Per-KO × Neuron organelle-specific PPI state
