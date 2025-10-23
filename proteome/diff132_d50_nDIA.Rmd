@@ -12027,18 +12027,32 @@ if (requireNamespace("umap", quietly = TRUE)) {
 - can we plot interactions between A-B in a circos plot in ctrl vs KO. Segments of cirocs could be organelles on both sides. Make it grey if the link is lost 
 
 
-ppis gained in KOs? that are not there in KO
-- can we do GO eval on lost ppis? 
-
 
 - what about multimers? 
-if A-B have a high confidence ppi, and there is B-C etc. can we check if there is C-A. maybe we should first filter by organelle, if they are all in the same organelle and then do the causal chain
+
 maybe we can pull in bioplex3 into the datset for multimers. if there are several direct interactions, then we can assembke a multimer? and check their stability in a KO background?
 
 - can we plot the organelle vulnerability of PPIs in PCA?
 - PCA loadings make no sense ==> remove
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
+
+
 1. PPIs lost 
 - can we use the IDs of lost PPIs per KO x neuron compared to control and do a GO enrichment with them?
+- have to make a call on which lost PPIs to include. Maybe take relative loss of PPI per annotation as metric. Take top 5 PPis lost (meaning most affected in relation to their size) and run the GO enrichment on these combined terms.
+- save as graph for iN and for iDA
+- save GO terms as csv for each KO x neuron type
+- save plots in new dir "GO_eval_PPIlost"
 
+
+2. Multimers predictions
+- check interactions were Predictome_conf >= 0.95 in ppi_evidence dataframe. we might have to reduce that if the numbers are too low. 
+- lets limit it to trimers (meaning three proteins in one complex) for a start. how many are there where A-B, B-C and A-C where all predictions are above 0.95? check how many there are in baseline (== meaning control)
+- can we also add a filter by annotation. How many of valid timers are there per annotation
+- how many of these trimers are lost in a KO x neuron?
+- long shot: if in an organelle, how many A-B, B-C, C-D etc. continuus predictions with high Predictome_conf are there? 
+
+
+3. Timecourse data integration ASAH1. PPI stability over time 
+X. EndoMap integration
