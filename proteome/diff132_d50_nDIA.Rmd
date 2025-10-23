@@ -11736,6 +11736,9 @@ plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
       values_fill = 0
     )
   
+  # Exclude Nucleus from plotting
+  dplyr::filter(tag != "Nucleus")
+    
   # Get all unique KOs
   all_kos <- unique(organelle_wide$genotype)
   
@@ -12001,6 +12004,7 @@ if (requireNamespace("umap", quietly = TRUE)) {
 
 
 ppis gained in KOs? that are not there in KO
+- can we do GO eval on lost ppis? 
 
 
 - what about multimers? 
