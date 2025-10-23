@@ -11635,23 +11635,53 @@ write_csv(ko_neuron_score_summary,file.path(out_dir_ppi_vuln, "tables", "ko_neur
 # --- Step 0: Create output directories ---
 dir.create(file.path(out_dir_ppi_vuln, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
 
-# --- Step 1: Filter high-confidence PPIs ---
+# --- Step 1: Filter to NEURONAL high-confidence PPIs only ---
 conf_threshold <- 0.95
 
-high_conf_edges <- ppi_evidence |>
-  dplyr::filter(Predictome_conf >= conf_threshold) |>
+# Get neuronal genes (same as used in ko_edge_states)
+neuronal_genes <- unique(c(ko_edge_states$Gene1, ko_edge_states$Gene2))
+neuronal_genes <- neuronal_genes[!is.na(neuronal_genes)]
+
+message("Number of neuronal genes: ", length(neuronal_genes))
+
+# Filter high-confidence edges to neuronal proteome
+high_conf_edges <- baseline_edges_union |>
+  dplyr::filter(
+    Predictome_conf >= conf_threshold,
+    Gene1 %in% neuronal_genes,
+    Gene2 %in% neuronal_genes
+  ) |>
   dplyr::select(key, Gene1, Gene2, Predictome_conf)
 
-message("High-confidence edges (≥", conf_threshold, "): ", nrow(high_conf_edges))
+message("High-confidence neuronal edges (≥", conf_threshold, "): ", nrow(high_conf_edges))
 
 # If too few, reduce threshold
 if (nrow(high_conf_edges) < 100) {
   conf_threshold <- 0.90
-  high_conf_edges <- ppi_evidence |>
-    dplyr::filter(Predictome_conf >= conf_threshold) |>
+  high_conf_edges <- baseline_edges_union |>
+    dplyr::filter(
+      Predictome_conf >= conf_threshold,
+      Gene1 %in% neuronal_genes,
+      Gene2 %in% neuronal_genes
+    ) |>
     dplyr::select(key, Gene1, Gene2, Predictome_conf)
   message("Reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
 }
+
+if (nrow(high_conf_edges) < 50) {
+  conf_threshold <- 0.85
+  high_conf_edges <- baseline_edges_union |>
+    dplyr::filter(
+      Predictome_conf >= conf_threshold,
+      Gene1 %in% neuronal_genes,
+      Gene2 %in% neuronal_genes
+    ) |>
+    dplyr::select(key, Gene1, Gene2, Predictome_conf)
+  message("Further reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
+}
+
+# Save high confidence dimers
+write_csv(high_conf_edges, file.path(out_dir_ppi_vuln, "tables", "high_confidence_dimers.csv"))
 
 
 # --- Step 2: Find all potential trimers (A-B, B-C, A-C all present) ---
@@ -11660,10 +11690,14 @@ edges_df <- high_conf_edges |>
   dplyr::select(Gene1, Gene2) |>
   dplyr::distinct()
 
+message("Starting trimer search...")
+
 # Find trimers: for each pair A-B, find all C where B-C and A-C both exist
 trimers_list <- list()
 
 for (i in seq_len(nrow(edges_df))) {
+  if (i %% 100 == 0) message("  Processed ", i, "/", nrow(edges_df), " edges...")
+  
   A <- edges_df$Gene1[i]
   B <- edges_df$Gene2[i]
   
@@ -11692,6 +11726,8 @@ for (i in seq_len(nrow(edges_df))) {
   }
 }
 
+message("Trimer search complete!")
+
 # Convert to dataframe
 trimers_baseline <- tibble::tibble(
   trimer_id = names(trimers_list),
@@ -11700,7 +11736,7 @@ trimers_baseline <- tibble::tibble(
   GeneC = sapply(trimers_list, `[`, 3)
 )
 
-message("Total trimers found in baseline: ", nrow(trimers_baseline))
+message("Total trimers found in neuronal baseline: ", nrow(trimers_baseline))
 
 # Save baseline trimers
 write_csv(trimers_baseline, file.path(out_dir_ppi_vuln, "tables", "baseline_trimers.csv"))
@@ -11745,50 +11781,93 @@ print(trimer_org_summary)
 write_csv(trimer_org_summary, file.path(out_dir_ppi_vuln, "tables", "baseline_trimers_by_organelle.csv"))
 
 
-# --- Step 4: Assess trimer integrity per KO × neuron ---
-# A trimer is "broken" if 2+ edges are lost, "partial" if 1 edge is lost
 
-# Get edge keys for each trimer
+# --- Step 4: Assess trimer integrity per KO × neuron ---
+# 4a. Build UniProt→Gene mapping from ko_edge_states
+uniprot_to_gene <- ko_edge_states |>
+  dplyr::select(Protein1, Gene1) |>
+  dplyr::rename(Uniprot = Protein1, Gene = Gene1) |>
+  dplyr::distinct() |>
+  dplyr::bind_rows(
+    ko_edge_states |>
+      dplyr::select(Protein2, Gene2) |>
+      dplyr::rename(Uniprot = Protein2, Gene = Gene2) |>
+      dplyr::distinct()
+  ) |>
+  dplyr::distinct(Uniprot, Gene)
+
+message("UniProt→Gene mapping entries: ", nrow(uniprot_to_gene))
+
+
+# 4b. Convert ko_ppi_profiles (UniProt keys) to gene-based keys
+ko_ppi_profiles_genes <- ko_ppi_profiles |>
+  tidyr::separate(key, into = c("UniprotA", "UniprotB"), sep = "::", remove = FALSE) |>
+  dplyr::left_join(uniprot_to_gene, by = c("UniprotA" = "Uniprot")) |>
+  dplyr::rename(GeneA = Gene) |>
+  dplyr::left_join(uniprot_to_gene, by = c("UniprotB" = "Uniprot")) |>
+  dplyr::rename(GeneB = Gene) |>
+  dplyr::mutate(key_gene = .make_undirected_key(GeneA, GeneB)) |>
+  dplyr::filter(!is.na(key_gene))
+
+message("Converted ko_ppi_profiles to gene-level edges: ", nrow(ko_ppi_profiles_genes))
+
+
+# 4c. Prepare trimer edges
 trimers_with_keys <- trimers_annotated |>
+  dplyr::filter(!is.na(GeneA) & !is.na(GeneB) & !is.na(GeneC)) |>
+  dplyr::filter(rowSums(is.na(dplyr::across(where(is.logical)))) < ncol(dplyr::across(where(is.logical)))) |>
   dplyr::mutate(
     key_AB = .make_undirected_key(GeneA, GeneB),
     key_BC = .make_undirected_key(GeneB, GeneC),
     key_AC = .make_undirected_key(GeneA, GeneC)
-  )
+  ) |>
+  dplyr::filter(!is.na(key_AB) & !is.na(key_BC) & !is.na(key_AC))
 
-# Expand to all KO × neuron contexts
-ko_neuron_combos <- ko_edge_states |>
+message("Removed ", nrow(trimers_annotated) - nrow(trimers_with_keys), " trimers with missing edges.")
+
+
+# 4d. Expand to all KO × neuron contexts
+ko_neuron_combos <- ko_ppi_profiles_genes |>
   dplyr::distinct(genotype, neuron)
 
 trimers_expanded <- trimers_with_keys |>
   tidyr::crossing(ko_neuron_combos)
 
-# Join edge states for all three edges
+message("Joining edge states for trimers...")
+
+
+# 4e. Join KO×neuron-level edge states (gene-based)
 trimers_ko_states <- trimers_expanded |>
   dplyr::left_join(
-    ko_edge_states |> dplyr::select(key, genotype, neuron, state),
-    by = c("key_AB" = "key", "genotype", "neuron")
+    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
+    by = c("key_AB" = "key_gene", "genotype", "neuron")
   ) |>
   dplyr::rename(state_AB = state) |>
   dplyr::left_join(
-    ko_edge_states |> dplyr::select(key, genotype, neuron, state),
-    by = c("key_BC" = "key", "genotype", "neuron")
+    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
+    by = c("key_BC" = "key_gene", "genotype", "neuron")
   ) |>
   dplyr::rename(state_BC = state) |>
   dplyr::left_join(
-    ko_edge_states |> dplyr::select(key, genotype, neuron, state),
-    by = c("key_AC" = "key", "genotype", "neuron")
+    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
+    by = c("key_AC" = "key_gene", "genotype", "neuron")
   ) |>
   dplyr::rename(state_AC = state) |>
   dplyr::mutate(
+    state_AB = tidyr::replace_na(state_AB, "retained"),
+    state_BC = tidyr::replace_na(state_BC, "retained"),
+    state_AC = tidyr::replace_na(state_AC, "retained"),
     n_lost = (state_AB == "lost") + (state_BC == "lost") + (state_AC == "lost"),
     trimer_state = dplyr::case_when(
       n_lost >= 2 ~ "broken",
       n_lost == 1 ~ "partial",
-      state_AB == "retained" & state_BC == "retained" & state_AC == "retained" ~ "intact",
+      n_lost == 0 ~ "intact",
       TRUE ~ "unknown"
     )
   )
+
+message("Edge states joined successfully!")
+
 
 # Save detailed trimer states
 write_csv(
@@ -11805,6 +11884,7 @@ trimer_ko_summary <- trimers_ko_states |>
     n_intact = sum(trimer_state == "intact", na.rm = TRUE),
     n_broken = sum(trimer_state == "broken", na.rm = TRUE),
     n_partial = sum(trimer_state == "partial", na.rm = TRUE),
+    n_unknown = sum(trimer_state == "unknown", na.rm = TRUE),
     frac_broken = n_broken / n_total,
     frac_partial = n_partial / n_total,
     .groups = "drop"
@@ -11820,7 +11900,8 @@ message("Trimer breakage summary:")
 print(trimer_ko_summary)
 
 
-# --- Step 6: Broken trimers by organelle × KO × neuron (NEW: separate files for broken and partial) ---
+
+# --- Step 6: Broken trimers by organelle × KO × neuron ---
 # Broken trimers (2+ edges lost)
 trimer_broken_org_ko <- trimers_ko_states |>
   dplyr::filter(trimer_state == "broken") |>
@@ -11869,7 +11950,7 @@ write_csv(
   file.path(out_dir_ppi_vuln, "tables", "trimer_partial_by_organelle_summary.csv")
 )
 
-message("Broken trimers by organelle:")
+message("Broken trimers by organelle (top 20):")
 print(head(trimer_broken_org_ko, 20))
 
 
@@ -11895,7 +11976,7 @@ ggsave(
 )
 
 
-# --- Step 8: Heatmap - broken trimers by organelle × KO (only if sufficient data) ---
+# --- Step 8: Heatmap - broken trimers by organelle × KO ---
 for (nt in c("iN", "iDA")) {
   trimer_org_wide <- trimer_broken_org_ko |>
     dplyr::filter(neuron == nt) |>
