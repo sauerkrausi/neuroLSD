@@ -12150,9 +12150,9 @@ p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken
   geom_col(position = "dodge", color = "black", linewidth = 0.2) +
   scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
   labs(
-    title = "Broken trimers per KO",
+    title = "Broken trimers edges per KO",
     x = NULL,
-    y = "Number of broken trimers"
+    y = "Number of broken trimers edges"
   ) +
   theme_bw(base_size = 6) +
   theme(
@@ -12420,7 +12420,8 @@ maybe we can pull in bioplex3 into the datset for multimers. if there are severa
 
 
 2. Multimers predictions
-- PPI numbers are a bit high 
+- PPI numbers are a bit high in KO.
+- how can we only have 200 trimers in baseline, but then 2000 edges broken in a KO? have to think about that 
 
 
 
