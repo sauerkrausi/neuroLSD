@@ -11840,6 +11840,7 @@ plot_ko_bubble_in_vs_ida(
 
 # --- Step 0: Create output directories ---
 dir.create(file.path(out_dir_ppi_vuln, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_vuln, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
 
 # --- Step 1: Filter to NEURONAL high-confidence PPIs only ---
 conf_threshold <- 0.95
@@ -11945,7 +11946,7 @@ trimers_baseline <- tibble::tibble(
 message("Total trimers found in neuronal baseline: ", nrow(trimers_baseline))
 
 # Save baseline trimers
-write_csv(trimers_baseline, file.path(out_dir_ppi_vuln, "tables", "baseline_trimers.csv"))
+write_csv(trimers_baseline, file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_trimers.csv"))
 
 
 # --- Step 3: Add organelle annotations to trimers ---
@@ -11984,7 +11985,7 @@ trimer_org_summary <- trimers_annotated |>
 message("Trimers by organelle:")
 print(trimer_org_summary)
 
-write_csv(trimer_org_summary, file.path(out_dir_ppi_vuln, "tables", "baseline_trimers_by_organelle.csv"))
+write_csv(trimer_org_summary, file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_trimers_by_organelle.csv"))
 
 
 
@@ -12076,7 +12077,7 @@ message("Edge states joined successfully!")
 
 
 # Save detailed trimer states
-write_csv(trimers_ko_states,file.path(out_dir_ppi_vuln, "tables", "trimers_ko_states.csv"))
+write_csv(trimers_ko_states,file.path(out_dir_ppi_vuln, "tables/multimer", "trimers_ko_states.csv"))
 
 
 # --- Step 5: Summary: broken trimers per KO × neuron ---
@@ -12094,11 +12095,53 @@ trimer_ko_summary <- trimers_ko_states |>
   ) |>
   dplyr::arrange(desc(frac_broken))
 
-write_csv(trimer_ko_summary,file.path(out_dir_ppi_vuln, "tables", "trimer_ko_summary.csv"))
+write_csv(trimer_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_ko_summary.csv"))
 
 message("Trimer breakage summary:")
 print(trimer_ko_summary)
 
+
+# --- Step 5b: Affected trimers by organelle × KO × neuron ---
+# Collapse to one row per trimer per KO×neuron
+trimers_affected <- trimers_ko_states |>
+  dplyr::mutate(
+    trimer_affected = ifelse(n_lost >= 1, "affected", "intact")
+  ) |>
+  dplyr::distinct(genotype, neuron, trimer_id, shared_organelle, trimer_affected)
+
+# Count affected vs intact trimers per organelle × KO × neuron
+trimer_affected_org_ko <- trimers_affected |>
+  tidyr::separate_rows(shared_organelle, sep = ";") |>
+  dplyr::group_by(genotype, neuron, shared_organelle, trimer_affected) |>
+  dplyr::summarise(n_trimers = dplyr::n(), .groups = "drop") |>
+  tidyr::pivot_wider(
+    names_from = trimer_affected,
+    values_from = n_trimers,
+    values_fill = 0
+  ) |>
+  dplyr::mutate(
+    total = affected + intact,
+    frac_affected = affected / total
+  ) |>
+  dplyr::arrange(desc(frac_affected))
+
+write_csv(trimer_affected_org_ko,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_affected_by_organelle_ko.csv"))
+
+# Summarize across all KOs
+trimer_affected_by_org <- trimer_affected_org_ko |>
+  dplyr::group_by(shared_organelle) |>
+  dplyr::summarise(
+    n_affected = sum(affected, na.rm = TRUE),
+    n_total = sum(total, na.rm = TRUE),
+    frac_affected = n_affected / n_total,
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(desc(frac_affected))
+
+write_csv(trimer_affected_by_org,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_affected_by_organelle_summary.csv"))
+
+message("Affected trimers by organelle (top 20):")
+print(head(trimer_affected_org_ko, 20))
 
 
 # --- Step 6: Broken trimers by organelle × KO × neuron ---
@@ -12110,7 +12153,7 @@ trimer_broken_org_ko <- trimers_ko_states |>
   dplyr::summarise(n_broken = n(), .groups = "drop") |>
   dplyr::arrange(desc(n_broken))
 
-write_csv(trimer_broken_org_ko, file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_ko.csv"))
+write_csv(trimer_broken_org_ko, file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_broken_by_organelle_ko.csv"))
 
 # Summary by organelle (across all KOs)
 trimer_broken_by_org <- trimer_broken_org_ko |>
@@ -12118,7 +12161,7 @@ trimer_broken_by_org <- trimer_broken_org_ko |>
   dplyr::summarise(n_broken = sum(n_broken), .groups = "drop") |>
   dplyr::arrange(desc(n_broken))
 
-write_csv(trimer_broken_by_org,file.path(out_dir_ppi_vuln, "tables", "trimer_broken_by_organelle_summary.csv"))
+write_csv(trimer_broken_by_org,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_broken_by_organelle_summary.csv"))
 
 # Partial trimers (1 edge lost)
 trimer_partial_org_ko <- trimers_ko_states |>
@@ -12128,7 +12171,7 @@ trimer_partial_org_ko <- trimers_ko_states |>
   dplyr::summarise(n_partial = n(), .groups = "drop") |>
   dplyr::arrange(desc(n_partial))
 
-write_csv(trimer_partial_org_ko,file.path(out_dir_ppi_vuln, "tables", "trimer_partial_by_organelle_ko.csv"))
+write_csv(trimer_partial_org_ko,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_partial_by_organelle_ko.csv"))
 
 # Summary by organelle (across all KOs)
 trimer_partial_by_org <- trimer_partial_org_ko |>
@@ -12138,7 +12181,7 @@ trimer_partial_by_org <- trimer_partial_org_ko |>
 
 write_csv(
   trimer_partial_by_org,
-  file.path(out_dir_ppi_vuln, "tables", "trimer_partial_by_organelle_summary.csv")
+  file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_partial_by_organelle_summary.csv")
 )
 
 message("Broken trimers by organelle (top 20):")
@@ -12422,7 +12465,6 @@ maybe we can pull in bioplex3 into the datset for multimers. if there are severa
 2. Multimers predictions
 - PPI numbers are a bit high in KO.
 - how can we only have 200 trimers in baseline, but then 2000 edges broken in a KO? have to think about that 
-
 
 
 3. Timecourse data integration ASAH1. PPI stability over time 
