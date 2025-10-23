@@ -11721,7 +11721,6 @@ plot_ko_neuron_organelle_bars(
 # --------- iN vs iDA bubble plots per KO ---------
 
 # --- Step 3: Bubble plot of iN vs iDA effect on PPIs loss per organelle annotation
-# One bubble per annotation; two plots per KO: absolute and relative
 plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
   
   # --- Step 3.1: Count lost PPIs per KO × neuron × organelle
@@ -11759,9 +11758,7 @@ plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
     
     if (nrow(df_ko) == 0) next
     
-    # ------------------------------------------------------------
     # ABSOLUTE plot: iN_lost vs iDA_lost
-    # ------------------------------------------------------------
     df_abs <- df_ko |>
       dplyr::mutate(
         total_lost = n_lost_iN + n_lost_iDA
@@ -11788,14 +11785,10 @@ plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
             legend.position = "right",
             legend.key.size = unit(0.3, "cm"))
     
-    ggsave(file.path(out_dir, paste0(geno, "_bubble_absolute_iN_vs_iDA.pdf")),
-           p_abs, width = 6, height = 5, device = cairo_pdf)
+    ggsave(file.path(out_dir, paste0(geno, "_bubble_absolute_iN_vs_iDA.pdf")),p_abs, width = 6, height = 5, device = cairo_pdf)
     
     
-    # ------------------------------------------------------------
-    # RELATIVE plot: normalized by total PPIs per neuron
-    # (iDA_lost / total_iDA) ÷ (iN_lost / total_iN)
-    # ------------------------------------------------------------
+    # RELATIVE plot: normalized by total PPIs per neuron: (iDA_lost / total_iDA) ÷ (iN_lost / total_iN)
     df_rel <- df_ko |>
       dplyr::mutate(
         total_lost = n_lost_iN + n_lost_iDA
@@ -11822,8 +11815,7 @@ plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
             legend.position = "right",
             legend.key.size = unit(0.3, "cm"))
     
-    ggsave(file.path(out_dir, paste0(geno, "_bubble_relative_iN_vs_iDA.pdf")),
-           p_rel, width = 6, height = 5, device = cairo_pdf)
+    ggsave(file.path(out_dir, paste0(geno, "_bubble_relative_iN_vs_iDA.pdf")),p_rel, width = 6, height = 5, device = cairo_pdf)
   }
 }
 
@@ -12031,7 +12023,7 @@ if (requireNamespace("umap", quietly = TRUE)) {
 - correlations: should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
 - and then we can calculate the corr based on that. but should have two plots. once ∆ plot across the genotypes for iN and iDA (can be one plot). and then calculate the corr based on that ∆ plot 
 
-- plot PPIs number as density plots per organelle. Check shift between control and KOs.also between iN and iDA. maybe better to viz than bargraphs
+
 - can we plot interactions between A-B in a circos plot in ctrl vs KO. Segments of cirocs could be organelles on both sides. Make it grey if the link is lost 
 
 
@@ -12047,6 +12039,6 @@ maybe we can pull in bioplex3 into the datset for multimers. if there are severa
 - PCA loadings make no sense ==> remove
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
+1. PPIs lost 
+- can we use the IDs of lost PPIs per KO x neuron compared to control and do a GO enrichment with them?
 
-- bubble plots: 
-remove nucleus
