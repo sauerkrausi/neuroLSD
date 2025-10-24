@@ -11834,6 +11834,312 @@ plot_ko_bubble_in_vs_ida(
 
 
 
+### GO functional enrichment of lost PPIs on a KO x neuron level
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# GO term enrichment on proteins involved in lost PPIs per KO × neuron
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Step 0: Create output directories ---
+dir.create(file.path(out_dir_ppi_vuln, "plots/GO"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_vuln, "tables/GO"), recursive = TRUE, showWarnings = FALSE)
+
+# Load required packages
+if (!requireNamespace("topGO", quietly = TRUE)) {
+  stop("Package 'topGO' is required. Install from Bioconductor:\n",
+       "BiocManager::install('topGO')")
+}
+if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+  stop("Package 'org.Hs.eg.db' is required. Install from Bioconductor:\n",
+       "BiocManager::install('org.Hs.eg.db')")
+}
+
+library(topGO)
+library(org.Hs.eg.db)
+
+
+# --- Step 1: Define GO enrichment function ---
+run_GO_enrichment_for_lost_ppis <- function(gene_set, 
+                                             background_genes, 
+                                             tag = "KO_neuron", 
+                                             out_dir,
+                                             ontology = "BP",
+                                             top_n = 30) {
+  
+  # Check if gene set is empty
+  if (length(gene_set) < 3) {
+    message("Insufficient genes (<3) for ", tag, "; skipping GO enrichment.")
+    return(NULL)
+  }
+  
+  # Step 1.1: Create geneList for topGO
+  geneList <- factor(as.integer(background_genes %in% gene_set))
+  names(geneList) <- background_genes
+  
+  message("  Running GO enrichment for ", tag, " (", length(gene_set), " genes)...")
+  
+  # Step 1.2: Run topGO Fisher test
+  GOdata <- new("topGOdata",
+                ontology = ontology,
+                allGenes = geneList,
+                geneSel = function(x) x == 1,
+                annot = annFUN.org,
+                mapping = "org.Hs.eg.db",
+                ID = "symbol",
+                nodeSize = 5)  # Minimum 5 genes per GO term
+  
+  resultFisher <- runTest(GOdata, algorithm = "elim", statistic = "fisher")
+  
+  # Step 1.3: Generate GO table
+  go_table <- GenTable(GOdata, elimFisher = resultFisher, topNodes = top_n)
+  
+  # Handle cases where no significant terms found
+  if (nrow(go_table) == 0) {
+    message("  No significant GO terms found for ", tag)
+    return(NULL)
+  }
+  
+  go_table <- go_table %>%
+    mutate(
+      raw_pval     = score(resultFisher)[GO.ID],
+      Significant  = as.numeric(Significant),
+      Expected     = as.numeric(Expected),
+      Enrichment   = ifelse(Expected > 0, Significant / Expected, NA),
+      log10P       = -log10(raw_pval),
+      tag          = tag
+    ) %>%
+    filter(!is.na(raw_pval), !is.na(Enrichment)) %>%
+    arrange(raw_pval) %>%
+    slice_head(n = 10)
+  
+  # Step 1.4: Get associated genes per GO term
+  go_genes <- genesInTerm(GOdata)
+  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
+    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
+  })
+  
+  # Step 1.5: Save GO term table
+  write_csv(go_table, file = file.path(out_dir, paste0("GO_results_", tag, ".csv")))
+  
+  # Step 1.6: Plot dot plot (only if we have results)
+  if (nrow(go_table) > 0) {
+    p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+      geom_point(aes(size = log10P, fill = Enrichment), 
+                 shape = 21, color = "black", stroke = 0.25) +
+      scale_fill_gradient(low = "white", high = "firebrick") +
+      scale_size_continuous(range = c(2, 8)) +
+      theme_bw(base_size = 7) +
+      labs(
+        x = "Fold Enrichment",
+        y = "GO Term",
+        size = expression(-log[10]*"P"),
+        title = paste0("Top GO Terms: ", tag)
+      ) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA)
+      )
+    
+    ggsave(
+      file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")),
+      p, width = 6, height = 4, device = cairo_pdf
+    )
+  }
+  
+  return(go_table)
+}
+
+
+# --- Step 2: Extract proteins involved in lost PPIs per KO × neuron ---
+# Get unique proteins from lost edges
+proteins_in_lost_ppis <- ko_edge_states %>%
+  dplyr::filter(state == "lost") %>%
+  dplyr::select(genotype, neuron, Gene1, Gene2) %>%
+  tidyr::pivot_longer(cols = c(Gene1, Gene2), names_to = "partner", values_to = "Gene") %>%
+  dplyr::filter(!is.na(Gene)) %>%
+  dplyr::distinct(genotype, neuron, Gene)
+
+# Background: all neuronal genes in the network
+background_genes <- unique(c(ko_edge_states$Gene1, ko_edge_states$Gene2))
+background_genes <- background_genes[!is.na(background_genes)]
+
+message("Background genes: ", length(background_genes))
+
+
+# --- Step 3: Run GO enrichment for each KO × neuron ---
+ko_neuron_combos <- proteins_in_lost_ppis %>%
+  dplyr::distinct(genotype, neuron)
+
+go_results_all <- list()
+
+for (i in seq_len(nrow(ko_neuron_combos))) {
+  geno <- ko_neuron_combos$genotype[i]
+  nt   <- ko_neuron_combos$neuron[i]
+  
+  # Get genes involved in lost PPIs for this KO × neuron
+  genes_lost <- proteins_in_lost_ppis %>%
+    dplyr::filter(genotype == geno, neuron == nt) %>%
+    dplyr::pull(Gene) %>%
+    unique()
+  
+  tag <- paste0(geno, "_", nt)
+  
+  # Run GO enrichment
+  go_res <- run_GO_enrichment_for_lost_ppis(
+    gene_set = genes_lost,
+    background_genes = background_genes,
+    tag = tag,
+    out_dir = file.path(out_dir_ppi_vuln, "plots/GO"),
+    ontology = "BP"
+  )
+  
+  if (!is.null(go_res)) {
+    go_results_all[[tag]] <- go_res
+  }
+}
+
+# Combine all results
+go_results_combined <- dplyr::bind_rows(go_results_all)
+
+write_csv(
+  go_results_combined,
+  file.path(out_dir_ppi_vuln, "tables/GO", "GO_results_all_KO_neuron.csv")
+)
+
+message("GO enrichment complete! Processed ", length(go_results_all), " KO × neuron combinations.")
+
+
+# --- Step 4: Compare GO terms between iN and iDA ---
+# Find common GO terms across neuron types
+go_comparison <- go_results_combined %>%
+  dplyr::select(GO.ID, Term, tag, Enrichment, log10P) %>%
+  tidyr::separate(tag, into = c("genotype", "neuron"), sep = "_", remove = FALSE) %>%
+  dplyr::group_by(GO.ID, Term) %>%
+  dplyr::summarise(
+    n_KOs = n_distinct(genotype),
+    n_iN = sum(neuron == "iN"),
+    n_iDA = sum(neuron == "iDA"),
+    mean_enrichment = mean(Enrichment, na.rm = TRUE),
+    max_log10P = max(log10P, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(n_KOs), desc(mean_enrichment))
+
+write_csv(
+  go_comparison,
+  file.path(out_dir_ppi_vuln, "tables/GO", "GO_comparison_iN_vs_iDA.csv")
+)
+
+# Plot: Top GO terms shared across KOs
+top_shared_go <- go_comparison %>%
+  dplyr::filter(n_KOs >= 3) %>%
+  dplyr::slice_head(n = 15)
+
+if (nrow(top_shared_go) > 0) {
+  p_shared <- ggplot(top_shared_go, 
+                     aes(x = mean_enrichment, y = reorder(Term, mean_enrichment))) +
+    geom_col(aes(fill = max_log10P), color = "black", linewidth = 0.2) +
+    scale_fill_gradient(low = "white", high = "firebrick", name = expression(-log[10]*"P")) +
+    geom_text(aes(label = paste0("n=", n_KOs)), hjust = -0.2, size = 2.5) +
+    theme_bw(base_size = 7) +
+    labs(
+      x = "Mean Fold Enrichment",
+      y = "GO Term",
+      title = "Top GO terms disrupted across multiple KOs"
+    ) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA)
+    )
+  
+  ggsave(
+    file.path(out_dir_ppi_vuln, "plots/GO", "GO_shared_across_KOs.pdf"),
+    p_shared, width = 7, height = 5, device = cairo_pdf
+  )
+}
+
+
+# --- Step 5: Heatmap of GO term enrichment across KOs ---
+# Pivot for heatmap
+go_heatmap_data <- go_results_combined %>%
+  dplyr::select(GO.ID, Term, tag, Enrichment) %>%
+  tidyr::pivot_wider(names_from = tag, values_from = Enrichment, values_fill = 0) %>%
+  dplyr::filter(rowSums(dplyr::across(where(is.numeric))) > 0)
+
+# Limit to top GO terms (present in multiple KOs)
+go_term_counts <- go_results_combined %>%
+  dplyr::count(GO.ID, Term) %>%
+  dplyr::arrange(desc(n)) %>%
+  dplyr::slice_head(n = 30)
+
+go_heatmap_subset <- go_heatmap_data %>%
+  dplyr::filter(GO.ID %in% go_term_counts$GO.ID)
+
+if (nrow(go_heatmap_subset) >= 3) {
+  go_mat <- as.matrix(go_heatmap_subset[, -c(1:2)])
+  rownames(go_mat) <- go_heatmap_subset$Term
+  
+  # Shorten GO term names for readability
+  rownames(go_mat) <- substr(rownames(go_mat), 1, 60)
+  
+  pheatmap::pheatmap(
+    go_mat,
+    scale = "none",
+    color = colorRampPalette(c("white", "orange", "firebrick"))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    fontsize = 6,
+    cellwidth = 10,
+    cellheight = 10,
+    border_color = NA,
+    main = "GO term enrichment across KO × neuron",
+    filename = file.path(out_dir_ppi_vuln, "plots/GO", "heatmap_GO_enrichment_all.pdf"),
+    width = 12,
+    height = 10
+  )
+}
+
+
+# --- Step 6: Disease class-specific GO enrichment ---
+# Aggregate by disease class
+proteins_by_disease <- ko_edge_states %>%
+  dplyr::filter(state == "lost") %>%
+  dplyr::left_join(disease_classes_dataframe, by = c("genotype" = "sample")) %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::select(DiseaseClass, neuron, Gene1, Gene2) %>%
+  tidyr::pivot_longer(cols = c(Gene1, Gene2), values_to = "Gene") %>%
+  dplyr::filter(!is.na(Gene)) %>%
+  dplyr::distinct(DiseaseClass, neuron, Gene)
+
+disease_classes <- unique(proteins_by_disease$DiseaseClass)
+
+for (dc in disease_classes) {
+  for (nt in c("iN", "iDA")) {
+    genes_dc <- proteins_by_disease %>%
+      dplyr::filter(DiseaseClass == dc, neuron == nt) %>%
+      dplyr::pull(Gene) %>%
+      unique()
+    
+    if (length(genes_dc) < 3) next
+    
+    tag <- paste0(dc, "_", nt)
+    tag <- gsub("[^A-Za-z0-9_]", "_", tag)  # Clean tag for filename
+    
+    go_res_dc <- run_GO_enrichment_for_lost_ppis(
+      gene_set = genes_dc,
+      background_genes = background_genes,
+      tag = tag,
+      out_dir = file.path(out_dir_ppi_vuln, "plots/GO"),
+      ontology = "BP"
+    )
+  }
+}
+
+message("Disease class-specific GO enrichment complete!")
+```
+
 ### Multimer PPI Analysis
 ###### Trimer PPI complex analysis 
 ```{r}
@@ -12856,9 +13162,6 @@ if (requireNamespace("umap", quietly = TRUE)) {
 
 
 
-- what about multimers? 
-maybe we can pull in bioplex3 into the datset for multimers. if there are several direct interactions, then we can assembke a multimer? and check their stability in a KO background?
-
 - can we plot the organelle vulnerability of PPIs in PCA?
 - PCA loadings make no sense ==> remove
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
@@ -12871,12 +13174,6 @@ maybe we can pull in bioplex3 into the datset for multimers. if there are severa
 - save as graph for iN and for iDA
 - save GO terms as csv for each KO x neuron type
 - save plots in new dir "GO_eval_PPIlost"
-
-
-2. Multimers predictions
-we are currently checking only for trimer connections in the dataset. 
-Can we parse through the baseline and KO x neuron and see if there are some protein complexes that have strong interactions for more than three subunits?
-like A-B, B-C, C-D, A-D, D-E, B-F etc ect . i guess there are many permutations, so maybe we have a max of then proteins, othewise we run into too many comparisons?
 
 
 3. Timecourse data integration ASAH1. PPI stability over time 
