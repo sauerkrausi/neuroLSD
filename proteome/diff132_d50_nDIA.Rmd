@@ -12111,15 +12111,12 @@ if (nrow(go_heatmap_subset) >= 3) {
 
 
 # --- Step 6: Disease class-specific GO enrichment ---
-# Aggregate by disease class
 proteins_by_disease <- ko_edge_states %>%
-  dplyr::filter(state == "lost") %>%
-  dplyr::left_join(disease_classes_dataframe, by = c("genotype" = "sample")) %>%
-  dplyr::filter(!is.na(DiseaseClass)) %>%
-  dplyr::select(DiseaseClass, neuron, Gene1, Gene2) %>%
+  dplyr::filter(state == "lost", !is.na(DiseaseClass)) %>%
+  dplyr::select(DiseaseClass, genotype, neuron, Gene1, Gene2) %>%
   tidyr::pivot_longer(cols = c(Gene1, Gene2), values_to = "Gene") %>%
   dplyr::filter(!is.na(Gene)) %>%
-  dplyr::distinct(DiseaseClass, neuron, Gene)
+  dplyr::distinct(DiseaseClass, genotype, neuron, Gene)
 
 disease_classes <- unique(proteins_by_disease$DiseaseClass)
 
