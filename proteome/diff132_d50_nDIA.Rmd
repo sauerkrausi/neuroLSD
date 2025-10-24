@@ -11845,17 +11845,17 @@ dir.create(file.path(out_dir_ppi_vuln, "plots/GO"), recursive = TRUE, showWarnin
 dir.create(file.path(out_dir_ppi_vuln, "tables/GO"), recursive = TRUE, showWarnings = FALSE)
 
 # Load required packages
-if (!requireNamespace("topGO", quietly = TRUE)) {
-  stop("Package 'topGO' is required. Install from Bioconductor:\n",
-       "BiocManager::install('topGO')")
-}
-if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
-  stop("Package 'org.Hs.eg.db' is required. Install from Bioconductor:\n",
-       "BiocManager::install('org.Hs.eg.db')")
-}
-
-library(topGO)
-library(org.Hs.eg.db)
+# if (!requireNamespace("topGO", quietly = TRUE)) {
+#   stop("Package 'topGO' is required. Install from Bioconductor:\n",
+#        "BiocManager::install('topGO')")
+# }
+# if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+#   stop("Package 'org.Hs.eg.db' is required. Install from Bioconductor:\n",
+#        "BiocManager::install('org.Hs.eg.db')")
+# }
+# 
+# library(topGO)
+# library(org.Hs.eg.db)
 
 
 # --- Step 1: Define GO enrichment function ---
@@ -11959,7 +11959,20 @@ proteins_in_lost_ppis <- ko_edge_states %>%
   dplyr::filter(!is.na(Gene)) %>%
   dplyr::distinct(genotype, neuron, Gene)
 
-# Background: all neuronal genes in the network
+# --- Exclude Nucleus-annotated genes before GO analysis ---
+# Identify all Nucleus genes from long_subcell_df
+nucleus_genes <- long_subcell_df %>%
+  dplyr::filter(Localization == "Nucleus") %>%
+  dplyr::pull(Genes) %>%
+  unique()
+
+# Remove them from ko_edge_states-based background
+ko_edge_states <- ko_edge_states %>%
+  dplyr::filter(!(Gene1 %in% nucleus_genes | Gene2 %in% nucleus_genes))
+
+message("Excluded ", length(nucleus_genes), " Nucleus-annotated genes from GO evaluation.")
+
+# Background: all neuronal genes in the network (now without Nucleus)
 background_genes <- unique(c(ko_edge_states$Gene1, ko_edge_states$Gene2))
 background_genes <- background_genes[!is.na(background_genes)]
 
