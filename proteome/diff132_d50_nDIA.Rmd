@@ -11839,6 +11839,9 @@ plot_ko_bubble_in_vs_ida(
 # ─────────────────────────────────────────────────────────────────────────────
 # GO term enrichment on proteins involved in lost PPIs per KO × neuron
 # ─────────────────────────────────────────────────────────────────────────────
+# min of 5 lost PPIs per ontology
+# focus on Biological process (BP)
+# top_30 PPIs lost per KO x neuron
 
 # --- Step 0: Create output directories ---
 dir.create(file.path(out_dir_ppi_vuln, "plots/GO"), recursive = TRUE, showWarnings = FALSE)
@@ -11940,10 +11943,8 @@ run_GO_enrichment_for_lost_ppis <- function(gene_set,
         panel.border = element_rect(color = "black", fill = NA)
       )
     
-    ggsave(
-      file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")),
-      p, width = 6, height = 4, device = cairo_pdf
-    )
+    # save pdf of GO dot plot per KO x neuron type
+    ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 6, height = 4, device = cairo_pdf)
   }
   
   return(go_table)
@@ -12014,10 +12015,8 @@ for (i in seq_len(nrow(ko_neuron_combos))) {
 # Combine all results
 go_results_combined <- dplyr::bind_rows(go_results_all)
 
-write_csv(
-  go_results_combined,
-  file.path(out_dir_ppi_vuln, "tables/GO", "GO_results_all_KO_neuron.csv")
-)
+# save combined csv file
+write_csv(go_results_combined,file.path(out_dir_ppi_vuln, "tables/GO", "GO_results_all_KO_neuron.csv"))
 
 message("GO enrichment complete! Processed ", length(go_results_all), " KO × neuron combinations.")
 
