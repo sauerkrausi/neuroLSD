@@ -11834,7 +11834,8 @@ plot_ko_bubble_in_vs_ida(
 
 
 
-### Multimer (Trimer) Analysis
+### Multimer PPI Analysis
+###### Trimer Protein Complex PPI analysis 
 ```{r}
 # --------- Trimer identification and vulnerability analysis ---------
 
@@ -12312,6 +12313,364 @@ for (nt in c("iN", "iDA")) {
 
 
 ```
+
+
+
+##### Multimer Approach
+### Multimer Analysis: Dense Subgraph Detection (Louvain Communities)
+```{r}
+# --------- Identify protein complexes via community detection ---------
+
+# --- Step 0: Load required package ---
+if (!requireNamespace("igraph", quietly = TRUE)) {
+  stop("Package 'igraph' is required. Install with: install.packages('igraph')")
+}
+library(igraph)
+
+# --- Step 1: Build baseline network from high-confidence edges ---
+message("Building baseline PPI network...")
+
+# Use same high_conf_edges from trimer analysis
+baseline_net <- igraph::graph_from_data_frame(
+  d = high_conf_edges |> dplyr::select(Gene1, Gene2),
+  directed = FALSE,
+  vertices = data.frame(name = unique(c(high_conf_edges$Gene1, high_conf_edges$Gene2)))
+)
+
+# Add edge weights (confidence scores)
+igraph::E(baseline_net)$weight <- high_conf_edges$Predictome_conf
+
+message("Baseline network: ", vcount(baseline_net), " proteins, ", ecount(baseline_net), " edges")
+
+
+# --- Step 2: Community detection using Louvain algorithm ---
+message("Running Louvain community detection...")
+
+louvain_communities <- igraph::cluster_louvain(
+  baseline_net,
+  weights = igraph::E(baseline_net)$weight
+)
+
+# Extract community assignments - convert to integer
+protein_communities <- data.frame(
+  Gene = igraph::V(baseline_net)$name,
+  community_id = as.integer(igraph::membership(louvain_communities)),  # FIXED: convert to integer
+  stringsAsFactors = FALSE
+)
+
+message("Found ", max(protein_communities$community_id), " communities")
+
+
+# --- Step 3: Filter to meaningful complexes (size 3-10) ---
+community_sizes <- protein_communities |>
+  dplyr::count(community_id, name = "size")
+
+valid_communities <- community_sizes |>
+  dplyr::filter(size >= 3, size <= 10) |>
+  dplyr::pull(community_id)
+
+message("Communities with 3-10 proteins: ", length(valid_communities))
+
+complexes_baseline <- protein_communities |>
+  dplyr::filter(community_id %in% valid_communities) |>
+  dplyr::arrange(community_id, Gene)
+
+# Create complex IDs
+complexes_summary <- complexes_baseline |>
+  dplyr::group_by(community_id) |>
+  dplyr::summarise(
+    complex_id = paste0("Complex_", sprintf("%04d", community_id[1])),
+    n_proteins = n(),
+    proteins = paste(Gene, collapse = ";"),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(desc(n_proteins))
+
+write_csv(
+  complexes_summary,
+  file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes.csv")
+)
+
+message("Baseline complexes summary:")
+print(head(complexes_summary, 20))
+
+
+# --- Step 4: Annotate complexes with organelles ---
+complexes_annotated <- complexes_baseline |>
+  dplyr::left_join(
+    protein_communities |> 
+      dplyr::left_join(complexes_summary |> dplyr::select(community_id, complex_id), by = "community_id"),
+    by = c("Gene", "community_id")
+  ) |>
+  dplyr::left_join(gene_to_org, by = c("Gene" = "Genes"))
+
+# Determine dominant organelle per complex
+complex_organelle <- complexes_annotated |>
+  tidyr::pivot_longer(
+    cols = all_of(organelle_tags),
+    names_to = "organelle",
+    values_to = "present"
+  ) |>
+  dplyr::filter(present == TRUE | present == 1) |>
+  dplyr::group_by(community_id, organelle) |>
+  dplyr::summarise(n_proteins = n(), .groups = "drop_last") |>
+  dplyr::slice_max(n_proteins, n = 1, with_ties = FALSE) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(organelle = ifelse(is.na(organelle), "Other", organelle))
+
+complexes_summary <- complexes_summary |>
+  dplyr::left_join(complex_organelle |> dplyr::select(community_id, organelle), by = "community_id") |>
+  dplyr::mutate(organelle = tidyr::replace_na(organelle, "Other"))
+
+# Count by organelle
+complex_org_summary <- complexes_summary |>
+  dplyr::count(organelle, name = "n_complexes") |>
+  dplyr::arrange(desc(n_complexes))
+
+write_csv(
+  complex_org_summary,
+  file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes_by_organelle.csv")
+)
+
+message("Complexes by organelle:")
+print(complex_org_summary)
+
+
+# --- Step 5: Assess complex integrity per KO × neuron ---
+message("Assessing complex disruption per KO...")
+
+# Get all edges within each complex
+complex_edges_list <- list()
+
+for (cid in valid_communities) {
+  complex_genes <- complexes_baseline |>
+    dplyr::filter(community_id == cid) |>
+    dplyr::pull(Gene)
+  
+  # Get all edges between proteins in this complex
+  complex_edges <- high_conf_edges |>
+    dplyr::filter(Gene1 %in% complex_genes, Gene2 %in% complex_genes) |>
+    dplyr::mutate(community_id = cid)
+  
+  complex_edges_list[[as.character(cid)]] <- complex_edges
+}
+
+complex_edges_df <- dplyr::bind_rows(complex_edges_list)
+
+# Add complex_id
+complex_edges_df <- complex_edges_df |>
+  dplyr::left_join(
+    complexes_summary |> dplyr::select(community_id, complex_id),
+    by = "community_id"
+  )
+
+message("Total edges in complexes: ", nrow(complex_edges_df))
+
+
+# --- Step 6: Match complex edges to KO × neuron states ---
+# Convert to gene-based keys
+complex_edges_df <- complex_edges_df |>
+  dplyr::mutate(key_gene = .make_undirected_key(Gene1, Gene2))
+
+# Expand to all KO × neuron
+complexes_expanded <- complex_edges_df |>
+  dplyr::select(complex_id, community_id, key_gene) |>
+  tidyr::crossing(ko_neuron_combos)
+
+# Join edge states
+complexes_ko_states <- complexes_expanded |>
+  dplyr::left_join(
+    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
+    by = c("key_gene", "genotype", "neuron")
+  ) |>
+  dplyr::mutate(
+    state = tidyr::replace_na(state, "retained"),
+    edge_lost = state == "lost"
+  )
+
+# Aggregate per complex × KO × neuron
+complex_ko_summary <- complexes_ko_states |>
+  dplyr::group_by(complex_id, genotype, neuron) |>
+  dplyr::summarise(
+    n_edges_total = n(),
+    n_edges_lost = sum(edge_lost, na.rm = TRUE),
+    frac_edges_lost = n_edges_lost / n_edges_total,
+    .groups = "drop"
+  ) |>
+  dplyr::left_join(
+    complexes_summary |> dplyr::select(complex_id, n_proteins, organelle),
+    by = "complex_id"
+  ) |>
+  dplyr::mutate(
+    complex_state = dplyr::case_when(
+      frac_edges_lost >= 0.5 ~ "disrupted",
+      frac_edges_lost > 0 ~ "partial",
+      TRUE ~ "intact"
+    )
+  )
+
+write_csv(
+  complex_ko_summary,
+  file.path(out_dir_ppi_vuln, "tables/multimer", "complexes_ko_states.csv")
+)
+
+
+# --- Step 7: Summary statistics ---
+# Per KO × neuron
+complex_disruption_summary <- complex_ko_summary |>
+  dplyr::group_by(genotype, neuron) |>
+  dplyr::summarise(
+    n_complexes = n(),
+    n_intact = sum(complex_state == "intact"),
+    n_disrupted = sum(complex_state == "disrupted"),
+    n_partial = sum(complex_state == "partial"),
+    frac_disrupted = n_disrupted / n_complexes,
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(desc(frac_disrupted))
+
+write_csv(
+  complex_disruption_summary,
+  file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disruption_summary.csv")
+)
+
+message("Complex disruption summary:")
+print(complex_disruption_summary)
+
+
+# Per organelle × KO × neuron
+complex_org_ko_summary <- complex_ko_summary |>
+  dplyr::filter(complex_state == "disrupted", organelle != "Other") |>
+  dplyr::group_by(genotype, neuron, organelle) |>
+  dplyr::summarise(n_disrupted = n(), .groups = "drop") |>
+  dplyr::arrange(desc(n_disrupted))
+
+write_csv(
+  complex_org_ko_summary,
+  file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_ko.csv")
+)
+
+# Summary by organelle
+complex_org_disrupted <- complex_org_ko_summary |>
+  dplyr::group_by(organelle) |>
+  dplyr::summarise(n_disrupted = sum(n_disrupted), .groups = "drop") |>
+  dplyr::arrange(desc(n_disrupted))
+
+write_csv(
+  complex_org_disrupted,
+  file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_summary.csv")
+)
+
+
+# --- Step 8: Visualizations ---
+# Barplot: disrupted complexes per KO
+p_complex_bar <- ggplot(
+  complex_disruption_summary,
+  aes(x = reorder(genotype, -frac_disrupted), y = n_disrupted, fill = neuron)
+) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
+  labs(
+    title = "Disrupted protein complexes per KO",
+    x = NULL,
+    y = "Number of disrupted complexes"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+
+ggsave(
+  file.path(out_dir_ppi_vuln, "plots/multimer", "bars_disrupted_complexes_per_ko.pdf"),
+  p_complex_bar, width = 9, height = 5, device = cairo_pdf
+)
+
+
+# Heatmap: disrupted complexes by organelle × KO
+for (nt in c("iN", "iDA")) {
+  complex_org_wide <- complex_org_ko_summary |>
+    dplyr::filter(neuron == nt) |>
+    tidyr::pivot_wider(
+      names_from = organelle,
+      values_from = n_disrupted,
+      values_fill = 0
+    )
+  
+  if (nrow(complex_org_wide) < 2 || ncol(complex_org_wide) < 3) {
+    message("Insufficient data for complex heatmap (", nt, "); skipping.")
+    next
+  }
+  
+  complex_org_mat <- as.matrix(complex_org_wide[, -c(1:2)])
+  rownames(complex_org_mat) <- complex_org_wide$genotype
+  
+  pheatmap::pheatmap(
+    complex_org_mat,
+    scale = "none",
+    color = colorRampPalette(c("white", "#C51B7D"))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    border_color = NA,
+    fontsize = 6,
+    cellwidth = 10,
+    cellheight = 10,
+    main = paste("Disrupted complexes by organelle –", nt),
+    filename = file.path(
+      out_dir_ppi_vuln, "plots/multimer",
+      paste0("heatmap_disrupted_complexes_by_organelle_", nt, ".pdf")
+    ),
+    width = 10,
+    height = 8
+  )
+}
+
+
+# --- Step 9: Network visualization of top disrupted complexes (optional) ---
+# Visualize the 5 most disrupted complexes
+top_disrupted <- complex_ko_summary |>
+  dplyr::filter(complex_state == "disrupted") |>
+  dplyr::count(complex_id, sort = TRUE) |>
+  head(5) |>
+  dplyr::pull(complex_id)
+
+for (cid in top_disrupted) {
+  # Get complex proteins
+  complex_proteins <- complexes_baseline |>
+    dplyr::inner_join(
+      complexes_summary |> dplyr::select(community_id, complex_id),
+      by = "community_id"
+    ) |>
+    dplyr::filter(complex_id == cid) |>
+    dplyr::pull(Gene)
+  
+  # Subgraph
+  complex_subnet <- igraph::induced_subgraph(baseline_net, complex_proteins)
+  
+  # Plot
+  pdf(
+    file.path(out_dir_ppi_vuln, "plots/multimer", paste0("network_", cid, ".pdf")),
+    width = 6, height = 6
+  )
+  plot(
+    complex_subnet,
+    vertex.label = igraph::V(complex_subnet)$name,
+    vertex.size = 20,
+    vertex.color = "skyblue",
+    vertex.label.cex = 0.7,
+    edge.width = 2,
+    main = paste("Complex:", cid)
+  )
+  dev.off()
+}
+
+message("Complex analysis complete!")
+```
+
+
 
 ### ?? Dimensionality reduction of PPI vulnerability landscape
 ```{r}
