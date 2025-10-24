@@ -12393,6 +12393,7 @@ complexes_summary <- complexes_baseline |>
   ) |>
   dplyr::arrange(desc(n_proteins))
 
+# save csv
 write_csv(complexes_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes.csv"))
 
 message("Baseline complexes summary:")
@@ -12431,6 +12432,7 @@ complex_org_summary <- complexes_summary |>
   dplyr::count(organelle, name = "n_complexes") |>
   dplyr::arrange(desc(n_complexes))
 
+# save csv
 write_csv(complex_org_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes_by_organelle.csv"))
 
 message("Complexes by organelle:")
@@ -12510,6 +12512,7 @@ complex_ko_summary <- complexes_ko_states |>
       )
   )
 
+# save csv
 write_csv(complex_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "complexes_ko_states.csv"))
 
 
@@ -12527,10 +12530,8 @@ complex_disruption_summary <- complex_ko_summary |>
   ) |>
   dplyr::arrange(desc(frac_disrupted))
 
-write_csv(
-  complex_disruption_summary,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disruption_summary.csv")
-)
+# save csv
+write_csv(complex_disruption_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disruption_summary.csv"))
 
 message("Complex disruption summary:")
 print(complex_disruption_summary)
@@ -12551,10 +12552,8 @@ complex_org_disrupted <- complex_org_ko_summary |>
   dplyr::summarise(n_disrupted = sum(n_disrupted), .groups = "drop") |>
   dplyr::arrange(desc(n_disrupted))
 
-write_csv(
-  complex_org_disrupted,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_summary.csv")
-)
+# save csv
+write_csv(complex_org_disrupted,file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_summary.csv"))
 
 
 # --- Step 8: Visualizations ---
@@ -12577,10 +12576,8 @@ p_complex_bar <- ggplot(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
   )
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "plots/multimer", "bars_disrupted_complexes_per_ko.pdf"),
-  p_complex_bar, width = 9, height = 5, device = cairo_pdf
-)
+# save plot
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_disrupted_complexes_per_ko.pdf"),p_complex_bar, width = 9, height = 5, device = cairo_pdf)
 
 
 # Heatmap: disrupted complexes by organelle × KO
@@ -12614,10 +12611,7 @@ for (nt in c("iN", "iDA")) {
     cellwidth = 10,
     cellheight = 10,
     main = paste("Disrupted complexes by organelle –", nt),
-    filename = file.path(
-      out_dir_ppi_vuln, "plots/multimer",
-      paste0("heatmap_disrupted_complexes_by_organelle_", nt, ".pdf")
-    ),
+    filename = file.path(out_dir_ppi_vuln, "plots/multimer",paste0("heatmap_disrupted_complexes_by_organelle_", nt, ".pdf")),
     width = 10,
     height = 8
   )
@@ -12645,11 +12639,8 @@ for (cid in top_disrupted) {
   # Subgraph
   complex_subnet <- igraph::induced_subgraph(baseline_net, complex_proteins)
   
-  # Plot
-  pdf(
-    file.path(out_dir_ppi_vuln, "plots/multimer", paste0("network_", cid, ".pdf")),
-    width = 6, height = 6
-  )
+  # Plot & save
+  pdf(file.path(out_dir_ppi_vuln, "plots/multimer", paste0("network_", cid, ".pdf")),width = 6, height = 6)
   plot(
     complex_subnet,
     vertex.label = igraph::V(complex_subnet)$name,
