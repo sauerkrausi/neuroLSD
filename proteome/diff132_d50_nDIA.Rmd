@@ -13158,7 +13158,10 @@ if (requireNamespace("umap", quietly = TRUE)) {
 
 
 # to do
-- correlations: should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
+- by_ko heatmap correlations: 
+should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
+==> check how that is implemented and then see if we can replot that. 
+
 - and then we can calculate the corr based on that. but should have two plots. once ∆ plot across the genotypes for iN and iDA (can be one plot). and then calculate the corr based on that ∆ plot 
 
 
@@ -13172,9 +13175,9 @@ Have each annotation as tag / island in sankey stack
 Since we are only interested in the lost PPIs, we have them magenta traces from the baseline to iN or iDA 
 
 
-
-- can we plot the organelle vulnerability of PPIs in PCA?
-- PCA loadings make no sense ==> remove
+2. UMAP / composite representation of it 
+- can we plot the organelle vulnerability of PPIs in PCA? 
+- ultimately we have to express the vulnearbility of the proteins to changes by the neuron type and KO. so maybe is better to plot the proteins? and clsuter by lost ppi by KO x neuron?
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
 
