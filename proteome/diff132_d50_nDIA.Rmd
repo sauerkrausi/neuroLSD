@@ -12529,8 +12529,9 @@ maybe we can pull in bioplex3 into the datset for multimers. if there are severa
 
 
 2. Multimers predictions
-- PPI numbers are a bit high in KO.
-- how can we only have 200 trimers in baseline, but then 2000 edges broken in a KO? have to think about that 
+we are currently checking only for trimer connections in the dataset. 
+Can we parse through the baseline and KO x neuron and see if there are some protein complexes that have strong interactions for more than three subunits?
+like A-B, B-C, C-D, A-D, D-E, B-F etc ect . i guess there are many permutations, so maybe we have a max of then proteins, othewise we run into too many comparisons?
 
 
 3. Timecourse data integration ASAH1. PPI stability over time 
