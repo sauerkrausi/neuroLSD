@@ -11835,10 +11835,9 @@ plot_ko_bubble_in_vs_ida(
 
 
 ### Multimer PPI Analysis
-###### Trimer Protein Complex PPI analysis 
+###### Trimer PPI complex analysis 
 ```{r}
 # --------- Trimer identification and vulnerability analysis ---------
-
 # --- Step 0: Create output directories ---
 dir.create(file.path(out_dir_ppi_vuln, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_ppi_vuln, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
@@ -12316,10 +12315,18 @@ for (nt in c("iN", "iDA")) {
 
 
 
-##### Multimer Approach
-### Multimer Analysis: Dense Subgraph Detection (Louvain Communities)
+
+##### Multimer Analysis: Dense Subgraph Detection 
 ```{r}
 # --------- Identify protein complexes via community detection ---------
+# Find highly interconnected modules using:
+# - Louvain community detection
+# - Leiden algorithm  
+# - MCL (Markov Clustering)
+# - Finds real biological complexes, handles partial connectivity
+# if 75% of edges lost ==> compelx disruped 
+# if 25% of edges lost ==> complex affecetd 
+
 
 # --- Step 0: Load required package ---
 if (!requireNamespace("igraph", quietly = TRUE)) {
@@ -12386,10 +12393,7 @@ complexes_summary <- complexes_baseline |>
   ) |>
   dplyr::arrange(desc(n_proteins))
 
-write_csv(
-  complexes_summary,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes.csv")
-)
+write_csv(complexes_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes.csv"))
 
 message("Baseline complexes summary:")
 print(head(complexes_summary, 20))
@@ -12427,10 +12431,7 @@ complex_org_summary <- complexes_summary |>
   dplyr::count(organelle, name = "n_complexes") |>
   dplyr::arrange(desc(n_complexes))
 
-write_csv(
-  complex_org_summary,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes_by_organelle.csv")
-)
+write_csv(complex_org_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes_by_organelle.csv"))
 
 message("Complexes by organelle:")
 print(complex_org_summary)
@@ -12502,17 +12503,14 @@ complex_ko_summary <- complexes_ko_states |>
     by = "complex_id"
   ) |>
   dplyr::mutate(
-    complex_state = dplyr::case_when(
-      frac_edges_lost >= 0.5 ~ "disrupted",
-      frac_edges_lost > 0 ~ "partial",
-      TRUE ~ "intact"
-    )
+      complex_state = case_when(
+        frac_edges_lost >= 0.75 ~ "disrupted",   # ≥75% edges lost
+        frac_edges_lost >= 0.25 ~ "partial",     # 25-75% lost
+        TRUE                    ~ "intact"
+      )
   )
 
-write_csv(
-  complex_ko_summary,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "complexes_ko_states.csv")
-)
+write_csv(complex_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "complexes_ko_states.csv"))
 
 
 # --- Step 7: Summary statistics ---
@@ -12545,10 +12543,7 @@ complex_org_ko_summary <- complex_ko_summary |>
   dplyr::summarise(n_disrupted = n(), .groups = "drop") |>
   dplyr::arrange(desc(n_disrupted))
 
-write_csv(
-  complex_org_ko_summary,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_ko.csv")
-)
+write_csv(complex_org_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_ko.csv"))
 
 # Summary by organelle
 complex_org_disrupted <- complex_org_ko_summary |>
