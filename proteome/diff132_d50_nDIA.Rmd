@@ -13166,6 +13166,9 @@ should calculate to the baseline, not across all the genotypes. since it should 
 
 
 
+DENSITY plot for PPI validations? or how many good ones probAF we get. instead of scatter plots?
+
+
 1. Viz of loss of PPI
 - can we plot interactions between A-B in a circos plot in ctrl vs KO. Segments of cirocs could be organelles on both sides. Make it grey if the link is lost 
 - SANKEY plot for lost PPIs. 
