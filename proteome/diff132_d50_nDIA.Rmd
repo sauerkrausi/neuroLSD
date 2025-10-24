@@ -13162,8 +13162,14 @@ if (requireNamespace("umap", quietly = TRUE)) {
 - and then we can calculate the corr based on that. but should have two plots. once ∆ plot across the genotypes for iN and iDA (can be one plot). and then calculate the corr based on that ∆ plot 
 
 
+
+1. Viz of loss of PPI
 - can we plot interactions between A-B in a circos plot in ctrl vs KO. Segments of cirocs could be organelles on both sides. Make it grey if the link is lost 
-- can we use a Sankey plot to show PPIs lost. have Ctrl/baseline in the center and then left iDA and right iN. have for each organelle annotation. grey is retained and magenda for lost 
+- SANKEY plot for lost PPIs. 
+can we use a Sankey plot to show PPIs lost. have Ctrl/baseline in the center and then left iDA and right iN. 
+baseline = "skyblue", iN = "grey60", iDA = "grey80"
+Have each annotation as tag / island in sankey stack
+Since we are only interested in the lost PPIs, we have them magenta traces from the baseline to iN or iDA 
 
 
 
@@ -13171,14 +13177,6 @@ if (requireNamespace("umap", quietly = TRUE)) {
 - PCA loadings make no sense ==> remove
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
-
-
-1. PPIs lost 
-- can we use the IDs of lost PPIs per KO x neuron compared to control and do a GO enrichment with them?
-- have to make a call on which lost PPIs to include. Maybe take relative loss of PPI per annotation as metric. Take top 5 PPis lost (meaning most affected in relation to their size) and run the GO enrichment on these combined terms.
-- save as graph for iN and for iDA
-- save GO terms as csv for each KO x neuron type
-- save plots in new dir "GO_eval_PPIlost"
 
 
 3. Timecourse data integration ASAH1. PPI stability over time 
