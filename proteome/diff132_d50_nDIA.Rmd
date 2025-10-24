@@ -12038,10 +12038,8 @@ go_comparison <- go_results_combined %>%
   ) %>%
   dplyr::arrange(desc(n_KOs), desc(mean_enrichment))
 
-write_csv(
-  go_comparison,
-  file.path(out_dir_ppi_vuln, "tables/GO", "GO_comparison_iN_vs_iDA.csv")
-)
+# save csv
+write_csv(go_comparison,file.path(out_dir_ppi_vuln, "tables/GO", "GO_comparison_iN_vs_iDA.csv"))
 
 # Plot: Top GO terms shared across KOs
 top_shared_go <- go_comparison %>%
@@ -12065,10 +12063,8 @@ if (nrow(top_shared_go) > 0) {
       panel.border = element_rect(color = "black", fill = NA)
     )
   
-  ggsave(
-    file.path(out_dir_ppi_vuln, "plots/GO", "GO_shared_across_KOs.pdf"),
-    p_shared, width = 7, height = 5, device = cairo_pdf
-  )
+  # save pdf
+  ggsave(file.path(out_dir_ppi_vuln, "plots/GO", "GO_shared_across_KOs.pdf"),p_shared, width = 7, height = 5, device = cairo_pdf)
 }
 
 
