@@ -13180,9 +13180,11 @@ Since we are only interested in the lost PPIs, we have them magenta traces from 
 
 
 3. Timecourse data integration ASAH1. PPI stability over time 
+code in IX. Long diff: d30-50-70
 - we have proteomic data for iN and iDA for ASAH1 and control at day 30, day 50 and day 70
 - compute PPIs for control at every timepoint and then see which PPIs are lost in the ASAH1 KO background. plot for KO x neuron x day 
 - save also as csv
 
+4. if timecouse works, maybe do it for all genotypes in d30 and d50?
 
 X. EndoMap integration
