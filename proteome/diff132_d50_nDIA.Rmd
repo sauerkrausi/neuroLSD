@@ -10798,10 +10798,17 @@ if (exists("ppi_qc_df")) {
       .groups = "drop"
     )
 
-  p_qc_bubble_ann <- ggplot(qc_tag_summary, 
+  p_qc_bubble_ann <- ggplot(qc_tag_summary,
     aes(x = Predictome_conf_mean, y = AFMprob_mean, size = n_edges, fill = tag)) +
     geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.15) +
-    scale_fill_manual(values = annotation_class_colors_corrgeno, drop = FALSE, name = "Annotation") +
+    ggrepel::geom_text_repel(
+      aes(label = tag),
+      size = 2.3,
+      max.overlaps = 50,
+      seed = 42,
+      color = "black"
+    ) +
+    scale_fill_manual(values = organelle_colors, drop = FALSE, name = "Annotation") +
     scale_size_continuous(range = c(2, 8), name = "Edge count") +
     geom_smooth(method = "lm", se = FALSE, color = "grey50", linetype = "dashed", linewidth = 0.3) +
     labs(
@@ -10816,7 +10823,8 @@ if (exists("ppi_qc_df")) {
       legend.key.size = unit(0.3, "cm")
     )
 
-  ggsave(file.path(out_dir_ppi_vuln, "qc", "bubble_AFMprob_vs_PredictomeConf_byAnnotation.pdf"),p_qc_bubble_ann, width = 5, height = 5, device = cairo_pdf)
+  ggsave(file.path(out_dir_ppi_vuln, "qc", "bubble_AFMprob_vs_PredictomeConf_byAnnotation.pdf"),
+         p_qc_bubble_ann, width = 7, height = 5, device = cairo_pdf)
 }
 
 ```
