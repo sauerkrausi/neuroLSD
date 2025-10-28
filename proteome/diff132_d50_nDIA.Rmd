@@ -13497,8 +13497,8 @@ for (nt in c("iN", "iDA")) {
 
 
 # --- Step 7: Line plots for selected annotations ---
-selected_annotations <- c("Mito", "OXPHOS", "mtComplexI", "Endo_iN_curated_Hundley", 
-                          "SVfusion", "SynapseSVs")
+selected_annotations <- c("Mito", "OXPHOS", "MitoMIM", "SynGO", 
+                          "Svexocytosis", "SynapseSVs")
 
 # Filter to selected annotations
 timecourse_selected <- timecourse_by_annotation %>%
@@ -13581,7 +13581,7 @@ p_timecourse_ribbon <- ggplot(timecourse_with_sd, aes(x = day_numeric, y = n_los
   ) +
   theme_bw(base_size = 6) +
   theme(
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
     strip.background = element_rect(fill = "grey90", color = "black"),
     legend.position = "top"
