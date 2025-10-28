@@ -13195,3 +13195,5 @@ code in IX. Long diff: d30-50-70
 
 X. Misc
 - change color scheme for AFpob ascending boxplots. 
+- add QC plot: Scatter plot of AFM prediction score on y axis and predictome conf on x-axis. plot by organelle. Size of organelle is the AF prob
+- need complex ID of which ones are broken in KO for trimer and multimer 
