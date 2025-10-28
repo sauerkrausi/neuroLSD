@@ -11515,156 +11515,6 @@ plot_ppi_diseaseclass_impact(
 ```
 
 
-##### Sankey plot for viz of lost PPIs 
-```{r}
-# --------- Sankey plot: Lost PPIs per annotation  ---------
-
-# --- Step 1: Prepare data with correct proportions ---
-plot_ppi_loss_sankey_weighted <- function(df_states, shared_long, out_dir, 
-                                          min_ppis = 30, save = TRUE) {
-  
-  # Filter to lost PPIs and merge with organelle tags
-  lost_ppis <- df_states |>
-    dplyr::filter(state == "lost") |>
-    dplyr::select(key, neuron) |>
-    dplyr::inner_join(shared_long, by = "key") |>
-    dplyr::filter(!is.na(tag))
-  
-  if (nrow(lost_ppis) == 0) {
-    message("No lost PPIs found for Sankey plot.")
-    return(invisible(NULL))
-  }
-  
-  # Count total lost PPIs per organelle
-  organelle_counts <- lost_ppis |>
-    dplyr::count(tag, name = "total_lost") |>
-    dplyr::arrange(desc(total_lost))
-  
-  message("Lost PPIs per organelle:")
-  print(organelle_counts)
-  
-  # Keep major organelles only
-  major_organelles <- organelle_counts |>
-    dplyr::filter(total_lost >= min_ppis) |>
-    dplyr::pull(tag)
-  
-  # Aggregate minor organelles
-  lost_ppis_clean <- lost_ppis |>
-    dplyr::mutate(tag = ifelse(tag %in% major_organelles, tag, "Other"))
-  
-  # Create individual rows for EACH lost PPI (not aggregated counts)
-  # This ensures proper weighting in make_long()
-  
-  flows_ida <- lost_ppis_clean |>
-    dplyr::filter(neuron == "iDA") |>
-    dplyr::mutate(
-      iDA = tag,
-      Baseline = tag,
-      iN = NA_character_
-    ) |>
-    dplyr::select(iDA, Baseline, iN)
-  
-  flows_in <- lost_ppis_clean |>
-    dplyr::filter(neuron == "iN") |>
-    dplyr::mutate(
-      iDA = NA_character_,
-      Baseline = tag,
-      iN = tag
-    ) |>
-    dplyr::select(iDA, Baseline, iN)
-  
-  # Combine - each row represents ONE lost PPI
-  sankey_data <- dplyr::bind_rows(flows_ida, flows_in)
-  
-  message("Total rows in sankey_data: ", nrow(sankey_data))
-  
-  # Convert to long format - now properly weighted
-  df_long <- sankey_data |>
-    make_long(iDA, Baseline, iN)
-  
-  # Determine position for coloring
-  df_long <- df_long |>
-    dplyr::mutate(
-      position = dplyr::case_when(
-        x == "iDA" ~ "iDA",
-        x == "Baseline" ~ "Baseline",
-        x == "iN" ~ "iN",
-        TRUE ~ "Other"
-      ),
-      organelle = node
-    )
-  
-  # Create color palette for organelles using RdYlBu
-  unique_organelles <- unique(df_long$organelle[!is.na(df_long$organelle)])
-  n_org <- length(unique_organelles)
-  
-  organelle_colors <- setNames(
-    colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(n_org),
-    unique_organelles
-  )
-  
-  # Create plot
-  p <- ggplot(df_long, aes(x = x, 
-                           next_x = next_x, 
-                           node = node, 
-                           next_node = next_node, 
-                           fill = organelle,
-                           label = node)) +
-    geom_sankey(
-      flow.fill = "grey70",       # grey flows
-      flow.alpha = 0.4,            # Semi-transparent
-      flow.color = NA,             # NO BORDERS on flows
-      space = 2,                   # Space between nodes
-      width = 0.2,                 # Node width
-      node.color = "black",        # Black node borders
-      smooth = 8                   # Rounded corners
-    ) +
-    geom_sankey_text(size = 2.5, color = "black", hjust = -0.1) +
-    scale_fill_manual(values = organelle_colors, na.value = "grey90") +
-    scale_x_discrete(labels = c("iDA", "Baseline", "iN")) +
-    labs(
-      title = "Lost PPIs: iDA ← Baseline → iN",
-      subtitle = paste("Organelles with ≥", min_ppis, "lost PPIs shown"),
-      fill = "Organelle"
-    ) +
-    theme_sankey(base_size = 6) +
-    theme(
-      axis.title = element_blank(),
-      axis.text.y = element_blank(),
-      axis.text.x = element_text(size = 9, face = "plain"),
-      axis.ticks = element_blank(),
-      panel.grid = element_blank(),
-      legend.position = "right",
-      legend.key.size = unit(0.4, "cm"),
-      plot.title = element_text(hjust = 0.5, face = "plain"),
-      plot.subtitle = element_text(hjust = 0.5, size = 8, color = "grey40")
-    )
-  
-  if (save) {
-    ggsave(file.path(out_dir, "plots/global", "sankey_ppi_loss_weighted.pdf"),p, width = 11, height = 8, device = cairo_pdf)
-    message("Weighted ggsankey plot saved!")
-  }
-  
-  return(p)
-}
-
-
-
-
-# --- Step 3: Call the functions ---
-# Version 1: Organelle-colored nodes (RdYlBu) - PROPERLY WEIGHTED
-plot_ppi_loss_sankey_weighted(
-  df_states = ko_edge_states,
-  shared_long = shared_long,
-  out_dir = out_dir_ppi_vuln,
-  min_ppis = 30,
-  save = TRUE
-)
-
-
-
-```
-
 
 ### Vizualiztion of KO x Neuron x Annotation effect on PPIs
 ##### Per-KO PPI vulnerability profiles by confidence scores
@@ -12043,6 +11893,238 @@ plot_ko_bubble_in_vs_ida(
   out_dir = file.path(out_dir_ppi_vuln, "plots/per_ko_neuron"),
   org_colors = organelle_colors
 )
+
+```
+
+##### Sankey plot for viz of lost PPIs 
+```{r}
+# --------- Sankey plot: Lost PPIs per genotype (one plot per KO) ---------
+
+# --- Step 1: Create Sankey plot for a single genotype ---
+plot_ppi_loss_sankey_per_genotype <- function(df_states, shared_long, genotype_name, 
+                                               out_dir, min_ppis = 10, save = TRUE) {
+  
+  # Filter to specific genotype and lost PPIs
+  lost_ppis <- df_states |>
+    dplyr::filter(state == "lost", genotype == genotype_name) |>
+    dplyr::select(key, neuron) |>
+    dplyr::inner_join(shared_long, by = "key") |>
+    dplyr::filter(!is.na(tag))
+  
+  if (nrow(lost_ppis) == 0) {
+    message("No lost PPIs found for ", genotype_name)
+    return(invisible(NULL))
+  }
+  
+  # Count total lost PPIs per organelle for this genotype
+  organelle_counts <- lost_ppis |>
+    dplyr::count(tag, name = "total_lost") |>
+    dplyr::arrange(desc(total_lost))
+  
+  message("\n", genotype_name, " - Lost PPIs per organelle:")
+  print(organelle_counts)
+  
+  # Keep major organelles only (adjusted threshold per genotype)
+  major_organelles <- organelle_counts |>
+    dplyr::filter(total_lost >= min_ppis) |>
+    dplyr::pull(tag)
+  
+  if (length(major_organelles) == 0) {
+    message("No organelles with ≥", min_ppis, " lost PPIs for ", genotype_name)
+    return(invisible(NULL))
+  }
+  
+  # Aggregate minor organelles
+  lost_ppis_clean <- lost_ppis |>
+    dplyr::mutate(tag = ifelse(tag %in% major_organelles, tag, "Other"))
+  
+  # Create individual rows for EACH lost PPI
+  flows_ida <- lost_ppis_clean |>
+    dplyr::filter(neuron == "iDA") |>
+    dplyr::mutate(
+      iDA = tag,
+      Baseline = tag,
+      iN = NA_character_
+    ) |>
+    dplyr::select(iDA, Baseline, iN)
+  
+  flows_in <- lost_ppis_clean |>
+    dplyr::filter(neuron == "iN") |>
+    dplyr::mutate(
+      iDA = NA_character_,
+      Baseline = tag,
+      iN = tag
+    ) |>
+    dplyr::select(iDA, Baseline, iN)
+  
+  # Combine - each row represents ONE lost PPI
+  sankey_data <- dplyr::bind_rows(flows_ida, flows_in)
+  
+  # Convert to long format
+  df_long <- sankey_data |>
+    make_long(iDA, Baseline, iN)
+  
+  # Determine position and organelle for coloring
+  df_long <- df_long |>
+    dplyr::mutate(
+      position = dplyr::case_when(
+        x == "iDA" ~ "iDA",
+        x == "Baseline" ~ "Baseline",
+        x == "iN" ~ "iN",
+        TRUE ~ "Other"
+      ),
+      organelle = node
+    )
+  
+  # Create color palette for organelles using RdYlBu
+  unique_organelles <- unique(df_long$organelle[!is.na(df_long$organelle)])
+  n_org <- length(unique_organelles)
+  
+  organelle_colors <- setNames(
+    colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(n_org),
+    unique_organelles
+  )
+  
+  # Create plot
+  p <- ggplot(df_long, aes(x = x, 
+                           next_x = next_x, 
+                           node = node, 
+                           next_node = next_node, 
+                           fill = organelle,
+                           label = node)) +
+    geom_sankey(
+      flow.fill = "grey70",       
+      flow.alpha = 0.4,           
+      flow.color = NA,            
+      space = 2,                  
+      width = 0.2,                
+      node.color = "black",       
+      smooth = 8                  
+    ) +
+    geom_sankey_text(size = 2.5, color = "black", hjust = -0.1) +
+    scale_fill_manual(values = organelle_colors, na.value = "grey90") +
+    scale_x_discrete(labels = c("iDA", "Baseline", "iN")) +
+    labs(
+      title = paste("Lost PPIs in", genotype_name, ": iDA ← Baseline → iN"),
+      subtitle = paste("Organelles with ≥", min_ppis, "lost PPIs shown"),
+      fill = "Organelle"
+    ) +
+    theme_sankey(base_size = 6) +
+    theme(
+      axis.title = element_blank(),
+      axis.text.y = element_blank(),
+      axis.text.x = element_text(size = 9, face = "plain"),
+      axis.ticks = element_blank(),
+      panel.grid = element_blank(),
+      legend.position = "right",
+      legend.key.size = unit(0.4, "cm"),
+      plot.title = element_text(hjust = 0.5, face = "plain", size = 8),
+      plot.subtitle = element_text(hjust = 0.5, size = 6, color = "grey40")
+    )
+  
+  if (save) {
+    # Clean genotype name for filename
+    safe_name <- gsub("[^A-Za-z0-9]", "_", genotype_name)
+    ggsave(
+      file.path(out_dir, "plots/by_ko", paste0("sankey_ppi_loss_", safe_name, ".pdf")),
+      p, width = 11, height = 8, device = cairo_pdf
+    )
+    message("Sankey plot saved for ", genotype_name)
+  }
+  
+  return(p)
+}
+
+
+# --- Step 2: Loop through all genotypes ---
+plot_all_genotype_sankeys <- function(df_states, shared_long, out_dir, 
+                                      min_ppis = 10, save = TRUE) {
+  
+  # Get all unique genotypes
+  all_genotypes <- unique(df_states$genotype)
+  all_genotypes <- sort(all_genotypes)
+  
+  message("Creating Sankey plots for ", length(all_genotypes), " genotypes...")
+  
+  # Create plots for each genotype
+  plot_list <- list()
+  
+  for (geno in all_genotypes) {
+    p <- plot_ppi_loss_sankey_per_genotype(
+      df_states = df_states,
+      shared_long = shared_long,
+      genotype_name = geno,
+      out_dir = out_dir,
+      min_ppis = min_ppis,
+      save = save
+    )
+    
+    if (!is.null(p)) {
+      plot_list[[geno]] <- p
+    }
+  }
+  
+  message("\nCompleted ", length(plot_list), " Sankey plots!")
+  
+  return(invisible(plot_list))
+}
+
+
+# --- Step 3: Optional - Create summary table of PPI loss by genotype ---
+summarize_ppi_loss_by_genotype <- function(df_states, shared_long, out_dir) {
+  
+  lost_ppis <- df_states |>
+    dplyr::filter(state == "lost") |>
+    dplyr::select(key, genotype, neuron) |>
+    dplyr::inner_join(shared_long, by = "key") |>
+    dplyr::filter(!is.na(tag))
+  
+  # Summary per genotype × neuron × organelle
+  summary_table <- lost_ppis |>
+    dplyr::count(genotype, neuron, tag, name = "n_lost") |>
+    tidyr::pivot_wider(
+      names_from = neuron,
+      values_from = n_lost,
+      values_fill = 0
+    ) |>
+    dplyr::mutate(
+      total = iDA + iN,
+      iDA_fraction = iDA / total,
+      iN_fraction = iN / total,
+      diff = iN - iDA
+    ) |>
+    dplyr::arrange(genotype, desc(total))
+  
+  write_csv(
+    summary_table,
+    file.path(out_dir, "tables", "ppi_loss_summary_by_genotype_organelle.csv")
+  )
+  
+  message("Summary table saved!")
+  
+  return(summary_table)
+}
+
+
+# --- Step 4: Call the functions ---
+# Create individual Sankey plots for each genotype
+plot_all_genotype_sankeys(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  out_dir = out_dir_ppi_vuln,
+  min_ppis = 10,  
+  save = TRUE
+)
+
+# Create summary table
+genotype_summary <- summarize_ppi_loss_by_genotype(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  out_dir = out_dir_ppi_vuln
+)
+
+print(head(genotype_summary, 20))
+
 
 ```
 
