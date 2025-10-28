@@ -14090,10 +14090,9 @@ DENSITY plot for PPI validations? or how many good ones probAF we get. instead o
 
 
 3. Timecourse data integration ASAH1. PPI stability over time 
-code in IX. Long diff: d30-50-70
-- we have proteomic data for iN and iDA for ASAH1 and control at day 30, day 50 and day 70
-- compute PPIs for control at every timepoint and then see which PPIs are lost in the ASAH1 KO background. plot for KO x neuron x day 
-- save also as csv
+day 70 has a lot of lost PPis. but could also be true since we shot it later.
+maybe have to recalculate the baseline for lost PPI for day 70 and then adjust it? 
+
 
 4. if timecouse works, maybe do it for all genotypes in d30 and d50?
 
