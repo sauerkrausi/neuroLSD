@@ -13193,4 +13193,5 @@ code in IX. Long diff: d30-50-70
 
 4. if timecouse works, maybe do it for all genotypes in d30 and d50?
 
-X. EndoMap integration
+X. Misc
+- change color scheme for AFpob ascending boxplots. 
