@@ -10813,8 +10813,8 @@ if (exists("ppi_qc_df")) {
     geom_smooth(method = "lm", se = FALSE, color = "grey50", linetype = "dashed", linewidth = 0.3) +
     labs(
       title = "PPI confidence relationship (by annotation)",
-      x = "Mean Predictome confidence",
-      y = "Mean AFM probability"
+      x = "Predictome confidence by annotation",
+      y = "AFM probability by annotation"
     ) +
     theme_bw(base_size = 6) +
     theme(
@@ -10823,8 +10823,7 @@ if (exists("ppi_qc_df")) {
       legend.key.size = unit(0.3, "cm")
     )
 
-  ggsave(file.path(out_dir_ppi_vuln, "qc", "bubble_AFMprob_vs_PredictomeConf_byAnnotation.pdf"),
-         p_qc_bubble_ann, width = 7, height = 5, device = cairo_pdf)
+  ggsave(file.path(out_dir_ppi_vuln, "qc", "bubble_AFMprob_vs_PredictomeConf_byAnnotation.pdf"),p_qc_bubble_ann, width = 7, height = 5, device = cairo_pdf)
 }
 
 ```
