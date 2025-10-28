@@ -10771,7 +10771,7 @@ if (exists("ppi_evidence")) {
   p_qc_bubble_key <- ggplot(ppi_evidence, aes(x = Predictome_conf, y = AFMprob)) +
     geom_point(alpha = 0.5, shape = 21, color = "black", fill = "skyblue", size = 2, stroke = 0.1) +
     labs(
-      title = "PPI confidence relationship (per key)",
+      title = "PPI confidence relationship AFM vs composite Predictome",
       x = "Predictome confidence",
       y = "AFM probability"
     ) +
@@ -10976,7 +10976,7 @@ plot_ppi_vulnerability <- function(df_edges,
     p <- ggplot(loss_summary, aes(x = iN, y = iDA)) +
       geom_polygon(data = band_df, aes(x = x, y = y),
                    fill = "skyblue", alpha = 0.2, inherit.aes = FALSE) +
-      geom_point(aes(fill = color, size = ratio_in_ida), shape = 21, stroke = 0, alpha = 0.9) +
+      geom_point(aes(fill = color, size = ratio_in_ida), shape = 21, color = "black", stroke = 0.6, alpha = 0.9) +
       ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 50, seed = 42) +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.5, alpha = 0.8) +
       geom_abline(slope = 1, intercept = 0.1, linetype = "solid", color = "grey80") +
