@@ -11896,7 +11896,8 @@ plot_ko_bubble_in_vs_ida(
 
 ```
 
-##### Sankey plot for viz of lost PPIs 
+
+##### Sankey plot of lost PPIs per KO x neuron compared to baseline 
 ```{r}
 # --------- Sankey plot: Lost PPIs per genotype (one plot per KO) ---------
 
@@ -11996,7 +11997,7 @@ plot_ppi_loss_sankey_per_genotype <- function(df_states, shared_long, genotype_n
       flow.fill = "grey70",       
       flow.alpha = 0.4,           
       flow.color = NA,            
-      space = 2,                  
+      space = 1,                  
       width = 0.2,                
       node.color = "black",       
       smooth = 8                  
@@ -12025,10 +12026,7 @@ plot_ppi_loss_sankey_per_genotype <- function(df_states, shared_long, genotype_n
   if (save) {
     # Clean genotype name for filename
     safe_name <- gsub("[^A-Za-z0-9]", "_", genotype_name)
-    ggsave(
-      file.path(out_dir, "plots/by_ko", paste0("sankey_ppi_loss_", safe_name, ".pdf")),
-      p, width = 11, height = 8, device = cairo_pdf
-    )
+    ggsave(file.path(out_dir, "plots/by_ko", paste0("sankey_ppi_loss_", safe_name, ".pdf")),p, width = 11, height = 8, device = cairo_pdf)
     message("Sankey plot saved for ", genotype_name)
   }
   
@@ -12097,7 +12095,7 @@ summarize_ppi_loss_by_genotype <- function(df_states, shared_long, out_dir) {
   
   write_csv(
     summary_table,
-    file.path(out_dir, "tables", "ppi_loss_summary_by_genotype_organelle.csv")
+    file.path(out_dir, "tables", "Sankey_ppi_loss_summary_by_genotype_organelle.csv")
   )
   
   message("Summary table saved!")
