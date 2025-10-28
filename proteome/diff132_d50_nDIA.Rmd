@@ -11517,17 +11517,11 @@ plot_ppi_diseaseclass_impact(
 
 ##### Sankey plot for viz of lost PPIs 
 ```{r}
-# --------- Sankey plot: Lost PPIs using ggsankey ---------
+# --------- Sankey plot: Lost PPIs using ggsankey (PROPERLY WEIGHTED) ---------
 
-# --- Step 0: Install/load ggsankey ---
-if (!requireNamespace("ggsankey", quietly = TRUE)) {
-  remotes::install_github("davidsjoberg/ggsankey")
-}
-library(ggsankey)
-
-# --- Step 1: Prepare data in ggsankey format ---
-plot_ppi_loss_sankey_ggsankey <- function(df_states, shared_long, out_dir, 
-                                           min_ppis = 30, save = TRUE) {
+# --- Step 1: Prepare data with correct proportions ---
+plot_ppi_loss_sankey_weighted <- function(df_states, shared_long, out_dir, 
+                                          min_ppis = 30, save = TRUE) {
   
   # Filter to lost PPIs and merge with organelle tags
   lost_ppis <- df_states |>
@@ -11541,10 +11535,13 @@ plot_ppi_loss_sankey_ggsankey <- function(df_states, shared_long, out_dir,
     return(invisible(NULL))
   }
   
-  # Count total lost PPIs per organelle to filter small ones
+  # Count total lost PPIs per organelle
   organelle_counts <- lost_ppis |>
     dplyr::count(tag, name = "total_lost") |>
     dplyr::arrange(desc(total_lost))
+  
+  message("Lost PPIs per organelle:")
+  print(organelle_counts)
   
   # Keep major organelles only
   major_organelles <- organelle_counts |>
@@ -11555,47 +11552,46 @@ plot_ppi_loss_sankey_ggsankey <- function(df_states, shared_long, out_dir,
   lost_ppis_clean <- lost_ppis |>
     dplyr::mutate(tag = ifelse(tag %in% major_organelles, tag, "Other"))
   
-  # Create separate flows for iDA and iN
-  # iDA: iDA_organelle -> Baseline_organelle -> (empty)
-  # iN: (empty) -> Baseline_organelle -> iN_organelle
+  # Create individual rows for EACH lost PPI (not aggregated counts)
+  # This ensures proper weighting in make_long()
   
   flows_ida <- lost_ppis_clean |>
     dplyr::filter(neuron == "iDA") |>
-    dplyr::count(tag, name = "n") |>
     dplyr::mutate(
-      iDA = paste0("iDA_", tag),
-      Baseline = paste0("Baseline_", tag),
+      iDA = tag,
+      Baseline = tag,
       iN = NA_character_
     ) |>
-    dplyr::select(iDA, Baseline, iN, n)
+    dplyr::select(iDA, Baseline, iN)
   
   flows_in <- lost_ppis_clean |>
     dplyr::filter(neuron == "iN") |>
-    dplyr::count(tag, name = "n") |>
     dplyr::mutate(
       iDA = NA_character_,
-      Baseline = paste0("Baseline_", tag),
-      iN = paste0("iN_", tag)
+      Baseline = tag,
+      iN = tag
     ) |>
-    dplyr::select(iDA, Baseline, iN, n)
+    dplyr::select(iDA, Baseline, iN)
   
-  # Combine and expand for ggsankey format
+  # Combine - each row represents ONE lost PPI
   sankey_data <- dplyr::bind_rows(flows_ida, flows_in)
   
-  # Convert to long format using make_long
-  df_long <- sankey_data |>
-    make_long(iDA, Baseline, iN, value = n)
+  message("Total rows in sankey_data: ", nrow(sankey_data))
   
-  # Extract organelle name from node labels for coloring
+  # Convert to long format - now properly weighted
+  df_long <- sankey_data |>
+    make_long(iDA, Baseline, iN)
+  
+  # Determine position for coloring
   df_long <- df_long |>
     dplyr::mutate(
-      organelle = gsub("^(iDA_|Baseline_|iN_)", "", node),
-      node_type = dplyr::case_when(
-        grepl("^iDA_", node) ~ "iDA",
-        grepl("^Baseline_", node) ~ "Baseline",
-        grepl("^iN_", node) ~ "iN",
+      position = dplyr::case_when(
+        x == "iDA" ~ "iDA",
+        x == "Baseline" ~ "Baseline",
+        x == "iN" ~ "iN",
         TRUE ~ "Other"
-      )
+      ),
+      organelle = node
     )
   
   # Create color palette for organelles using RdYlBu
@@ -11613,7 +11609,7 @@ plot_ppi_loss_sankey_ggsankey <- function(df_states, shared_long, out_dir,
                            node = node, 
                            next_node = next_node, 
                            fill = organelle,
-                           label = organelle)) +
+                           label = node)) +
     geom_sankey(
       flow.fill = "#C51B7D",      # Magenta flows
       flow.alpha = 0.4,            # Semi-transparent
@@ -11646,129 +11642,22 @@ plot_ppi_loss_sankey_ggsankey <- function(df_states, shared_long, out_dir,
   
   if (save) {
     ggsave(
-      file.path(out_dir, "plots/global", "sankey_ppi_loss_ggsankey.pdf"),
+      file.path(out_dir, "plots/global", "sankey_ppi_loss_weighted.pdf"),
       p, width = 11, height = 8, device = cairo_pdf
     )
-    message("ggsankey plot saved!")
+    message("Weighted ggsankey plot saved!")
   }
   
   return(p)
 }
 
 
-# --- Step 2: Alternative version with node-type coloring (iDA grey, Baseline skyblue, iN grey) ---
-plot_ppi_loss_sankey_nodetype <- function(df_states, shared_long, out_dir, 
-                                           min_ppis = 30, save = TRUE) {
-  
-  lost_ppis <- df_states |>
-    dplyr::filter(state == "lost") |>
-    dplyr::select(key, neuron) |>
-    dplyr::inner_join(shared_long, by = "key") |>
-    dplyr::filter(!is.na(tag))
-  
-  # Filter major organelles
-  organelle_counts <- lost_ppis |>
-    dplyr::count(tag, name = "total_lost")
-  
-  major_organelles <- organelle_counts |>
-    dplyr::filter(total_lost >= min_ppis) |>
-    dplyr::pull(tag)
-  
-  lost_ppis_clean <- lost_ppis |>
-    dplyr::mutate(tag = ifelse(tag %in% major_organelles, tag, "Other"))
-  
-  # Create flows
-  flows_ida <- lost_ppis_clean |>
-    dplyr::filter(neuron == "iDA") |>
-    dplyr::count(tag, name = "n") |>
-    dplyr::mutate(
-      iDA = tag,
-      Baseline = tag,
-      iN = NA_character_
-    )
-  
-  flows_in <- lost_ppis_clean |>
-    dplyr::filter(neuron == "iN") |>
-    dplyr::count(tag, name = "n") |>
-    dplyr::mutate(
-      iDA = NA_character_,
-      Baseline = tag,
-      iN = tag
-    )
-  
-  sankey_data <- dplyr::bind_rows(flows_ida, flows_in)
-  
-  # Make long format
-  df_long <- sankey_data |>
-    make_long(iDA, Baseline, iN, value = n)
-  
-  # Determine node position for coloring
-  df_long <- df_long |>
-    dplyr::mutate(
-      position = dplyr::case_when(
-        x == "iDA" ~ "iDA",
-        x == "Baseline" ~ "Baseline",
-        x == "iN" ~ "iN",
-        TRUE ~ "Other"
-      )
-    )
-  
-  # Color by position
-  position_colors <- c(
-    "iDA" = "#CCCCCC",      # grey80
-    "Baseline" = "#87CEEB", # skyblue
-    "iN" = "#999999"        # grey60
-  )
-  
-  p <- ggplot(df_long, aes(x = x, 
-                           next_x = next_x, 
-                           node = node, 
-                           next_node = next_node, 
-                           fill = position,
-                           label = node)) +
-    geom_sankey(
-      flow.fill = "#C51B7D",
-      flow.alpha = 0.5,
-      flow.color = NA,
-      space = 2,
-      width = 0.2,
-      node.color = "black",
-      smooth = 8
-    ) +
-    geom_sankey_text(size = 2.8, color = "black", hjust = -0.2, fontface = "bold") +
-    scale_fill_manual(values = position_colors, guide = "none") +
-    scale_x_discrete(labels = c("iDA", "Baseline", "iN")) +
-    labs(
-      title = "Lost PPIs by Organelle: iDA ← Baseline → iN",
-      subtitle = paste("Major organelles (≥", min_ppis, "lost PPIs)")
-    ) +
-    theme_sankey(base_size = 10) +
-    theme(
-      axis.title = element_blank(),
-      axis.text.y = element_blank(),
-      axis.text.x = element_text(size = 12, face = "bold"),
-      axis.ticks = element_blank(),
-      panel.grid = element_blank(),
-      plot.title = element_text(hjust = 0.5, face = "bold", size = 12),
-      plot.subtitle = element_text(hjust = 0.5, size = 9, color = "grey40")
-    )
-  
-  if (save) {
-    ggsave(
-      file.path(out_dir, "plots/global", "sankey_ppi_loss_nodetype.pdf"),
-      p, width = 11, height = 8, device = cairo_pdf
-    )
-    message("Node-type colored Sankey saved!")
-  }
-  
-  return(p)
-}
 
 
 # --- Step 3: Call the functions ---
 
-# Version 1: Organelle-colored nodes with RdYlBu palette
-plot_ppi_loss_sankey_ggsankey(
+# Version 1: Organelle-colored nodes (RdYlBu) - PROPERLY WEIGHTED
+plot_ppi_loss_sankey_weighted(
   df_states = ko_edge_states,
   shared_long = shared_long,
   out_dir = out_dir_ppi_vuln,
@@ -11776,14 +11665,8 @@ plot_ppi_loss_sankey_ggsankey(
   save = TRUE
 )
 
-# Version 2: Position-colored nodes (iDA grey80, Baseline skyblue, iN grey60)
-plot_ppi_loss_sankey_nodetype(
-  df_states = ko_edge_states,
-  shared_long = shared_long,
-  out_dir = out_dir_ppi_vuln,
-  min_ppis = 30,
-  save = TRUE
-)
+
+
 ```
 
 
