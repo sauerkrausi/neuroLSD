@@ -13262,7 +13262,7 @@ message("Complex analysis complete!")
 ```
 
 
-### Timecourse evaluation ASAH1 d30,d50,d70
+### Loss of PPIs timecourse evaluation ASAH1 d30,d50,d70
 ```{r}
 # =========================================================================
 # PPI Loss Analysis: ASAH1 Timecourse (d30, d50, d70)
@@ -13333,9 +13333,8 @@ prepare_timecourse_proteome <- function() {
 
 timecourse_prot_long <- prepare_timecourse_proteome()
 
-# Save
-write_csv(timecourse_prot_long, 
-          file.path(out_dir_timecourse, "tables", "timecourse_proteome_long.csv"))
+# save csv
+write_csv(timecourse_prot_long, file.path(out_dir_timecourse, "tables", "timecourse_proteome_long.csv"))
 
 
 # --- Step 2: Compute PPI edge states per day × neuron ---
@@ -13395,9 +13394,8 @@ timecourse_edge_states <- compute_timecourse_edge_states(
   drop_thresh = -0.5
 )
 
-# Save
-write_csv(timecourse_edge_states,
-          file.path(out_dir_timecourse, "tables", "timecourse_edge_states.csv"))
+# save csv
+write_csv(timecourse_edge_states,file.path(out_dir_timecourse, "tables", "timecourse_edge_states.csv"))
 
 
 # --- Step 3: Global summary: total lost PPIs per day × neuron ---
@@ -13414,19 +13412,16 @@ timecourse_summary <- timecourse_edge_states %>%
     day = factor(day, levels = c("d30", "d50", "d70"))
   )
 
-write_csv(timecourse_summary,
-          file.path(out_dir_timecourse, "tables", "timecourse_ppi_summary.csv"))
+write_csv(timecourse_summary,file.path(out_dir_timecourse, "tables", "timecourse_ppi_summary.csv"))
 
 message("Timecourse summary:")
 print(timecourse_summary)
 
 
 # --- Step 4: Stacked barplot - total lost PPIs over time ---
-p_timecourse_bars <- ggplot(timecourse_summary, 
-                             aes(x = day, y = n_lost, fill = neuron)) +
+p_timecourse_bars <- ggplot(timecourse_summary, aes(x = day, y = n_lost, fill = neuron)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
-  geom_text(aes(label = n_lost), position = position_dodge(0.7), 
-            vjust = -0.5, size = 2.5) +
+  geom_text(aes(label = n_lost), position = position_dodge(0.7), vjust = -0.5, size = 2.5) +
   scale_fill_manual(values = neuron_palette, name = "Neuron") +
   labs(
     title = "Lost PPIs in ASAH1 over time",
@@ -13440,10 +13435,7 @@ p_timecourse_bars <- ggplot(timecourse_summary,
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse, "plots", "bars_lost_ppis_timecourse.pdf"),
-  p_timecourse_bars, width = 5, height = 4, device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse, "plots", "bars_lost_ppis_timecourse.pdf"),p_timecourse_bars, width = 4, height = 4, device = cairo_pdf)
 
 
 # --- Step 5: By-annotation breakdown ---
@@ -13461,8 +13453,8 @@ timecourse_by_annotation <- timecourse_edge_states_annotated %>%
     day = factor(day, levels = c("d30", "d50", "d70"))
   )
 
-write_csv(timecourse_by_annotation,
-          file.path(out_dir_timecourse, "tables", "timecourse_lost_ppis_by_annotation.csv"))
+# save csv
+write_csv(timecourse_by_annotation,file.path(out_dir_timecourse, "tables", "timecourse_lost_ppis_by_annotation.csv"))
 
 
 # --- Step 6: Heatmap - lost PPIs per annotation over time ---
@@ -13493,12 +13485,11 @@ for (nt in c("iN", "iDA")) {
     show_rownames = TRUE,
     show_colnames = TRUE,
     border_color = NA,
-    fontsize = 7,
-    cellwidth = 15,
-    cellheight = 10,
+    fontsize = 6,
+    cellwidth = 8,
+    cellheight = 8,
     main = paste("Lost PPIs by annotation over time –", nt),
-    filename = file.path(out_dir_timecourse, "plots", 
-                        paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")),
+    filename = file.path(out_dir_timecourse, "plots", paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")),
     width = 5,
     height = 8
   )
@@ -13506,7 +13497,7 @@ for (nt in c("iN", "iDA")) {
 
 
 # --- Step 7: Line plots for selected annotations ---
-selected_annotations <- c("Mito", "OXPHOS", "mtComplexI", "Endosome", 
+selected_annotations <- c("Mito", "OXPHOS", "mtComplexI", "Endo_iN_curated_Hundley", 
                           "SVfusion", "SynapseSVs")
 
 # Filter to selected annotations
@@ -13519,9 +13510,7 @@ timecourse_plot_data <- timecourse_selected %>%
   dplyr::mutate(day_numeric = as.numeric(gsub("d", "", day)))
 
 # Line plot with ribbon for SD (per neuron)
-p_timecourse_lines <- ggplot(timecourse_plot_data, 
-                              aes(x = day_numeric, y = n_lost, 
-                                  color = neuron, group = neuron)) +
+p_timecourse_lines <- ggplot(timecourse_plot_data, aes(x = day_numeric, y = n_lost, color = neuron, group = neuron)) +
   geom_line(linewidth = 0.8) +
   geom_point(size = 2, shape = 21, fill = "white", stroke = 0.8) +
   facet_wrap(~ tag, scales = "free_y", ncol = 3) +
@@ -13532,24 +13521,20 @@ p_timecourse_lines <- ggplot(timecourse_plot_data,
     x = "Differentiation day",
     y = "Number of lost PPIs"
   ) +
-  theme_bw(base_size = 7) +
+  theme_bw(base_size = 6) +
   theme(
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
     strip.background = element_rect(fill = "grey90", color = "black"),
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse, "plots", "lines_lost_ppis_selected_annotations.pdf"),
-  p_timecourse_lines, width = 9, height = 6, device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse, "plots", "lines_lost_ppis_selected_annotations.pdf"),p_timecourse_lines, width = 9, height = 6, device = cairo_pdf)
 
 
 # --- Step 8: Line plot with SD ribbon (aggregate across replicates if available) ---
 # Since we don't have replicates per edge, we'll compute SD across annotations 
 # in same organelle class (if using annotation_classes_corrgeno)
-
 # Alternative: bootstrap SD estimate or use variation across genes
 # For now, let's create a version with error bars using bootstrap
 
@@ -13581,12 +13566,8 @@ timecourse_with_sd <- timecourse_with_sd %>%
     day_numeric = as.numeric(gsub("d", "", day))
   )
 
-p_timecourse_ribbon <- ggplot(timecourse_with_sd, 
-                               aes(x = day_numeric, y = n_lost_mean, 
-                                   color = neuron, fill = neuron, group = neuron)) +
-  geom_ribbon(aes(ymin = pmax(0, n_lost_mean - n_lost_sd), 
-                  ymax = n_lost_mean + n_lost_sd),
-              alpha = 0.2, color = NA) +
+p_timecourse_ribbon <- ggplot(timecourse_with_sd, aes(x = day_numeric, y = n_lost_mean, color = neuron, fill = neuron, group = neuron)) +
+  geom_ribbon(aes(ymin = pmax(0, n_lost_mean - n_lost_sd), ymax = n_lost_mean + n_lost_sd), alpha = 0.2, color = NA) +
   geom_line(linewidth = 0.8) +
   geom_point(size = 2.5, shape = 21, fill = "white", stroke = 0.8) +
   facet_wrap(~ tag, scales = "free_y", ncol = 3) +
@@ -13598,7 +13579,7 @@ p_timecourse_ribbon <- ggplot(timecourse_with_sd,
     x = "Differentiation day",
     y = "Number of lost PPIs"
   ) +
-  theme_bw(base_size = 7) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid.minor = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
@@ -13606,10 +13587,7 @@ p_timecourse_ribbon <- ggplot(timecourse_with_sd,
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse, "plots", "lines_lost_ppis_with_ribbon.pdf"),
-  p_timecourse_ribbon, width = 9, height = 6, device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse, "plots", "lines_lost_ppis_with_ribbon.pdf"),p_timecourse_ribbon, width = 9, height = 6, device = cairo_pdf)
 
 
 # --- Step 9: Trimer analysis for timecourse ---
@@ -13681,8 +13659,8 @@ timecourse_trimer_states <- assess_timecourse_trimers(
   edge_states = timecourse_edge_genes
 )
 
-write_csv(timecourse_trimer_states,
-          file.path(out_dir_timecourse, "tables", "timecourse_trimer_states.csv"))
+# save csv
+write_csv(timecourse_trimer_states,file.path(out_dir_timecourse, "tables", "timecourse_trimer_states.csv"))
 
 # Summary
 timecourse_trimer_summary <- timecourse_trimer_states %>%
@@ -13697,32 +13675,27 @@ timecourse_trimer_summary <- timecourse_trimer_states %>%
   ) %>%
   dplyr::mutate(day = factor(day, levels = c("d30", "d50", "d70")))
 
-write_csv(timecourse_trimer_summary,
-          file.path(out_dir_timecourse, "tables", "timecourse_trimer_summary.csv"))
+# save csv
+write_csv(timecourse_trimer_summary, file.path(out_dir_timecourse, "tables", "timecourse_trimer_summary.csv"))
 
 # Barplot - broken trimers over time
-p_trimer_bars <- ggplot(timecourse_trimer_summary,
-                        aes(x = day, y = n_broken, fill = neuron)) +
+p_trimer_bars <- ggplot(timecourse_trimer_summary, aes(x = day, y = n_broken, fill = neuron)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
-  geom_text(aes(label = n_broken), position = position_dodge(0.7),
-            vjust = -0.5, size = 2.5) +
+  geom_text(aes(label = n_broken), position = position_dodge(0.7), vjust = -0.5, size = 2.5) +
   scale_fill_manual(values = neuron_palette, name = "Neuron") +
   labs(
     title = "Broken trimers in ASAH1 over time",
     x = "Differentiation day",
     y = "Number of broken trimers"
   ) +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse, "plots", "bars_broken_trimers_timecourse.pdf"),
-  p_trimer_bars, width = 5, height = 4, device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse, "plots", "bars_broken_trimers_timecourse.pdf"), p_trimer_bars, width = 4, height = 4, device = cairo_pdf)
 
 # Heatmap - broken trimers over time
 for (nt in c("iN", "iDA")) {
@@ -13827,8 +13800,8 @@ if (!exists("complexes_summary")) {
       day = factor(day, levels = c("d30", "d50", "d70"))
     )
   
-  write_csv(complex_timecourse_summary,
-            file.path(out_dir_timecourse, "tables", "timecourse_complex_states.csv"))
+  # save csv
+  write_csv(complex_timecourse_summary, file.path(out_dir_timecourse, "tables", "timecourse_complex_states.csv"))
   
   # Summary statistics
   complex_disruption_timecourse <- complex_timecourse_summary %>%
@@ -13842,12 +13815,11 @@ if (!exists("complexes_summary")) {
       .groups = "drop"
     )
   
-  write_csv(complex_disruption_timecourse,
-            file.path(out_dir_timecourse, "tables", "timecourse_complex_disruption_summary.csv"))
+  # save csv
+  write_csv(complex_disruption_timecourse, file.path(out_dir_timecourse, "tables", "timecourse_complex_disruption_summary.csv"))
   
   # Barplot
-  p_complex_bars <- ggplot(complex_disruption_timecourse,
-                           aes(x = day, y = n_disrupted, fill = neuron)) +
+  p_complex_bars <- ggplot(complex_disruption_timecourse, aes(x = day, y = n_disrupted, fill = neuron)) +
     geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
     geom_text(aes(label = n_disrupted), position = position_dodge(0.7),
               vjust = -0.5, size = 2.5) +
@@ -13857,17 +13829,14 @@ if (!exists("complexes_summary")) {
       x = "Differentiation day",
       y = "Number of disrupted complexes"
     ) +
-    theme_bw(base_size = 8) +
+    theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
       legend.position = "top"
     )
   
-  ggsave(
-    file.path(out_dir_timecourse, "plots", "bars_disrupted_complexes_timecourse.pdf"),
-    p_complex_bars, width = 5, height = 4, device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_timecourse, "plots", "bars_disrupted_complexes_timecourse.pdf"), p_complex_bars, width = 4, height = 4, device = cairo_pdf)
   
   # Heatmap per neuron
   for (nt in c("iN", "iDA")) {
@@ -13889,7 +13858,7 @@ if (!exists("complexes_summary")) {
       cluster_cols = FALSE,
       display_numbers = TRUE,
       number_format = "%.0f",
-      fontsize_number = 10,
+      fontsize_number = 6,
       border_color = "black",
       main = paste("Complex states over time –", nt),
       filename = file.path(out_dir_timecourse, "plots",
