@@ -11517,7 +11517,7 @@ plot_ppi_diseaseclass_impact(
 
 ##### Sankey plot for viz of lost PPIs 
 ```{r}
-# --------- Sankey plot: Lost PPIs using ggsankey (PROPERLY WEIGHTED) ---------
+# --------- Sankey plot: Lost PPIs per annotation  ---------
 
 # --- Step 1: Prepare data with correct proportions ---
 plot_ppi_loss_sankey_weighted <- function(df_states, shared_long, out_dir, 
