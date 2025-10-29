@@ -13464,6 +13464,7 @@ timecourse_summary <- timecourse_edge_states %>%
     day = factor(day, levels = c("d30", "d50", "d70"))
   )
 
+# save csv
 write_csv(timecourse_summary, file.path(out_dir_timecourse, "tables", "timecourse_ppi_summary.csv"))
 
 message("\nTimecourse summary:")
@@ -13540,7 +13541,7 @@ for (nt in c("iN", "iDA")) {
     fontsize = 6,
     cellwidth = 8,
     cellheight = 8,
-    main = paste("Lost PPIs by annotation over time –", nt),
+    main = paste("Lost PPIs by annotation over time -", nt),
     filename = file.path(out_dir_timecourse, "plots", paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")),
     width = 5,
     height = 8
@@ -14081,10 +14082,6 @@ DENSITY plot for PPI validations? or how many good ones probAF we get. instead o
 - ultimately we have to express the vulnearbility of the proteins to changes by the neuron type and KO. so maybe is better to plot the proteins? and clsuter by lost ppi by KO x neuron?
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
-
-3. Timecourse data integration ASAH1. PPI stability over time 
-day 70 has a lot of lost PPis. but could also be true since we shot it later.
-maybe have to recalculate the baseline for lost PPI for day 70 and then adjust it? 
 
 
 4. if timecouse works, maybe do it for all genotypes in d30 and d50?
