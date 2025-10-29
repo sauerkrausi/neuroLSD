@@ -13982,6 +13982,7 @@ if (!exists("complexes_summary")) {
     # Count disrupted complexes per annotation × day × neuron
     complex_by_annotation <- complex_timecourse_summary %>%
       dplyr::filter(complex_state == "disrupted") %>%
+      dplyr::filter(organelle != "Other") %>%
       dplyr::group_by(day, neuron, organelle) %>%
       dplyr::summarise(n_disrupted = n(), .groups = "drop") %>%
       dplyr::mutate(day = factor(day, levels = c("d30", "d50", "d70"))) %>%
@@ -14042,13 +14043,13 @@ if (!exists("complexes_summary")) {
       values_fill = 0
     ) %>%
     # Filter out Nucleus
-    dplyr::filter(organelle != "Nucleus") %>%
+    dplyr::filter(!organelle %in% c("Nucleus", "Other"))
     dplyr::mutate(
       day = factor(day, levels = c("d30", "d50", "d70"))
     )
   
-  write_csv(bubble_data, 
-            file.path(out_dir_timecourse, "tables", "bubble_plot_data_iDA_vs_iN.csv"))
+  # save csv
+  write_csv(bubble_data, file.path(out_dir_timecourse, "tables", "bubble_plot_data_iDA_vs_iN.csv"))
   
   # Color palette for organelles
   organelle_colors <- c(
