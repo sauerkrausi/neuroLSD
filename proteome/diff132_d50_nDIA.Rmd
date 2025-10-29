@@ -14093,15 +14093,9 @@ if (!exists("complexes_summary")) {
         aspect.ratio = 1
       )
     
-    ggsave(
-      file.path(out_dir_timecourse, "plots", paste0("bubble_iDA_vs_iN_", d, ".pdf")),
-      p_bubble,
-      width = 7,
-      height = 5,
-      device = cairo_pdf
-    )
-  }
-  
+    ggsave(file.path(out_dir_timecourse, "plots", paste0("bubble_iDA_vs_iN_", d, ".pdf")), p_bubble, width = 7, height = 5, device = cairo_pdf)
+    
+    
   # Also create a combined faceted version
   p_bubble_facet <- ggplot(bubble_data, aes(x = iN, y = iDA, size = n_proteins, fill = organelle)) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
@@ -14137,6 +14131,84 @@ if (!exists("complexes_summary")) {
   
   ggsave(file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_faceted.pdf"), p_bubble_facet, width = 10, height = 4, device = cairo_pdf)
 }
+
+  # --- Step 13: Bubble trajectory overlay (iDA vs iN across days) ---
+  # Step 13.1 global comparison over timepoints
+  message("Creating trajectory overlay bubble plot (iDA vs iN)")
+    
+  # assign colors per day
+  day_colors <- c("d30" = "grey70", "d50" = "dodgerblue", "d70" = "dodgerblue4")
+    
+  p_bubble_traj <- ggplot(bubble_data, aes(x = iN, y = iDA, size = n_proteins, fill = day)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+      geom_point(shape = 21, color = "black", stroke = 0.25, alpha = 0.9) +
+      scale_fill_manual(values = day_colors, name = "Day") +
+      scale_size_continuous(range = c(2, 8), name = "Proteins") +
+      scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+      scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+      labs(
+        title = "Trajectory of complex disruption across timepoints",
+        x = "Fraction lost edges (iN)",
+        y = "Fraction lost edges (iDA)"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.position = "right",
+        legend.key.size = unit(0.3, "cm"),
+        aspect.ratio = 1
+      )
+    
+   ggsave(file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_trajectory.pdf"),p_bubble_traj, width = 5, height = 4, device = cairo_pdf)
+
+}
+  
+ # Step 13.2 global comparison over timepoints for selected annotations
+ message("Creating trajectory bubble plots for selected annotations")
+
+ # define annotations of interest
+ selected_annotations <- c("Mito", "SynGO")
+
+ # assign colors per day
+ day_colors <- c("d30" = "grey70", "d50" = "dodgerblue", "d70" = "dodgerblue4")
+  
+ for (ann in selected_annotations) {
+      ann_data <- bubble_data %>%
+        dplyr::filter(organelle == ann)
+      
+      if (nrow(ann_data) == 0) {
+        message("No data found for annotation: ", ann, "; skipping.")
+        next
+      }
+      
+      p_ann_traj <- ggplot(ann_data, aes(x = iN, y = iDA, size = n_proteins, fill = day)) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+        geom_point(shape = 21, color = "black", stroke = 0.25, alpha = 0.9) +
+        scale_fill_manual(values = day_colors, name = "Day") +
+        scale_size_continuous(range = c(2, 8), name = "Proteins") +
+        scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+        scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+        labs(
+          title = paste0("Trajectory of complex disruption: ", ann),
+          subtitle = "iDA vs iN across timepoints",
+          x = "Fraction lost edges (iN)",
+          y = "Fraction lost edges (iDA)"
+        ) +
+        theme_bw(base_size = 6) +
+        theme(
+          panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", fill = NA),
+          legend.position = "right",
+          legend.key.size = unit(0.3, "cm"),
+          aspect.ratio = 1
+        )
+      
+      ggsave(file.path(out_dir_timecourse, "plots", paste0("bubble_iDA_vs_iN_trajectory_", ann, ".pdf")), p_ann_traj, width = 5, height = 4, device = cairo_pdf)
+}
+
+
+
 
 
 message("\n=== Timecourse PPI analysis complete! ===")
