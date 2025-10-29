@@ -14160,7 +14160,7 @@ if (!exists("complexes_summary")) {
         aspect.ratio = 1
       )
     
-   ggsave(file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_trajectory.pdf"),p_bubble_traj, width = 4, height = 3, device = cairo_pdf)
+   ggsave(file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_trajectory.pdf"),p_bubble_traj, width = 5, height = 4, device = cairo_pdf)
 
 }
   
@@ -14170,6 +14170,9 @@ if (!exists("complexes_summary")) {
  # define annotations of interest
  selected_annotations <- c("Mito", "SynGO")
 
+ # assign colors per day
+ day_colors <- c("d30" = "grey70", "d50" = "dodgerblue", "d70" = "dodgerblue4")
+  
  for (ann in selected_annotations) {
       ann_data <- bubble_data %>%
         dplyr::filter(organelle == ann)
@@ -14201,8 +14204,7 @@ if (!exists("complexes_summary")) {
           aspect.ratio = 1
         )
       
-      ggsave(file.path(out_dir_timecourse, "plots", paste0("bubble_iDA_vs_iN_trajectory_", ann, ".pdf")),
-             p_ann_traj, width = 7, height = 5, device = cairo_pdf)
+      ggsave(file.path(out_dir_timecourse, "plots", paste0("bubble_iDA_vs_iN_trajectory_", ann, ".pdf")), p_ann_traj, width = 5, height = 4, device = cairo_pdf)
 }
 
 
