@@ -13464,7 +13464,6 @@ timecourse_summary <- timecourse_edge_states %>%
     day = factor(day, levels = c("d30", "d50", "d70"))
   )
 
-# save csv
 write_csv(timecourse_summary, file.path(out_dir_timecourse, "tables", "timecourse_ppi_summary.csv"))
 
 message("\nTimecourse summary:")
@@ -13541,7 +13540,7 @@ for (nt in c("iN", "iDA")) {
     fontsize = 6,
     cellwidth = 8,
     cellheight = 8,
-    main = paste("Lost PPIs by annotation over time -", nt),
+    main = paste("Lost PPIs by annotation over time –", nt),
     filename = file.path(out_dir_timecourse, "plots", paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")),
     width = 5,
     height = 8
@@ -13869,193 +13868,273 @@ if (!exists("complexes_summary")) {
   # Heatmap per neuron
   for (nt in c("iN", "iDA")) {
     heatmap_data <- complex_disruption_timecourse %>%
-      dplyr::filter(neuron == nt
-
-
-### ?? Dimensionality reduction of PPI vulnerability landscape
-```{r}
-# --------- Global n-space representation via PCA/UMAP ---------
-
-# --- Step 1: Build feature matrix (KO × neuron as rows; organelles as features)
-vuln_matrix <- ko_edge_states |>
-  dplyr::filter(OrgPair == "same") |>
-  dplyr::left_join(shared_long, by = "key", relationship = "many-to-many") |>
-  dplyr::filter(!is.na(tag)) |>
-  dplyr::mutate(lost = as.integer(state == "lost")) |>
-  dplyr::group_by(genotype, neuron, tag) |>
-  dplyr::summarise(frac_lost = sum(lost) / n(), .groups = "drop") |>
-  tidyr::pivot_wider(
-    names_from = tag,
-    values_from = frac_lost,
-    values_fill = 0
-  )
-
-# Extract metadata - ensure one-to-one mapping
-disease_map_unique <- disease_classes_dataframe |>
-  dplyr::distinct(sample, .keep_all = TRUE)
-
-vuln_meta <- vuln_matrix |>
-  dplyr::select(genotype, neuron) |>
-  dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_")) |>
-  dplyr::left_join(disease_map_unique, by = c("genotype" = "sample"))
-
-# Verify dimensions match
-stopifnot("Metadata rows don't match matrix rows" = nrow(vuln_meta) == nrow(vuln_matrix))
-
-# Numeric matrix for PCA
-vuln_mat <- as.matrix(vuln_matrix[, -(1:2)])
-vuln_mat <- apply(vuln_mat, 2, as.numeric)
-rownames(vuln_mat) <- vuln_meta$genotype_neuron
-
-
-# --- Step 2: PCA
-pca_res <- prcomp(vuln_mat, scale. = TRUE, center = TRUE)
-pca_df <- as.data.frame(pca_res$x) |>
-  tibble::rownames_to_column("genotype_neuron") |>
-  dplyr::left_join(vuln_meta, by = "genotype_neuron")
-
-# Plot PCA
-p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2, color = DiseaseClass, shape = neuron)) +
-  geom_point(size = 3, alpha = 0.8) +
-  ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 20) +
-  scale_color_manual(values = disease_class_palette, name = "Disease class") +
-  scale_shape_manual(values = c(iN = 16, iDA = 17), name = "Neuron type") +
-  labs(
-    title = "PCA of organelle-specific PPI vulnerability",
-    x = paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100, 1), "%)"),
-    y = paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100, 1), "%)")
-  ) +
-  theme_bw(base_size = 7) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA)
-  )
-
-ggsave(file.path(out_dir_ppi_vuln, "plots/global", "pca_organelle_vulnerability.pdf"),p_pca, width = 7, height = 6, device = cairo_pdf)
-
-
-# --- Step 3: Loadings plot (which organelles drive PC1/PC2)
-# loadings_df <- as.data.frame(pca_res$rotation[, 1:2]) |>
-#   tibble::rownames_to_column("organelle")
-# 
-# p_loadings <- ggplot(loadings_df, aes(x = PC1, y = PC2, label = organelle)) +
-#   geom_segment(aes(xend = 0, yend = 0), arrow = arrow(length = unit(0.2, "cm")), 
-#                color = "grey30", linewidth = 0.5) +
-#   geom_text(size = 2.5, hjust = 0, nudge_x = 0.01) +
-#   labs(title = "PCA loadings: organelle contributions", x = "PC1", y = "PC2") +
-#   theme_bw(base_size = 7) +
-#   theme(panel.grid = element_blank())
-# 
-# ggsave(
-#   file.path(out_dir_ppi_vuln, "plots/global", "pca_loadings_organelles.pdf"),
-#   p_loadings, width = 6, height = 6, device = cairo_pdf
-# )
-
-
-# --- Step 4: Hierarchical clustering + heatmap
-# Filter to rows with disease class annotation
-rows_with_disease <- vuln_meta |>
-  dplyr::filter(!is.na(DiseaseClass)) |>
-  dplyr::pull(genotype_neuron)
-
-# Subset matrix and metadata
-vuln_mat_subset <- vuln_mat[rows_with_disease, , drop = FALSE]
-
-# Create annotation dataframe
-dend_anno <- vuln_meta |>
-  dplyr::filter(genotype_neuron %in% rows_with_disease) |>
-  dplyr::select(genotype_neuron, neuron, DiseaseClass)
-
-rownames(dend_anno) <- dend_anno$genotype_neuron
-dend_anno$genotype_neuron <- NULL
-
-# Get present disease classes
-# Drop unused levels
-dend_anno$DiseaseClass <- droplevels(dend_anno$DiseaseClass)
-
-# Force drop any tibble/data.frame attributes or S3 classes in matrix
-vuln_mat_subset <- as.matrix(vuln_mat_subset)
-storage.mode(vuln_mat_subset) <- "numeric"
-attributes(vuln_mat_subset) <- attributes(matrix(0, nrow = nrow(vuln_mat_subset), ncol = ncol(vuln_mat_subset)))
-rownames(vuln_mat_subset) <- rows_with_disease
-colnames(vuln_mat_subset) <- colnames(vuln_mat)[1:ncol(vuln_mat_subset)]
-
-# Recreate the color list with only existing levels
-present_classes <- levels(dend_anno$DiseaseClass)
-ann_colors_dend <- list(
-  neuron = c(iN = "grey60", iDA = "grey80"),
-  DiseaseClass = disease_class_palette[present_classes]
-)
-
-# --- Clean annotation dataframe ---
-dend_anno_df <- as.data.frame(dend_anno)
-dend_anno_df[] <- lapply(dend_anno_df, function(x) {
-  if (is.factor(x)) droplevels(x) else as.character(x)
-})
-
-# Ensure DiseaseClass column is factor with names that match the palette
-dend_anno_df$DiseaseClass <- factor(dend_anno_df$DiseaseClass)
-
-# Verify present levels
-present_classes <- levels(dend_anno_df$DiseaseClass)
-
-# Ensure palette has *exactly* those names
-ann_colors_dend <- list(
-  neuron = c(iN = "grey60", iDA = "grey80"),
-  DiseaseClass = setNames(
-    disease_class_palette[present_classes],
-    present_classes
-  ) 
-)
-
-# Optional: check for NA colors
-print(ann_colors_dend$DiseaseClass)
-any(is.na(ann_colors_dend$DiseaseClass))  # should be FALSE
-
-# Plot heatmap
-pheatmap::pheatmap(
-  vuln_mat_subset,
-  clustering_distance_rows = "euclidean",
-  clustering_method = "ward.D2",
-  scale = "none",
-  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
-  annotation_row = dend_anno_df,
-  annotation_colors = ann_colors_dend,
-  show_rownames = TRUE,
-  show_colnames = TRUE,
-  border_color = NA,
-  fontsize = 6,
-  cellwidth = 8,
-  cellheight = 8,
-  main = "PPI-loss based organelle vulnerability clustering (KO × neuron)",
-  filename = file.path(out_dir_ppi_vuln, "plots/global", "heatmap_organelle_vuln_clustered.pdf"),
-  width = 10,
-  height = 10
-)
-
-
-
-# --- Step 5: Optional UMAP (requires umap package)
-if (requireNamespace("umap", quietly = TRUE)) {
-  umap_res <- umap::umap(vuln_mat)
-  umap_df <- as.data.frame(umap_res$layout) |>
-    tibble::rownames_to_column("genotype_neuron") |>
-    dplyr::left_join(vuln_meta, by = "genotype_neuron")
-  
-  colnames(umap_df)[2:3] <- c("UMAP1", "UMAP2")
-  
-  p_umap <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = DiseaseClass, shape = neuron)) +
-    geom_point(size = 3, alpha = 0.8) +
-    ggrepel::geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 20) +
-    scale_color_manual(values = disease_class_palette, name = "Disease class") +
-    scale_shape_manual(values = c(iN = 16, iDA = 17), name = "Neuron type") +
-    labs(title = "UMAP of organelle-specific PPI vulnerability", x = "UMAP1", y = "UMAP2") +
-    theme_bw(base_size = 7) +
-    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
-  
-  ggsave(file.path(out_dir_ppi_vuln, "plots/global", "umap_organelle_vulnerability.pdf"),p_umap, width = 7, height = 6, device = cairo_pdf)
+      dplyr::filter(neuron == nt) %>%
+      dplyr::select(day, n_disrupted, n_partial, n_intact) %>%
+      tidyr::pivot_longer(cols = c(n_disrupted, n_partial, n_intact),
+                         names_to = "state", values_to = "count") %>%
+      tidyr::pivot_wider(names_from = day, values_from = count)
+    
+    heatmap_mat <- as.matrix(heatmap_data[, -1])
+    rownames(heatmap_mat) <- heatmap_data$state
+    
+    pheatmap::pheatmap(
+      heatmap_mat,
+      scale = "none",
+      color = colorRampPalette(c("white", "#C51B7D"))(100),
+      cluster_rows = FALSE,
+      cluster_cols = FALSE,
+      display_numbers = TRUE,
+      number_format = "%.0f",
+      fontsize_number = 6,
+      border_color = NA,
+      cellwidth = 18,
+      cellheight = 18,
+      main = paste("Complex states over time –", nt),
+      filename = file.path(out_dir_timecourse, "plots",
+                          paste0("heatmap_complex_states_", nt, ".pdf")),
+      width = 4,
+      height = 3
+    )
+  }
 }
-
+  
+  
+  # --- Step 11: Heatmaps by annotation for trimers and complexes ---
+  message("\n=== Creating annotation heatmaps for trimers and complexes ===")
+  
+  # TRIMER heatmaps by annotation
+  if (exists("timecourse_trimer_states")) {
+    
+    # Annotate trimers with organelle tags
+    timecourse_trimer_annotated <- timecourse_trimer_states %>%
+      dplyr::mutate(
+        key_AB = .make_undirected_key(GeneA, GeneB),
+        key_BC = .make_undirected_key(GeneB, GeneC),
+        key_AC = .make_undirected_key(GeneA, GeneC)
+      ) %>%
+      dplyr::left_join(shared_long, by = c("key_AB" = "key")) %>%
+      dplyr::rename(tag_AB = tag) %>%
+      dplyr::left_join(shared_long, by = c("key_BC" = "key")) %>%
+      dplyr::rename(tag_BC = tag) %>%
+      dplyr::left_join(shared_long, by = c("key_AC" = "key")) %>%
+      dplyr::rename(tag_AC = tag) %>%
+      # Assign trimer to annotation if any edge has that annotation
+      tidyr::pivot_longer(
+        cols = c(tag_AB, tag_BC, tag_AC),
+        names_to = "edge_type",
+        values_to = "tag"
+      ) %>%
+      dplyr::filter(!is.na(tag)) %>%
+      dplyr::distinct(trimer_id, day, neuron, tag, trimer_state)
+    
+    # Count broken trimers per annotation × day × neuron
+    trimer_by_annotation <- timecourse_trimer_annotated %>%
+      dplyr::filter(trimer_state == "broken") %>%
+      dplyr::group_by(day, neuron, tag) %>%
+      dplyr::summarise(n_broken = n(), .groups = "drop") %>%
+      dplyr::mutate(day = factor(day, levels = c("d30", "d50", "d70")))
+    
+    write_csv(trimer_by_annotation, 
+              file.path(out_dir_timecourse, "tables", "timecourse_broken_trimers_by_annotation.csv"))
+    
+    # Create heatmaps per neuron
+    for (nt in c("iN", "iDA")) {
+      heatmap_data <- trimer_by_annotation %>%
+        dplyr::filter(neuron == nt) %>%
+        tidyr::pivot_wider(
+          names_from = day,
+          values_from = n_broken,
+          values_fill = 0
+        )
+      
+      if (nrow(heatmap_data) < 2) {
+        message("Insufficient data for trimer annotation heatmap (", nt, "); skipping.")
+        next
+      }
+      
+      heatmap_mat <- as.matrix(heatmap_data[, -c(1:2)])
+      rownames(heatmap_mat) <- heatmap_data$tag
+      
+      pheatmap::pheatmap(
+        heatmap_mat,
+        scale = "none",
+        color = colorRampPalette(c("white", "#C51B7D"))(100),
+        cluster_rows = TRUE,
+        cluster_cols = FALSE,
+        show_rownames = TRUE,
+        show_colnames = TRUE,
+        border_color = NA,
+        fontsize = 6,
+        cellwidth = 8,
+        cellheight = 8,
+        main = paste("Broken trimers by annotation over time –", nt),
+        filename = file.path(out_dir_timecourse, "plots", 
+                            paste0("heatmap_broken_trimers_by_annotation_", nt, ".pdf")),
+        width = 5,
+        height = 8
+      )
+    }
+  }
+  
+  # COMPLEX heatmaps by annotation
+  if (exists("complex_timecourse_summary")) {
+    
+    # Count disrupted complexes per annotation × day × neuron
+    complex_by_annotation <- complex_timecourse_summary %>%
+      dplyr::filter(complex_state == "disrupted") %>%
+      dplyr::group_by(day, neuron, organelle) %>%
+      dplyr::summarise(n_disrupted = n(), .groups = "drop") %>%
+      dplyr::mutate(day = factor(day, levels = c("d30", "d50", "d70"))) %>%
+      dplyr::rename(tag = organelle)
+    
+    write_csv(complex_by_annotation, 
+              file.path(out_dir_timecourse, "tables", "timecourse_disrupted_complexes_by_annotation.csv"))
+    
+    # Create heatmaps per neuron
+    for (nt in c("iN", "iDA")) {
+      heatmap_data <- complex_by_annotation %>%
+        dplyr::filter(neuron == nt) %>%
+        tidyr::pivot_wider(
+          names_from = day,
+          values_from = n_disrupted,
+          values_fill = 0
+        )
+      
+      if (nrow(heatmap_data) < 2) {
+        message("Insufficient data for complex annotation heatmap (", nt, "); skipping.")
+        next
+      }
+      
+      heatmap_mat <- as.matrix(heatmap_data[, -c(1:2)])
+      rownames(heatmap_mat) <- heatmap_data$tag
+      
+      pheatmap::pheatmap(
+        heatmap_mat,
+        scale = "none",
+        color = colorRampPalette(c("white", "#C51B7D"))(100),
+        cluster_rows = TRUE,
+        cluster_cols = FALSE,
+        show_rownames = TRUE,
+        show_colnames = TRUE,
+        border_color = NA,
+        fontsize = 6,
+        cellwidth = 8,
+        cellheight = 8,
+        main = paste("Disrupted complexes by annotation over time –", nt),
+        filename = file.path(out_dir_timecourse, "plots", 
+                            paste0("heatmap_disrupted_complexes_by_annotation_", nt, ".pdf")),
+        width = 5,
+        height = 8
+      )
+    }
+  }
+  
+  
+  # --- Step 12: Bubble plots - iDA vs iN complex disruption ---
+  message("\n=== Creating bubble plots for iDA vs iN complex disruption ===")
+  
+  # Prepare data for bubble plots
+  bubble_data <- complex_timecourse_summary %>%
+    dplyr::select(complex_id, day, neuron, frac_edges_lost, n_proteins, organelle) %>%
+    tidyr::pivot_wider(
+      names_from = neuron,
+      values_from = frac_edges_lost,
+      values_fill = 0
+    ) %>%
+    # Filter out Nucleus
+    dplyr::filter(organelle != "Nucleus") %>%
+    dplyr::mutate(
+      day = factor(day, levels = c("d30", "d50", "d70"))
+    )
+  
+  write_csv(bubble_data, 
+            file.path(out_dir_timecourse, "tables", "bubble_plot_data_iDA_vs_iN.csv"))
+  
+  # Color palette for organelles
+  organelle_colors <- c(
+    "Mito" = "#E41A1C",
+    "OXPHOS" = "#377EB8",
+    "MitoMIM" = "#4DAF4A",
+    "SynGO" = "#984EA3",
+    "Svexocytosis" = "#FF7F00",
+    "SynapseSVs" = "#FFFF33",
+    "ER" = "#A65628",
+    "Golgi" = "#F781BF",
+    "Peroxisome" = "#999999",
+    "Lysosome" = "#66C2A5"
+  )
+  
+  # Create bubble plot for each day
+  for (d in c("d30", "d50", "d70")) {
+    
+    plot_data <- bubble_data %>%
+      dplyr::filter(day == d)
+    
+    if (nrow(plot_data) == 0) {
+      message("No data for bubble plot at ", d, "; skipping.")
+      next
+    }
+    
+    p_bubble <- ggplot(plot_data, aes(x = iN, y = iDA, size = n_proteins, color = organelle)) +
+      geom_point(alpha = 0.6) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+      scale_size_continuous(range = c(2, 12), name = "Proteins") +
+      scale_color_manual(values = organelle_colors, name = "Annotation") +
+      scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+      scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+      labs(
+        title = paste("Complex disruption:", d),
+        x = "Fraction lost edges (iN)",
+        y = "Fraction lost edges (iDA)"
+      ) +
+      theme_bw(base_size = 8) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.position = "right",
+        aspect.ratio = 1
+      )
+    
+    ggsave(
+      file.path(out_dir_timecourse, "plots", paste0("bubble_iDA_vs_iN_", d, ".pdf")),
+      p_bubble,
+      width = 7,
+      height = 5,
+      device = cairo_pdf
+    )
+  }
+  
+  # Also create a combined faceted version
+  p_bubble_facet <- ggplot(bubble_data, aes(x = iN, y = iDA, size = n_proteins, color = organelle)) +
+    geom_point(alpha = 0.6) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+    facet_wrap(~ day, ncol = 3) +
+    scale_size_continuous(range = c(1, 8), name = "Proteins") +
+    scale_color_manual(values = organelle_colors, name = "Annotation") +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.5)) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.5)) +
+    labs(
+      title = "Complex disruption over time: iDA vs iN",
+      x = "Fraction lost edges (iN)",
+      y = "Fraction lost edges (iDA)"
+    ) +
+    theme_bw(base_size = 7) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      strip.background = element_rect(fill = "grey90", color = "black"),
+      legend.position = "right",
+      aspect.ratio = 1
+    )
+  
+  ggsave(
+    file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_faceted.pdf"),
+    p_bubble_facet,
+    width = 10,
+    height = 4,
+    device = cairo_pdf
+  )
+  
 ```
 
 
