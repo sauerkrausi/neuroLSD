@@ -13464,6 +13464,7 @@ timecourse_summary <- timecourse_edge_states %>%
     day = factor(day, levels = c("d30", "d50", "d70"))
   )
 
+# save csv
 write_csv(timecourse_summary, file.path(out_dir_timecourse, "tables", "timecourse_ppi_summary.csv"))
 
 message("\nTimecourse summary:")
@@ -13896,7 +13897,6 @@ if (!exists("complexes_summary")) {
       height = 3
     )
   }
-}
   
   
   # --- Step 11: Heatmaps by annotation for trimers and complexes ---
@@ -14134,7 +14134,10 @@ if (!exists("complexes_summary")) {
     height = 4,
     device = cairo_pdf
   )
-  
+}
+
+message("\n=== Timecourse PPI analysis complete! ===")
+message("Results saved to: ", out_dir_timecourse)
 ```
 
 
