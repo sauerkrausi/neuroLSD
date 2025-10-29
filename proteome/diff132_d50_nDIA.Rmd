@@ -10265,7 +10265,7 @@ use of the Baker lab's Human interactome
 https://www.biorxiv.org/content/10.1101/2024.10.01.615885v1.full
 and InterAct Database
 
-### PPI input and merging of evidence 
+### XVIIIa.PPI input and merging of evidence 
 ##### Load Human Interactome & parse 
 ```{r}
 # ---------------------------------------------------
@@ -10603,7 +10603,7 @@ write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_sum
 ```
 
 
-### QC Vizualization of prediction mapping based on organelles and annotations
+### XVIIIb. QC Vizualization of prediction mapping based on organelles and annotations
 ```{r}
 # --------- PPI QC Scatterplots: Confidence score distributions by organelle ---------
 
@@ -10831,7 +10831,7 @@ if (exists("ppi_qc_df")) {
 
 
 
-### Vizualiztion of PPI loss
+### XVIIIc. Vizualiztion of PPI loss
 ##### Plotting function for correlation heatmaps and summary stacked bar for PPI impact
 ```{r}
 # ---------------------------------------------------
@@ -11517,7 +11517,7 @@ plot_ppi_diseaseclass_impact(
 
 
 
-### Vizualiztion of KO x Neuron x Annotation effect on PPIs
+### XVIIId. Vizualiztion of KO x Neuron x Annotation effect on PPIs
 ##### Per-KO PPI vulnerability profiles by confidence scores
 ```{r}
 ### Per-KO PPI vulnerability profiles by confidence scores
@@ -12129,7 +12129,7 @@ print(head(genotype_summary, 20))
 
 
 
-### GO functional enrichment of lost PPIs on a KO x neuron level
+### XVIIIe. GO functional enrichment of lost PPIs on a KO x neuron level
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # GO term enrichment on proteins involved in lost PPIs per KO × neuron
@@ -12440,7 +12440,8 @@ for (dc in disease_classes) {
 message("Disease class-specific GO enrichment complete!")
 ```
 
-### Multimer PPI Analysis
+
+### XVIIIf. Multimer PPI Analysis
 ###### Trimer PPI complex analysis 
 ```{r}
 # --------- Trimer identification and vulnerability analysis ---------
@@ -13263,7 +13264,7 @@ message("Complex analysis complete!")
 ```
 
 
-### Loss of PPIs timecourse evaluation ASAH1 d30,d50,d70 (with d70 baseline correction)
+### XVIIIg. Loss of PPIs timecourse evaluation ASAH1 d30,d50,d70 (with d70 baseline correction)
 ```{r}
 # =========================================================================
 # PPI Loss Analysis: ASAH1 Timecourse (d30, d50, d70)
@@ -14132,7 +14133,8 @@ if (!exists("complexes_summary")) {
   ggsave(file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_faceted.pdf"), p_bubble_facet, width = 10, height = 4, device = cairo_pdf)
 }
 
-  # --- Step 13: Bubble trajectory overlay (iDA vs iN across days) ---
+
+# --- Step 13: Bubble trajectory overlay (iDA vs iN across days) ---
   # Step 13.1 global comparison over timepoints
   message("Creating trajectory overlay bubble plot (iDA vs iN)")
     
@@ -14206,10 +14208,6 @@ if (!exists("complexes_summary")) {
       
       ggsave(file.path(out_dir_timecourse, "plots", paste0("bubble_iDA_vs_iN_trajectory_", ann, ".pdf")), p_ann_traj, width = 5, height = 4, device = cairo_pdf)
 }
-
-
-
-
 
 message("\n=== Timecourse PPI analysis complete! ===")
 message("Results saved to: ", out_dir_timecourse)
