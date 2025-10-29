@@ -13280,14 +13280,18 @@ trimer_dumbbell_data <- trimer_ko_summary |>
     min_val = pmin(iN, iDA),
     max_val = pmax(iN, iDA)
   ) |>
-  dplyr::arrange(min_val, max_val)  # Sort in ascending order
+  dplyr::arrange(max_val, min_val) |>
+  dplyr::mutate(
+    genotype = factor(genotype, levels = unique(genotype))
+  )
 
+# plot dumbbell
 p_trimer_dumbbell <- ggplot(trimer_dumbbell_data) +
   # Grey connecting line
   geom_segment(
     aes(x = iN, xend = iDA, y = genotype, yend = genotype),
-    color = "grey60",
-    size = 1
+    color = "grey90",
+    size = 3
   ) +
   # iN points
   geom_point(
@@ -13308,25 +13312,17 @@ p_trimer_dumbbell <- ggplot(trimer_dumbbell_data) +
   ) +
   theme_bw(base_size = 6) +
   theme(
-    panel.grid.major.y = element_line(color = "grey90", size = 0.3),
-    panel.grid.major.x = element_line(color = "grey90", size = 0.3),
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
     axis.text.y = element_text(size = 6)
   ) +
   # Add legend manually
-  annotate("point", x = Inf, y = Inf, color = "dodgerblue", size = 3) +
-  annotate("text", x = Inf, y = Inf, label = "iN", hjust = 1.5, vjust = 2, size = 2.5) +
-  annotate("point", x = Inf, y = Inf, color = "dodgerblue4", size = 3) +
-  annotate("text", x = Inf, y = Inf, label = "iDA", hjust = 1.5, vjust = 3.5, size = 2.5)
+  annotate("point", x = 3900, y = 2, color = "dodgerblue", size = 3) +
+  annotate("text", x = 3975, y = 2, label = "iN", hjust = 0, vjust = 0.5, size = 2.5) +
+  annotate("point", x = 3900, y = 1, color = "dodgerblue4", size = 3) +
+  annotate("text", x = 3975, y = 1, label = "iDA", hjust = 0, vjust = 0.5, size = 2.5)
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "plots/multimer", "dumbbell_broken_trimers_per_ko.pdf"),
-  p_trimer_dumbbell,
-  width = 6,
-  height = 8,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "dumbbell_broken_trimers_per_ko.pdf"), p_trimer_dumbbell, width = 4, height = 5,device = cairo_pdf)
 
 
 # --- Dumbbell plot 2: Affected trimers per KO ---
@@ -13343,13 +13339,17 @@ trimer_affected_dumbbell_data <- trimer_affected_org_ko |>
     min_val = pmin(iN, iDA),
     max_val = pmax(iN, iDA)
   ) |>
-  dplyr::arrange(min_val, max_val)
+  dplyr::arrange(min_val, max_val) |>
+  dplyr::mutate(
+    genotype = factor(genotype, levels = unique(genotype))
+  )
 
+# plot trimer dumbbell plot
 p_trimer_affected_dumbbell <- ggplot(trimer_affected_dumbbell_data) +
   geom_segment(
     aes(x = iN, xend = iDA, y = genotype, yend = genotype),
-    color = "grey60",
-    size = 1
+    color = "grey90",
+    size = 3
   ) +
   geom_point(
     aes(x = iN, y = genotype),
@@ -13368,20 +13368,17 @@ p_trimer_affected_dumbbell <- ggplot(trimer_affected_dumbbell_data) +
   ) +
   theme_bw(base_size = 6) +
   theme(
-    panel.grid.major.y = element_line(color = "grey90", size = 0.3),
-    panel.grid.major.x = element_line(color = "grey90", size = 0.3),
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
     axis.text.y = element_text(size = 6)
-  )
+  ) +
+  # Add legend manually
+  annotate("point", x = 490, y = 2, color = "dodgerblue", size = 3) +
+  annotate("text", x = 500, y = 2, label = "iN", hjust = 0, vjust = 0.5, size = 2.5) +
+  annotate("point", x = 490, y = 1, color = "dodgerblue4", size = 3) +
+  annotate("text", x = 500, y = 1, label = "iDA", hjust = 0, vjust = 0.5, size = 2.5)
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "plots/multimer", "dumbbell_affected_trimers_per_ko.pdf"),
-  p_trimer_affected_dumbbell,
-  width = 6,
-  height = 8,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "dumbbell_affected_trimers_per_ko.pdf"), p_trimer_affected_dumbbell, width = 4, height = 5, device = cairo_pdf)
 
 
 # --- Dumbbell plot 3: Disrupted complexes per KO ---
@@ -13396,13 +13393,17 @@ complex_dumbbell_data <- complex_disruption_summary |>
     min_val = pmin(iN, iDA),
     max_val = pmax(iN, iDA)
   ) |>
-  dplyr::arrange(min_val, max_val)
+  dplyr::arrange(min_val, max_val)|>
+  dplyr::mutate(
+    genotype = factor(genotype, levels = unique(genotype))
+  )
 
+# plot compelx dumbbell
 p_complex_dumbbell <- ggplot(complex_dumbbell_data) +
   geom_segment(
     aes(x = iN, xend = iDA, y = genotype, yend = genotype),
-    color = "grey60",
-    size = 1
+    color = "grey90",
+    size = 3
   ) +
   geom_point(
     aes(x = iN, y = genotype),
@@ -13421,20 +13422,17 @@ p_complex_dumbbell <- ggplot(complex_dumbbell_data) +
   ) +
   theme_bw(base_size = 6) +
   theme(
-    panel.grid.major.y = element_line(color = "grey90", size = 0.3),
-    panel.grid.major.x = element_line(color = "grey90", size = 0.3),
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
     axis.text.y = element_text(size = 6)
-  )
+  ) +
+  # Add legend manually
+  annotate("point", x = 13, y = 2, color = "dodgerblue", size = 3) +
+  annotate("text", x = 13.5, y = 2, label = "iN", hjust = 0, vjust = 0.5, size = 2.5) +
+  annotate("point", x = 13, y = 1, color = "dodgerblue4", size = 3) +
+  annotate("text", x = 13.5, y = 1, label = "iDA", hjust = 0, vjust = 0.5, size = 2.5)
 
-ggsave(
-  file.path(out_dir_ppi_vuln, "plots/multimer", "dumbbell_disrupted_complexes_per_ko.pdf"),
-  p_complex_dumbbell,
-  width = 6,
-  height = 8,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "dumbbell_disrupted_complexes_per_ko.pdf"), p_complex_dumbbell, width = 4, height = 5, device = cairo_pdf)
 
 message("Dumbbell plots saved successfully!")
 ```
