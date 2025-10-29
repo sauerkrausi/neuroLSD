@@ -13262,10 +13262,11 @@ message("Complex analysis complete!")
 ```
 
 
-### Loss of PPIs timecourse evaluation ASAH1 d30,d50,d70
+### Loss of PPIs timecourse evaluation ASAH1 d30,d50,d70 (with d70 baseline correction)
 ```{r}
 # =========================================================================
 # PPI Loss Analysis: ASAH1 Timecourse (d30, d50, d70)
+# With day 70 baseline correction for batch effects
 # =========================================================================
 
 # --- Step 0: Setup output directories ---
@@ -13337,31 +13338,73 @@ timecourse_prot_long <- prepare_timecourse_proteome()
 write_csv(timecourse_prot_long, file.path(out_dir_timecourse, "tables", "timecourse_proteome_long.csv"))
 
 
+# --- Step 1b: Create d70-specific baseline ---
+message("\n=== Creating day 70 specific baseline ===")
+
+# Extract d70 control data (detected proteins)
+d70_detected_genes <- diff132_d70_df_annotated %>%
+  dplyr::filter(!is.na(Genes), Genes != "") %>%
+  dplyr::pull(Genes) %>%
+  unique()
+
+# Filter baseline edges to only include genes detected at d70
+baseline_edges_d70 <- baseline_edges_union %>%
+  dplyr::filter(Gene1 %in% d70_detected_genes, Gene2 %in% d70_detected_genes)
+
+message("Original baseline edges: ", nrow(baseline_edges_union))
+message("Day 70 baseline edges: ", nrow(baseline_edges_d70))
+message("Genes in d70 baseline: ", length(unique(c(baseline_edges_d70$Gene1, baseline_edges_d70$Gene2))))
+
+# save csv
+write_csv(baseline_edges_d70, file.path(out_dir_timecourse, "tables", "baseline_edges_d70.csv"))
+
+
 # --- Step 2: Compute PPI edge states per day × neuron ---
+# Now using different baselines for d70 vs d30/d50
 compute_timecourse_edge_states <- function(baseline_edges, 
+                                            baseline_edges_d70,
                                             prot_long, 
                                             drop_thresh = -0.5) {
   
-  # Use same baseline as before (high-confidence neuronal PPIs)
+  # Get neuronal genes per day
   neuronal_genes <- unique(prot_long$Genes)
   
-  baseline_filtered <- baseline_edges %>%
+  # For d30 and d50: use original baseline
+  baseline_filtered_d30d50 <- baseline_edges %>%
     dplyr::filter(Gene1 %in% neuronal_genes, Gene2 %in% neuronal_genes)
   
-  # Expand to all day × neuron combinations
-  day_neuron_grid <- expand_grid(
-    day = c("d30", "d50", "d70"),
+  # Expand to d30 and d50
+  day_neuron_grid_d30d50 <- expand_grid(
+    day = c("d30", "d50"),
     neuron = c("iN", "iDA")
   )
   
-  baseline_expanded <- baseline_filtered %>%
+  baseline_expanded_d30d50 <- baseline_filtered_d30d50 %>%
     dplyr::mutate(dummy = 1) %>%
     dplyr::left_join(
-      day_neuron_grid %>% dplyr::mutate(dummy = 1),
+      day_neuron_grid_d30d50 %>% dplyr::mutate(dummy = 1),
       by = "dummy",
       relationship = "many-to-many"
     ) %>%
     dplyr::select(-dummy)
+  
+  # For d70: use d70-specific baseline
+  day_neuron_grid_d70 <- expand_grid(
+    day = "d70",
+    neuron = c("iN", "iDA")
+  )
+  
+  baseline_expanded_d70 <- baseline_edges_d70 %>%
+    dplyr::mutate(dummy = 1) %>%
+    dplyr::left_join(
+      day_neuron_grid_d70 %>% dplyr::mutate(dummy = 1),
+      by = "dummy",
+      relationship = "many-to-many"
+    ) %>%
+    dplyr::select(-dummy)
+  
+  # Combine both baselines
+  baseline_expanded <- dplyr::bind_rows(baseline_expanded_d30d50, baseline_expanded_d70)
   
   # Join proteome data for both partners
   edge_states <- baseline_expanded %>%
@@ -13382,7 +13425,8 @@ compute_timecourse_edge_states <- function(baseline_edges,
         (!is.na(dA) | !is.na(dB))     ~ "retained",
         TRUE                          ~ "unknown"
       ),
-      day_neuron = paste(day, neuron, sep = "_")
+      day_neuron = paste(day, neuron, sep = "_"),
+      baseline_used = ifelse(day == "d70", "d70_specific", "original")
     )
   
   return(edge_states)
@@ -13390,12 +13434,20 @@ compute_timecourse_edge_states <- function(baseline_edges,
 
 timecourse_edge_states <- compute_timecourse_edge_states(
   baseline_edges = baseline_edges_union,
+  baseline_edges_d70 = baseline_edges_d70,
   prot_long = timecourse_prot_long,
   drop_thresh = -0.5
 )
 
 # save csv
-write_csv(timecourse_edge_states,file.path(out_dir_timecourse, "tables", "timecourse_edge_states.csv"))
+write_csv(timecourse_edge_states, file.path(out_dir_timecourse, "tables", "timecourse_edge_states.csv"))
+
+# Print baseline usage summary
+message("\nBaseline usage summary:")
+timecourse_edge_states %>%
+  dplyr::group_by(day, baseline_used) %>%
+  dplyr::summarise(n_edges = n(), .groups = "drop") %>%
+  print()
 
 
 # --- Step 3: Global summary: total lost PPIs per day × neuron ---
@@ -13412,9 +13464,9 @@ timecourse_summary <- timecourse_edge_states %>%
     day = factor(day, levels = c("d30", "d50", "d70"))
   )
 
-write_csv(timecourse_summary,file.path(out_dir_timecourse, "tables", "timecourse_ppi_summary.csv"))
+write_csv(timecourse_summary, file.path(out_dir_timecourse, "tables", "timecourse_ppi_summary.csv"))
 
-message("Timecourse summary:")
+message("\nTimecourse summary:")
 print(timecourse_summary)
 
 
@@ -13424,7 +13476,7 @@ p_timecourse_bars <- ggplot(timecourse_summary, aes(x = day, y = n_lost, fill = 
   geom_text(aes(label = n_lost), position = position_dodge(0.7), vjust = -0.5, size = 2.5) +
   scale_fill_manual(values = neuron_palette, name = "Neuron") +
   labs(
-    title = "Lost PPIs in ASAH1 over time",
+    title = "Lost PPIs in ASAH1 over time (d70 baseline-corrected)",
     x = "Differentiation day",
     y = "Number of lost PPIs"
   ) +
@@ -13435,7 +13487,7 @@ p_timecourse_bars <- ggplot(timecourse_summary, aes(x = day, y = n_lost, fill = 
     legend.position = "top"
   )
 
-ggsave(file.path(out_dir_timecourse, "plots", "bars_lost_ppis_timecourse.pdf"),p_timecourse_bars, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_timecourse, "plots", "bars_lost_ppis_timecourse.pdf"), p_timecourse_bars, width = 4, height = 4, device = cairo_pdf)
 
 
 # --- Step 5: By-annotation breakdown ---
@@ -13454,7 +13506,7 @@ timecourse_by_annotation <- timecourse_edge_states_annotated %>%
   )
 
 # save csv
-write_csv(timecourse_by_annotation,file.path(out_dir_timecourse, "tables", "timecourse_lost_ppis_by_annotation.csv"))
+write_csv(timecourse_by_annotation, file.path(out_dir_timecourse, "tables", "timecourse_lost_ppis_by_annotation.csv"))
 
 
 # --- Step 6: Heatmap - lost PPIs per annotation over time ---
@@ -13504,12 +13556,11 @@ selected_annotations <- c("Mito", "OXPHOS", "MitoMIM", "SynGO",
 timecourse_selected <- timecourse_by_annotation %>%
   dplyr::filter(tag %in% selected_annotations)
 
-# Compute mean and SD per annotation × day (across both neurons if needed)
-# Here we'll plot separately per neuron
+# Compute mean and SD per annotation × day
 timecourse_plot_data <- timecourse_selected %>%
   dplyr::mutate(day_numeric = as.numeric(gsub("d", "", day)))
 
-# Line plot with ribbon for SD (per neuron)
+# Line plot
 p_timecourse_lines <- ggplot(timecourse_plot_data, aes(x = day_numeric, y = n_lost, color = neuron, group = neuron)) +
   geom_line(linewidth = 0.8) +
   geom_point(size = 2, shape = 21, fill = "white", stroke = 0.8) +
@@ -13529,42 +13580,18 @@ p_timecourse_lines <- ggplot(timecourse_plot_data, aes(x = day_numeric, y = n_lo
     legend.position = "top"
   )
 
-ggsave(file.path(out_dir_timecourse, "plots", "lines_lost_ppis_selected_annotations.pdf"),p_timecourse_lines, width = 9, height = 6, device = cairo_pdf)
+ggsave(file.path(out_dir_timecourse, "plots", "lines_lost_ppis_selected_annotations.pdf"), p_timecourse_lines, width = 9, height = 6, device = cairo_pdf)
 
 
-# --- Step 8: Line plot with SD ribbon (aggregate across replicates if available) ---
-# Since we don't have replicates per edge, we'll compute SD across annotations 
-# in same organelle class (if using annotation_classes_corrgeno)
-# Alternative: bootstrap SD estimate or use variation across genes
-# For now, let's create a version with error bars using bootstrap
-
-compute_bootstrap_sd <- function(df, n_boot = 100) {
-  df %>%
-    dplyr::group_by(day, neuron, tag) %>%
-    dplyr::reframe(
-      n_lost_mean = mean(n_lost),
-      n_lost_sd = sd(replicate(n_boot, {
-        sample(n_lost, replace = TRUE) %>% mean()
-      }))
-    ) %>%
-    dplyr::distinct()
-}
-
+# --- Step 8: Line plot with SD ribbon ---
 timecourse_with_sd <- timecourse_selected %>%
   dplyr::group_by(day, neuron, tag) %>%
   dplyr::summarise(
     n_lost_mean = mean(n_lost),
-    n_lost_sd = 0,  # Placeholder - will compute below
-    .groups = "drop"
-  )
-
-# For actual SD, we'd need replicate measurements - using SEM approximation
-# Estimate SD as sqrt(n_lost) (Poisson approximation)
-timecourse_with_sd <- timecourse_with_sd %>%
-  dplyr::mutate(
     n_lost_sd = sqrt(pmax(n_lost_mean, 1)),
-    day_numeric = as.numeric(gsub("d", "", day))
-  )
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(day_numeric = as.numeric(gsub("d", "", day)))
 
 p_timecourse_ribbon <- ggplot(timecourse_with_sd, aes(x = day_numeric, y = n_lost_mean, color = neuron, fill = neuron, group = neuron)) +
   geom_ribbon(aes(ymin = pmax(0, n_lost_mean - n_lost_sd), ymax = n_lost_mean + n_lost_sd), alpha = 0.2, color = NA) +
@@ -13587,13 +13614,12 @@ p_timecourse_ribbon <- ggplot(timecourse_with_sd, aes(x = day_numeric, y = n_los
     legend.position = "top"
   )
 
-ggsave(file.path(out_dir_timecourse, "plots", "lines_lost_ppis_with_ribbon.pdf"),p_timecourse_ribbon, width = 9, height = 6, device = cairo_pdf)
+ggsave(file.path(out_dir_timecourse, "plots", "lines_lost_ppis_with_ribbon.pdf"), p_timecourse_ribbon, width = 9, height = 6, device = cairo_pdf)
 
 
 # --- Step 9: Trimer analysis for timecourse ---
 message("\n=== Trimer analysis for timecourse ===")
 
-# Use same baseline trimers as before
 if (!exists("trimers_baseline")) {
   stop("trimers_baseline not found. Run the trimer analysis section first.")
 }
@@ -13660,7 +13686,7 @@ timecourse_trimer_states <- assess_timecourse_trimers(
 )
 
 # save csv
-write_csv(timecourse_trimer_states,file.path(out_dir_timecourse, "tables", "timecourse_trimer_states.csv"))
+write_csv(timecourse_trimer_states, file.path(out_dir_timecourse, "tables", "timecourse_trimer_states.csv"))
 
 # Summary
 timecourse_trimer_summary <- timecourse_trimer_states %>%
@@ -13697,7 +13723,7 @@ p_trimer_bars <- ggplot(timecourse_trimer_summary, aes(x = day, y = n_broken, fi
 
 ggsave(file.path(out_dir_timecourse, "plots", "bars_broken_trimers_timecourse.pdf"), p_trimer_bars, width = 4, height = 4, device = cairo_pdf)
 
-# Heatmap - broken trimers over time
+# Heatmap - trimer states over time
 for (nt in c("iN", "iDA")) {
   heatmap_data <- timecourse_trimer_summary %>%
     dplyr::filter(neuron == nt) %>%
@@ -13842,40 +13868,7 @@ if (!exists("complexes_summary")) {
   # Heatmap per neuron
   for (nt in c("iN", "iDA")) {
     heatmap_data <- complex_disruption_timecourse %>%
-      dplyr::filter(neuron == nt) %>%
-      dplyr::select(day, n_disrupted, n_partial, n_intact) %>%
-      tidyr::pivot_longer(cols = c(n_disrupted, n_partial, n_intact),
-                         names_to = "state", values_to = "count") %>%
-      tidyr::pivot_wider(names_from = day, values_from = count)
-    
-    heatmap_mat <- as.matrix(heatmap_data[, -1])
-    rownames(heatmap_mat) <- heatmap_data$state
-    
-    pheatmap::pheatmap(
-      heatmap_mat,
-      scale = "none",
-      color = colorRampPalette(c("white", "#C51B7D"))(100),
-      cluster_rows = FALSE,
-      cluster_cols = FALSE,
-      display_numbers = TRUE,
-      number_format = "%.0f",
-      fontsize_number = 6,
-      border_color = NA,
-      cellwidth = 18,
-      cellheight = 18,
-      main = paste("Complex states over time –", nt),
-      filename = file.path(out_dir_timecourse, "plots",
-                          paste0("heatmap_complex_states_", nt, ".pdf")),
-      width = 4,
-      height = 3
-    )
-  }
-}
-
-message("\n=== Timecourse PPI analysis complete! ===")
-message("Results saved to: ", out_dir_timecourse)
-```
-
+      dplyr::filter(neuron == nt
 
 
 ### ?? Dimensionality reduction of PPI vulnerability landscape
