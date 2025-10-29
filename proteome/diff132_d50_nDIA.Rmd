@@ -10715,6 +10715,7 @@ qc_summary <- ppi_qc_df |>
   ) |>
   arrange(desc(n_edges))
 
+# save csv
 write_csv(qc_summary, file.path(out_dir_ppi_vuln, "qc", "confidence_scores_by_organelle.csv"))
 
 # Step 6: Overall score correlation heatmap
@@ -14031,7 +14032,7 @@ if (!exists("complexes_summary")) {
   }
   
   
-  # --- Step 12: Bubble plots - iDA vs iN complex disruption ---
+# --- Step 12: Bubble plots - iDA vs iN complex disruption ---
   message("\n=== Creating bubble plots for iDA vs iN complex disruption ===")
   
   # Prepare data for bubble plots
@@ -14043,27 +14044,13 @@ if (!exists("complexes_summary")) {
       values_fill = 0
     ) %>%
     # Filter out Nucleus
-    dplyr::filter(!organelle %in% c("Nucleus", "Other"))
+    dplyr::filter(organelle != "Nucleus") %>%
     dplyr::mutate(
       day = factor(day, levels = c("d30", "d50", "d70"))
     )
   
   # save csv
   write_csv(bubble_data, file.path(out_dir_timecourse, "tables", "bubble_plot_data_iDA_vs_iN.csv"))
-  
-  # Color palette for organelles
-  organelle_colors <- c(
-    "Mito" = "#E41A1C",
-    "OXPHOS" = "#377EB8",
-    "MitoMIM" = "#4DAF4A",
-    "SynGO" = "#984EA3",
-    "Svexocytosis" = "#FF7F00",
-    "SynapseSVs" = "#FFFF33",
-    "ER" = "#A65628",
-    "Golgi" = "#F781BF",
-    "Peroxisome" = "#999999",
-    "Lysosome" = "#66C2A5"
-  )
   
   # Create bubble plot for each day
   for (d in c("d30", "d50", "d70")) {
@@ -14076,11 +14063,20 @@ if (!exists("complexes_summary")) {
       next
     }
     
-    p_bubble <- ggplot(plot_data, aes(x = iN, y = iDA, size = n_proteins, color = organelle)) +
-      geom_point(alpha = 0.6) +
-      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-      scale_size_continuous(range = c(2, 12), name = "Proteins") +
-      scale_color_manual(values = organelle_colors, name = "Annotation") +
+    p_bubble <- ggplot(plot_data, aes(x = iN, y = iDA, size = n_proteins, fill = organelle)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+      geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.15) +
+      ggrepel::geom_text_repel(
+        aes(label = complex_id),
+        size = 2.3,
+        max.overlaps = 50,
+        seed = 42,
+        color = "black",
+        segment.color = "grey50",
+        segment.size = 0.3
+      ) +
+      scale_fill_manual(values = organelle_colors, name = "Annotation") +
+      scale_size_continuous(range = c(2, 8), name = "Proteins") +
       scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
       scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
       labs(
@@ -14088,11 +14084,12 @@ if (!exists("complexes_summary")) {
         x = "Fraction lost edges (iN)",
         y = "Fraction lost edges (iDA)"
       ) +
-      theme_bw(base_size = 8) +
+      theme_bw(base_size = 6) +
       theme(
-        panel.grid.minor = element_blank(),
+        panel.grid = element_blank(),
         panel.border = element_rect(color = "black", fill = NA),
         legend.position = "right",
+        legend.key.size = unit(0.3, "cm"),
         aspect.ratio = 1
       )
     
@@ -14106,12 +14103,21 @@ if (!exists("complexes_summary")) {
   }
   
   # Also create a combined faceted version
-  p_bubble_facet <- ggplot(bubble_data, aes(x = iN, y = iDA, size = n_proteins, color = organelle)) +
-    geom_point(alpha = 0.6) +
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  p_bubble_facet <- ggplot(bubble_data, aes(x = iN, y = iDA, size = n_proteins, fill = organelle)) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+    geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.15) +
+    ggrepel::geom_text_repel(
+      aes(label = complex_id),
+      size = 2,
+      max.overlaps = 30,
+      seed = 42,
+      color = "black",
+      segment.color = "grey50",
+      segment.size = 0.3
+    ) +
     facet_wrap(~ day, ncol = 3) +
-    scale_size_continuous(range = c(1, 8), name = "Proteins") +
-    scale_color_manual(values = organelle_colors, name = "Annotation") +
+    scale_fill_manual(values = organelle_colors, name = "Annotation") +
+    scale_size_continuous(range = c(1, 6), name = "Proteins") +
     scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.5)) +
     scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.5)) +
     labs(
@@ -14119,23 +14125,19 @@ if (!exists("complexes_summary")) {
       x = "Fraction lost edges (iN)",
       y = "Fraction lost edges (iDA)"
     ) +
-    theme_bw(base_size = 7) +
+    theme_bw(base_size = 6) +
     theme(
-      panel.grid.minor = element_blank(),
+      panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA),
       strip.background = element_rect(fill = "grey90", color = "black"),
       legend.position = "right",
+      legend.key.size = unit(0.3, "cm"),
       aspect.ratio = 1
     )
   
-  ggsave(
-    file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_faceted.pdf"),
-    p_bubble_facet,
-    width = 10,
-    height = 4,
-    device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_timecourse, "plots", "bubble_iDA_vs_iN_faceted.pdf"), p_bubble_facet, width = 10, height = 4, device = cairo_pdf)
 }
+
 
 message("\n=== Timecourse PPI analysis complete! ===")
 message("Results saved to: ", out_dir_timecourse)
