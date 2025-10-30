@@ -15072,10 +15072,8 @@ bubble_multi_data <- timecourse_multi_summary %>%
     ratio = frac_lost_iN / frac_lost_iDA
   )
 
-write_csv(
-  bubble_multi_data,
-  file.path(out_dir_timecourse_multi, "tables", "bubble_plot_data_iDA_vs_iN.csv")
-)
+# save csv
+write_csv(bubble_multi_data, file.path(out_dir_timecourse_multi, "tables", "bubble_plot_data_iDA_vs_iN.csv"))
 
 # Faceted bubble plot (all genotypes)
 p_bubble_facet <- ggplot(
@@ -15093,6 +15091,9 @@ p_bubble_facet <- ggplot(
   facet_wrap(~ Day, ncol = 2) +
   scale_fill_manual(values = genotype_palette, name = "Genotype") +
   scale_size_continuous(range = c(2, 8), name = "iN/iDA ratio") +
+  scale_x_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 500)) +
+  scale_y_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 500)) +
+  coord_equal(xlim = c(0, 3000), ylim = c(0, 3000), expand = FALSE) +
   labs(
     title = "Lost PPIs: iDA vs iN (all genotypes)",
     x = "Lost PPIs in iN",
@@ -15108,13 +15109,7 @@ p_bubble_facet <- ggplot(
     aspect.ratio = 1
   )
 
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "bubble_iDA_vs_iN_all_genotypes.pdf"),
-  p_bubble_facet,
-  width = 7,
-  height = 4,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bubble_iDA_vs_iN_all_genotypes.pdf"), p_bubble_facet, width = 5, height = 3, device =cairo_pdf)
 
 # Individual bubble plots per genotype
 for (geno in genotypes) {
