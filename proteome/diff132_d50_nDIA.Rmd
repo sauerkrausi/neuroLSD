@@ -14390,6 +14390,1172 @@ message("Results saved to: ", out_dir_timecourse)
 
 
 
+### XVIIIh. Loss of PPIs timecourse evaluation d30 & d50 of ASAH1, SMPD1, GBA1, GRN
+```{r}
+# =========================================================================
+# PPI Loss Analysis: Multi-genotype Timecourse (ASAH1, SMPD1, GBA1, GRN)
+# Days 30 and 50 comparison
+# =========================================================================
+
+# --- Step 0: Setup output directories ---
+out_dir_timecourse_multi <- file.path(out_dir_PPI, "timecourse_multi_genotype")
+dir.create(file.path(out_dir_timecourse_multi, "plots"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_timecourse_multi, "plots/by_genotype"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_timecourse_multi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_timecourse_multi, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+# Color palettes
+neuron_palette <- c(iN = "grey60", iDA = "grey80")
+day_palette <- c(d30 = "#4575b4", d50 = "#91bfdb")
+genotype_palette <- c(
+  ASAH1 = "#D53E4F",
+  SMPD1 = "#F46D43", 
+  GBA1 = "#ABDDA4",
+  GRN = "#66C2A5"
+)
+
+
+# --- Step 1: Extract timecourse data for all 4 genotypes ---
+message("\n=== Extracting timecourse proteome data for 4 genotypes ===")
+
+# Helper function: extract genotype × day × neuron block
+.extract_genotype_log2_block <- function(df_wide, genotype, day_label, neuron_label) {
+  stopifnot(neuron_label %in% c("iN", "iDA"))
+  stopifnot(genotype %in% c("ASAH1", "SMPD1", "GBA1", "GRN"))
+  
+  log2_col <- paste0(genotype, "_", neuron_label, "_log2_fold_change")
+  
+  if (!log2_col %in% colnames(df_wide)) {
+    message("Column ", log2_col, " not found in dataframe; skipping.")
+    return(NULL)
+  }
+  
+  df_wide %>%
+    dplyr::select(Genes, log2FC = all_of(log2_col)) %>%
+    dplyr::filter(!is.na(Genes), Genes != "", !is.na(log2FC)) %>%
+    dplyr::mutate(
+      Genotype = genotype,
+      Day = paste0("d", day_label),
+      Neuron = neuron_label
+    ) %>%
+    dplyr::select(Genes, Genotype, Day, Neuron, log2FC)
+}
+
+# Extract all combinations
+genotypes <- c("ASAH1", "SMPD1", "GBA1", "GRN")
+days <- list(d30 = complete_data_annotated_day30, d50 = complete_data_annotated_day50)
+neurons <- c("iN", "iDA")
+
+timecourse_list <- list()
+
+for (geno in genotypes) {
+  for (day_name in names(days)) {
+    day_num <- as.numeric(gsub("d", "", day_name))
+    df_wide <- days[[day_name]]
+    
+    for (nt in neurons) {
+      key <- paste(geno, day_name, nt, sep = "_")
+      timecourse_list[[key]] <- .extract_genotype_log2_block(
+        df_wide, geno, day_num, nt
+      )
+    }
+  }
+}
+
+# Combine all
+timecourse_multi_prot_long <- dplyr::bind_rows(timecourse_list) %>%
+  dplyr::filter(!is.na(log2FC)) %>%
+  dplyr::mutate(
+    Day = factor(Day, levels = c("d30", "d50")),
+    Genotype = factor(Genotype, levels = genotypes)
+  )
+
+# Save
+write_csv(
+  timecourse_multi_prot_long,
+  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_proteome_long.csv")
+)
+
+message("Extracted proteome data:")
+print(table(timecourse_multi_prot_long$Genotype, timecourse_multi_prot_long$Day))
+
+
+# --- Step 2: Compute PPI edge states per genotype × day × neuron ---
+message("\n=== Computing PPI edge states for all genotypes ===")
+
+compute_multi_timecourse_edge_states <- function(baseline_edges, 
+                                                  prot_long, 
+                                                  drop_thresh = -0.5) {
+  
+  # Get neuronal genes
+  neuronal_genes <- unique(prot_long$Genes)
+  
+  # Filter baseline to neuronal proteome
+  baseline_filtered <- baseline_edges %>%
+    dplyr::filter(Gene1 %in% neuronal_genes, Gene2 %in% neuronal_genes)
+  
+  message("Baseline edges in neuronal proteome: ", nrow(baseline_filtered))
+  
+  # Expand to all genotype × day × neuron combinations
+  geno_day_neuron_grid <- prot_long %>%
+    dplyr::distinct(Genotype, Day, Neuron)
+  
+  baseline_expanded <- baseline_filtered %>%
+    dplyr::mutate(dummy = 1) %>%
+    dplyr::left_join(
+      geno_day_neuron_grid %>% dplyr::mutate(dummy = 1),
+      by = "dummy",
+      relationship = "many-to-many"
+    ) %>%
+    dplyr::select(-dummy)
+  
+  # Join proteome data for both partners
+  edge_states <- baseline_expanded %>%
+    dplyr::left_join(
+      prot_long %>% dplyr::select(Genes, Genotype, Day, Neuron, log2FC),
+      by = c("Gene1" = "Genes", "Genotype", "Day", "Neuron")
+    ) %>%
+    dplyr::rename(dA = log2FC) %>%
+    dplyr::left_join(
+      prot_long %>% dplyr::select(Genes, Genotype, Day, Neuron, log2FC),
+      by = c("Gene2" = "Genes", "Genotype", "Day", "Neuron")
+    ) %>%
+    dplyr::rename(dB = log2FC) %>%
+    dplyr::mutate(
+      state = dplyr::case_when(
+        !is.na(dA) & dA < drop_thresh ~ "lost",
+        !is.na(dB) & dB < drop_thresh ~ "lost",
+        (!is.na(dA) | !is.na(dB))     ~ "retained",
+        TRUE                          ~ "unknown"
+      ),
+      geno_day_neuron = paste(Genotype, Day, Neuron, sep = "_")
+    )
+  
+  return(edge_states)
+}
+
+timecourse_multi_edge_states <- compute_multi_timecourse_edge_states(
+  baseline_edges = baseline_edges_union,
+  prot_long = timecourse_multi_prot_long,
+  drop_thresh = -0.5
+)
+
+# Save
+write_csv(
+  timecourse_multi_edge_states,
+  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_edge_states.csv")
+)
+
+
+# --- Step 3: Global summary - lost PPIs per genotype × day × neuron ---
+timecourse_multi_summary <- timecourse_multi_edge_states %>%
+  dplyr::group_by(Genotype, Day, Neuron) %>%
+  dplyr::summarise(
+    total_edges = n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    n_retained = sum(state == "retained", na.rm = TRUE),
+    frac_lost = n_lost / total_edges,
+    .groups = "drop"
+  )
+
+write_csv(
+  timecourse_multi_summary,
+  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_ppi_summary.csv")
+)
+
+message("\nMulti-genotype timecourse summary:")
+print(timecourse_multi_summary)
+
+
+# --- Step 4: Barplot - lost PPIs per genotype over time ---
+p_multi_bars <- ggplot(
+  timecourse_multi_summary,
+  aes(x = Day, y = n_lost, fill = Neuron)
+) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(
+    aes(label = n_lost),
+    position = position_dodge(0.7),
+    vjust = -0.5,
+    size = 2
+  ) +
+  facet_wrap(~ Genotype, ncol = 4, scales = "free_y") +
+  scale_fill_manual(values = neuron_palette, name = "Neuron") +
+  labs(
+    title = "Lost PPIs across genotypes (d30 vs d50)",
+    x = "Differentiation day",
+    y = "Number of lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    strip.background = element_rect(fill = "white", color = "black"),
+    legend.position = "top"
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "bars_lost_ppis_all_genotypes.pdf"),
+  p_multi_bars,
+  width = 9,
+  height = 4,
+  device = cairo_pdf
+)
+
+
+# --- Step 5: Line plots comparing genotypes ---
+timecourse_multi_summary_numeric <- timecourse_multi_summary %>%
+  dplyr::mutate(Day_numeric = as.numeric(gsub("d", "", Day)))
+
+p_lines_genotype_compare <- ggplot(
+  timecourse_multi_summary_numeric,
+  aes(x = Day_numeric, y = n_lost, color = Genotype, linetype = Neuron, group = interaction(Genotype, Neuron))
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5, shape = 21, fill = "white", stroke = 0.8) +
+  scale_color_manual(values = genotype_palette, name = "Genotype") +
+  scale_linetype_manual(values = c(iN = "solid", iDA = "dashed"), name = "Neuron") +
+  scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
+  labs(
+    title = "PPI loss trajectory comparison across genotypes",
+    x = "Differentiation day",
+    y = "Number of lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "right",
+    legend.key.size = unit(0.3, "cm")
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "lines_lost_ppis_genotype_comparison.pdf"),
+  p_lines_genotype_compare,
+  width = 6,
+  height = 4,
+  device = cairo_pdf
+)
+
+
+# --- Step 6: By-annotation breakdown ---
+message("\n=== Computing PPI loss by annotation ===")
+
+timecourse_multi_edge_annotated <- timecourse_multi_edge_states %>%
+  dplyr::left_join(shared_long, by = "key") %>%
+  dplyr::filter(!is.na(tag))
+
+timecourse_multi_by_annotation <- timecourse_multi_edge_annotated %>%
+  dplyr::filter(state == "lost") %>%
+  dplyr::group_by(Genotype, Day, Neuron, tag) %>%
+  dplyr::summarise(n_lost = n(), .groups = "drop")
+
+write_csv(
+  timecourse_multi_by_annotation,
+  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_lost_ppis_by_annotation.csv")
+)
+
+
+# --- Step 7: Heatmaps - lost PPIs per annotation × genotype ---
+for (nt in c("iN", "iDA")) {
+  
+  heatmap_data <- timecourse_multi_by_annotation %>%
+    dplyr::filter(Neuron == nt) %>%
+    tidyr::unite("Geno_Day", Genotype, Day, sep = "_") %>%
+    tidyr::pivot_wider(
+      names_from = Geno_Day,
+      values_from = n_lost,
+      values_fill = 0
+    )
+  
+  if (nrow(heatmap_data) < 2) {
+    message("Insufficient data for annotation heatmap (", nt, "); skipping.")
+    next
+  }
+  
+  heatmap_mat <- as.matrix(heatmap_data[, -c(1:2)])
+  rownames(heatmap_mat) <- heatmap_data$tag
+  
+  pheatmap::pheatmap(
+    heatmap_mat,
+    scale = "none",
+    color = colorRampPalette(c("white", "#C51B7D"))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    border_color = NA,
+    fontsize = 6,
+    cellwidth = 8,
+    cellheight = 8,
+    main = paste("Lost PPIs by annotation (all genotypes) –", nt),
+    filename = file.path(
+      out_dir_timecourse_multi,
+      "plots/global",
+      paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")
+    ),
+    width = 8,
+    height = 10
+  )
+}
+
+
+# --- Step 8: Faceted line plots for selected annotations ---
+selected_annotations <- c("Mito", "OXPHOS", "MitoMIM", "SynGO", "Svexocytosis", "SynapseSVs")
+
+timecourse_multi_selected <- timecourse_multi_by_annotation %>%
+  dplyr::filter(tag %in% selected_annotations) %>%
+  dplyr::mutate(Day_numeric = as.numeric(gsub("d", "", Day)))
+
+p_lines_annotations <- ggplot(
+  timecourse_multi_selected,
+  aes(x = Day_numeric, y = n_lost, color = Genotype, linetype = Neuron, 
+      group = interaction(Genotype, Neuron))
+) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 2, shape = 21, fill = "white", stroke = 0.6) +
+  facet_wrap(~ tag, scales = "free_y", ncol = 3) +
+  scale_color_manual(values = genotype_palette, name = "Genotype") +
+  scale_linetype_manual(values = c(iN = "solid", iDA = "dashed"), name = "Neuron") +
+  scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
+  labs(
+    title = "Lost PPIs over time (selected annotations)",
+    x = "Differentiation day",
+    y = "Number of lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    strip.background = element_rect(fill = "grey90", color = "black"),
+    legend.position = "right",
+    legend.key.size = unit(0.3, "cm")
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "lines_lost_ppis_selected_annotations.pdf"),
+  p_lines_annotations,
+  width = 9,
+  height = 6,
+  device = cairo_pdf
+)
+
+
+# --- Step 9: Trimer analysis for multi-genotype timecourse ---
+message("\n=== Trimer analysis for multi-genotype timecourse ===")
+
+if (!exists("trimers_baseline")) {
+  message("trimers_baseline not found. Skipping trimer analysis.")
+} else {
+  
+  # Convert edge states to gene-based keys
+  timecourse_multi_edge_genes <- timecourse_multi_edge_states %>%
+    dplyr::select(key, Gene1, Gene2, Genotype, Day, Neuron, state) %>%
+    dplyr::mutate(key_gene = .make_undirected_key(Gene1, Gene2))
+  
+  # Assess trimer states
+  assess_multi_timecourse_trimers <- function(baseline_trimers, edge_states) {
+    
+    trimers_with_keys <- baseline_trimers %>%
+      dplyr::mutate(
+        key_AB = .make_undirected_key(GeneA, GeneB),
+        key_BC = .make_undirected_key(GeneB, GeneC),
+        key_AC = .make_undirected_key(GeneA, GeneC)
+      )
+    
+    # Expand to all genotype × day × neuron
+    geno_day_neuron_combos <- edge_states %>%
+      dplyr::distinct(Genotype, Day, Neuron)
+    
+    trimers_expanded <- trimers_with_keys %>%
+      tidyr::crossing(geno_day_neuron_combos)
+    
+    # Join edge states
+    trimers_states <- trimers_expanded %>%
+      dplyr::left_join(
+        edge_states %>% dplyr::select(key_gene, Genotype, Day, Neuron, state),
+        by = c("key_AB" = "key_gene", "Genotype", "Day", "Neuron")
+      ) %>%
+      dplyr::rename(state_AB = state) %>%
+      dplyr::left_join(
+        edge_states %>% dplyr::select(key_gene, Genotype, Day, Neuron, state),
+        by = c("key_BC" = "key_gene", "Genotype", "Day", "Neuron")
+      ) %>%
+      dplyr::rename(state_BC = state) %>%
+      dplyr::left_join(
+        edge_states %>% dplyr::select(key_gene, Genotype, Day, Neuron, state),
+        by = c("key_AC" = "key_gene", "Genotype", "Day", "Neuron")
+      ) %>%
+      dplyr::rename(state_AC = state) %>%
+      dplyr::mutate(
+        state_AB = tidyr::replace_na(state_AB, "retained"),
+        state_BC = tidyr::replace_na(state_BC, "retained"),
+        state_AC = tidyr::replace_na(state_AC, "retained"),
+        n_lost = (state_AB == "lost") + (state_BC == "lost") + (state_AC == "lost"),
+        trimer_state = dplyr::case_when(
+          n_lost >= 2 ~ "broken",
+          n_lost == 1 ~ "partial",
+          n_lost == 0 ~ "intact",
+          TRUE ~ "unknown"
+        )
+      )
+    
+    return(trimers_states)
+  }
+  
+  timecourse_multi_trimer_states <- assess_multi_timecourse_trimers(
+    baseline_trimers = trimers_baseline,
+    edge_states = timecourse_multi_edge_genes
+  )
+  
+  write_csv(
+    timecourse_multi_trimer_states,
+    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_states.csv")
+  )
+  
+  # Summary
+  timecourse_multi_trimer_summary <- timecourse_multi_trimer_states %>%
+    dplyr::group_by(Genotype, Day, Neuron) %>%
+    dplyr::summarise(
+      n_total = n(),
+      n_intact = sum(trimer_state == "intact", na.rm = TRUE),
+      n_broken = sum(trimer_state == "broken", na.rm = TRUE),
+      n_partial = sum(trimer_state == "partial", na.rm = TRUE),
+      frac_broken = n_broken / n_total,
+      .groups = "drop"
+    )
+  
+  write_csv(
+    timecourse_multi_trimer_summary,
+    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_summary.csv")
+  )
+  
+  # Barplot
+  p_trimer_bars <- ggplot(
+    timecourse_multi_trimer_summary,
+    aes(x = Day, y = n_broken, fill = Neuron)
+  ) +
+    geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    geom_text(
+      aes(label = n_broken),
+      position = position_dodge(0.7),
+      vjust = -0.5,
+      size = 2
+    ) +
+    facet_wrap(~ Genotype, ncol = 4, scales = "free_y") +
+    scale_fill_manual(values = neuron_palette, name = "Neuron") +
+    labs(
+      title = "Broken trimers across genotypes (d30 vs d50)",
+      x = "Differentiation day",
+      y = "Number of broken trimers"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      strip.background = element_rect(fill = "white", color = "black"),
+      legend.position = "top"
+    )
+  
+  ggsave(
+    file.path(out_dir_timecourse_multi, "plots/global", "bars_broken_trimers_all_genotypes.pdf"),
+    p_trimer_bars,
+    width = 9,
+    height = 4,
+    device = cairo_pdf
+  )
+  
+  # Line plot comparison
+  timecourse_multi_trimer_numeric <- timecourse_multi_trimer_summary %>%
+    dplyr::mutate(Day_numeric = as.numeric(gsub("d", "", Day)))
+  
+  p_trimer_lines <- ggplot(
+    timecourse_multi_trimer_numeric,
+    aes(x = Day_numeric, y = n_broken, color = Genotype, linetype = Neuron,
+        group = interaction(Genotype, Neuron))
+  ) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 2.5, shape = 21, fill = "white", stroke = 0.8) +
+    scale_color_manual(values = genotype_palette, name = "Genotype") +
+    scale_linetype_manual(values = c(iN = "solid", iDA = "dashed"), name = "Neuron") +
+    scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
+    labs(
+      title = "Trimer breakage trajectory across genotypes",
+      x = "Differentiation day",
+      y = "Number of broken trimers"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "right",
+      legend.key.size = unit(0.3, "cm")
+    )
+  
+  ggsave(
+    file.path(out_dir_timecourse_multi, "plots/global", "lines_broken_trimers_genotype_comparison.pdf"),
+    p_trimer_lines,
+    width = 6,
+    height = 4,
+    device = cairo_pdf
+  )
+}
+
+
+# --- Step 10: Complex analysis for multi-genotype timecourse ---
+message("\n=== Complex analysis for multi-genotype timecourse ===")
+
+if (!exists("complexes_summary") || !exists("complex_edges_df")) {
+  message("complexes_summary or complex_edges_df not found. Skipping complex analysis.")
+} else {
+  
+  # Expand complexes to all genotype × day × neuron
+  geno_day_neuron_combos <- timecourse_multi_edge_genes %>%
+    dplyr::distinct(Genotype, Day, Neuron)
+  
+  complexes_expanded <- complex_edges_df %>%
+    dplyr::select(complex_id, community_id, key_gene) %>%
+    tidyr::crossing(geno_day_neuron_combos)
+  
+  # Join edge states
+  complexes_multi_timecourse_states <- complexes_expanded %>%
+    dplyr::left_join(
+      timecourse_multi_edge_genes %>% dplyr::select(key_gene, Genotype, Day, Neuron, state),
+      by = c("key_gene", "Genotype", "Day", "Neuron")
+    ) %>%
+    dplyr::mutate(
+      state = tidyr::replace_na(state, "retained"),
+      edge_lost = state == "lost"
+    )
+  
+  # Aggregate per complex × genotype × day × neuron
+  complex_multi_timecourse_summary <- complexes_multi_timecourse_states %>%
+    dplyr::group_by(complex_id, Genotype, Day, Neuron) %>%
+    dplyr::summarise(
+      n_edges_total = n(),
+      n_edges_lost = sum(edge_lost, na.rm = TRUE),
+      frac_edges_lost = n_edges_lost / n_edges_total,
+      .groups = "drop"
+    ) %>%
+    dplyr::left_join(
+      complexes_summary %>% dplyr::select(complex_id, n_proteins, organelle),
+      by = "complex_id"
+    ) %>%
+    dplyr::mutate(
+      complex_state = dplyr::case_when(
+        frac_edges_lost >= 0.75 ~ "disrupted",
+        frac_edges_lost >= 0.25 ~ "partial",
+        TRUE ~ "intact"
+      )
+    )
+  
+  write_csv(
+    complex_multi_timecourse_summary,
+    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_complex_states.csv")
+  )
+  
+  # Summary statistics
+  complex_disruption_multi_timecourse <- complex_multi_timecourse_summary %>%
+    dplyr::group_by(Genotype, Day, Neuron) %>%
+    dplyr::summarise(
+      n_complexes = n(),
+      n_intact = sum(complex_state == "intact"),
+      n_disrupted = sum(complex_state == "disrupted"),
+      n_partial = sum(complex_state == "partial"),
+      frac_disrupted = n_disrupted / n_complexes,
+      .groups = "drop"
+    )
+  
+  write_csv(
+    complex_disruption_multi_timecourse,
+    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_complex_disruption_summary.csv")
+  )
+  
+  # Barplot
+  p_complex_bars <- ggplot(
+    complex_disruption_multi_timecourse,
+    aes(x = Day, y = n_disrupted, fill = Neuron)
+  ) +
+    geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    geom_text(
+      aes(label = n_disrupted),
+      position = position_dodge(0.7),
+      vjust = -0.5,
+      size = 2
+    ) +
+    facet_wrap(~ Genotype, ncol = 4, scales = "free_y") +
+    scale_fill_manual(values = neuron_palette, name = "Neuron") +
+    labs(
+      title = "Disrupted complexes across genotypes (d30 vs d50)",
+      x = "Differentiation day",
+      y = "Number of disrupted complexes"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      strip.background = element_rect(fill = "white", color = "black"),
+      legend.position = "top"
+    )
+  
+  ggsave(
+    file.path(out_dir_timecourse_multi, "plots/global", "bars_disrupted_complexes_all_genotypes.pdf"),
+    p_complex_bars,
+    width = 9,
+    height = 4,
+    device = cairo_pdf
+  )
+  
+  # Line plot comparison
+  complex_disruption_multi_numeric <- complex_disruption_multi_timecourse %>%
+    dplyr::mutate(Day_numeric = as.numeric(gsub("d", "", Day)))
+  
+  p_complex_lines <- ggplot(
+    complex_disruption_multi_numeric,
+    aes(x = Day_numeric, y = n_disrupted, color = Genotype, linetype = Neuron,
+        group = interaction(Genotype, Neuron))
+  ) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 2.5, shape = 21, fill = "white", stroke = 0.8) +
+    scale_color_manual(values = genotype_palette, name = "Genotype") +
+    scale_linetype_manual(values = c(iN = "solid", iDA = "dashed"), name = "Neuron") +
+    scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
+    labs(
+      title = "Complex disruption trajectory across genotypes",
+      x = "Differentiation day",
+      y = "Number of disrupted complexes"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "right",
+      legend.key.size = unit(0.3, "cm")
+    )
+  
+  ggsave(
+    file.path(out_dir_timecourse_multi, "plots/global", "lines_disrupted_complexes_genotype_comparison.pdf"),
+    p_complex_lines,
+    width = 6,
+    height = 4,
+    device = cairo_pdf
+  )
+}
+
+
+# --- Step 11: Per-genotype detailed plots ---
+message("\n=== Creating per-genotype detailed plots ===")
+
+for (geno in genotypes) {
+  
+  # Filter data
+  geno_summary <- timecourse_multi_summary %>%
+    dplyr::filter(Genotype == geno)
+  
+  if (nrow(geno_summary) == 0) next
+  r  # Per-genotype barplot
+  p_geno_bar <- ggplot(geno_summary, aes(x = Day, y = n_lost, fill = Neuron)) +
+    geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    geom_text(
+      aes(label = n_lost),
+      position = position_dodge(0.7),
+      vjust = -0.5,
+      size = 2.5
+    ) +
+    scale_fill_manual(values = neuron_palette, name = "Neuron") +
+    labs(
+      title = paste("Lost PPIs in", geno, "(d30 vs d50)"),
+      x = "Differentiation day",
+      y = "Number of lost PPIs"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "top"
+    )
+  
+  ggsave(
+    file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("bars_lost_ppis_", geno, ".pdf")),
+    p_geno_bar,
+    width = 4,
+    height = 4,
+    device = cairo_pdf
+  )
+  
+  # Per-genotype annotation heatmaps
+  for (nt in c("iN", "iDA")) {
+    
+    heatmap_data <- timecourse_multi_by_annotation %>%
+      dplyr::filter(Genotype == geno, Neuron == nt) %>%
+      tidyr::pivot_wider(
+        names_from = Day,
+        values_from = n_lost,
+        values_fill = 0
+      )
+    
+    if (nrow(heatmap_data) < 2) {
+      message("Insufficient data for ", geno, " ", nt, " annotation heatmap; skipping.")
+      next
+    }
+    
+    heatmap_mat <- as.matrix(heatmap_data[, -c(1:2)])
+    rownames(heatmap_mat) <- heatmap_data$tag
+    
+    pheatmap::pheatmap(
+      heatmap_mat,
+      scale = "none",
+      color = colorRampPalette(c("white", "#C51B7D"))(100),
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      show_rownames = TRUE,
+      show_colnames = TRUE,
+      border_color = NA,
+      fontsize = 6,
+      cellwidth = 10,
+      cellheight = 8,
+      main = paste("Lost PPIs by annotation –", geno, nt),
+      filename = file.path(
+        out_dir_timecourse_multi,
+        "plots/by_genotype",
+        paste0("heatmap_lost_ppis_by_annotation_", geno, "_", nt, ".pdf")
+      ),
+      width = 4,
+      height = 8
+    )
+  }
+}
+
+
+# --- Step 12: Bubble plots - iDA vs iN for each genotype ---
+message("\n=== Creating bubble plots (iDA vs iN) per genotype ===")
+
+# Prepare bubble data
+bubble_multi_data <- timecourse_multi_summary %>%
+  dplyr::select(Genotype, Day, Neuron, n_lost, total_edges) %>%
+  tidyr::pivot_wider(
+    names_from = Neuron,
+    values_from = c(n_lost, total_edges)
+  ) %>%
+  dplyr::mutate(
+    frac_lost_iN = n_lost_iN / total_edges_iN,
+    frac_lost_iDA = n_lost_iDA / total_edges_iDA,
+    ratio = frac_lost_iN / frac_lost_iDA
+  )
+
+write_csv(
+  bubble_multi_data,
+  file.path(out_dir_timecourse_multi, "tables", "bubble_plot_data_iDA_vs_iN.csv")
+)
+
+# Faceted bubble plot (all genotypes)
+p_bubble_facet <- ggplot(
+  bubble_multi_data,
+  aes(x = n_lost_iN, y = n_lost_iDA, fill = Genotype, size = ratio)
+) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+  geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.2) +
+  ggrepel::geom_text_repel(
+    aes(label = Genotype),
+    size = 2.3,
+    max.overlaps = 50,
+    seed = 42
+  ) +
+  facet_wrap(~ Day, ncol = 2) +
+  scale_fill_manual(values = genotype_palette, name = "Genotype") +
+  scale_size_continuous(range = c(2, 8), name = "iN/iDA ratio") +
+  labs(
+    title = "Lost PPIs: iDA vs iN (all genotypes)",
+    x = "Lost PPIs in iN",
+    y = "Lost PPIs in iDA"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    strip.background = element_rect(fill = "grey90", color = "black"),
+    legend.position = "right",
+    legend.key.size = unit(0.3, "cm"),
+    aspect.ratio = 1
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "bubble_iDA_vs_iN_all_genotypes.pdf"),
+  p_bubble_facet,
+  width = 7,
+  height = 4,
+  device = cairo_pdf
+)
+
+# Individual bubble plots per genotype
+for (geno in genotypes) {
+  
+  geno_bubble <- bubble_multi_data %>%
+    dplyr::filter(Genotype == geno)
+  
+  if (nrow(geno_bubble) == 0) next
+  
+  p_geno_bubble <- ggplot(
+    geno_bubble,
+    aes(x = n_lost_iN, y = n_lost_iDA, fill = Day, size = ratio)
+  ) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+    geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.3) +
+    ggrepel::geom_text_repel(
+      aes(label = Day),
+      size = 2.5,
+      max.overlaps = 10,
+      seed = 42
+    ) +
+    scale_fill_manual(values = day_palette, name = "Day") +
+    scale_size_continuous(range = c(3, 10), name = "iN/iDA ratio") +
+    labs(
+      title = paste("Lost PPIs:", geno, "– iDA vs iN"),
+      x = "Lost PPIs in iN",
+      y = "Lost PPIs in iDA"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "right",
+      legend.key.size = unit(0.3, "cm"),
+      aspect.ratio = 1
+    )
+  
+  ggsave(
+    file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("bubble_iDA_vs_iN_", geno, ".pdf")),
+    p_geno_bubble,
+    width = 5,
+    height = 4,
+    device = cairo_pdf
+  )
+}
+
+
+# --- Step 13: Delta analysis (d50 - d30) ---
+message("\n=== Computing delta (d50 - d30) ===")
+
+delta_analysis <- timecourse_multi_summary %>%
+  dplyr::select(Genotype, Day, Neuron, n_lost) %>%
+  tidyr::pivot_wider(
+    names_from = Day,
+    values_from = n_lost
+  ) %>%
+  dplyr::mutate(
+    delta = d50 - d30,
+    abs_delta = abs(delta)
+  )
+
+write_csv(
+  delta_analysis,
+  file.path(out_dir_timecourse_multi, "tables", "delta_d50_minus_d30.csv")
+)
+
+# Barplot of delta
+p_delta <- ggplot(
+  delta_analysis,
+  aes(x = reorder(Genotype, -abs_delta), y = delta, fill = Neuron)
+) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = neuron_palette, name = "Neuron") +
+  labs(
+    title = "Change in lost PPIs (d50 - d30)",
+    x = NULL,
+    y = "Δ Lost PPIs (d50 - d30)"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "top"
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "bars_delta_d50_minus_d30.pdf"),
+  p_delta,
+  width = 5,
+  height = 4,
+  device = cairo_pdf
+)
+
+
+# --- Step 14: Annotation-specific delta analysis ---
+delta_by_annotation <- timecourse_multi_by_annotation %>%
+  tidyr::pivot_wider(
+    names_from = Day,
+    values_from = n_lost,
+    values_fill = 0
+  ) %>%
+  dplyr::mutate(
+    delta = d50 - d30
+  ) %>%
+  dplyr::arrange(Genotype, Neuron, desc(abs(delta)))
+
+write_csv(
+  delta_by_annotation,
+  file.path(out_dir_timecourse_multi, "tables", "delta_by_annotation.csv")
+)
+
+# Heatmap of delta per annotation
+for (nt in c("iN", "iDA")) {
+  
+  heatmap_delta <- delta_by_annotation %>%
+    dplyr::filter(Neuron == nt) %>%
+    tidyr::pivot_wider(
+      names_from = Genotype,
+      values_from = delta,
+      values_fill = 0
+    )
+  
+  if (nrow(heatmap_delta) < 2) {
+    message("Insufficient data for delta heatmap (", nt, "); skipping.")
+    next
+  }
+  
+  heatmap_mat <- as.matrix(heatmap_delta[, -c(1:2)])
+  rownames(heatmap_mat) <- heatmap_delta$tag
+  
+  # Center colorscale at 0
+  max_abs <- max(abs(heatmap_mat), na.rm = TRUE)
+  
+  pheatmap::pheatmap(
+    heatmap_mat,
+    scale = "none",
+    color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
+    breaks = seq(-max_abs, max_abs, length.out = 102),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    border_color = NA,
+    fontsize = 6,
+    cellwidth = 10,
+    cellheight = 8,
+    main = paste("Δ Lost PPIs by annotation (d50 - d30) –", nt),
+    filename = file.path(
+      out_dir_timecourse_multi,
+      "plots/global",
+      paste0("heatmap_delta_by_annotation_", nt, ".pdf")
+    ),
+    width = 6,
+    height = 10
+  )
+}
+
+
+# --- Step 15: Top changing annotations (ranked by absolute delta) ---
+top_changing <- delta_by_annotation %>%
+  dplyr::group_by(tag, Neuron) %>%
+  dplyr::summarise(
+    mean_delta = mean(delta, na.rm = TRUE),
+    mean_abs_delta = mean(abs(delta), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(mean_abs_delta)) %>%
+  dplyr::slice_head(n = 20)
+
+write_csv(
+  top_changing,
+  file.path(out_dir_timecourse_multi, "tables", "top_changing_annotations.csv")
+)
+
+# Lollipop plot
+p_top_changing <- ggplot(
+  top_changing,
+  aes(x = reorder(tag, mean_abs_delta), y = mean_delta, color = Neuron)
+) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+  geom_segment(
+    aes(xend = tag, yend = 0),
+    linewidth = 0.8
+  ) +
+  geom_point(size = 3, shape = 21, fill = "white", stroke = 0.8) +
+  coord_flip() +
+  scale_color_manual(values = neuron_palette, name = "Neuron") +
+  labs(
+    title = "Top 20 annotations with largest change (d50 - d30)",
+    x = NULL,
+    y = "Mean Δ Lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "top"
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "lollipop_top_changing_annotations.pdf"),
+  p_top_changing,
+  width = 6,
+  height = 6,
+  device = cairo_pdf
+)
+
+
+# --- Step 16: Correlation analysis between genotypes ---
+message("\n=== Correlation analysis between genotypes ===")
+
+# Correlation of PPI loss patterns
+correlation_data <- timecourse_multi_summary %>%
+  dplyr::mutate(geno_neuron = paste(Genotype, Neuron, sep = "_")) %>%
+  dplyr::select(Day, geno_neuron, n_lost) %>%
+  tidyr::pivot_wider(
+    names_from = geno_neuron,
+    values_from = n_lost
+  )
+
+cor_mat <- cor(
+  correlation_data[, -1],
+  use = "pairwise.complete.obs",
+  method = "spearman"
+)
+
+# Heatmap
+pheatmap::pheatmap(
+  cor_mat,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
+  breaks = seq(-1, 1, length.out = 102),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  border_color = "black",
+  fontsize = 6,
+  cellwidth = 12,
+  cellheight = 12,
+  main = "Correlation of PPI loss patterns",
+  filename = file.path(
+    out_dir_timecourse_multi,
+    "plots/global",
+    "heatmap_genotype_correlation.pdf"
+  ),
+  width = 7,
+  height = 6
+)
+
+
+# --- Step 17: Summary statistics table ---
+summary_stats <- timecourse_multi_summary %>%
+  dplyr::group_by(Genotype, Neuron) %>%
+  dplyr::summarise(
+    d30_lost = n_lost[Day == "d30"],
+    d50_lost = n_lost[Day == "d50"],
+    delta = d50_lost - d30_lost,
+    pct_change = (delta / d30_lost) * 100,
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(abs(delta)))
+
+write_csv(
+  summary_stats,
+  file.path(out_dir_timecourse_multi, "tables", "summary_statistics.csv")
+)
+
+message("\nSummary statistics:")
+print(summary_stats)
+
+
+# --- Step 18: Combined trajectory plot (all genotypes overlaid) ---
+p_trajectory_all <- ggplot(
+  timecourse_multi_summary %>%
+    dplyr::mutate(Day_numeric = as.numeric(gsub("d", "", Day))),
+  aes(x = Day_numeric, y = n_lost, color = Genotype, shape = Neuron, 
+      group = interaction(Genotype, Neuron))
+) +
+  geom_line(aes(linetype = Neuron), linewidth = 0.8) +
+  geom_point(size = 3, stroke = 0.8, fill = "white") +
+  scale_color_manual(values = genotype_palette, name = "Genotype") +
+  scale_shape_manual(values = c(iN = 21, iDA = 24), name = "Neuron") +
+  scale_linetype_manual(values = c(iN = "solid", iDA = "dashed"), guide = "none") +
+  scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
+  labs(
+    title = "PPI loss trajectories: all genotypes",
+    x = "Differentiation day",
+    y = "Number of lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "right",
+    legend.key.size = unit(0.4, "cm")
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "trajectory_all_genotypes_overlaid.pdf"),
+  p_trajectory_all,
+  width = 6,
+  height = 4,
+  device = cairo_pdf
+)
+
+
+# --- Step 19: Ratio plots (iDA/iN) ---
+ratio_data <- timecourse_multi_summary %>%
+  dplyr::select(Genotype, Day, Neuron, n_lost) %>%
+  tidyr::pivot_wider(
+    names_from = Neuron,
+    values_from = n_lost
+  ) %>%
+  dplyr::mutate(
+    ratio_iDA_iN = iDA / iN
+  )
+
+write_csv(
+  ratio_data,
+  file.path(out_dir_timecourse_multi, "tables", "ratio_iDA_to_iN.csv")
+)
+
+# Barplot of ratios
+p_ratio <- ggplot(
+  ratio_data,
+  aes(x = Genotype, y = ratio_iDA_iN, fill = Day)
+) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey30", linewidth = 0.3) +
+  scale_fill_manual(values = day_palette, name = "Day") +
+  labs(
+    title = "Ratio of lost PPIs: iDA / iN",
+    x = NULL,
+    y = "iDA / iN ratio"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "top"
+  )
+
+ggsave(
+  file.path(out_dir_timecourse_multi, "plots/global", "bars_ratio_iDA_to_iN.pdf"),
+  p_ratio,
+  width = 5,
+  height = 4,
+  device = cairo_pdf
+)
+
+
+# --- Final summary message ---
+message("\n" , "=".repeat(80))
+message("=== Multi-genotype timecourse PPI analysis complete! ===")
+message("=" , "=".repeat(80))
+message("\nResults saved to: ", out_dir_timecourse_multi)
+message("\nSummary:")
+message("  - Genotypes analyzed: ", paste(genotypes, collapse = ", "))
+message("  - Timepoints: d30, d50")
+message("  - Total edge states computed: ", nrow(timecourse_multi_edge_states))
+message("  - Trimers assessed: ", ifelse(exists("timecourse_multi_trimer_states"), "Yes", "No"))
+message("  - Complexes assessed: ", ifelse(exists("complex_multi_timecourse_summary"), "Yes", "No"))
+message("\nKey outputs:")
+message("  - Global comparison plots in: plots/global/")
+message("  - Per-genotype plots in: plots/by_genotype/")
+message("  - Summary tables in: tables/")
+```
+
+
 # to do
 - by_ko heatmap correlations: 
 should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
@@ -14421,4 +15587,4 @@ https://r-graph-gallery.com/web-extended-dumbbell-plot-ggplot2.html
 
 X. Misc
 - change color scheme for AFpob ascending boxplots. 
-
+- added mtCI_AF to subcell annotation. check how they are behaving as well over differentiation
