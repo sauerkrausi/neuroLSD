@@ -14470,11 +14470,8 @@ timecourse_multi_prot_long <- dplyr::bind_rows(timecourse_list) %>%
     Genotype = factor(Genotype, levels = genotypes)
   )
 
-# Save
-write_csv(
-  timecourse_multi_prot_long,
-  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_proteome_long.csv")
-)
+# Save csv
+write_csv(timecourse_multi_prot_long, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_proteome_long.csv"))
 
 message("Extracted proteome data:")
 print(table(timecourse_multi_prot_long$Genotype, timecourse_multi_prot_long$Day))
@@ -14540,11 +14537,8 @@ timecourse_multi_edge_states <- compute_multi_timecourse_edge_states(
   drop_thresh = -0.5
 )
 
-# Save
-write_csv(
-  timecourse_multi_edge_states,
-  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_edge_states.csv")
-)
+# Save csv
+write_csv(timecourse_multi_edge_states, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_edge_states.csv"))
 
 
 # --- Step 3: Global summary - lost PPIs per genotype × day × neuron ---
@@ -14558,10 +14552,8 @@ timecourse_multi_summary <- timecourse_multi_edge_states %>%
     .groups = "drop"
   )
 
-write_csv(
-  timecourse_multi_summary,
-  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_ppi_summary.csv")
-)
+# save csv
+write_csv(timecourse_multi_summary, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_ppi_summary.csv"))
 
 message("\nMulti-genotype timecourse summary:")
 print(timecourse_multi_summary)
@@ -14594,13 +14586,7 @@ p_multi_bars <- ggplot(
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "bars_lost_ppis_all_genotypes.pdf"),
-  p_multi_bars,
-  width = 9,
-  height = 4,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_lost_ppis_all_genotypes.pdf"), p_multi_bars, width = 9, height = 4,device = cairo_pdf)
 
 
 # --- Step 5: Line plots comparing genotypes ---
@@ -14629,13 +14615,7 @@ p_lines_genotype_compare <- ggplot(
     legend.key.size = unit(0.3, "cm")
   )
 
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "lines_lost_ppis_genotype_comparison.pdf"),
-  p_lines_genotype_compare,
-  width = 6,
-  height = 4,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "lines_lost_ppis_genotype_comparison.pdf"), p_lines_genotype_compare, width = 4, height = 3.5, device = cairo_pdf)
 
 
 # --- Step 6: By-annotation breakdown ---
@@ -14650,10 +14630,8 @@ timecourse_multi_by_annotation <- timecourse_multi_edge_annotated %>%
   dplyr::group_by(Genotype, Day, Neuron, tag) %>%
   dplyr::summarise(n_lost = n(), .groups = "drop")
 
-write_csv(
-  timecourse_multi_by_annotation,
-  file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_lost_ppis_by_annotation.csv")
-)
+# save csv
+write_csv(timecourse_multi_by_annotation, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_lost_ppis_by_annotation.csv"))
 
 
 # --- Step 7: Heatmaps - lost PPIs per annotation × genotype ---
@@ -14689,59 +14667,15 @@ for (nt in c("iN", "iDA")) {
     cellwidth = 8,
     cellheight = 8,
     main = paste("Lost PPIs by annotation (all genotypes) –", nt),
-    filename = file.path(
-      out_dir_timecourse_multi,
-      "plots/global",
-      paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")
-    ),
+    filename = file.path(out_dir_timecourse_multi,"plots/global",paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")),
     width = 8,
     height = 10
   )
 }
 
 
-# --- Step 8: Faceted line plots for selected annotations ---
-selected_annotations <- c("Mito", "OXPHOS", "MitoMIM", "SynGO", "Svexocytosis", "SynapseSVs")
 
-timecourse_multi_selected <- timecourse_multi_by_annotation %>%
-  dplyr::filter(tag %in% selected_annotations) %>%
-  dplyr::mutate(Day_numeric = as.numeric(gsub("d", "", Day)))
-
-p_lines_annotations <- ggplot(
-  timecourse_multi_selected,
-  aes(x = Day_numeric, y = n_lost, color = Genotype, linetype = Neuron, 
-      group = interaction(Genotype, Neuron))
-) +
-  geom_line(linewidth = 0.7) +
-  geom_point(size = 2, shape = 21, fill = "white", stroke = 0.6) +
-  facet_wrap(~ tag, scales = "free_y", ncol = 3) +
-  scale_color_manual(values = genotype_palette, name = "Genotype") +
-  scale_linetype_manual(values = c(iN = "solid", iDA = "dashed"), name = "Neuron") +
-  scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
-  labs(
-    title = "Lost PPIs over time (selected annotations)",
-    x = "Differentiation day",
-    y = "Number of lost PPIs"
-  ) +
-  theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
-    strip.background = element_rect(fill = "grey90", color = "black"),
-    legend.position = "right",
-    legend.key.size = unit(0.3, "cm")
-  )
-
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "lines_lost_ppis_selected_annotations.pdf"),
-  p_lines_annotations,
-  width = 9,
-  height = 6,
-  device = cairo_pdf
-)
-
-
-# --- Step 9: Trimer analysis for multi-genotype timecourse ---
+# --- Step 8: Trimer analysis for multi-genotype timecourse ---
 message("\n=== Trimer analysis for multi-genotype timecourse ===")
 
 if (!exists("trimers_baseline")) {
@@ -14892,17 +14826,11 @@ if (!exists("trimers_baseline")) {
       legend.key.size = unit(0.3, "cm")
     )
   
-  ggsave(
-    file.path(out_dir_timecourse_multi, "plots/global", "lines_broken_trimers_genotype_comparison.pdf"),
-    p_trimer_lines,
-    width = 6,
-    height = 4,
-    device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_timecourse_multi, "plots/global", "lines_broken_trimers_genotype_comparison.pdf"), p_trimer_lines, width = 4, height = 3.5,    device = cairo_pdf)
 }
 
 
-# --- Step 10: Complex analysis for multi-genotype timecourse ---
+# --- Step 9: Complex analysis for multi-genotype timecourse ---
 message("\n=== Complex analysis for multi-genotype timecourse ===")
 
 if (!exists("complexes_summary") || !exists("complex_edges_df")) {
@@ -15033,17 +14961,11 @@ if (!exists("complexes_summary") || !exists("complex_edges_df")) {
       legend.key.size = unit(0.3, "cm")
     )
   
-  ggsave(
-    file.path(out_dir_timecourse_multi, "plots/global", "lines_disrupted_complexes_genotype_comparison.pdf"),
-    p_complex_lines,
-    width = 6,
-    height = 4,
-    device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_timecourse_multi, "plots/global", "lines_disrupted_complexes_genotype_comparison.pdf"), p_complex_lines,width = 4,height = 3.5, device = cairo_pdf)
 }
 
 
-# --- Step 11: Per-genotype detailed plots ---
+# --- Step 10: Per-genotype detailed plots ---
 message("\n=== Creating per-genotype detailed plots ===")
 
 for (geno in genotypes) {
@@ -15053,7 +14975,8 @@ for (geno in genotypes) {
     dplyr::filter(Genotype == geno)
   
   if (nrow(geno_summary) == 0) next
-  r  # Per-genotype barplot
+  
+  # Per-genotype barplot
   p_geno_bar <- ggplot(geno_summary, aes(x = Day, y = n_lost, fill = Neuron)) +
     geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
     geom_text(
@@ -15075,33 +14998,43 @@ for (geno in genotypes) {
       legend.position = "top"
     )
   
-  ggsave(
-    file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("bars_lost_ppis_", geno, ".pdf")),
-    p_geno_bar,
-    width = 4,
-    height = 4,
-    device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("bars_lost_ppis_", geno, ".pdf")), p_geno_bar, width = 4, height = 4, device = cairo_pdf)
   
-  # Per-genotype annotation heatmaps
+  
+  
+ # Per-genotype annotation heatmaps
   for (nt in c("iN", "iDA")) {
-    
+
     heatmap_data <- timecourse_multi_by_annotation %>%
+      # fix: ensure matching types before filtering
+      dplyr::mutate(Genotype = as.character(Genotype)) %>%
       dplyr::filter(Genotype == geno, Neuron == nt) %>%
       tidyr::pivot_wider(
+        id_cols = tag, # Only keep 'tag' as the row identifier
         names_from = Day,
         values_from = n_lost,
         values_fill = 0
       )
-    
+
     if (nrow(heatmap_data) < 2) {
       message("Insufficient data for ", geno, " ", nt, " annotation heatmap; skipping.")
       next
     }
-    
-    heatmap_mat <- as.matrix(heatmap_data[, -c(1:2)])
+
+    # convert to numeric (only d30, d50)
+    heatmap_data <- heatmap_data %>%
+      dplyr::mutate(across(-tag, ~ suppressWarnings(as.numeric(trimws(as.character(.))))))
+
+    # create matrix
+    heatmap_mat <- as.matrix(heatmap_data[, -1])
     rownames(heatmap_mat) <- heatmap_data$tag
-    
+
+    # skip if all values are NA or non-finite
+    if (all(is.na(heatmap_mat)) || !any(is.finite(heatmap_mat))) {
+      message("No finite values for ", geno, " ", nt, " heatmap; skipping.")
+      next
+    }
+
     pheatmap::pheatmap(
       heatmap_mat,
       scale = "none",
@@ -15112,14 +15045,10 @@ for (geno in genotypes) {
       show_colnames = TRUE,
       border_color = NA,
       fontsize = 6,
-      cellwidth = 10,
+      cellwidth = 8,
       cellheight = 8,
-      main = paste("Lost PPIs by annotation –", geno, nt),
-      filename = file.path(
-        out_dir_timecourse_multi,
-        "plots/by_genotype",
-        paste0("heatmap_lost_ppis_by_annotation_", geno, "_", nt, ".pdf")
-      ),
+      main = paste("Lost PPIs by annotation -", geno, nt),
+      filename = file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("heatmap_lost_ppis_by_annotation_", geno, "_", nt, ".pdf")),
       width = 4,
       height = 8
     )
@@ -15127,7 +15056,7 @@ for (geno in genotypes) {
 }
 
 
-# --- Step 12: Bubble plots - iDA vs iN for each genotype ---
+# --- Step 11: Bubble plots - iDA vs iN for each genotype ---
 message("\n=== Creating bubble plots (iDA vs iN) per genotype ===")
 
 # Prepare bubble data
