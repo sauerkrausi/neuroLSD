@@ -10915,7 +10915,7 @@ plot_ppi_vulnerability <- function(df_edges,
           axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
       if (save) {
-        ggsave(file.path(out_dir, "plots/global", paste0("bars_edge_outcomes_", nt, ".pdf")), bar_ppi_global, width = 9, height = 5, device = cairo_pdf)
+        ggsave(file.path(out_dir, "plots/global", paste0("bars_edge_outcomes_", nt, ".pdf")), bar_ppi_global, width = 6, height = 5, device = cairo_pdf)
       }
     }
   }
@@ -11031,12 +11031,12 @@ plot_ppi_vulnerability <- function(df_edges,
       pheatmap::pheatmap(
         mat = rho,
         scale = "none",
-        color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+        color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
         breaks = seq(-1, 1, length.out = 102),
         na_col = "grey90",
         clustering_distance_rows = as.dist(1 - rho),
         clustering_distance_cols = as.dist(1 - rho),
-        clustering_method = "average",
+        clustering_method = "ward.D2",
         show_rownames = TRUE,
         show_colnames = TRUE,
         use_raster = FALSE,
@@ -11117,12 +11117,12 @@ plot_ppi_vulnerability <- function(df_edges,
         pheatmap::pheatmap(
           mat = rho,
           scale = "none",
-          color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+          color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
           breaks = seq(-1, 1, length.out = 102),
           na_col = "grey90",
           clustering_distance_rows = as.dist(1 - rho),
           clustering_distance_cols = as.dist(1 - rho),
-          clustering_method = "average",
+          clustering_method = "ward.D2",
           show_rownames = TRUE,
           show_colnames = TRUE,
           use_raster = FALSE,
@@ -11206,7 +11206,7 @@ plot_ppi_vulnerability <- function(df_edges,
         pheatmap::pheatmap(
           mat = hm_mat,
           scale = "none",
-          color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(101),
+          color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
           breaks = seq(0, 1, length.out = 102),
           na_col = "grey90",
           cluster_rows = TRUE,
@@ -11217,7 +11217,7 @@ plot_ppi_vulnerability <- function(df_edges,
           annotation_col = annotation_col,
           annotation_colors = list(neuron = neuron_palette),
           angle_col = "90",
-          main = paste0("Fraction lost by organelle — ", g, " (iN vs iDA)"),
+          main = paste0("Fraction lost by organelle - ", g, " (iN vs iDA)"),
           fontsize = 6,
           cellwidth = 6,
           cellheight = 6,
@@ -11347,8 +11347,7 @@ plot_organelle_stacked_bars <- function(df_states,
         panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
       )
-    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_counts_", nt, ".pdf")),
-           p_counts, width = 11, height = 5, device = cairo_pdf)
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_counts_", nt, ".pdf")), p_counts, width = 6, height = 5, device = cairo_pdf)
 
     # Plot 4.2 fractions: composition across organelle classes per genotype
     p_frac <- ggplot(dd, aes(x = genotype, y = n_lost, fill = class)) +
@@ -11362,7 +11361,7 @@ plot_organelle_stacked_bars <- function(df_states,
         panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
       )
-    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_fraction_", nt, ".pdf")), p_frac, width = 11, height = 5, device = cairo_pdf)
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_lost_fraction_", nt, ".pdf")), p_frac, width = 6, height = 5, device = cairo_pdf)
   }
 
   plot_one_neuron("iN")
@@ -11421,7 +11420,7 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
       strip.background = element_rect(fill = "white", color = "black"),
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
-  ggsave(file.path(out_dir, "plots/global", "bars_organelle_tag_by_diseaseclass.pdf"), p_bar, width = 11, height = 7, device = cairo_pdf)
+  ggsave(file.path(out_dir, "plots/global", "bars_organelle_tag_by_diseaseclass.pdf"), p_bar, width = 6, height = 5, device = cairo_pdf)
 
   
   # Plot 2: Normalized Bar Charts by organelle tag and disease class
@@ -11460,7 +11459,7 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
         panel.border = element_rect(color = "black", fill = NA)
       )
   
-    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_tag_by_diseaseclass_perKO_", nt, ".pdf")),p, width = 11, height = 7, device = cairo_pdf)
+    ggsave(file.path(out_dir, "plots/global", paste0("bars_organelle_tag_by_diseaseclass_perKO_", nt, ".pdf")),p, width = 6, height = 5, device = cairo_pdf)
   }
   
   plot_normed_bar_by_tag("iN")
@@ -11639,10 +11638,7 @@ plot_ko_neuron_profile <- function(df, geno, nt, score_col, out_dir, org_colors,
       legend.position = "top"
     )
   
-  ggsave(
-    file.path(out_dir, paste0(ko_label, "_histogram_", score_col, "_faceted.pdf")),
-    p_hist_org, width = 10, height = 7, device = cairo_pdf
-  )
+  ggsave(file.path(out_dir, paste0(ko_label, "_histogram_", score_col, "_faceted.pdf")),p_hist_org, width = 10, height = 7, device = cairo_pdf)
 }
 
 
@@ -12834,7 +12830,7 @@ p_trimer_affected_bar <- ggplot(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
   )
 
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_ko.pdf"),p_trimer_affected_bar,width = 9,height = 5,device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_ko.pdf"),p_trimer_affected_bar,width = 6,height = 5,device = cairo_pdf)
 
 
 # --- Step 8: Heatmap - broken trimers by organelle × KO ---
@@ -13184,7 +13180,7 @@ p_complex_bar <- ggplot(
   )
 
 # save plot
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_disrupted_complexes_per_ko.pdf"),p_complex_bar, width = 9, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_disrupted_complexes_per_ko.pdf"),p_complex_bar, width = 6, height = 5, device = cairo_pdf)
 
 
 # Heatmap: disrupted complexes by organelle × KO
@@ -14586,7 +14582,7 @@ p_multi_bars <- ggplot(
     legend.position = "top"
   )
 
-ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_lost_ppis_all_genotypes.pdf"), p_multi_bars, width = 9, height = 4,device = cairo_pdf)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_lost_ppis_all_genotypes.pdf"), p_multi_bars, width = 6, height = 5,device = cairo_pdf)
 
 
 # --- Step 5: Line plots comparing genotypes ---
@@ -14791,13 +14787,7 @@ if (!exists("trimers_baseline")) {
       legend.position = "top"
     )
   
-  ggsave(
-    file.path(out_dir_timecourse_multi, "plots/global", "bars_broken_trimers_all_genotypes.pdf"),
-    p_trimer_bars,
-    width = 9,
-    height = 4,
-    device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_broken_trimers_all_genotypes.pdf"), p_trimer_bars, width = 6, height = 5, device = cairo_pdf)
   
   # Line plot comparison
   timecourse_multi_trimer_numeric <- timecourse_multi_trimer_summary %>%
@@ -14925,7 +14915,7 @@ if (!exists("complexes_summary") || !exists("complex_edges_df")) {
       legend.position = "top"
     )
   
-  ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_disrupted_complexes_all_genotypes.pdf"), p_complex_bars, width = 9, height = 4,    device = cairo_pdf)
+  ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_disrupted_complexes_all_genotypes.pdf"), p_complex_bars, width = 6, height = 5,    device = cairo_pdf)
   
   # Line plot comparison
   complex_disruption_multi_numeric <- complex_disruption_multi_timecourse %>%
@@ -15335,15 +15325,6 @@ should calculate to the baseline, not across all the genotypes. since it should 
 
 - and then we can calculate the corr based on that. but should have two plots. once ∆ plot across the genotypes for iN and iDA (can be one plot). and then calculate the corr based on that ∆ plot 
 
-
-
-DENSITY plot for PPI validations? or how many good ones probAF we get. instead of scatter plots?
-
-
-1. Viz of loss of PPI
-- can we plot interactions between A-B in a circos plot in ctrl vs KO. Segments of cirocs could be organelles on both sides. Make it grey if the link is lost 
-- make dumbbell plot (https://r-graph-gallery.com/web-dumbbell-chart-with-a-gap-column.html) for lost PPI. iN and iDA as min max with differnet colors
-- make also for lost complexes? and trimers? 
 
 
 2. UMAP / composite representation of it 
