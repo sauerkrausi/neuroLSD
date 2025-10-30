@@ -15143,7 +15143,7 @@ p_delta <- ggplot(
     legend.position = "top"
   )
 
-ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_delta_d50_minus_d30.pdf"), p_delta, width = 3, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_delta_d50_minus_d30.pdf"), p_delta, width = 2.5, height = 3, device = cairo_pdf)
 
 
 # --- Step 13: Annotation-specific delta analysis ---
@@ -15288,10 +15288,8 @@ ratio_data <- timecourse_multi_summary %>%
     ratio_iDA_iN = iDA / iN
   )
 
-write_csv(
-  ratio_data,
-  file.path(out_dir_timecourse_multi, "tables", "ratio_iDA_to_iN.csv")
-)
+# save csv
+write_csv(ratio_data, file.path(out_dir_timecourse_multi, "tables", "ratio_iDA_to_iN.csv"))
 
 # Barplot of ratios
 p_ratio <- ggplot(
@@ -15313,21 +15311,11 @@ p_ratio <- ggplot(
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "bars_ratio_iDA_to_iN.pdf"),
-  p_ratio,
-  width = 5,
-  height = 4,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_ratio_iDA_to_iN.pdf"), p_ratio, width = 3, height = 3, device = cairo_pdf)
 
 
 # --- Final summary message ---
-message("\n" , "=".repeat(80))
-message("=== Multi-genotype timecourse PPI analysis complete! ===")
-message("=" , "=".repeat(80))
 message("\nResults saved to: ", out_dir_timecourse_multi)
-message("\nSummary:")
 message("  - Genotypes analyzed: ", paste(genotypes, collapse = ", "))
 message("  - Timepoints: d30, d50")
 message("  - Total edge states computed: ", nrow(timecourse_multi_edge_states))
@@ -15363,11 +15351,6 @@ DENSITY plot for PPI validations? or how many good ones probAF we get. instead o
 - ultimately we have to express the vulnearbility of the proteins to changes by the neuron type and KO. so maybe is better to plot the proteins? and clsuter by lost ppi by KO x neuron?
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
-
-
-4. if timecouse works, maybe do it for all genotypes in d30 and d50?
-- make dumbellplot for d30 vs d50. iN and iDA underneath each other for all 4 genotypes?
-https://r-graph-gallery.com/web-extended-dumbbell-plot-ggplot2.html
 
 X. Misc
 - change color scheme for AFpob ascending boxplots. 
