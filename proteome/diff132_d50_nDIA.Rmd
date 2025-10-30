@@ -14877,10 +14877,9 @@ if (!exists("complexes_summary") || !exists("complex_edges_df")) {
       )
     )
   
-  write_csv(
-    complex_multi_timecourse_summary,
-    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_complex_states.csv")
-  )
+  # save csv
+  write_csv(complex_multi_timecourse_summary,file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_complex_states.csv"))
+  
   
   # Summary statistics
   complex_disruption_multi_timecourse <- complex_multi_timecourse_summary %>%
@@ -14926,13 +14925,7 @@ if (!exists("complexes_summary") || !exists("complex_edges_df")) {
       legend.position = "top"
     )
   
-  ggsave(
-    file.path(out_dir_timecourse_multi, "plots/global", "bars_disrupted_complexes_all_genotypes.pdf"),
-    p_complex_bars,
-    width = 9,
-    height = 4,
-    device = cairo_pdf
-  )
+  ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_disrupted_complexes_all_genotypes.pdf"), p_complex_bars, width = 9, height = 4,    device = cairo_pdf)
   
   # Line plot comparison
   complex_disruption_multi_numeric <- complex_disruption_multi_timecourse %>%
@@ -15111,53 +15104,9 @@ p_bubble_facet <- ggplot(
 
 ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bubble_iDA_vs_iN_all_genotypes.pdf"), p_bubble_facet, width = 5, height = 3, device =cairo_pdf)
 
-# Individual bubble plots per genotype
-for (geno in genotypes) {
-  
-  geno_bubble <- bubble_multi_data %>%
-    dplyr::filter(Genotype == geno)
-  
-  if (nrow(geno_bubble) == 0) next
-  
-  p_geno_bubble <- ggplot(
-    geno_bubble,
-    aes(x = n_lost_iN, y = n_lost_iDA, fill = Day, size = ratio)
-  ) +
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
-    geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.3) +
-    ggrepel::geom_text_repel(
-      aes(label = Day),
-      size = 2.5,
-      max.overlaps = 10,
-      seed = 42
-    ) +
-    scale_fill_manual(values = day_palette, name = "Day") +
-    scale_size_continuous(range = c(3, 10), name = "iN/iDA ratio") +
-    labs(
-      title = paste("Lost PPIs:", geno, "– iDA vs iN"),
-      x = "Lost PPIs in iN",
-      y = "Lost PPIs in iDA"
-    ) +
-    theme_bw(base_size = 6) +
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA),
-      legend.position = "right",
-      legend.key.size = unit(0.3, "cm"),
-      aspect.ratio = 1
-    )
-  
-  ggsave(
-    file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("bubble_iDA_vs_iN_", geno, ".pdf")),
-    p_geno_bubble,
-    width = 5,
-    height = 4,
-    device = cairo_pdf
-  )
-}
 
 
-# --- Step 13: Delta analysis (d50 - d30) ---
+# --- Step 12: Delta analysis (d50 - d30) ---
 message("\n=== Computing delta (d50 - d30) ===")
 
 delta_analysis <- timecourse_multi_summary %>%
@@ -15171,10 +15120,8 @@ delta_analysis <- timecourse_multi_summary %>%
     abs_delta = abs(delta)
   )
 
-write_csv(
-  delta_analysis,
-  file.path(out_dir_timecourse_multi, "tables", "delta_d50_minus_d30.csv")
-)
+# save csv
+write_csv(delta_analysis, file.path(out_dir_timecourse_multi, "tables", "delta_d50_minus_d30.csv"))
 
 # Barplot of delta
 p_delta <- ggplot(
@@ -15196,16 +15143,10 @@ p_delta <- ggplot(
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "bars_delta_d50_minus_d30.pdf"),
-  p_delta,
-  width = 5,
-  height = 4,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_delta_d50_minus_d30.pdf"), p_delta, width = 3, height = 3.5, device = cairo_pdf)
 
 
-# --- Step 14: Annotation-specific delta analysis ---
+# --- Step 13: Annotation-specific delta analysis ---
 delta_by_annotation <- timecourse_multi_by_annotation %>%
   tidyr::pivot_wider(
     names_from = Day,
@@ -15217,12 +15158,10 @@ delta_by_annotation <- timecourse_multi_by_annotation %>%
   ) %>%
   dplyr::arrange(Genotype, Neuron, desc(abs(delta)))
 
-write_csv(
-  delta_by_annotation,
-  file.path(out_dir_timecourse_multi, "tables", "delta_by_annotation.csv")
-)
+# save csv
+write_csv(delta_by_annotation, file.path(out_dir_timecourse_multi, "tables", "delta_by_annotation.csv"))
 
-# Heatmap of delta per annotation
+# --- Heatmap of delta per annotation ---
 for (nt in c("iN", "iDA")) {
   
   heatmap_delta <- delta_by_annotation %>%
@@ -15237,13 +15176,22 @@ for (nt in c("iN", "iDA")) {
     message("Insufficient data for delta heatmap (", nt, "); skipping.")
     next
   }
-  
-  heatmap_mat <- as.matrix(heatmap_delta[, -c(1:2)])
-  rownames(heatmap_mat) <- heatmap_delta$tag
-  
-  # Center colorscale at 0
+
+  # Remove raw count columns and duplicates
+  heatmap_delta <- heatmap_delta %>%
+    dplyr::select(-c(d30, d50)) %>%
+    dplyr::distinct(tag, .keep_all = TRUE) %>%
+    dplyr::mutate(across(-c(Neuron, tag), ~ as.numeric(.)))
+
+  # Create numeric matrix with unique rownames
+  heatmap_mat <- heatmap_delta %>%
+    dplyr::select(-Neuron) %>%
+    tibble::column_to_rownames("tag") %>%
+    as.matrix()
+
+  # Center color scale at 0
   max_abs <- max(abs(heatmap_mat), na.rm = TRUE)
-  
+
   pheatmap::pheatmap(
     heatmap_mat,
     scale = "none",
@@ -15255,21 +15203,17 @@ for (nt in c("iN", "iDA")) {
     show_colnames = TRUE,
     border_color = NA,
     fontsize = 6,
-    cellwidth = 10,
+    cellwidth = 8,
     cellheight = 8,
-    main = paste("Δ Lost PPIs by annotation (d50 - d30) –", nt),
-    filename = file.path(
-      out_dir_timecourse_multi,
-      "plots/global",
-      paste0("heatmap_delta_by_annotation_", nt, ".pdf")
-    ),
+    main = paste("delta Lost PPIs by annotation (d50 - d30) -", nt),
+    filename = file.path(out_dir_timecourse_multi, "plots/global", paste0("heatmap_delta_by_annotation_", nt, ".pdf")),
     width = 6,
     height = 10
   )
 }
 
 
-# --- Step 15: Top changing annotations (ranked by absolute delta) ---
+# --- Step 14: Top changing annotations (ranked by absolute delta) ---
 top_changing <- delta_by_annotation %>%
   dplyr::group_by(tag, Neuron) %>%
   dplyr::summarise(
@@ -15280,10 +15224,8 @@ top_changing <- delta_by_annotation %>%
   dplyr::arrange(desc(mean_abs_delta)) %>%
   dplyr::slice_head(n = 20)
 
-write_csv(
-  top_changing,
-  file.path(out_dir_timecourse_multi, "tables", "top_changing_annotations.csv")
-)
+# save csv
+write_csv(top_changing, file.path(out_dir_timecourse_multi, "tables", "top_changing_annotations.csv"))
 
 # Lollipop plot
 p_top_changing <- ggplot(
@@ -15293,11 +15235,12 @@ p_top_changing <- ggplot(
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
   geom_segment(
     aes(xend = tag, yend = 0),
-    linewidth = 0.8
+    linewidth = 3
   ) +
-  geom_point(size = 3, shape = 21, fill = "white", stroke = 0.8) +
+  geom_point(aes(fill = Neuron), size = 3, shape = 21, stroke = 0.3) +
   coord_flip() +
   scale_color_manual(values = neuron_palette, name = "Neuron") +
+  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
   labs(
     title = "Top 20 annotations with largest change (d50 - d30)",
     x = NULL,
@@ -15310,58 +15253,11 @@ p_top_changing <- ggplot(
     legend.position = "top"
   )
 
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "lollipop_top_changing_annotations.pdf"),
-  p_top_changing,
-  width = 6,
-  height = 6,
-  device = cairo_pdf
-)
+ggsave(file.path(out_dir_timecourse_multi, "plots/global", "lollipop_top_changing_annotations.pdf"),p_top_changing,width = 3,height = 3, device = cairo_pdf)
 
 
-# --- Step 16: Correlation analysis between genotypes ---
-message("\n=== Correlation analysis between genotypes ===")
 
-# Correlation of PPI loss patterns
-correlation_data <- timecourse_multi_summary %>%
-  dplyr::mutate(geno_neuron = paste(Genotype, Neuron, sep = "_")) %>%
-  dplyr::select(Day, geno_neuron, n_lost) %>%
-  tidyr::pivot_wider(
-    names_from = geno_neuron,
-    values_from = n_lost
-  )
-
-cor_mat <- cor(
-  correlation_data[, -1],
-  use = "pairwise.complete.obs",
-  method = "spearman"
-)
-
-# Heatmap
-pheatmap::pheatmap(
-  cor_mat,
-  display_numbers = TRUE,
-  number_format = "%.2f",
-  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
-  breaks = seq(-1, 1, length.out = 102),
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
-  border_color = "black",
-  fontsize = 6,
-  cellwidth = 12,
-  cellheight = 12,
-  main = "Correlation of PPI loss patterns",
-  filename = file.path(
-    out_dir_timecourse_multi,
-    "plots/global",
-    "heatmap_genotype_correlation.pdf"
-  ),
-  width = 7,
-  height = 6
-)
-
-
-# --- Step 17: Summary statistics table ---
+# --- Step 15: Summary statistics table ---
 summary_stats <- timecourse_multi_summary %>%
   dplyr::group_by(Genotype, Neuron) %>%
   dplyr::summarise(
@@ -15373,51 +15269,15 @@ summary_stats <- timecourse_multi_summary %>%
   ) %>%
   dplyr::arrange(desc(abs(delta)))
 
-write_csv(
-  summary_stats,
-  file.path(out_dir_timecourse_multi, "tables", "summary_statistics.csv")
-)
+# save csv
+write_csv(summary_stats, file.path(out_dir_timecourse_multi, "tables", "summary_statistics.csv"))
 
 message("\nSummary statistics:")
 print(summary_stats)
 
 
-# --- Step 18: Combined trajectory plot (all genotypes overlaid) ---
-p_trajectory_all <- ggplot(
-  timecourse_multi_summary %>%
-    dplyr::mutate(Day_numeric = as.numeric(gsub("d", "", Day))),
-  aes(x = Day_numeric, y = n_lost, color = Genotype, shape = Neuron, 
-      group = interaction(Genotype, Neuron))
-) +
-  geom_line(aes(linetype = Neuron), linewidth = 0.8) +
-  geom_point(size = 3, stroke = 0.8, fill = "white") +
-  scale_color_manual(values = genotype_palette, name = "Genotype") +
-  scale_shape_manual(values = c(iN = 21, iDA = 24), name = "Neuron") +
-  scale_linetype_manual(values = c(iN = "solid", iDA = "dashed"), guide = "none") +
-  scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
-  labs(
-    title = "PPI loss trajectories: all genotypes",
-    x = "Differentiation day",
-    y = "Number of lost PPIs"
-  ) +
-  theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
-    legend.position = "right",
-    legend.key.size = unit(0.4, "cm")
-  )
 
-ggsave(
-  file.path(out_dir_timecourse_multi, "plots/global", "trajectory_all_genotypes_overlaid.pdf"),
-  p_trajectory_all,
-  width = 6,
-  height = 4,
-  device = cairo_pdf
-)
-
-
-# --- Step 19: Ratio plots (iDA/iN) ---
+# --- Step 16: Ratio plots (iDA/iN) ---
 ratio_data <- timecourse_multi_summary %>%
   dplyr::select(Genotype, Day, Neuron, n_lost) %>%
   tidyr::pivot_wider(
