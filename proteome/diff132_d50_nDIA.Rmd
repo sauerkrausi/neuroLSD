@@ -11682,6 +11682,7 @@ ko_neuron_score_summary <- ko_ppi_profiles |>
   ) |>
   dplyr::arrange(genotype, neuron, state)
 
+# save csv
 write_csv(ko_neuron_score_summary,file.path(out_dir_ppi_vuln, "tables", "ko_neuron_confidence_by_state.csv"))
 ```
 
@@ -11783,7 +11784,6 @@ plot_ko_neuron_organelle_bars(
 
 
 # --------- iN vs iDA bubble plots per KO ---------
-
 # --- Step 3: Bubble plot of iN vs iDA effect on PPIs loss per organelle annotation
 plot_ko_bubble_in_vs_ida <- function(df, out_dir, org_colors) {
   
@@ -15333,6 +15333,16 @@ should calculate to the baseline, not across all the genotypes. since it should 
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
 
+3. HeLa PPI
+- calculate PPI based on the average Control consenus 
+- then calculate PPI based on KO and also based on disease group 
+
+
 X. Misc
 - change color scheme for AFpob ascending boxplots. 
 - added mtCI_AF to subcell annotation. check how they are behaving as well over differentiation
+
+- timecourse d30/50 add lillipop for each KO?
+
+
+
