@@ -15336,7 +15336,7 @@ should calculate to the baseline, not across all the genotypes. since it should 
 3. HeLa nMOST PPI
 - calculate PPI based on the average Control consenus 
 - then calculate PPI based on KO and also based on disease group 
-
+- can we match which trimers and complexes match between neurons and hela? have iN and iDa on x y axis and bubble size of hela correlation. based by organelle
 
 4. HeLa LysoIP PPIs
 - calculate PPIs based on control and ASAH1 PPI
