@@ -15333,9 +15333,15 @@ should calculate to the baseline, not across all the genotypes. since it should 
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
 
-3. HeLa PPI
+3. HeLa nMOST PPI
 - calculate PPI based on the average Control consenus 
 - then calculate PPI based on KO and also based on disease group 
+
+
+4. HeLa LysoIP PPIs
+- calculate PPIs based on control and ASAH1 PPI
+==> should be able to see both loss of edges and also gain of edges. Maybe there should be more edges in KO to ER?
+- can we map Lyso Membrane vs lumenal protein PPIs? see if there are differences
 
 
 X. Misc
