@@ -12985,15 +12985,21 @@ complexes_baseline <- protein_communities |>
   dplyr::filter(community_id %in% valid_communities) |>
   dplyr::arrange(community_id, Gene)
 
+complexes_baseline <- complexes_baseline %>%
+  dplyr::mutate(community_id = sprintf("Complex_%04d", as.integer(community_id)))
+
 # Create complex IDs
-complexes_summary <- complexes_baseline |>
-  dplyr::group_by(community_id) |>
+complexes_baseline <- complexes_baseline %>%
+  dplyr::mutate(community_id = as.integer(gsub("Complex_", "", community_id)))
+
+complexes_summary <- complexes_baseline %>%
+  dplyr::group_by(community_id) %>%
   dplyr::summarise(
     complex_id = paste0("Complex_", sprintf("%04d", community_id[1])),
     n_proteins = n(),
     proteins = paste(Gene, collapse = ";"),
     .groups = "drop"
-  ) |>
+  ) %>%
   dplyr::arrange(desc(n_proteins))
 
 # save csv
@@ -13343,20 +13349,21 @@ assign_complex_colors <- function(complex_summary_df, loss_palette) {
 
 # --- Step 3: Generate structure input files per complex ---
 generate_structure_files <- function(complex_id, 
-                                      complex_proteins,
-                                      protein_to_uniprot,
-                                      sequences,
-                                      hex_color,
-                                      out_dir) {
+                                     complex_proteins,
+                                     protein_to_uniprot,
+                                     sequences,
+                                     hex_color,
+                                     frac_edges_lost,
+                                     out_dir) {
   
   # Create complex-specific directory
   complex_dir <- file.path(out_dir, complex_id)
   dir.create(complex_dir, recursive = TRUE, showWarnings = FALSE)
   
   # Map gene symbols to UniProt IDs
-  uniprot_ids <- protein_to_uniprot[match(complex_proteins, 
-                                           protein_to_uniprot$Gene)]
-  uniprot_ids <- uniprot_ids[!is.na(uniprot_ids)]
+  mapping_df <- dplyr::filter(protein_to_uniprot, Gene %in% complex_proteins)
+  uniprot_ids <- mapping_df$UniProt
+  genes <- mapping_df$Gene
   
   if (length(uniprot_ids) == 0) {
     warning("No UniProt IDs found for complex ", complex_id)
@@ -13365,8 +13372,8 @@ generate_structure_files <- function(complex_id,
   
   # --- File 1: UniProt IDs and sequences ---
   seq_df <- data.frame(
-    UniProt_ID = names(uniprot_ids),
-    Gene_Symbol = complex_proteins,
+    UniProt_ID = uniprot_ids,
+    Gene_Symbol = genes,
     Sequence = sapply(uniprot_ids, function(uid) {
       if (uid %in% names(sequences)) sequences[[uid]] else NA_character_
     }),
@@ -13404,6 +13411,7 @@ generate_structure_files <- function(complex_id,
     proteins = seq_df$Gene_Symbol,
     uniprot_ids = seq_df$UniProt_ID,
     hex_color = hex_color,
+    fraction_lost = frac_edges_lost,
     fasta_file = basename(fasta_file)
   )
   
@@ -13416,7 +13424,7 @@ generate_structure_files <- function(complex_id,
   chimerax_script <- c(
     paste0("# ChimeraX color script for ", complex_id),
     paste0("# Color: ", hex_color, " (fraction lost: ", 
-           round(metadata$fraction_lost, 3), ")"),
+           round(frac_edges_lost, 3), ")"),
     "",
     "# Open your AlphaFold structure first, then run:",
     paste0("color ", hex_color, " #1"),
@@ -13462,12 +13470,12 @@ target_complexes <- complex_ko_summary %>%
   dplyr::group_by(complex_id) %>%
   dplyr::summarise(
     mean_frac_lost = mean(frac_edges_lost, na.rm = TRUE),
-    n_proteins = first(n_proteins),
-    organelle = first(organelle),
+    n_proteins = dplyr::first(dplyr::pull(cur_data(), n_proteins)),
+    organelle = dplyr::first(dplyr::pull(cur_data(), organelle)),
     .groups = "drop"
   ) %>%
   dplyr::arrange(desc(mean_frac_lost)) %>%
-  dplyr::slice_head(n = 20)  # Top 20 most disrupted
+  dplyr::slice_head(n = 5) # top 5 complexes
 
 # Assign colors
 target_complexes <- assign_complex_colors(
@@ -13477,12 +13485,15 @@ target_complexes <- assign_complex_colors(
 
 message("\nProcessing ", nrow(target_complexes), " complexes...")
 
+target_complexes <- target_complexes %>%
+  dplyr::mutate(community_id = as.integer(gsub("Complex_", "", complex_id)))
+
 
 # --- Step 6: Get all UniProt IDs needed ---
 all_complex_proteins <- complexes_baseline %>%
   dplyr::inner_join(
-    target_complexes %>% dplyr::select(complex_id),
-    by = c("community_id" = "complex_id")
+    target_complexes %>% dplyr::select(community_id),
+    by = "community_id"
   ) %>%
   dplyr::pull(Gene) %>%
   unique()
@@ -13517,9 +13528,10 @@ for (i in seq_len(nrow(target_complexes))) {
     protein_to_uniprot = protein_to_uniprot,
     sequences = all_sequences,
     hex_color = target_complexes$hex_color[i],
+    frac_edges_lost = target_complexes$frac_edges_lost[i],
     out_dir = out_dir_structures
   )
-  
+    
   if (!is.null(result)) {
     structure_results[[cid]] <- result
   }
