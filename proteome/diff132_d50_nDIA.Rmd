@@ -13495,19 +13495,22 @@ target_complexes <- target_complexes %>%
 # --- Step 6: Get all UniProt IDs needed ---
 all_complex_proteins <- complexes_baseline %>%
   dplyr::inner_join(
-    target_complexes %>% dplyr::select(complex_id),
-    by = c("community_id" = "complex_id")
+    target_complexes %>% dplyr::select(community_id),
+    by = "community_id"
   ) %>%
   dplyr::pull(Gene) %>%
   unique()
+
+message("Total unique proteins across selected complexes: ", length(all_complex_proteins))
 
 all_uniprot_ids <- protein_to_uniprot %>%
   dplyr::filter(Gene %in% all_complex_proteins) %>%
   dplyr::pull(UniProt)
 
+message("Total UniProt IDs to fetch: ", length(all_uniprot_ids))
+
 # Fetch sequences
 all_sequences <- fetch_uniprot_sequences(all_uniprot_ids)
-
 
 # --- Step 7: Generate files for each complex ---
 structure_results <- list()
