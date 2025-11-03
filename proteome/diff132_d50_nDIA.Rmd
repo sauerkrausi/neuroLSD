@@ -13275,7 +13275,6 @@ message("Complex analysis complete!")
 # =========================================================================
 
 # --- Step 0: Setup ---
-#BiocManager::install("UniProt.ws")
 library(UniProt.ws)  # For fetching sequences
 library(httr)
 library(jsonlite)
@@ -13347,32 +13346,48 @@ assign_complex_colors <- function(complex_summary_df, loss_palette) {
 }
 
 
+
+
+
 # --- Step 3: Generate structure input files per complex ---
+# Remove old function and reload
+rm(generate_structure_files)
+
+
 generate_structure_files <- function(complex_id, 
-                                      complex_proteins,
-                                      protein_to_uniprot,
-                                      sequences,
-                                      hex_color,
-                                      out_dir) {
+                                     complex_proteins,
+                                     protein_to_uniprot,
+                                     sequences,
+                                     hex_color,
+                                     frac_edges_lost,  # <-- Make sure this is here
+                                     out_dir) {
   
   # Create complex-specific directory
   complex_dir <- file.path(out_dir, complex_id)
   dir.create(complex_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # Map gene symbols to UniProt IDs
-  uniprot_ids <- protein_to_uniprot[match(complex_proteins, 
-                                           protein_to_uniprot$Gene)]
-  uniprot_ids <- uniprot_ids[!is.na(uniprot_ids)]
+  # Debug: check what we're working with
+  message("    Mapping ", length(complex_proteins), " proteins to UniProt IDs...")
   
-  if (length(uniprot_ids) == 0) {
-    warning("No UniProt IDs found for complex ", complex_id)
+  # Map gene symbols to UniProt IDs using dplyr filter
+  mapping_df <- protein_to_uniprot %>%
+    dplyr::filter(Gene %in% complex_proteins)
+  
+  if (nrow(mapping_df) == 0) {
+    warning("    No UniProt IDs found for complex ", complex_id)
+    message("    Proteins requested: ", paste(head(complex_proteins, 5), collapse = ", "))
     return(NULL)
   }
   
+  message("    Found ", nrow(mapping_df), " UniProt mappings")
+  
+  uniprot_ids <- mapping_df$UniProt
+  genes <- mapping_df$Gene
+  
   # --- File 1: UniProt IDs and sequences ---
   seq_df <- data.frame(
-    UniProt_ID = names(uniprot_ids),
-    Gene_Symbol = complex_proteins,
+    UniProt_ID = uniprot_ids,
+    Gene_Symbol = genes,
     Sequence = sapply(uniprot_ids, function(uid) {
       if (uid %in% names(sequences)) sequences[[uid]] else NA_character_
     }),
@@ -13380,17 +13395,19 @@ generate_structure_files <- function(complex_id,
   )
   
   # Remove entries without sequences
-  seq_df <- seq_df %>% dplyr::filter(!is.na(Sequence))
+  seq_df <- seq_df %>% dplyr::filter(!is.na(Sequence), nchar(Sequence) > 0)
   
   if (nrow(seq_df) == 0) {
-    warning("No sequences available for complex ", complex_id)
+    warning("    No sequences available for complex ", complex_id)
     return(NULL)
   }
+  
+  message("    Got sequences for ", nrow(seq_df), " proteins")
   
   write_csv(seq_df, file.path(complex_dir, paste0(complex_id, "_sequences.csv")))
   
   
-  # --- File 2: FASTA format for AlphaFold input ---
+  # --- File 2: FASTA format for AlphaFold2 input ---
   fasta_file <- file.path(complex_dir, paste0(complex_id, "_sequences.fasta"))
   fasta_conn <- file(fasta_file, "w")
   
@@ -13403,14 +13420,34 @@ generate_structure_files <- function(complex_id,
   close(fasta_conn)
   
   
-  # --- File 3: Metadata JSON ---
+  # --- File 3: AlphaFold3-compatible JSON ---
+  af3_chains <- lapply(seq_len(nrow(seq_df)), function(i) {
+    list(
+      id = list(LETTERS[i]),
+      sequence = seq_df$Sequence[i],
+      type = "protein"
+    )
+  })
+  
+  af3_json <- list(
+    name = paste0(complex_id, "_complex"),
+    sequences = af3_chains
+  )
+  
+  af3_json_file <- file.path(complex_dir, paste0(complex_id, "_alphafold3.json"))
+  write_json(af3_json, af3_json_file, pretty = TRUE, auto_unbox = TRUE)
+  
+  
+  # --- File 4: Metadata JSON ---
   metadata <- list(
     complex_id = complex_id,
     n_proteins = nrow(seq_df),
     proteins = seq_df$Gene_Symbol,
     uniprot_ids = seq_df$UniProt_ID,
     hex_color = hex_color,
-    fasta_file = basename(fasta_file)
+    fraction_lost = frac_edges_lost,
+    fasta_file = basename(fasta_file),
+    alphafold3_json = basename(af3_json_file)
   )
   
   write_json(metadata, 
@@ -13418,11 +13455,10 @@ generate_structure_files <- function(complex_id,
              pretty = TRUE, auto_unbox = TRUE)
   
   
-  # --- File 4: ChimeraX color script ---
+  # --- File 5: ChimeraX color script ---
   chimerax_script <- c(
     paste0("# ChimeraX color script for ", complex_id),
-    paste0("# Color: ", hex_color, " (fraction lost: ", 
-           round(metadata$fraction_lost, 3), ")"),
+    paste0("# Color: ", hex_color, " (fraction lost: ", round(frac_edges_lost, 3), ")"),
     "",
     "# Open your AlphaFold structure first, then run:",
     paste0("color ", hex_color, " #1"),
@@ -13436,7 +13472,7 @@ generate_structure_files <- function(complex_id,
   writeLines(chimerax_script, 
              file.path(complex_dir, paste0(complex_id, "_chimerax_colors.cxc")))
   
-  message("Generated files for ", complex_id, " (", nrow(seq_df), " proteins)")
+  message("    Generated files for ", complex_id, " (", nrow(seq_df), " proteins)")
   
   return(seq_df)
 }
@@ -13512,12 +13548,15 @@ message("Total UniProt IDs to fetch: ", length(all_uniprot_ids))
 # Fetch sequences
 all_sequences <- fetch_uniprot_sequences(all_uniprot_ids)
 
+
 # --- Step 7: Generate files for each complex ---
 structure_results <- list()
 
 for (i in seq_len(nrow(target_complexes))) {
   
   cid <- target_complexes$complex_id[i]
+  
+  message("\n--- Processing complex ", i, "/", nrow(target_complexes), ": ", cid, " ---")
   
   # Get proteins in this complex
   complex_proteins <- complexes_baseline %>%
@@ -13528,17 +13567,24 @@ for (i in seq_len(nrow(target_complexes))) {
     dplyr::filter(complex_id == cid) %>%
     dplyr::pull(Gene)
   
+  message("  Proteins in complex: ", paste(head(complex_proteins, 10), collapse = ", "))
+  message("  Number of proteins: ", length(complex_proteins))
+  
   result <- generate_structure_files(
     complex_id = cid,
     complex_proteins = complex_proteins,
     protein_to_uniprot = protein_to_uniprot,
     sequences = all_sequences,
     hex_color = target_complexes$hex_color[i],
+    frac_edges_lost = target_complexes$frac_edges_lost[i],  # <-- ADD THIS LINE
     out_dir = out_dir_structures
   )
   
   if (!is.null(result)) {
     structure_results[[cid]] <- result
+    message("  ✓ Successfully generated files")
+  } else {
+    message("  ✗ Failed to generate files")
   }
 }
 
@@ -13551,8 +13597,8 @@ master_summary <- target_complexes %>%
     sequences_available = complex_id %in% names(structure_results)
   )
 
-# save csv master file for complex sequences 
-write_csv(master_summary, file.path(out_dir_structures, "master_complex_summary.csv"))
+write_csv(master_summary, 
+          file.path(out_dir_structures, "master_complex_summary.csv"))
 
 
 # --- Step 9: Create README ---
@@ -13566,15 +13612,34 @@ readme_text <- c(
   "## Directory Structure",
   "Each complex has its own subdirectory containing:",
   "  1. *_sequences.csv - Gene symbols, UniProt IDs, and sequences",
-  "  2. *_sequences.fasta - FASTA format for AlphaFold input",
-  "  3. *_metadata.json - Complex metadata and color information",
-  "  4. *_chimerax_colors.cxc - ChimeraX script for coloring",
+  "  2. *_sequences.fasta - FASTA format for AlphaFold2/ColabFold",
+  "  3. *_alphafold3.json - JSON format for AlphaFold3 Server (RECOMMENDED)",
+  "  4. *_metadata.json - Complex metadata and color information",
+  "  5. *_chimerax_colors.cxc - ChimeraX script for coloring",
   "",
-  "## AlphaFold Prediction",
-  "1. Go to https://alphafoldserver.com or https://colab.research.google.com/github/sokrypton/ColabFold/blob/main/AlphaFold2.ipynb",
-  "2. Upload the FASTA file for your complex",
-  "3. Run prediction",
-  "4. Download PDB file",
+  "## AlphaFold3 Prediction (RECOMMENDED)",
+  "AlphaFold3 gives better complex predictions than AF2.",
+  "",
+  "### Method 1: AlphaFold3 Server (Easiest)",
+  "1. Go to https://alphafoldserver.com",
+  "2. Click 'New Prediction'",
+  "3. Upload the *_alphafold3.json file",
+  "4. Click 'Submit'",
+  "5. Download PDB file when complete",
+  "",
+  "### Method 2: Manual JSON Entry",
+  "1. Go to https://alphafoldserver.com",
+  "2. Open *_alphafold3.json in a text editor",
+  "3. Copy the entire JSON content",
+  "4. Paste into the AlphaFold3 interface",
+  "5. Submit prediction",
+  "",
+  "## AlphaFold2 Prediction (Alternative)",
+  "### ColabFold (Free, Google Colab)",
+  "1. Go to https://colab.research.google.com/github/sokrypton/ColabFold/blob/main/AlphaFold2.ipynb",
+  "2. Upload the FASTA file (*_sequences.fasta)",
+  "3. Run all cells",
+  "4. Download predicted structure",
   "",
   "## Visualization in ChimeraX",
   "1. Open ChimeraX",
@@ -13588,7 +13653,15 @@ readme_text <- c(
   "  - Red (#d7191c): 100% edges lost (completely disrupted)",
   "",
   "## Files",
-  "master_complex_summary.csv - Overview of all complexes with colors and paths"
+  "master_complex_summary.csv - Overview of all complexes with colors and paths",
+  "",
+  "## Example Workflow",
+  "1. Check master_complex_summary.csv to see which complexes are most disrupted",
+  "2. Navigate to complex directory (e.g., Complex_0051/)",
+  "3. Upload Complex_0051_alphafold3.json to AlphaFold3 Server",
+  "4. Download predicted structure as Complex_0051.pdb",
+  "5. Open in ChimeraX and run Complex_0051_chimerax_colors.cxc",
+  "6. The structure will be colored based on disruption level"
 )
 
 writeLines(readme_text, file.path(out_dir_structures, "README.txt"))
@@ -13614,8 +13687,13 @@ p_complex_colors <- ggplot(
     panel.border = element_rect(color = "black", fill = NA)
   )
 
-ggsave(file.path(out_dir_structures, "complex_colors_preview.pdf"), p_complex_colors, width = 4, height = 6, device = cairo_pdf)
-
+ggsave(
+  file.path(out_dir_structures, "complex_colors_preview.pdf"),
+  p_complex_colors,
+  width = 4,
+  height = 6,
+  device = cairo_pdf
+)
 
 
 # --- Final summary ---
