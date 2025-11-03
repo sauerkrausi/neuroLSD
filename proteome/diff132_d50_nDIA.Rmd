@@ -13384,6 +13384,7 @@ generate_structure_files <- function(complex_id,
   uniprot_ids <- mapping_df$UniProt
   genes <- mapping_df$Gene
   
+  
   # --- File 1: UniProt IDs and sequences ---
   seq_df <- data.frame(
     UniProt_ID = uniprot_ids,
@@ -13404,6 +13405,7 @@ generate_structure_files <- function(complex_id,
   
   message("    Got sequences for ", nrow(seq_df), " proteins")
   
+  # write csv file of amino acid sequence
   write_csv(seq_df, file.path(complex_dir, paste0(complex_id, "_sequences.csv")))
   
   
@@ -13422,18 +13424,10 @@ generate_structure_files <- function(complex_id,
   
   # --- File 3: AlphaFold3-compatible JSON ---
   af3_chains <- lapply(seq_len(nrow(seq_df)), function(i) {
-    list(
-      id = list(LETTERS[i]),
-      sequence = seq_df$Sequence[i],
-      type = "protein"
-    )
+    list(id = list(LETTERS[i]), sequence = seq_df$Sequence[i], type = "protein")
   })
   
-  af3_json <- list(
-    name = paste0(complex_id, "_complex"),
-    sequences = af3_chains
-  )
-  
+  af3_json <- list(name = paste0(complex_id, "_complex"), modelSeeds = list(), sequences = af3_chains, dialect = "alphafoldserver", version = 1)
   af3_json_file <- file.path(complex_dir, paste0(complex_id, "_alphafold3.json"))
   write_json(af3_json, af3_json_file, pretty = TRUE, auto_unbox = TRUE)
   
@@ -13450,9 +13444,8 @@ generate_structure_files <- function(complex_id,
     alphafold3_json = basename(af3_json_file)
   )
   
-  write_json(metadata, 
-             file.path(complex_dir, paste0(complex_id, "_metadata.json")),
-             pretty = TRUE, auto_unbox = TRUE)
+  # save metadate for structure
+  write_json(metadata, file.path(complex_dir, paste0(complex_id, "_metadata.json")), pretty = TRUE, auto_unbox = TRUE)
   
   
   # --- File 5: ChimeraX color script ---
@@ -13469,11 +13462,9 @@ generate_structure_files <- function(complex_id,
     })
   )
   
-  writeLines(chimerax_script, 
-             file.path(complex_dir, paste0(complex_id, "_chimerax_colors.cxc")))
-  
+  # save color code look up for ChimeraX 
+  writeLines(chimerax_script, file.path(complex_dir, paste0(complex_id, "_chimerax_colors.cxc")))
   message("    Generated files for ", complex_id, " (", nrow(seq_df), " proteins)")
-  
   return(seq_df)
 }
 
