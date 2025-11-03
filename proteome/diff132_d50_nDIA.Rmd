@@ -13261,7 +13261,7 @@ message("Complex analysis complete!")
 
 
 
-##### AF amino acid sequence export 
+##### Prepare Protein Complexes for Structure Prediction AF3
 ```{r}
 # =========================================================================
 # Prepare Protein Complex Data for AlphaFold Structure Prediction
@@ -13269,6 +13269,7 @@ message("Complex analysis complete!")
 # =========================================================================
 
 # --- Step 0: Setup ---
+BiocManager::install("UniProt.ws")
 library(UniProt.ws)  # For fetching sequences
 library(httr)
 library(jsonlite)
