@@ -2047,7 +2047,7 @@ count_edges_by_annotation <- function(edges_df, annotation_col, annotation_name)
     mutate(annotation = annotation_name)
 }
 
-# Count edges for each annotation
+# Step 6c. Count edges for each annotation
 annotation_edge_counts <- map_dfr(annotations, ~ count_edges_by_annotation(lysoip_edge_states, .x, .x))
 
 # Summarize results
@@ -2060,18 +2060,24 @@ annotation_edge_summary <- annotation_edge_counts %>%
 write_csv(annotation_edge_summary, file.path(out_dir_lysoip_ppi, "tables", "annotation_edge_summary.csv"))
 
 
-# Step 6c. Plot annotation-level PPI changes
+# Step 6d. Plot annotation-level PPI changes
 # Bar plot of gained/lost edges per annotation
 p_annotation_edges <- ggplot(annotation_edge_summary, aes(x = annotation, y = n_edges, fill = state)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = n_edges), position = position_dodge(width = 0.9), vjust = -0.5, size = 2.5) +
   scale_fill_manual(values = state_colors, name = "Edge State") +
   labs(title = "Annotation-level PPI Changes (ASAH1 KO)", x = "Annotation", y = "Number of Edges") +
-  theme_bw(base_size = 8) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+)
 
 # Save the plot
-ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_annotation_edges, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_annotation_edges, width = 4, height = 4.5, device = cairo_pdf)
+
+
 # =========================================================================
 # STEP 6: Functional enrichment of lost/gained PPIs
 # =========================================================================
