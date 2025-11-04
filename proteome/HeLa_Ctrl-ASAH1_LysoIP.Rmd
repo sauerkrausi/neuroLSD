@@ -1744,11 +1744,11 @@ state_colors <- c(retained = "grey70", lost = "#C51B7D", gained = "#1B7837")
 
 message("\n=== Step 1: Defining lysosomal proteome baseline ===")
 
-# Define thresholds
+# Step 1a. Define thresholds
 enrichment_thresh <- 0.25   # log2FC threshold for lysosomal proteins
 depletion_thresh <- -0.25   # log2FC threshold for background/contaminants
 
-# Lysosomal proteins: enriched in CtrlLysoIP vs untagged
+# Step  1b. Lysosomal proteins: enriched in CtrlLysoIP vs untagged
 baseline_lysosomal_proteins <- helalysoip_annotated_df %>%
   dplyr::filter(
     log2FC_CtrlLysoIP.untagged > enrichment_thresh,
@@ -1757,7 +1757,7 @@ baseline_lysosomal_proteins <- helalysoip_annotated_df %>%
   dplyr::pull(Gene.Symbol) %>%
   unique()
 
-# Background proteins: depleted in CtrlLysoIP vs untagged
+# Step 1c. Background proteins: depleted in CtrlLysoIP vs untagged
 background_proteins <- helalysoip_annotated_df %>%
   dplyr::filter(
     log2FC_CtrlLysoIP.untagged < depletion_thresh,
@@ -1769,7 +1769,7 @@ background_proteins <- helalysoip_annotated_df %>%
 message("Lysosomal proteins (enriched): ", length(baseline_lysosomal_proteins))
 message("Background proteins (depleted): ", length(background_proteins))
 
-# Create baseline dataframe
+# Step 1d. Create baseline dataframe
 lysoip_baseline_df <- helalysoip_annotated_df %>%
   dplyr::filter(Gene.Symbol %in% baseline_lysosomal_proteins) %>%
   dplyr::mutate(in_baseline = TRUE)
@@ -1794,7 +1794,7 @@ path_intact_tsv <- "/Users/felix/Desktop/ppi/interact.tsv"
   ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
 }
 
-# 2a. Load Predictome80
+# Step 2a. Load Predictome80
 if (file.exists(path_predictome80)) {
   predictome_raw <- data.table::fread(path_predictome80, sep = "\t", header = TRUE, skip = 28, fill = TRUE, quote = "", data.table = FALSE)
   predictome_raw <- predictome_raw[!grepl("^#", predictome_raw$Protein1), ]
@@ -1816,7 +1816,7 @@ if (file.exists(path_predictome80)) {
   stop("Predictome file not found at: ", path_predictome80)
 }
 
-# 2b. Load IntAct
+# Step 2b. Load IntAct
 if (file.exists(path_intact_tsv)) {
   intact_raw <- read_tsv(path_intact_tsv, show_col_types = FALSE)
   
@@ -1836,7 +1836,7 @@ if (file.exists(path_intact_tsv)) {
   intact_edges <- tibble(key = character(), Gene1 = character(), Gene2 = character(), IntAct_present = logical())
 }
 
-# 2c. Merge PPI sources
+# Step 2c. Merge PPI sources
 ppi_evidence <- full_join(predictome_edges, intact_edges, by = "key") %>%
   mutate(
     Gene1 = coalesce(Gene1.x, Gene1.y),
@@ -1849,7 +1849,7 @@ ppi_evidence <- full_join(predictome_edges, intact_edges, by = "key") %>%
 
 message("Total PPI edges (all proteins): ", nrow(ppi_evidence))
 
-# 2d. Filter to lysosomal baseline proteins
+# Step 2d. Filter to lysosomal baseline proteins
 lysoip_baseline_edges <- ppi_evidence %>%
   dplyr::filter(
     Gene1 %in% baseline_lysosomal_proteins,
@@ -1858,6 +1858,7 @@ lysoip_baseline_edges <- ppi_evidence %>%
 
 message("PPI edges within lysosomal baseline: ", nrow(lysoip_baseline_edges))
 
+# save csv of baseline PPIs in outdir 
 write_csv(lysoip_baseline_edges, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_edges.csv"))
 
 
@@ -1867,8 +1868,8 @@ write_csv(lysoip_baseline_edges, file.path(out_dir_lysoip_ppi, "tables", "lysoip
 
 message("\n=== Step 3: Computing PPI state changes ===")
 
-drop_thresh <- -0.5   # Partner lost if log2FC < -0.5
-gain_thresh <- 0.5    # Partner gained if log2FC > 0.5
+drop_thresh <- -0.25   # Partner lost if log2FC < -0.25
+gain_thresh <- 0.25    # Partner gained if log2FC > 0.25
 
 # 3a. Match edges to protein abundance changes (ASAH1 vs Ctrl)
 lysoip_edge_states <- lysoip_baseline_edges %>%
@@ -1894,6 +1895,7 @@ lysoip_edge_states <- lysoip_baseline_edges %>%
     )
   )
 
+# save csv file of PPI edge changes
 write_csv(lysoip_edge_states, file.path(out_dir_lysoip_ppi, "tables", "lysoip_edge_states.csv"))
 
 
@@ -1905,7 +1907,8 @@ edge_summary <- lysoip_edge_states %>%
 message("\nPPI edge state summary:")
 print(edge_summary)
 
-write_csv(edge_summary, file.path(out_dir_lysoip_ppi, "tables", "edge_state_summary.csv"))
+# save csv file for summary stats for egdes 
+write_csv(edge_summary, file.path(out_dir_lysoip_ppi, "tables", "edge_state_summary_ContolToASAH1.csv"))
 
 
 # =========================================================================
