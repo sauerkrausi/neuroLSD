@@ -1635,4 +1635,6 @@ plot_topGO_for_geneset(
 
 # To do list for evaluation 
 - this will be a list here for future implementations 
+- see if sync works wit git
+- mayeb it fails again 
 
