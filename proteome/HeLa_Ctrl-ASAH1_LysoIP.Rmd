@@ -2066,7 +2066,7 @@ p_annotation_edges <- ggplot(annotation_edge_summary, aes(x = annotation, y = n_
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = n_edges), position = position_dodge(width = 0.9), vjust = -0.5, size = 2.5) +
   scale_fill_manual(values = state_colors, name = "Edge State") +
-  labs(title = "Annotation-level PPI Changes (ASAH1 KO)", x = "Annotation", y = "Number of Edges") +
+  labs(title = "Annotation-level PPI Changes (Lyso IP Control -> ASAH1 KO)", x = "Annotation", y = "Number of Edges") +
   theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(), 
@@ -2074,7 +2074,7 @@ p_annotation_edges <- ggplot(annotation_edge_summary, aes(x = annotation, y = n_
     axis.text.x = element_text(angle = 45, hjust = 1)
   ) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +  # Ensure consistent dimensions with space for n=0
-  facet_wrap(~ state, scales = "free_y", ncol = 1)  # Add facets for each state to show n=0 bars
+  facet_wrap(~ state, ncol = 1)  # Remove free_y to ensure the same y-axis scale across all facets
 
 # Save the plot
 ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_annotation_edges, width = 3, height = 6, device = cairo_pdf)
