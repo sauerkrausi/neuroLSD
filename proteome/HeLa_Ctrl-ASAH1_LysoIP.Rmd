@@ -1736,7 +1736,7 @@ dir.create(file.path(out_dir_lysoip_ppi, "plots"), recursive = TRUE, showWarning
 dir.create(file.path(out_dir_lysoip_ppi, "tables"), recursive = TRUE, showWarnings = FALSE)
 
 # Color palettes
-state_colors <- c(retained = "grey70", lost = "#C51B7D", gained = "#1B7837")
+state_colors <- c(retained = "grey70", lost = "#f39dcfff", gained = "dodgerblue4")
 
 # =========================================================================
 # STEP 1: Define lysosomal proteome baseline (Control LysoIP)
@@ -1871,7 +1871,7 @@ message("\n=== Step 3: Computing PPI state changes ===")
 drop_thresh <- -0.25   # Partner lost if log2FC < -0.25
 gain_thresh <- 0.25    # Partner gained if log2FC > 0.25
 
-# 3a. Match edges to protein abundance changes (ASAH1 vs Ctrl)
+# Step 3a. Match edges to protein abundance changes (ASAH1 vs Ctrl)
 lysoip_edge_states <- lysoip_baseline_edges %>%
   dplyr::left_join(
     helalysoip_annotated_df %>% dplyr::select(Gene.Symbol, log2FC_ASAH1LysoIP.CtrlLysoIP),
@@ -1895,11 +1895,11 @@ lysoip_edge_states <- lysoip_baseline_edges %>%
     )
   )
 
-# save csv file of PPI edge changes
+# Ssave csv file of PPI edge changes
 write_csv(lysoip_edge_states, file.path(out_dir_lysoip_ppi, "tables", "lysoip_edge_states.csv"))
 
 
-# 3b. Summary statistics
+# Step 3b. Summary statistics
 edge_summary <- lysoip_edge_states %>%
   dplyr::count(state, name = "n_edges") %>%
   dplyr::mutate(frac = n_edges / sum(n_edges))
@@ -1917,7 +1917,7 @@ write_csv(edge_summary, file.path(out_dir_lysoip_ppi, "tables", "edge_state_summ
 
 message("\n=== Step 4: Creating visualizations ===")
 
-# 4a. Barplot of edge states
+# Step 4a. Barplot of edge states
 p_edge_states <- ggplot(edge_summary, aes(x = state, y = n_edges, fill = state)) +
   geom_col(color = "black", linewidth = 0.3, width = 0.7) +
   geom_text(aes(label = n_edges), vjust = -0.5, size = 3) +
@@ -1929,7 +1929,7 @@ p_edge_states <- ggplot(edge_summary, aes(x = state, y = n_edges, fill = state))
 ggsave(file.path(out_dir_lysoip_ppi, "plots", "bars_edge_states.pdf"), p_edge_states, width = 4, height = 4, device = cairo_pdf)
 
 
-# 4b. Scatter plot: Partner A vs Partner B fold changes
+# Step 4b. Scatter plot: Partner A vs Partner B fold changes
 scatter_data <- lysoip_edge_states %>%
   dplyr::filter(state %in% c("lost", "gained", "retained")) %>%
   dplyr::mutate(state = factor(state, levels = c("retained", "lost", "gained")))
@@ -1948,7 +1948,7 @@ p_scatter <- ggplot(scatter_data, aes(x = dA, y = dB, color = state, alpha = sta
 ggsave(file.path(out_dir_lysoip_ppi, "plots", "scatter_partner_changes.pdf"), p_scatter, width = 5, height = 4, device = cairo_pdf)
 
 
-# 4c. Network visualization (if igraph available)
+# Step 4c. Network visualization (if igraph available)
 if (requireNamespace("igraph", quietly = TRUE)) {
   library(igraph)
   
@@ -2024,6 +2024,54 @@ p_hydrolase <- ggplot(hydrolase_summary, aes(x = state, y = n_edges, fill = stat
 ggsave(file.path(out_dir_lysoip_ppi, "plots", "bars_lysohydrolase_edges.pdf"), p_hydrolase, width = 4, height = 4, device = cairo_pdf)
 
 
+
+# =========================================================================
+# STEP 6: Annotation-level analysis of gained/lost PPIs
+# =========================================================================
+
+message("\n=== Step 6: Annotation-level PPI analysis ===")
+
+# Step 6a. Define annotations of interest (must be logical columns in helalysoip_annotated_df)
+annotations <- c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome", "Autophagy", "vATPase")
+
+# "LysoHydrolase", "Mito", "MitoIMS", "MitoMatrix","MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI","Golgi", "Lysosome", "ER", "Cytoplasm","Nucleus", "Autophagy", "Autophagy_det", "SynGO","Endo_iN_curated_Hundley", "SynapseSVs", "Presynaptic", "Postsynaptic","EndoDetailLoac", "NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis","vATPase" 
+
+# Step 6b. Helper function to count edges per annotation
+count_edges_by_annotation <- function(edges_df, annotation_col, annotation_name) {
+  edges_df %>%
+    filter(
+      Gene1 %in% (helalysoip_annotated_df %>% filter(!!sym(annotation_col) == TRUE) %>% pull(Gene.Symbol)) |
+      Gene2 %in% (helalysoip_annotated_df %>% filter(!!sym(annotation_col) == TRUE) %>% pull(Gene.Symbol))
+    ) %>%
+    count(state, name = "n_edges") %>%
+    mutate(annotation = annotation_name)
+}
+
+# Count edges for each annotation
+annotation_edge_counts <- map_dfr(annotations, ~ count_edges_by_annotation(lysoip_edge_states, .x, .x))
+
+# Summarize results
+annotation_edge_summary <- annotation_edge_counts %>%
+  group_by(annotation, state) %>%
+  summarize(n_edges = sum(n_edges), .groups = "drop") %>%
+  mutate(state = factor(state, levels = c("lost", "gained", "retained")))
+
+# Save annotation-level summary
+write_csv(annotation_edge_summary, file.path(out_dir_lysoip_ppi, "tables", "annotation_edge_summary.csv"))
+
+
+# Step 6c. Plot annotation-level PPI changes
+# Bar plot of gained/lost edges per annotation
+p_annotation_edges <- ggplot(annotation_edge_summary, aes(x = annotation, y = n_edges, fill = state)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_edges), position = position_dodge(width = 0.9), vjust = -0.5, size = 2.5) +
+  scale_fill_manual(values = state_colors, name = "Edge State") +
+  labs(title = "Annotation-level PPI Changes (ASAH1 KO)", x = "Annotation", y = "Number of Edges") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+# Save the plot
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_annotation_edges, width = 5, height = 4, device = cairo_pdf)
 # =========================================================================
 # STEP 6: Functional enrichment of lost/gained PPIs
 # =========================================================================
