@@ -1718,6 +1718,7 @@ plot_topGO_for_geneset(
 ```
 
 
+
 # IX. PPI eval on LysoIP data 
 ```{r}
 # =========================================================================
@@ -1743,46 +1744,37 @@ state_colors <- c(retained = "grey70", lost = "#C51B7D", gained = "#1B7837")
 
 message("\n=== Step 1: Defining lysosomal proteome baseline ===")
 
-# 1a. Filter for proteins enriched in CtrlLysoIP vs untagged (TRUE lysosomal proteins)
-ctrl_enrichment_thresh <- 0.5  # log2FC threshold
+# Define thresholds
+enrichment_thresh <- 0.25   # log2FC threshold for lysosomal proteins
+depletion_thresh <- -0.25   # log2FC threshold for background/contaminants
 
-ctrl_lysosomal_proteins <- helalysoip_annotated_df %>%
+# Lysosomal proteins: enriched in CtrlLysoIP vs untagged
+baseline_lysosomal_proteins <- helalysoip_annotated_df %>%
   dplyr::filter(
-    log2FC_CtrlLysoIP.untagged > ctrl_enrichment_thresh,
+    log2FC_CtrlLysoIP.untagged > enrichment_thresh,
     is.finite(log2FC_CtrlLysoIP.untagged)
   ) %>%
   dplyr::pull(Gene.Symbol) %>%
   unique()
 
-message("Proteins enriched in Ctrl LysoIP (vs untagged): ", length(ctrl_lysosomal_proteins))
-
-# 1b. Filter out non-specific contaminants (proteins also high in untagged)
-untagged_contamination_thresh <- 0.5  # if protein is also high in untagged, exclude it
-
-untagged_contaminants <- helalysoip_annotated_df %>%
+# Background proteins: depleted in CtrlLysoIP vs untagged
+background_proteins <- helalysoip_annotated_df %>%
   dplyr::filter(
-    log2FC_CtrlLysoIP.untagged > ctrl_enrichment_thresh,
-    rowMeans(dplyr::select(., untagged_1, untagged_2, untagged_3), na.rm = TRUE) > 
-      rowMeans(dplyr::select(., CtrlLysoIP_1, CtrlLysoIP_2, CtrlLysoIP_3), na.rm = TRUE) * 0.5
+    log2FC_CtrlLysoIP.untagged < depletion_thresh,
+    is.finite(log2FC_CtrlLysoIP.untagged)
   ) %>%
   dplyr::pull(Gene.Symbol) %>%
   unique()
 
-message("Non-specific contaminants identified: ", length(untagged_contaminants))
+message("Lysosomal proteins (enriched): ", length(baseline_lysosomal_proteins))
+message("Background proteins (depleted): ", length(background_proteins))
 
-# 1c. Clean baseline: Ctrl-enriched proteins MINUS contaminants
-baseline_lysosomal_proteins <- setdiff(ctrl_lysosomal_proteins, untagged_contaminants)
-
-message("Clean lysosomal proteome baseline: ", length(baseline_lysosomal_proteins))
-
-# Add quality control flags
+# Create baseline dataframe
 lysoip_baseline_df <- helalysoip_annotated_df %>%
   dplyr::filter(Gene.Symbol %in% baseline_lysosomal_proteins) %>%
-  dplyr::mutate(
-    in_baseline = TRUE,
-    is_contaminant = Gene.Symbol %in% untagged_contaminants
-  )
+  dplyr::mutate(in_baseline = TRUE)
 
+# Save results
 write_csv(lysoip_baseline_df, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_proteome.csv"))
 
 
