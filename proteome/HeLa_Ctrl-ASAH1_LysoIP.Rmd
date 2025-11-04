@@ -2363,7 +2363,7 @@ p_trimer_states <- ggplot(trimer_state_counts, aes(x = trimer_state, y = n, fill
 
 ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "bars_trimer_states.pdf"), p_trimer_states, width = 4, height = 4, device = cairo_pdf)
 
-# Count trimers by annotation and state (matching complex style)
+# Count trimers by annotation and state
 trimer_status_by_annotation <- trimers_lyso_states %>%
   tidyr::separate_rows(shared_organelle, sep = ";") %>%
   dplyr::filter(!is.na(shared_organelle), shared_organelle != "Other") %>%
@@ -2374,7 +2374,7 @@ trimer_status_by_annotation <- trimers_lyso_states %>%
     trimer_state = factor(trimer_state, levels = c("intact", "partial", "broken"))
   )
 
-# Plot trimer status by annotation (matching complex style)
+# Plot trimer status by annotation
 p_trimer_status_annotation <- ggplot(trimer_status_by_annotation, aes(x = shared_organelle, y = n_trimers, fill = trimer_state)) +
   geom_col(position = "stack", color = "black", linewidth = 0.3) +
   scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", broken = "dodgerblue4"), name = "Trimer State") +
