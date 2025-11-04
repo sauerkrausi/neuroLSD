@@ -1199,11 +1199,11 @@ rainfall_plot_delta <- ggplot(rain_df_delta, aes(y = delta_log2fc, x = y_group, 
     size = 2,
     min.segment.length = 0,
     max.overlaps = Inf,
-    box.padding = 0.1,
-    point.padding = 0.05,
+    box.padding = 0,        # changed from 0.1 to 0
+    point.padding = 0,      # changed from 0.05 to 0
     segment.size = 0.1,
-    force = 100,                      # stronger attraction to point
-    direction = "x"                 # repel mostly horizontically
+    force = 100,             
+    direction = "x"
   ) +
   scale_fill_manual(values = c("Lysosome" = "grey70", "Hydrolases" = "firebrick", "vATPase" = "dodgerblue3")) +
   coord_flip() +
