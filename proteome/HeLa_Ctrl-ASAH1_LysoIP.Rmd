@@ -1633,8 +1633,403 @@ plot_topGO_for_geneset(
 ```
 
 
-# To do list for evaluation 
-- this will be a list here for future implementations 
-- see if sync works wit git
-- mayeb it fails again 
+# IX. PPI eval on LysoIP data 
+```{r}
+# =========================================================================
+# HeLa LysoIP PPI Analysis: Control vs ASAH1 KO
+# Identify lost and gained PPIs in ASAH1 knockout lysosomes
+# =========================================================================
 
+library(tidyverse)
+library(pheatmap)
+library(RColorBrewer)
+
+# --- Setup ---
+out_dir_lysoip_ppi <- file.path(out_dir_lysoip_dataframes, "../PPI")
+dir.create(file.path(out_dir_lysoip_ppi, "plots"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_lysoip_ppi, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+# Color palettes
+state_colors <- c(retained = "grey70", lost = "#C51B7D", gained = "#1B7837")
+
+# =========================================================================
+# STEP 1: Define lysosomal proteome baseline (Control LysoIP)
+# =========================================================================
+
+message("\n=== Step 1: Defining lysosomal proteome baseline ===")
+
+# 1a. Filter for proteins enriched in CtrlLysoIP vs untagged (TRUE lysosomal proteins)
+ctrl_enrichment_thresh <- 0.5  # log2FC threshold
+
+ctrl_lysosomal_proteins <- helalysoip_annotated_df %>%
+  dplyr::filter(
+    log2FC_CtrlLysoIP.untagged > ctrl_enrichment_thresh,
+    is.finite(log2FC_CtrlLysoIP.untagged)
+  ) %>%
+  dplyr::pull(Gene.Symbol) %>%
+  unique()
+
+message("Proteins enriched in Ctrl LysoIP (vs untagged): ", length(ctrl_lysosomal_proteins))
+
+# 1b. Filter out non-specific contaminants (proteins also high in untagged)
+untagged_contamination_thresh <- 0.5  # if protein is also high in untagged, exclude it
+
+untagged_contaminants <- helalysoip_annotated_df %>%
+  dplyr::filter(
+    log2FC_CtrlLysoIP.untagged > ctrl_enrichment_thresh,
+    rowMeans(dplyr::select(., untagged_1, untagged_2, untagged_3), na.rm = TRUE) > 
+      rowMeans(dplyr::select(., CtrlLysoIP_1, CtrlLysoIP_2, CtrlLysoIP_3), na.rm = TRUE) * 0.5
+  ) %>%
+  dplyr::pull(Gene.Symbol) %>%
+  unique()
+
+message("Non-specific contaminants identified: ", length(untagged_contaminants))
+
+# 1c. Clean baseline: Ctrl-enriched proteins MINUS contaminants
+baseline_lysosomal_proteins <- setdiff(ctrl_lysosomal_proteins, untagged_contaminants)
+
+message("Clean lysosomal proteome baseline: ", length(baseline_lysosomal_proteins))
+
+# Add quality control flags
+lysoip_baseline_df <- helalysoip_annotated_df %>%
+  dplyr::filter(Gene.Symbol %in% baseline_lysosomal_proteins) %>%
+  dplyr::mutate(
+    in_baseline = TRUE,
+    is_contaminant = Gene.Symbol %in% untagged_contaminants
+  )
+
+write_csv(lysoip_baseline_df, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_proteome.csv"))
+
+
+# =========================================================================
+# STEP 2: Map baseline PPIs using Predictome80 + IntAct
+# =========================================================================
+
+message("\n=== Step 2: Mapping baseline PPIs ===")
+
+# Load PPI data (adapt paths from your existing code)
+# NOTE: You'll need to point these to your actual PPI files
+path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
+path_intact_tsv <- "/Users/felix/Desktop/ppi/interact.tsv"
+
+# Helper function for undirected keys
+.make_undirected_key <- function(a, b) {
+  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+}
+
+# 2a. Load Predictome80
+if (file.exists(path_predictome80)) {
+  predictome_raw <- data.table::fread(path_predictome80, sep = "\t", header = TRUE, skip = 28, fill = TRUE, quote = "", data.table = FALSE)
+  predictome_raw <- predictome_raw[!grepl("^#", predictome_raw$Protein1), ]
+  
+  prob_cols <- intersect(c("RFprob", "AFprob", "AFMprob", "CFprob", "AFprob5"), names(predictome_raw))
+  
+  predictome_edges <- predictome_raw %>%
+    mutate(across(all_of(prob_cols), ~ suppressWarnings(as.numeric(.x)))) %>%
+    mutate(
+      Predictome_conf = do.call(pmax, c(across(all_of(prob_cols)), list(na.rm = TRUE))),
+      key = .make_undirected_key(Name1, Name2),  # Use gene symbols
+      Predictome_present = TRUE
+    ) %>%
+    dplyr::select(key, Gene1 = Name1, Gene2 = Name2, Predictome_conf, Predictome_present) %>%
+    dplyr::distinct(key, .keep_all = TRUE)
+  
+  message("Predictome edges loaded: ", nrow(predictome_edges))
+} else {
+  stop("Predictome file not found at: ", path_predictome80)
+}
+
+# 2b. Load IntAct
+if (file.exists(path_intact_tsv)) {
+  intact_raw <- read_tsv(path_intact_tsv, show_col_types = FALSE)
+  
+  intact_edges <- intact_raw %>%
+    transmute(
+      Gene1 = sub("^uniprotkb:", "", sub("\\(.*", "", `Alias(es) interactor A`)),
+      Gene2 = sub("^uniprotkb:", "", sub("\\(.*", "", `Alias(es) interactor B`)),
+      IntAct_MIscore = suppressWarnings(as.numeric(sub("^.*miscore:", "", `Confidence value(s)`))),
+      key = .make_undirected_key(Gene1, Gene2),
+      IntAct_present = TRUE
+    ) %>%
+    dplyr::distinct(key, .keep_all = TRUE)
+  
+  message("IntAct edges loaded: ", nrow(intact_edges))
+} else {
+  warning("IntAct file not found; proceeding with Predictome only")
+  intact_edges <- tibble(key = character(), Gene1 = character(), Gene2 = character(), IntAct_present = logical())
+}
+
+# 2c. Merge PPI sources
+ppi_evidence <- full_join(predictome_edges, intact_edges, by = "key") %>%
+  mutate(
+    Gene1 = coalesce(Gene1.x, Gene1.y),
+    Gene2 = coalesce(Gene2.x, Gene2.y),
+    Predictome_present = replace_na(Predictome_present, FALSE),
+    IntAct_present = replace_na(IntAct_present, FALSE),
+    Overlap_flag = Predictome_present & IntAct_present
+  ) %>%
+  dplyr::select(key, Gene1, Gene2, Predictome_conf, Predictome_present, IntAct_present, Overlap_flag)
+
+message("Total PPI edges (all proteins): ", nrow(ppi_evidence))
+
+# 2d. Filter to lysosomal baseline proteins
+lysoip_baseline_edges <- ppi_evidence %>%
+  dplyr::filter(
+    Gene1 %in% baseline_lysosomal_proteins,
+    Gene2 %in% baseline_lysosomal_proteins
+  )
+
+message("PPI edges within lysosomal baseline: ", nrow(lysoip_baseline_edges))
+
+write_csv(lysoip_baseline_edges, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_edges.csv"))
+
+
+# =========================================================================
+# STEP 3: Assess PPI state changes (Control → ASAH1)
+# =========================================================================
+
+message("\n=== Step 3: Computing PPI state changes ===")
+
+drop_thresh <- -0.5   # Partner lost if log2FC < -0.5
+gain_thresh <- 0.5    # Partner gained if log2FC > 0.5
+
+# 3a. Match edges to protein abundance changes (ASAH1 vs Ctrl)
+lysoip_edge_states <- lysoip_baseline_edges %>%
+  dplyr::left_join(
+    helalysoip_annotated_df %>% dplyr::select(Gene.Symbol, log2FC_ASAH1LysoIP.CtrlLysoIP),
+    by = c("Gene1" = "Gene.Symbol")
+  ) %>%
+  dplyr::rename(dA = log2FC_ASAH1LysoIP.CtrlLysoIP) %>%
+  dplyr::left_join(
+    helalysoip_annotated_df %>% dplyr::select(Gene.Symbol, log2FC_ASAH1LysoIP.CtrlLysoIP),
+    by = c("Gene2" = "Gene.Symbol")
+  ) %>%
+  dplyr::rename(dB = log2FC_ASAH1LysoIP.CtrlLysoIP) %>%
+  dplyr::mutate(
+    state = case_when(
+      # Edge lost: either partner dropped significantly
+      (!is.na(dA) & dA < drop_thresh) | (!is.na(dB) & dB < drop_thresh) ~ "lost",
+      # Edge gained: both partners increased significantly
+      (!is.na(dA) & dA > gain_thresh) & (!is.na(dB) & dB > gain_thresh) ~ "gained",
+      # Edge retained: no significant change
+      !is.na(dA) | !is.na(dB) ~ "retained",
+      TRUE ~ "unknown"
+    )
+  )
+
+write_csv(lysoip_edge_states, file.path(out_dir_lysoip_ppi, "tables", "lysoip_edge_states.csv"))
+
+
+# 3b. Summary statistics
+edge_summary <- lysoip_edge_states %>%
+  dplyr::count(state, name = "n_edges") %>%
+  dplyr::mutate(frac = n_edges / sum(n_edges))
+
+message("\nPPI edge state summary:")
+print(edge_summary)
+
+write_csv(edge_summary, file.path(out_dir_lysoip_ppi, "tables", "edge_state_summary.csv"))
+
+
+# =========================================================================
+# STEP 4: Visualizations
+# =========================================================================
+
+message("\n=== Step 4: Creating visualizations ===")
+
+# 4a. Barplot of edge states
+p_edge_states <- ggplot(edge_summary, aes(x = state, y = n_edges, fill = state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n_edges), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = state_colors, name = "Edge State") +
+  labs(title = "PPI Edge States: Control → ASAH1 KO", x = NULL, y = "Number of Edges") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "bars_edge_states.pdf"), p_edge_states, width = 4, height = 4, device = cairo_pdf)
+
+
+# 4b. Scatter plot: Partner A vs Partner B fold changes
+scatter_data <- lysoip_edge_states %>%
+  dplyr::filter(state %in% c("lost", "gained", "retained")) %>%
+  dplyr::mutate(state = factor(state, levels = c("retained", "lost", "gained")))
+
+p_scatter <- ggplot(scatter_data, aes(x = dA, y = dB, color = state, alpha = state)) +
+  geom_point(size = 1.5, shape = 16) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "black", linewidth = 0.3) +
+  scale_color_manual(values = state_colors, name = "Edge State") +
+  scale_alpha_manual(values = c(retained = 0.3, lost = 0.8, gained = 0.8), guide = "none") +
+  labs(title = "PPI Partner Abundance Changes (ASAH1 vs Ctrl)", x = "log2FC Partner A", y = "log2FC Partner B") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "scatter_partner_changes.pdf"), p_scatter, width = 5, height = 4, device = cairo_pdf)
+
+
+# 4c. Network visualization (if igraph available)
+if (requireNamespace("igraph", quietly = TRUE)) {
+  library(igraph)
+  
+  # Build network from lost edges
+  lost_edges <- lysoip_edge_states %>%
+    dplyr::filter(state == "lost") %>%
+    dplyr::select(Gene1, Gene2)
+  
+  if (nrow(lost_edges) > 0) {
+    net_lost <- igraph::graph_from_data_frame(lost_edges, directed = FALSE)
+    
+    # Identify hubs (proteins with many lost interactions)
+    deg_lost <- igraph::degree(net_lost)
+    hubs_lost <- names(deg_lost)[deg_lost >= quantile(deg_lost, 0.9)]
+    
+    message("\nTop hubs with lost interactions:")
+    print(sort(deg_lost[hubs_lost], decreasing = TRUE))
+    
+    # Save hub list
+    hub_df <- tibble(Gene = names(deg_lost), degree = deg_lost) %>%
+      dplyr::arrange(desc(degree))
+    write_csv(hub_df, file.path(out_dir_lysoip_ppi, "tables", "lost_interaction_hubs.csv"))
+  }
+  
+  # Build network from gained edges
+  gained_edges <- lysoip_edge_states %>%
+    dplyr::filter(state == "gained") %>%
+    dplyr::select(Gene1, Gene2)
+  
+  if (nrow(gained_edges) > 0) {
+    net_gained <- igraph::graph_from_data_frame(gained_edges, directed = FALSE)
+    
+    deg_gained <- igraph::degree(net_gained)
+    hubs_gained <- names(deg_gained)[deg_gained >= quantile(deg_gained, 0.9)]
+    
+    message("\nTop hubs with gained interactions:")
+    print(sort(deg_gained[hubs_gained], decreasing = TRUE))
+    
+    hub_gained_df <- tibble(Gene = names(deg_gained), degree = deg_gained) %>%
+      dplyr::arrange(desc(degree))
+    write_csv(hub_gained_df, file.path(out_dir_lysoip_ppi, "tables", "gained_interaction_hubs.csv"))
+  }
+}
+
+
+# =========================================================================
+# STEP 5: Lysohydrolase-specific analysis
+# =========================================================================
+
+message("\n=== Step 5: Lysohydrolase-specific PPI analysis ===")
+
+# Focus on edges involving lysohydrolases
+hydrolase_edges <- lysoip_edge_states %>%
+  dplyr::filter(Gene1 %in% lysohydrolases | Gene2 %in% lysohydrolases)
+
+hydrolase_summary <- hydrolase_edges %>%
+  dplyr::count(state, name = "n_edges")
+
+message("\nLysohydrolase-involved edges:")
+print(hydrolase_summary)
+
+write_csv(hydrolase_edges, file.path(out_dir_lysoip_ppi, "tables", "lysohydrolase_edges.csv"))
+
+# Barplot
+p_hydrolase <- ggplot(hydrolase_summary, aes(x = state, y = n_edges, fill = state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n_edges), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = state_colors, name = "Edge State") +
+  labs(title = "Lysohydrolase PPI Changes (ASAH1 KO)", x = NULL, y = "Number of Edges") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "bars_lysohydrolase_edges.pdf"), p_hydrolase, width = 4, height = 4, device = cairo_pdf)
+
+
+# =========================================================================
+# STEP 6: Functional enrichment of lost/gained PPIs
+# =========================================================================
+
+message("\n=== Step 6: GO enrichment of disrupted interactions ===")
+
+# Helper function for GO enrichment (adapted from your existing code)
+run_topGO_for_ppi <- function(gene_set, background_genes, tag, out_dir) {
+  if (length(gene_set) < 5) {
+    message("Too few genes (", length(gene_set), ") for ", tag, "; skipping.")
+    return(NULL)
+  }
+  
+  geneList <- factor(as.integer(background_genes %in% gene_set))
+  names(geneList) <- background_genes
+  
+  GOdata <- new("topGOdata", ontology = "BP", allGenes = geneList, geneSel = function(x) x == 1, annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol")
+  
+  resultFisher <- runTest(GOdata, algorithm = "elim", statistic = "fisher")
+  
+  go_table <- GenTable(GOdata, elimFisher = resultFisher, topNodes = 30) %>%
+    mutate(
+      raw_pval = score(resultFisher)[GO.ID],
+      log10P = -log10(raw_pval),
+      Significant = as.numeric(Significant),
+      Expected = as.numeric(Expected),
+      Enrichment = ifelse(Expected > 0, Significant / Expected, NA)
+    ) %>%
+    filter(!is.na(raw_pval)) %>%
+    arrange(raw_pval) %>%
+    slice_head(n = 10)
+  
+  go_genes <- genesInTerm(GOdata)
+  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
+    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
+  })
+  
+  write_csv(go_table, file.path(out_dir, paste0("GO_results_", tag, ".csv")))
+  
+  p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+    geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
+    scale_fill_gradient(low = "white", high = "firebrick") +
+    theme_bw(base_size = 7) +
+    labs(x = "Fold Enrichment", y = "GO Term", size = expression(-log[10]*"P"), title = paste0("Top GO Terms: ", tag)) +
+    theme(panel.grid = element_blank())
+  
+  ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
+  
+  return(go_table)
+}
+
+# Get genes involved in lost PPIs
+genes_lost_ppis <- lysoip_edge_states %>%
+  dplyr::filter(state == "lost") %>%
+  dplyr::select(Gene1, Gene2) %>%
+  tidyr::pivot_longer(everything(), values_to = "Gene") %>%
+  dplyr::pull(Gene) %>%
+  unique()
+
+# Get genes involved in gained PPIs
+genes_gained_ppis <- lysoip_edge_states %>%
+  dplyr::filter(state == "gained") %>%
+  dplyr::select(Gene1, Gene2) %>%
+  tidyr::pivot_longer(everything(), values_to = "Gene") %>%
+  dplyr::pull(Gene) %>%
+  unique()
+
+# Run GO enrichment
+if (length(genes_lost_ppis) >= 5) {
+  go_lost <- run_topGO_for_ppi(genes_lost_ppis, baseline_lysosomal_proteins, "lost_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
+}
+
+if (length(genes_gained_ppis) >= 5) {
+  go_gained <- run_topGO_for_ppi(genes_gained_ppis, baseline_lysosomal_proteins, "gained_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
+}
+
+
+# =========================================================================
+# Final Summary
+# =========================================================================
+
+message("\n=== Analysis Complete! ===")
+message("Baseline lysosomal proteome: ", length(baseline_lysosomal_proteins), " proteins")
+message("Baseline PPI edges: ", nrow(lysoip_baseline_edges))
+message("Lost edges: ", sum(lysoip_edge_states$state == "lost"))
+message("Gained edges: ", sum(lysoip_edge_states$state == "gained"))
+message("Retained edges: ", sum(lysoip_edge_states$state == "retained"))
+message("\nResults saved to: ", out_dir_lysoip_ppi)
+```
