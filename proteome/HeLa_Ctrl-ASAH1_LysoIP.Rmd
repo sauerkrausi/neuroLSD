@@ -2090,62 +2090,61 @@ ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_
 # =========================================================================
 
 # --- Step 0: Create output directories ---
-dir.create(file.path(out_dir_ppi_vuln, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_ppi_vuln, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_lysoip_ppi, "plots/trimers"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_lysoip_ppi, "tables/trimers"), recursive = TRUE, showWarnings = FALSE)
 
-# --- Step 1: Filter to NEURONAL high-confidence PPIs only ---
+# --- Step 1: Filter to LYSOSOMAL high-confidence PPIs only ---
 conf_threshold <- 0.95
 
-# Get neuronal genes (same as used in ko_edge_states)
-neuronal_genes <- unique(c(ko_edge_states$Gene1, ko_edge_states$Gene2))
-neuronal_genes <- neuronal_genes[!is.na(neuronal_genes)]
+# Get lysosomal genes from baseline
+lysosomal_genes <- unique(c(lysoip_edge_states$Gene1, lysoip_edge_states$Gene2))
+lysosomal_genes <- lysosomal_genes[!is.na(lysosomal_genes)]
 
-message("Number of neuronal genes: ", length(neuronal_genes))
+message("Number of lysosomal genes: ", length(lysosomal_genes))
 
-# Filter high-confidence edges to neuronal proteome
-high_conf_edges <- baseline_edges_union |>
+# Filter high-confidence edges to lysosomal proteome
+high_conf_edges <- lysoip_baseline_edges %>%
   dplyr::filter(
     Predictome_conf >= conf_threshold,
-    Gene1 %in% neuronal_genes,
-    Gene2 %in% neuronal_genes
-  ) |>
+    Gene1 %in% lysosomal_genes,
+    Gene2 %in% lysosomal_genes
+  ) %>%
   dplyr::select(key, Gene1, Gene2, Predictome_conf)
 
-message("High-confidence neuronal edges (≥", conf_threshold, "): ", nrow(high_conf_edges))
+message("High-confidence lysosomal edges (≥", conf_threshold, "): ", nrow(high_conf_edges))
 
 # If too few, reduce threshold
 if (nrow(high_conf_edges) < 100) {
   conf_threshold <- 0.90
-  high_conf_edges <- baseline_edges_union |>
+  high_conf_edges <- lysoip_baseline_edges %>%
     dplyr::filter(
       Predictome_conf >= conf_threshold,
-      Gene1 %in% neuronal_genes,
-      Gene2 %in% neuronal_genes
-    ) |>
+      Gene1 %in% lysosomal_genes,
+      Gene2 %in% lysosomal_genes
+    ) %>%
     dplyr::select(key, Gene1, Gene2, Predictome_conf)
   message("Reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
 }
 
 if (nrow(high_conf_edges) < 50) {
   conf_threshold <- 0.85
-  high_conf_edges <- baseline_edges_union |>
+  high_conf_edges <- lysoip_baseline_edges %>%
     dplyr::filter(
       Predictome_conf >= conf_threshold,
-      Gene1 %in% neuronal_genes,
-      Gene2 %in% neuronal_genes
-    ) |>
+      Gene1 %in% lysosomal_genes,
+      Gene2 %in% lysosomal_genes
+    ) %>%
     dplyr::select(key, Gene1, Gene2, Predictome_conf)
   message("Further reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
 }
 
 # Save high confidence dimers
-write_csv(high_conf_edges, file.path(out_dir_ppi_vuln, "tables", "high_confidence_dimers.csv"))
-
+write_csv(high_conf_edges, file.path(out_dir_lysoip_ppi, "tables", "high_confidence_dimers.csv"))
 
 # --- Step 2: Find all potential trimers (A-B, B-C, A-C all present) ---
 # Create adjacency list
-edges_df <- high_conf_edges |>
-  dplyr::select(Gene1, Gene2) |>
+edges_df <- high_conf_edges %>%
+  dplyr::select(Gene1, Gene2) %>%
   dplyr::distinct()
 
 message("Starting trimer search...")
@@ -2160,10 +2159,10 @@ for (i in seq_len(nrow(edges_df))) {
   B <- edges_df$Gene2[i]
   
   # Find all C connected to B
-  C_via_B <- edges_df |>
-    dplyr::filter((Gene1 == B & Gene2 != A) | (Gene2 == B & Gene1 != A)) |>
-    dplyr::mutate(C = ifelse(Gene1 == B, Gene2, Gene1)) |>
-    dplyr::pull(C) |>
+  C_via_B <- edges_df %>%
+    dplyr::filter((Gene1 == B & Gene2 != A) | (Gene2 == B & Gene1 != A)) %>%
+    dplyr::mutate(C = ifelse(Gene1 == B, Gene2, Gene1)) %>%
+    dplyr::pull(C) %>%
     unique()
   
   if (length(C_via_B) == 0) next
@@ -2194,123 +2193,83 @@ trimers_baseline <- tibble::tibble(
   GeneC = sapply(trimers_list, `[`, 3)
 )
 
-message("Total trimers found in neuronal baseline: ", nrow(trimers_baseline))
+message("Total trimers found in lysosomal baseline: ", nrow(trimers_baseline))
 
 # Save baseline trimers
-write_csv(trimers_baseline, file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_trimers.csv"))
-
+write_csv(trimers_baseline, file.path(out_dir_lysoip_ppi, "tables/trimers", "baseline_trimers.csv"))
 
 # --- Step 3: Add organelle annotations to trimers ---
-gene_to_org <- binary_matrix |>
-  dplyr::select(Genes, all_of(organelle_tags))
+# Use the same annotation approach from the original code
+annotations <- c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome", "Autophagy", "vATPase")
 
-trimers_annotated <- trimers_baseline |>
-  dplyr::left_join(gene_to_org, by = c("GeneA" = "Genes")) |>
-  dplyr::rename_with(~paste0(.x, "_A"), all_of(organelle_tags)) |>
-  dplyr::left_join(gene_to_org, by = c("GeneB" = "Genes")) |>
-  dplyr::rename_with(~paste0(.x, "_B"), all_of(organelle_tags)) |>
-  dplyr::left_join(gene_to_org, by = c("GeneC" = "Genes")) |>
-  dplyr::rename_with(~paste0(.x, "_C"), all_of(organelle_tags))
+# Create gene-to-annotation mapping from helalysoip_annotated_df
+gene_to_org <- helalysoip_annotated_df %>%
+  dplyr::select(Gene.Symbol, all_of(annotations))
+
+trimers_annotated <- trimers_baseline %>%
+  dplyr::left_join(gene_to_org, by = c("GeneA" = "Gene.Symbol")) %>%
+  dplyr::rename_with(~paste0(.x, "_A"), all_of(annotations)) %>%
+  dplyr::left_join(gene_to_org, by = c("GeneB" = "Gene.Symbol")) %>%
+  dplyr::rename_with(~paste0(.x, "_B"), all_of(annotations)) %>%
+  dplyr::left_join(gene_to_org, by = c("GeneC" = "Gene.Symbol")) %>%
+  dplyr::rename_with(~paste0(.x, "_C"), all_of(annotations))
 
 # Determine shared organelle(s) - all three proteins must be in same organelle
-trimers_annotated <- trimers_annotated |>
-  dplyr::rowwise() |>
+trimers_annotated <- trimers_annotated %>%
+  dplyr::rowwise() %>%
   dplyr::mutate(
     shared_organelle = {
-      org_A <- organelle_tags[which(c_across(paste0(organelle_tags, "_A")))]
-      org_B <- organelle_tags[which(c_across(paste0(organelle_tags, "_B")))]
-      org_C <- organelle_tags[which(c_across(paste0(organelle_tags, "_C")))]
+      org_A <- annotations[which(c_across(paste0(annotations, "_A")))]
+      org_B <- annotations[which(c_across(paste0(annotations, "_B")))]
+      org_C <- annotations[which(c_across(paste0(annotations, "_C")))]
       
       shared <- Reduce(intersect, list(org_A, org_B, org_C))
       if (length(shared) == 0) "Other" else paste(shared, collapse = ";")
     }
-  ) |>
+  ) %>%
   dplyr::ungroup()
 
 # Summary by organelle
-trimer_org_summary <- trimers_annotated |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::count(shared_organelle, name = "n_trimers") |>
+trimer_org_summary <- trimers_annotated %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::count(shared_organelle, name = "n_trimers") %>%
   dplyr::arrange(desc(n_trimers))
 
 message("Trimers by organelle:")
 print(trimer_org_summary)
 
-write_csv(trimer_org_summary, file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_trimers_by_organelle.csv"))
+write_csv(trimer_org_summary, file.path(out_dir_lysoip_ppi, "tables/trimers", "baseline_trimers_by_organelle.csv"))
 
-
-
-# --- Step 4: Assess trimer integrity per KO × neuron ---
-# 4a. Build UniProt→Gene mapping from ko_edge_states
-uniprot_to_gene <- ko_edge_states |>
-  dplyr::select(Protein1, Gene1) |>
-  dplyr::rename(Uniprot = Protein1, Gene = Gene1) |>
-  dplyr::distinct() |>
-  dplyr::bind_rows(
-    ko_edge_states |>
-      dplyr::select(Protein2, Gene2) |>
-      dplyr::rename(Uniprot = Protein2, Gene = Gene2) |>
-      dplyr::distinct()
-  ) |>
-  dplyr::distinct(Uniprot, Gene)
-
-message("UniProt→Gene mapping entries: ", nrow(uniprot_to_gene))
-
-
-# 4b. Convert ko_ppi_profiles (UniProt keys) to gene-based keys
-ko_ppi_profiles_genes <- ko_ppi_profiles |>
-  tidyr::separate(key, into = c("UniprotA", "UniprotB"), sep = "::", remove = FALSE) |>
-  dplyr::left_join(uniprot_to_gene, by = c("UniprotA" = "Uniprot")) |>
-  dplyr::rename(GeneA = Gene) |>
-  dplyr::left_join(uniprot_to_gene, by = c("UniprotB" = "Uniprot")) |>
-  dplyr::rename(GeneB = Gene) |>
-  dplyr::mutate(key_gene = .make_undirected_key(GeneA, GeneB)) |>
-  dplyr::filter(!is.na(key_gene))
-
-message("Converted ko_ppi_profiles to gene-level edges: ", nrow(ko_ppi_profiles_genes))
-
-
-# 4c. Prepare trimer edges
-trimers_with_keys <- trimers_annotated |>
-  dplyr::filter(!is.na(GeneA) & !is.na(GeneB) & !is.na(GeneC)) |>
-  dplyr::filter(rowSums(is.na(dplyr::across(where(is.logical)))) < ncol(dplyr::across(where(is.logical)))) |>
+# --- Step 4: Assess trimer integrity for Control vs ASAH1 ---
+# Prepare trimer edges
+trimers_with_keys <- trimers_annotated %>%
+  dplyr::filter(!is.na(GeneA) & !is.na(GeneB) & !is.na(GeneC)) %>%
   dplyr::mutate(
     key_AB = .make_undirected_key(GeneA, GeneB),
     key_BC = .make_undirected_key(GeneB, GeneC),
     key_AC = .make_undirected_key(GeneA, GeneC)
-  ) |>
+  ) %>%
   dplyr::filter(!is.na(key_AB) & !is.na(key_BC) & !is.na(key_AC))
 
 message("Removed ", nrow(trimers_annotated) - nrow(trimers_with_keys), " trimers with missing edges.")
 
-
-# 4d. Expand to all KO × neuron contexts
-ko_neuron_combos <- ko_ppi_profiles_genes |>
-  dplyr::distinct(genotype, neuron)
-
-trimers_expanded <- trimers_with_keys |>
-  tidyr::crossing(ko_neuron_combos)
-
-message("Joining edge states for trimers...")
-
-
-# 4e. Join KO×neuron-level edge states (gene-based)
-trimers_ko_states <- trimers_expanded |>
+# Join edge states from lysoip_edge_states
+trimers_lyso_states <- trimers_with_keys %>%
   dplyr::left_join(
-    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
-    by = c("key_AB" = "key_gene", "genotype", "neuron")
-  ) |>
-  dplyr::rename(state_AB = state) |>
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_AB" = "key")
+  ) %>%
+  dplyr::rename(state_AB = state) %>%
   dplyr::left_join(
-    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
-    by = c("key_BC" = "key_gene", "genotype", "neuron")
-  ) |>
-  dplyr::rename(state_BC = state) |>
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_BC" = "key")
+  ) %>%
+  dplyr::rename(state_BC = state) %>%
   dplyr::left_join(
-    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
-    by = c("key_AC" = "key_gene", "genotype", "neuron")
-  ) |>
-  dplyr::rename(state_AC = state) |>
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_AC" = "key")
+  ) %>%
+  dplyr::rename(state_AC = state) %>%
   dplyr::mutate(
     state_AB = tidyr::replace_na(state_AB, "retained"),
     state_BC = tidyr::replace_na(state_BC, "retained"),
@@ -2326,14 +2285,11 @@ trimers_ko_states <- trimers_expanded |>
 
 message("Edge states joined successfully!")
 
-
 # Save detailed trimer states
-write_csv(trimers_ko_states,file.path(out_dir_ppi_vuln, "tables/multimer", "trimers_ko_states.csv"))
+write_csv(trimers_lyso_states, file.path(out_dir_lysoip_ppi, "tables/trimers", "trimers_lyso_states.csv"))
 
-
-# --- Step 5: Summary: broken trimers per KO × neuron ---
-trimer_ko_summary <- trimers_ko_states |>
-  dplyr::group_by(genotype, neuron) |>
+# --- Step 5: Summary: broken trimers for Control vs ASAH1 ---
+trimer_lyso_summary <- trimers_lyso_states %>%
   dplyr::summarise(
     n_total = n(),
     n_intact = sum(trimer_state == "intact", na.rm = TRUE),
@@ -2341,738 +2297,114 @@ trimer_ko_summary <- trimers_ko_states |>
     n_partial = sum(trimer_state == "partial", na.rm = TRUE),
     n_unknown = sum(trimer_state == "unknown", na.rm = TRUE),
     frac_broken = n_broken / n_total,
-    frac_partial = n_partial / n_total,
-    .groups = "drop"
-  ) |>
-  dplyr::arrange(desc(frac_broken))
+    frac_partial = n_partial / n_total
+  )
 
-write_csv(trimer_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_ko_summary.csv"))
+write_csv(trimer_lyso_summary, file.path(out_dir_lysoip_ppi, "tables/trimers", "trimer_lyso_summary.csv"))
 
 message("Trimer breakage summary:")
-print(trimer_ko_summary)
+print(trimer_lyso_summary)
 
-
-# --- Step 5b: Affected trimers by organelle × KO × neuron ---
-# Collapse to one row per trimer per KO×neuron
-trimers_affected <- trimers_ko_states |>
+# --- Step 6: Affected trimers by organelle ---
+trimers_affected <- trimers_lyso_states %>%
   dplyr::mutate(
     trimer_affected = ifelse(n_lost >= 1, "affected", "intact")
-  ) |>
-  dplyr::distinct(genotype, neuron, trimer_id, shared_organelle, trimer_affected)
+  )
 
-# Count affected vs intact trimers per organelle × KO × neuron
-trimer_affected_org_ko <- trimers_affected |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::group_by(genotype, neuron, shared_organelle, trimer_affected) |>
-  dplyr::summarise(n_trimers = dplyr::n(), .groups = "drop") |>
+# Count affected vs intact trimers per organelle
+trimer_affected_org <- trimers_affected %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::group_by(shared_organelle, trimer_affected) %>%
+  dplyr::summarise(n_trimers = dplyr::n(), .groups = "drop") %>%
   tidyr::pivot_wider(
     names_from = trimer_affected,
     values_from = n_trimers,
     values_fill = 0
-  ) |>
+  ) %>%
   dplyr::mutate(
     total = affected + intact,
     frac_affected = affected / total
-  ) |>
+  ) %>%
   dplyr::arrange(desc(frac_affected))
 
-write_csv(trimer_affected_org_ko,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_affected_by_organelle_ko.csv"))
+write_csv(trimer_affected_org, file.path(out_dir_lysoip_ppi, "tables/multimer", "trimer_affected_by_organelle.csv"))
 
-# Summarize across all KOs
-trimer_affected_by_org <- trimer_affected_org_ko |>
-  dplyr::group_by(shared_organelle) |>
-  dplyr::summarise(
-    n_affected = sum(affected, na.rm = TRUE),
-    n_total = sum(total, na.rm = TRUE),
-    frac_affected = n_affected / n_total,
-    .groups = "drop"
-  ) |>
-  dplyr::arrange(desc(frac_affected))
+message("Affected trimers by organelle:")
+print(trimer_affected_org)
 
-write_csv(trimer_affected_by_org,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_affected_by_organelle_summary.csv"))
+# --- Step 7: Visualizations ---
+# Barplot of trimer states
+trimer_state_counts <- trimers_lyso_states %>%
+  dplyr::count(trimer_state)
 
-message("Affected trimers by organelle (top 20):")
-print(head(trimer_affected_org_ko, 20))
+p_trimer_states <- ggplot(trimer_state_counts, aes(x = trimer_state, y = n, fill = trimer_state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", broken = "dodgerblue4"), name = "Trimer State") +
+  labs(title = "Trimer States: Control → ASAH1 KO", x = NULL, y = "Number of Trimers") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
 
-
-# --- Step 6: Broken trimers by organelle × KO × neuron ---
-# Broken trimers (2+ edges lost)
-trimer_broken_org_ko <- trimers_ko_states |>
-  dplyr::filter(trimer_state == "broken") |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::group_by(genotype, neuron, shared_organelle) |>
-  dplyr::summarise(n_broken = n(), .groups = "drop") |>
-  dplyr::arrange(desc(n_broken))
-
-write_csv(trimer_broken_org_ko, file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_broken_by_organelle_ko.csv"))
-
-# Summary by organelle (across all KOs)
-trimer_broken_by_org <- trimer_broken_org_ko |>
-  dplyr::group_by(shared_organelle) |>
-  dplyr::summarise(n_broken = sum(n_broken), .groups = "drop") |>
-  dplyr::arrange(desc(n_broken))
-
-write_csv(trimer_broken_by_org,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_broken_by_organelle_summary.csv"))
-
-# Partial trimers (1 edge lost)
-trimer_partial_org_ko <- trimers_ko_states |>
-  dplyr::filter(trimer_state == "partial") |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::group_by(genotype, neuron, shared_organelle) |>
-  dplyr::summarise(n_partial = n(), .groups = "drop") |>
-  dplyr::arrange(desc(n_partial))
-
-write_csv(trimer_partial_org_ko,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_partial_by_organelle_ko.csv"))
-
-# Summary by organelle (across all KOs)
-trimer_partial_by_org <- trimer_partial_org_ko |>
-  dplyr::group_by(shared_organelle) |>
-  dplyr::summarise(n_partial = sum(n_partial), .groups = "drop") |>
-  dplyr::arrange(desc(n_partial))
-
-write_csv(
-  trimer_partial_by_org,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_partial_by_organelle_summary.csv")
-)
-
-message("Broken trimers by organelle (top 20):")
-print(head(trimer_broken_org_ko, 20))
+ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "bars_trimer_states.pdf"), p_trimer_states, width = 4, height = 4, device = cairo_pdf)
 
 
-# --- Step 7: Visualization - barplot of broken trimers per KO ---
-  # Step 7.1: EDGES: Visualization - barplot of broken trimers per KO ---
-p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken), y = n_broken, fill = neuron)) +
-  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
-  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
-  labs(
-    title = "Broken trimers edges per KO",
-    x = NULL,
-    y = "Number of broken trimers edges"
-  ) +
-  theme_bw(base_size = 6) +
+# --- Step 8: Plot trimer status by annotation ---
+# First create overall trimer state counts (like complex_state_counts)
+trimer_state_counts <- trimers_lyso_states %>%
+  dplyr::count(trimer_state)
+
+p_trimer_states <- ggplot(trimer_state_counts, aes(x = trimer_state, y = n, fill = trimer_state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", broken = "dodgerblue4"), name = "Trimer State") +
+  labs(title = "Trimer States: Control → ASAH1 KO", x = NULL, y = "Number of Trimers") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "bars_trimer_states.pdf"), p_trimer_states, width = 4, height = 4, device = cairo_pdf)
+
+# Count trimers by annotation and state (matching complex style)
+trimer_status_by_annotation <- trimers_lyso_states %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::filter(!is.na(shared_organelle), shared_organelle != "Other") %>%
+  dplyr::filter(shared_organelle %in% c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")) %>%
+  dplyr::count(shared_organelle, trimer_state, name = "n_trimers") %>%
+  dplyr::mutate(
+    shared_organelle = factor(shared_organelle, levels = c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")),
+    trimer_state = factor(trimer_state, levels = c("intact", "partial", "broken"))
+  )
+
+# Plot trimer status by annotation (matching complex style)
+p_trimer_status_annotation <- ggplot(trimer_status_by_annotation, aes(x = shared_organelle, y = n_trimers, fill = trimer_state)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", broken = "dodgerblue4"), name = "Trimer State") +
+  labs(title = "Trimer Status by Annotation", x = "Annotation", y = "Number of Trimers") +
+  theme_bw(base_size = 8) +
   theme(
     panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
   )
 
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),p_trimer_bar, width = 9, height = 5, device = cairo_pdf)
+# Save the plot (matching complex dimensions)
+ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "trimer_status_by_annotation.pdf"), p_trimer_status_annotation, width = 4, height = 4, device = cairo_pdf)
 
-
-  # Step 7b: TRIMERS: Visualization – affected trimers per KO ---
-p_trimer_affected_bar <- ggplot(
-  trimer_affected_org_ko |> dplyr::filter(shared_organelle != "Other"),
-  aes(x = reorder(genotype, -frac_affected), y = affected, fill = neuron)
-) +
-  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
-  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
-  labs(
-    title = "Affected trimers per KO",
-    x = NULL,
-    y = "Number of affected trimers"
-  ) +
-  theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
-  )
-
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_ko.pdf"),p_trimer_affected_bar,width = 6,height = 5,device = cairo_pdf)
-
-
-# --- Step 8: Heatmap - broken trimers by organelle × KO ---
-  # Step 8: EDGES: Heatmap - broken trimers by organelle × KO ---
-for (nt in c("iN", "iDA")) {
-  trimer_org_wide <- trimer_broken_org_ko |>
-    dplyr::filter(neuron == nt) |>
-    tidyr::pivot_wider(
-      names_from = shared_organelle,
-      values_from = n_broken,
-      values_fill = 0
-    )
-  
-  if (nrow(trimer_org_wide) < 2 || ncol(trimer_org_wide) < 3) {
-    message("Insufficient data for heatmap (", nt, "); skipping.")
-    next
-  }
-  
-  trimer_org_mat <- as.matrix(trimer_org_wide[, -c(1:2)])
-  rownames(trimer_org_mat) <- trimer_org_wide$genotype
-  
-  pheatmap::pheatmap(
-    trimer_org_mat,
-    scale = "none",
-    color = colorRampPalette(c("white", "#C51B7D"))(100),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    border_color = NA,
-    fontsize = 6,
-    cellwidth = 10,
-    cellheight = 10,
-    main = paste("Broken trimer edges by organelle –", nt),
-    filename = file.path(out_dir_ppi_vuln, "plots/multimer", paste0("heatmap_broken_edges_trimers_by_organelle_", nt, ".pdf")),
-    width = 10,
-    height = 8
-  )
-}
-
-  # Step 8b: TRIMERS: Heatmap – affected trimers by organelle × KO ---
-for (nt in c("iN", "iDA")) {
-  trimer_aff_org_wide <- trimer_affected_org_ko |>
-    dplyr::filter(neuron == nt, shared_organelle != "Other") |>
-    dplyr::group_by(genotype, shared_organelle) |>
-    dplyr::summarise(
-      n_affected = sum(affected, na.rm = TRUE),
-      .groups = "drop"
-    ) |>
-    tidyr::pivot_wider(
-      names_from = shared_organelle,
-      values_from = n_affected,
-      values_fill = 0
-    )
-
-  if (nrow(trimer_aff_org_wide) < 2 || ncol(trimer_aff_org_wide) < 3) {
-    message("Insufficient data for affected-trimer heatmap (", nt, "); skipping.")
-    next
-  }
-
-  trimer_aff_mat <- as.matrix(trimer_aff_org_wide[, -1])
-  rownames(trimer_aff_mat) <- trimer_aff_org_wide$genotype
-
-  pheatmap::pheatmap(
-    trimer_aff_mat,
-    scale = "none",
-    color = colorRampPalette(c("white", "#C51B7D"))(100),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    border_color = NA,
-    fontsize = 6,
-    cellwidth = 10,
-    cellheight = 10,
-    main = paste("Affected trimers by organelle –", nt),
-    filename = file.path(out_dir_ppi_vuln, "plots/multimer",paste0("heatmap_affected_trimers_by_organelle_", nt, ".pdf")),
-    width = 10,
-    height = 8
-  )
-}
 ```
 
 
 ### Multimer Analysis of Lysosmal PPIs 
 ```{r}
-after step 6, can we implememt a trimer / multimer evaluation similar to the code below:
-
-### XVIIIf. Multimer PPI Analysis
-###### Trimer PPI complex analysis 
-```{r}
-# --------- Trimer identification and vulnerability analysis ---------
-# --- Step 0: Create output directories ---
-dir.create(file.path(out_dir_ppi_vuln, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_ppi_vuln, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
-
-# --- Step 1: Filter to NEURONAL high-confidence PPIs only ---
-conf_threshold <- 0.95
-
-# Get neuronal genes (same as used in ko_edge_states)
-neuronal_genes <- unique(c(ko_edge_states$Gene1, ko_edge_states$Gene2))
-neuronal_genes <- neuronal_genes[!is.na(neuronal_genes)]
-
-message("Number of neuronal genes: ", length(neuronal_genes))
-
-# Filter high-confidence edges to neuronal proteome
-high_conf_edges <- baseline_edges_union |>
-  dplyr::filter(
-    Predictome_conf >= conf_threshold,
-    Gene1 %in% neuronal_genes,
-    Gene2 %in% neuronal_genes
-  ) |>
-  dplyr::select(key, Gene1, Gene2, Predictome_conf)
-
-message("High-confidence neuronal edges (≥", conf_threshold, "): ", nrow(high_conf_edges))
-
-# If too few, reduce threshold
-if (nrow(high_conf_edges) < 100) {
-  conf_threshold <- 0.90
-  high_conf_edges <- baseline_edges_union |>
-    dplyr::filter(
-      Predictome_conf >= conf_threshold,
-      Gene1 %in% neuronal_genes,
-      Gene2 %in% neuronal_genes
-    ) |>
-    dplyr::select(key, Gene1, Gene2, Predictome_conf)
-  message("Reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
-}
-
-if (nrow(high_conf_edges) < 50) {
-  conf_threshold <- 0.85
-  high_conf_edges <- baseline_edges_union |>
-    dplyr::filter(
-      Predictome_conf >= conf_threshold,
-      Gene1 %in% neuronal_genes,
-      Gene2 %in% neuronal_genes
-    ) |>
-    dplyr::select(key, Gene1, Gene2, Predictome_conf)
-  message("Further reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
-}
-
-# Save high confidence dimers
-write_csv(high_conf_edges, file.path(out_dir_ppi_vuln, "tables", "high_confidence_dimers.csv"))
-
-
-# --- Step 2: Find all potential trimers (A-B, B-C, A-C all present) ---
-# Create adjacency list
-edges_df <- high_conf_edges |>
-  dplyr::select(Gene1, Gene2) |>
-  dplyr::distinct()
-
-message("Starting trimer search...")
-
-# Find trimers: for each pair A-B, find all C where B-C and A-C both exist
-trimers_list <- list()
-
-for (i in seq_len(nrow(edges_df))) {
-  if (i %% 100 == 0) message("  Processed ", i, "/", nrow(edges_df), " edges...")
-  
-  A <- edges_df$Gene1[i]
-  B <- edges_df$Gene2[i]
-  
-  # Find all C connected to B
-  C_via_B <- edges_df |>
-    dplyr::filter((Gene1 == B & Gene2 != A) | (Gene2 == B & Gene1 != A)) |>
-    dplyr::mutate(C = ifelse(Gene1 == B, Gene2, Gene1)) |>
-    dplyr::pull(C) |>
-    unique()
-  
-  if (length(C_via_B) == 0) next
-  
-  # Check if A-C edge exists for each C
-  for (C in C_via_B) {
-    ac_exists <- any(
-      (edges_df$Gene1 == A & edges_df$Gene2 == C) |
-      (edges_df$Gene1 == C & edges_df$Gene2 == A)
-    )
-    
-    if (ac_exists) {
-      # Found a trimer! Sort genes to avoid duplicates
-      trimer <- sort(c(A, B, C))
-      trimer_id <- paste(trimer, collapse = "::")
-      trimers_list[[trimer_id]] <- trimer
-    }
-  }
-}
-
-message("Trimer search complete!")
-
-# Convert to dataframe
-trimers_baseline <- tibble::tibble(
-  trimer_id = names(trimers_list),
-  GeneA = sapply(trimers_list, `[`, 1),
-  GeneB = sapply(trimers_list, `[`, 2),
-  GeneC = sapply(trimers_list, `[`, 3)
-)
-
-message("Total trimers found in neuronal baseline: ", nrow(trimers_baseline))
-
-# Save baseline trimers
-write_csv(trimers_baseline, file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_trimers.csv"))
-
-
-# --- Step 3: Add organelle annotations to trimers ---
-gene_to_org <- binary_matrix |>
-  dplyr::select(Genes, all_of(organelle_tags))
-
-trimers_annotated <- trimers_baseline |>
-  dplyr::left_join(gene_to_org, by = c("GeneA" = "Genes")) |>
-  dplyr::rename_with(~paste0(.x, "_A"), all_of(organelle_tags)) |>
-  dplyr::left_join(gene_to_org, by = c("GeneB" = "Genes")) |>
-  dplyr::rename_with(~paste0(.x, "_B"), all_of(organelle_tags)) |>
-  dplyr::left_join(gene_to_org, by = c("GeneC" = "Genes")) |>
-  dplyr::rename_with(~paste0(.x, "_C"), all_of(organelle_tags))
-
-# Determine shared organelle(s) - all three proteins must be in same organelle
-trimers_annotated <- trimers_annotated |>
-  dplyr::rowwise() |>
-  dplyr::mutate(
-    shared_organelle = {
-      org_A <- organelle_tags[which(c_across(paste0(organelle_tags, "_A")))]
-      org_B <- organelle_tags[which(c_across(paste0(organelle_tags, "_B")))]
-      org_C <- organelle_tags[which(c_across(paste0(organelle_tags, "_C")))]
-      
-      shared <- Reduce(intersect, list(org_A, org_B, org_C))
-      if (length(shared) == 0) "Other" else paste(shared, collapse = ";")
-    }
-  ) |>
-  dplyr::ungroup()
-
-# Summary by organelle
-trimer_org_summary <- trimers_annotated |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::count(shared_organelle, name = "n_trimers") |>
-  dplyr::arrange(desc(n_trimers))
-
-message("Trimers by organelle:")
-print(trimer_org_summary)
-
-write_csv(trimer_org_summary, file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_trimers_by_organelle.csv"))
-
-
-
-# --- Step 4: Assess trimer integrity per KO × neuron ---
-# 4a. Build UniProt→Gene mapping from ko_edge_states
-uniprot_to_gene <- ko_edge_states |>
-  dplyr::select(Protein1, Gene1) |>
-  dplyr::rename(Uniprot = Protein1, Gene = Gene1) |>
-  dplyr::distinct() |>
-  dplyr::bind_rows(
-    ko_edge_states |>
-      dplyr::select(Protein2, Gene2) |>
-      dplyr::rename(Uniprot = Protein2, Gene = Gene2) |>
-      dplyr::distinct()
-  ) |>
-  dplyr::distinct(Uniprot, Gene)
-
-message("UniProt→Gene mapping entries: ", nrow(uniprot_to_gene))
-
-
-# 4b. Convert ko_ppi_profiles (UniProt keys) to gene-based keys
-ko_ppi_profiles_genes <- ko_ppi_profiles |>
-  tidyr::separate(key, into = c("UniprotA", "UniprotB"), sep = "::", remove = FALSE) |>
-  dplyr::left_join(uniprot_to_gene, by = c("UniprotA" = "Uniprot")) |>
-  dplyr::rename(GeneA = Gene) |>
-  dplyr::left_join(uniprot_to_gene, by = c("UniprotB" = "Uniprot")) |>
-  dplyr::rename(GeneB = Gene) |>
-  dplyr::mutate(key_gene = .make_undirected_key(GeneA, GeneB)) |>
-  dplyr::filter(!is.na(key_gene))
-
-message("Converted ko_ppi_profiles to gene-level edges: ", nrow(ko_ppi_profiles_genes))
-
-
-# 4c. Prepare trimer edges
-trimers_with_keys <- trimers_annotated |>
-  dplyr::filter(!is.na(GeneA) & !is.na(GeneB) & !is.na(GeneC)) |>
-  dplyr::filter(rowSums(is.na(dplyr::across(where(is.logical)))) < ncol(dplyr::across(where(is.logical)))) |>
-  dplyr::mutate(
-    key_AB = .make_undirected_key(GeneA, GeneB),
-    key_BC = .make_undirected_key(GeneB, GeneC),
-    key_AC = .make_undirected_key(GeneA, GeneC)
-  ) |>
-  dplyr::filter(!is.na(key_AB) & !is.na(key_BC) & !is.na(key_AC))
-
-message("Removed ", nrow(trimers_annotated) - nrow(trimers_with_keys), " trimers with missing edges.")
-
-
-# 4d. Expand to all KO × neuron contexts
-ko_neuron_combos <- ko_ppi_profiles_genes |>
-  dplyr::distinct(genotype, neuron)
-
-trimers_expanded <- trimers_with_keys |>
-  tidyr::crossing(ko_neuron_combos)
-
-message("Joining edge states for trimers...")
-
-
-# 4e. Join KO×neuron-level edge states (gene-based)
-trimers_ko_states <- trimers_expanded |>
-  dplyr::left_join(
-    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
-    by = c("key_AB" = "key_gene", "genotype", "neuron")
-  ) |>
-  dplyr::rename(state_AB = state) |>
-  dplyr::left_join(
-    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
-    by = c("key_BC" = "key_gene", "genotype", "neuron")
-  ) |>
-  dplyr::rename(state_BC = state) |>
-  dplyr::left_join(
-    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
-    by = c("key_AC" = "key_gene", "genotype", "neuron")
-  ) |>
-  dplyr::rename(state_AC = state) |>
-  dplyr::mutate(
-    state_AB = tidyr::replace_na(state_AB, "retained"),
-    state_BC = tidyr::replace_na(state_BC, "retained"),
-    state_AC = tidyr::replace_na(state_AC, "retained"),
-    n_lost = (state_AB == "lost") + (state_BC == "lost") + (state_AC == "lost"),
-    trimer_state = dplyr::case_when(
-      n_lost >= 2 ~ "broken",
-      n_lost == 1 ~ "partial",
-      n_lost == 0 ~ "intact",
-      TRUE ~ "unknown"
-    )
-  )
-
-message("Edge states joined successfully!")
-
-
-# Save detailed trimer states
-write_csv(trimers_ko_states,file.path(out_dir_ppi_vuln, "tables/multimer", "trimers_ko_states.csv"))
-
-
-# --- Step 5: Summary: broken trimers per KO × neuron ---
-trimer_ko_summary <- trimers_ko_states |>
-  dplyr::group_by(genotype, neuron) |>
-  dplyr::summarise(
-    n_total = n(),
-    n_intact = sum(trimer_state == "intact", na.rm = TRUE),
-    n_broken = sum(trimer_state == "broken", na.rm = TRUE),
-    n_partial = sum(trimer_state == "partial", na.rm = TRUE),
-    n_unknown = sum(trimer_state == "unknown", na.rm = TRUE),
-    frac_broken = n_broken / n_total,
-    frac_partial = n_partial / n_total,
-    .groups = "drop"
-  ) |>
-  dplyr::arrange(desc(frac_broken))
-
-write_csv(trimer_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_ko_summary.csv"))
-
-message("Trimer breakage summary:")
-print(trimer_ko_summary)
-
-
-# --- Step 5b: Affected trimers by organelle × KO × neuron ---
-# Collapse to one row per trimer per KO×neuron
-trimers_affected <- trimers_ko_states |>
-  dplyr::mutate(
-    trimer_affected = ifelse(n_lost >= 1, "affected", "intact")
-  ) |>
-  dplyr::distinct(genotype, neuron, trimer_id, shared_organelle, trimer_affected)
-
-# Count affected vs intact trimers per organelle × KO × neuron
-trimer_affected_org_ko <- trimers_affected |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::group_by(genotype, neuron, shared_organelle, trimer_affected) |>
-  dplyr::summarise(n_trimers = dplyr::n(), .groups = "drop") |>
-  tidyr::pivot_wider(
-    names_from = trimer_affected,
-    values_from = n_trimers,
-    values_fill = 0
-  ) |>
-  dplyr::mutate(
-    total = affected + intact,
-    frac_affected = affected / total
-  ) |>
-  dplyr::arrange(desc(frac_affected))
-
-write_csv(trimer_affected_org_ko,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_affected_by_organelle_ko.csv"))
-
-# Summarize across all KOs
-trimer_affected_by_org <- trimer_affected_org_ko |>
-  dplyr::group_by(shared_organelle) |>
-  dplyr::summarise(
-    n_affected = sum(affected, na.rm = TRUE),
-    n_total = sum(total, na.rm = TRUE),
-    frac_affected = n_affected / n_total,
-    .groups = "drop"
-  ) |>
-  dplyr::arrange(desc(frac_affected))
-
-write_csv(trimer_affected_by_org,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_affected_by_organelle_summary.csv"))
-
-message("Affected trimers by organelle (top 20):")
-print(head(trimer_affected_org_ko, 20))
-
-
-# --- Step 6: Broken trimers by organelle × KO × neuron ---
-# Broken trimers (2+ edges lost)
-trimer_broken_org_ko <- trimers_ko_states |>
-  dplyr::filter(trimer_state == "broken") |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::group_by(genotype, neuron, shared_organelle) |>
-  dplyr::summarise(n_broken = n(), .groups = "drop") |>
-  dplyr::arrange(desc(n_broken))
-
-write_csv(trimer_broken_org_ko, file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_broken_by_organelle_ko.csv"))
-
-# Summary by organelle (across all KOs)
-trimer_broken_by_org <- trimer_broken_org_ko |>
-  dplyr::group_by(shared_organelle) |>
-  dplyr::summarise(n_broken = sum(n_broken), .groups = "drop") |>
-  dplyr::arrange(desc(n_broken))
-
-write_csv(trimer_broken_by_org,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_broken_by_organelle_summary.csv"))
-
-# Partial trimers (1 edge lost)
-trimer_partial_org_ko <- trimers_ko_states |>
-  dplyr::filter(trimer_state == "partial") |>
-  tidyr::separate_rows(shared_organelle, sep = ";") |>
-  dplyr::group_by(genotype, neuron, shared_organelle) |>
-  dplyr::summarise(n_partial = n(), .groups = "drop") |>
-  dplyr::arrange(desc(n_partial))
-
-write_csv(trimer_partial_org_ko,file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_partial_by_organelle_ko.csv"))
-
-# Summary by organelle (across all KOs)
-trimer_partial_by_org <- trimer_partial_org_ko |>
-  dplyr::group_by(shared_organelle) |>
-  dplyr::summarise(n_partial = sum(n_partial), .groups = "drop") |>
-  dplyr::arrange(desc(n_partial))
-
-write_csv(
-  trimer_partial_by_org,
-  file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_partial_by_organelle_summary.csv")
-)
-
-message("Broken trimers by organelle (top 20):")
-print(head(trimer_broken_org_ko, 20))
-
-
-# --- Step 7: Visualization - barplot of broken trimers per KO ---
-  # Step 7.1: EDGES: Visualization - barplot of broken trimers per KO ---
-p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken), y = n_broken, fill = neuron)) +
-  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
-  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
-  labs(
-    title = "Broken trimers edges per KO",
-    x = NULL,
-    y = "Number of broken trimers edges"
-  ) +
-  theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
-  )
-
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),p_trimer_bar, width = 9, height = 5, device = cairo_pdf)
-
-
-  # Step 7b: TRIMERS: Visualization – affected trimers per KO ---
-p_trimer_affected_bar <- ggplot(
-  trimer_affected_org_ko |> dplyr::filter(shared_organelle != "Other"),
-  aes(x = reorder(genotype, -frac_affected), y = affected, fill = neuron)
-) +
-  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
-  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
-  labs(
-    title = "Affected trimers per KO",
-    x = NULL,
-    y = "Number of affected trimers"
-  ) +
-  theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
-  )
-
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_ko.pdf"),p_trimer_affected_bar,width = 6,height = 5,device = cairo_pdf)
-
-
-# --- Step 8: Heatmap - broken trimers by organelle × KO ---
-  # Step 8: EDGES: Heatmap - broken trimers by organelle × KO ---
-for (nt in c("iN", "iDA")) {
-  trimer_org_wide <- trimer_broken_org_ko |>
-    dplyr::filter(neuron == nt) |>
-    tidyr::pivot_wider(
-      names_from = shared_organelle,
-      values_from = n_broken,
-      values_fill = 0
-    )
-  
-  if (nrow(trimer_org_wide) < 2 || ncol(trimer_org_wide) < 3) {
-    message("Insufficient data for heatmap (", nt, "); skipping.")
-    next
-  }
-  
-  trimer_org_mat <- as.matrix(trimer_org_wide[, -c(1:2)])
-  rownames(trimer_org_mat) <- trimer_org_wide$genotype
-  
-  pheatmap::pheatmap(
-    trimer_org_mat,
-    scale = "none",
-    color = colorRampPalette(c("white", "#C51B7D"))(100),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    border_color = NA,
-    fontsize = 6,
-    cellwidth = 10,
-    cellheight = 10,
-    main = paste("Broken trimer edges by organelle –", nt),
-    filename = file.path(out_dir_ppi_vuln, "plots/multimer", paste0("heatmap_broken_edges_trimers_by_organelle_", nt, ".pdf")),
-    width = 10,
-    height = 8
-  )
-}
-
-  # Step 8b: TRIMERS: Heatmap – affected trimers by organelle × KO ---
-for (nt in c("iN", "iDA")) {
-  trimer_aff_org_wide <- trimer_affected_org_ko |>
-    dplyr::filter(neuron == nt, shared_organelle != "Other") |>
-    dplyr::group_by(genotype, shared_organelle) |>
-    dplyr::summarise(
-      n_affected = sum(affected, na.rm = TRUE),
-      .groups = "drop"
-    ) |>
-    tidyr::pivot_wider(
-      names_from = shared_organelle,
-      values_from = n_affected,
-      values_fill = 0
-    )
-
-  if (nrow(trimer_aff_org_wide) < 2 || ncol(trimer_aff_org_wide) < 3) {
-    message("Insufficient data for affected-trimer heatmap (", nt, "); skipping.")
-    next
-  }
-
-  trimer_aff_mat <- as.matrix(trimer_aff_org_wide[, -1])
-  rownames(trimer_aff_mat) <- trimer_aff_org_wide$genotype
-
-  pheatmap::pheatmap(
-    trimer_aff_mat,
-    scale = "none",
-    color = colorRampPalette(c("white", "#C51B7D"))(100),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    border_color = NA,
-    fontsize = 6,
-    cellwidth = 10,
-    cellheight = 10,
-    main = paste("Affected trimers by organelle –", nt),
-    filename = file.path(out_dir_ppi_vuln, "plots/multimer",paste0("heatmap_affected_trimers_by_organelle_", nt, ".pdf")),
-    width = 10,
-    height = 8
-  )
-}
-
-
-```
-
-
-
-
-##### Multimer Analysis: Dense Subgraph Detection 
-```{r}
-# --------- Identify protein complexes via community detection ---------
-# Find highly interconnected modules using:
-# - Louvain community detection
-# - Leiden algorithm  
-# - MCL (Markov Clustering)
-# - Finds real biological complexes, handles partial connectivity
-# if 75% of edges lost ==> compelx disruped 
-# if 25% of edges lost ==> complex affecetd 
-
-
-# --- Step 0: Load required package ---
-if (!requireNamespace("igraph", quietly = TRUE)) {
-  stop("Package 'igraph' is required. Install with: install.packages('igraph')")
-}
-library(igraph)
+# =========================================================================
+#  Identify protein complexes via community detection 
+# =========================================================================
 
 # --- Step 1: Build baseline network from high-confidence edges ---
 message("Building baseline PPI network...")
 
 # Use same high_conf_edges from trimer analysis
 baseline_net <- igraph::graph_from_data_frame(
-  d = high_conf_edges |> dplyr::select(Gene1, Gene2),
+  d = high_conf_edges %>% dplyr::select(Gene1, Gene2),
   directed = FALSE,
   vertices = data.frame(name = unique(c(high_conf_edges$Gene1, high_conf_edges$Gene2)))
 )
@@ -3082,7 +2414,6 @@ igraph::E(baseline_net)$weight <- high_conf_edges$Predictome_conf
 
 message("Baseline network: ", vcount(baseline_net), " proteins, ", ecount(baseline_net), " edges")
 
-
 # --- Step 2: Community detection using Louvain algorithm ---
 message("Running Louvain community detection...")
 
@@ -3091,36 +2422,28 @@ louvain_communities <- igraph::cluster_louvain(
   weights = igraph::E(baseline_net)$weight
 )
 
-# Extract community assignments - convert to integer
+# Extract community assignments
 protein_communities <- data.frame(
   Gene = igraph::V(baseline_net)$name,
-  community_id = as.integer(igraph::membership(louvain_communities)),  # FIXED: convert to integer
+  community_id = as.integer(igraph::membership(louvain_communities)),
   stringsAsFactors = FALSE
 )
 
 message("Found ", max(protein_communities$community_id), " communities")
 
-
 # --- Step 3: Filter to meaningful complexes (size 3-10) ---
-community_sizes <- protein_communities |>
+community_sizes <- protein_communities %>%
   dplyr::count(community_id, name = "size")
 
-valid_communities <- community_sizes |>
-  dplyr::filter(size >= 3, size <= 10) |>
+valid_communities <- community_sizes %>%
+  dplyr::filter(size >= 3, size <= 10) %>%
   dplyr::pull(community_id)
 
 message("Communities with 3-10 proteins: ", length(valid_communities))
 
-complexes_baseline <- protein_communities |>
-  dplyr::filter(community_id %in% valid_communities) |>
+complexes_baseline <- protein_communities %>%
+  dplyr::filter(community_id %in% valid_communities) %>%
   dplyr::arrange(community_id, Gene)
-
-complexes_baseline <- complexes_baseline %>%
-  dplyr::mutate(community_id = sprintf("Complex_%04d", as.integer(community_id)))
-
-# Create complex IDs
-complexes_baseline <- complexes_baseline %>%
-  dplyr::mutate(community_id = as.integer(gsub("Complex_", "", community_id)))
 
 complexes_summary <- complexes_baseline %>%
   dplyr::group_by(community_id) %>%
@@ -3132,66 +2455,55 @@ complexes_summary <- complexes_baseline %>%
   ) %>%
   dplyr::arrange(desc(n_proteins))
 
-# save csv
-write_csv(complexes_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes.csv"))
+write_csv(complexes_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "baseline_complexes.csv"))
 
 message("Baseline complexes summary:")
 print(head(complexes_summary, 20))
 
-
 # --- Step 4: Annotate complexes with organelles ---
-complexes_annotated <- complexes_baseline |>
-  dplyr::left_join(
-    protein_communities |> 
-      dplyr::left_join(complexes_summary |> dplyr::select(community_id, complex_id), by = "community_id"),
-    by = c("Gene", "community_id")
-  ) |>
-  dplyr::left_join(gene_to_org, by = c("Gene" = "Genes"))
+complexes_annotated <- complexes_baseline %>%
+  dplyr::left_join(gene_to_org, by = c("Gene" = "Gene.Symbol"))
 
 # Determine dominant organelle per complex
-complex_organelle <- complexes_annotated |>
+complex_organelle <- complexes_annotated %>%
   tidyr::pivot_longer(
-    cols = all_of(organelle_tags),
+    cols = all_of(annotations),
     names_to = "organelle",
     values_to = "present"
-  ) |>
-  dplyr::filter(present == TRUE | present == 1) |>
-  dplyr::group_by(community_id, organelle) |>
-  dplyr::summarise(n_proteins = n(), .groups = "drop_last") |>
-  dplyr::slice_max(n_proteins, n = 1, with_ties = FALSE) |>
-  dplyr::ungroup() |>
+  ) %>%
+  dplyr::filter(present == TRUE | present == 1) %>%
+  dplyr::group_by(community_id, organelle) %>%
+  dplyr::summarise(n_proteins = n(), .groups = "drop_last") %>%
+  dplyr::slice_max(n_proteins, n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
   dplyr::mutate(organelle = ifelse(is.na(organelle), "Other", organelle))
 
-complexes_summary <- complexes_summary |>
-  dplyr::left_join(complex_organelle |> dplyr::select(community_id, organelle), by = "community_id") |>
+complexes_summary <- complexes_summary %>%
+  dplyr::left_join(complex_organelle %>% dplyr::select(community_id, organelle), by = "community_id") %>%
   dplyr::mutate(organelle = tidyr::replace_na(organelle, "Other"))
 
 # Count by organelle
-complex_org_summary <- complexes_summary |>
-  dplyr::count(organelle, name = "n_complexes") |>
+complex_org_summary <- complexes_summary %>%
+  dplyr::count(organelle, name = "n_complexes") %>%
   dplyr::arrange(desc(n_complexes))
 
-# save csv
-write_csv(complex_org_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "baseline_complexes_by_organelle.csv"))
+write_csv(complex_org_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "baseline_complexes_by_organelle.csv"))
 
 message("Complexes by organelle:")
 print(complex_org_summary)
 
-
-# --- Step 5: Assess complex integrity per KO × neuron ---
-message("Assessing complex disruption per KO...")
-
+# --- Step 5: Assess complex integrity for Control vs ASAH1 ---
 # Get all edges within each complex
 complex_edges_list <- list()
 
 for (cid in valid_communities) {
-  complex_genes <- complexes_baseline |>
-    dplyr::filter(community_id == cid) |>
+  complex_genes <- complexes_baseline %>%
+    dplyr::filter(community_id == cid) %>%
     dplyr::pull(Gene)
   
   # Get all edges between proteins in this complex
-  complex_edges <- high_conf_edges |>
-    dplyr::filter(Gene1 %in% complex_genes, Gene2 %in% complex_genes) |>
+  complex_edges <- high_conf_edges %>%
+    dplyr::filter(Gene1 %in% complex_genes, Gene2 %in% complex_genes) %>%
     dplyr::mutate(community_id = cid)
   
   complex_edges_list[[as.character(cid)]] <- complex_edges
@@ -3200,290 +2512,120 @@ for (cid in valid_communities) {
 complex_edges_df <- dplyr::bind_rows(complex_edges_list)
 
 # Add complex_id
-complex_edges_df <- complex_edges_df |>
+complex_edges_df <- complex_edges_df %>%
   dplyr::left_join(
-    complexes_summary |> dplyr::select(community_id, complex_id),
+    complexes_summary %>% dplyr::select(community_id, complex_id),
     by = "community_id"
   )
 
 message("Total edges in complexes: ", nrow(complex_edges_df))
 
-
-# --- Step 6: Match complex edges to KO × neuron states ---
-# Convert to gene-based keys
-complex_edges_df <- complex_edges_df |>
+# --- Step 6: Match complex edges to LysoIP states ---
+complex_edges_df <- complex_edges_df %>%
   dplyr::mutate(key_gene = .make_undirected_key(Gene1, Gene2))
 
-# Expand to all KO × neuron
-complexes_expanded <- complex_edges_df |>
-  dplyr::select(complex_id, community_id, key_gene) |>
-  tidyr::crossing(ko_neuron_combos)
-
-# Join edge states
-complexes_ko_states <- complexes_expanded |>
+# Join edge states from lysoip_edge_states
+complexes_lyso_states <- complex_edges_df %>%
   dplyr::left_join(
-    ko_ppi_profiles_genes |> dplyr::select(key_gene, genotype, neuron, state),
-    by = c("key_gene", "genotype", "neuron")
-  ) |>
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_gene" = "key")
+  ) %>%
+  dplyr::left_join(
+    complexes_summary %>% dplyr::select(complex_id, organelle),
+    by = "complex_id"
+  ) %>%
   dplyr::mutate(
     state = tidyr::replace_na(state, "retained"),
     edge_lost = state == "lost"
   )
 
-# Aggregate per complex × KO × neuron
-complex_ko_summary <- complexes_ko_states |>
-  dplyr::group_by(complex_id, genotype, neuron) |>
+# Aggregate per complex
+complex_lyso_summary <- complexes_lyso_states %>%
+  dplyr::group_by(complex_id) %>%
   dplyr::summarise(
     n_edges_total = n(),
     n_edges_lost = sum(edge_lost, na.rm = TRUE),
     frac_edges_lost = n_edges_lost / n_edges_total,
     .groups = "drop"
-  ) |>
+  ) %>%
   dplyr::left_join(
-    complexes_summary |> dplyr::select(complex_id, n_proteins, organelle),
+    complexes_summary %>% dplyr::select(complex_id, n_proteins, organelle),
     by = "complex_id"
-  ) |>
+  ) %>%
   dplyr::mutate(
-      complex_state = case_when(
-        frac_edges_lost >= 0.75 ~ "disrupted",   # ≥75% edges lost
-        frac_edges_lost >= 0.25 ~ "partial",     # 25-75% lost
-        TRUE                    ~ "intact"
-      )
+    complex_state = case_when(
+      frac_edges_lost >= 0.75 ~ "disrupted",   # ≥75% edges lost
+      frac_edges_lost >= 0.25 ~ "partial",     # 25-75% lost
+      TRUE                    ~ "intact"
+    )
   )
 
-# save csv
-write_csv(complex_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "complexes_ko_states.csv"))
-
+write_csv(complex_lyso_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "complexes_lyso_states.csv"))
 
 # --- Step 7: Summary statistics ---
-# Per KO × neuron
-complex_disruption_summary <- complex_ko_summary |>
-  dplyr::group_by(genotype, neuron) |>
+complex_disruption_summary <- complex_lyso_summary %>%
   dplyr::summarise(
     n_complexes = n(),
     n_intact = sum(complex_state == "intact"),
     n_disrupted = sum(complex_state == "disrupted"),
     n_partial = sum(complex_state == "partial"),
-    frac_disrupted = n_disrupted / n_complexes,
-    .groups = "drop"
-  ) |>
-  dplyr::arrange(desc(frac_disrupted))
+    frac_disrupted = n_disrupted / n_complexes
+  )
 
-# save csv
-write_csv(complex_disruption_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disruption_summary.csv"))
+write_csv(complex_disruption_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "complex_disruption_summary.csv"))
 
 message("Complex disruption summary:")
 print(complex_disruption_summary)
 
-
-# Per organelle × KO × neuron
-complex_org_ko_summary <- complex_ko_summary |>
-  dplyr::filter(complex_state == "disrupted", organelle != "Other") |>
-  dplyr::group_by(genotype, neuron, organelle) |>
-  dplyr::summarise(n_disrupted = n(), .groups = "drop") |>
+# Per organelle
+complex_org_disrupted <- complex_lyso_summary %>%
+  dplyr::filter(complex_state == "disrupted", organelle != "Other") %>%
+  dplyr::count(organelle, name = "n_disrupted") %>%
   dplyr::arrange(desc(n_disrupted))
 
-write_csv(complex_org_ko_summary,file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_ko.csv"))
-
-# Summary by organelle
-complex_org_disrupted <- complex_org_ko_summary |>
-  dplyr::group_by(organelle) |>
-  dplyr::summarise(n_disrupted = sum(n_disrupted), .groups = "drop") |>
-  dplyr::arrange(desc(n_disrupted))
-
-# save csv
-write_csv(complex_org_disrupted,file.path(out_dir_ppi_vuln, "tables/multimer", "complex_disrupted_by_organelle_summary.csv"))
-
+write_csv(complex_org_disrupted, file.path(out_dir_lysoip_ppi, "tables/multimer", "complex_disrupted_by_organelle.csv"))
 
 # --- Step 8: Visualizations ---
-# Barplot: disrupted complexes per KO
-p_complex_bar <- ggplot(
-  complex_disruption_summary,
-  aes(x = reorder(genotype, -frac_disrupted), y = n_disrupted, fill = neuron)
-) +
-  geom_col(position = "dodge", color = "black", linewidth = 0.2) +
-  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
-  labs(
-    title = "Disrupted protein complexes per KO",
-    x = NULL,
-    y = "Number of disrupted complexes"
-  ) +
-  theme_bw(base_size = 6) +
+# Barplot: complex states
+complex_state_counts <- complex_lyso_summary %>%
+  dplyr::count(complex_state)
+
+p_complex_states <- ggplot(complex_state_counts, aes(x = complex_state, y = n, fill = complex_state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", disrupted = "dodgerblue4"), name = "Complex State") +
+  labs(title = "Complex States: Control → ASAH1 KO", x = NULL, y = "Number of Complexes") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots/multimer", "bars_complex_states.pdf"), p_complex_states, width = 4, height = 4, device = cairo_pdf)
+
+# --- Step 9: Plot complex status by annotation ---
+# Count complexes by annotation and state from complex_lyso_summary
+complex_status_by_annotation <- complex_lyso_summary %>%
+  dplyr::filter(!is.na(organelle), organelle != "Other") %>%
+  dplyr::filter(organelle %in% c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")) %>%
+  dplyr::count(organelle, complex_state, name = "n_complexes") %>%
+  dplyr::mutate(
+    organelle = factor(organelle, levels = c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")),
+    complex_state = factor(complex_state, levels = c("intact", "partial", "disrupted"))
+  )
+
+# Plot complex status by annotation
+p_complex_status_annotation <- ggplot(complex_status_by_annotation, aes(x = organelle, y = n_complexes, fill = complex_state)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", disrupted = "dodgerblue4"), name = "Complex State") +
+  labs(title = "Complex Status by Annotation", x = "Annotation", y = "Number of Complexes") +
+  theme_bw(base_size = 8) +
   theme(
     panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
   )
 
-# save plot
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_disrupted_complexes_per_ko.pdf"),p_complex_bar, width = 6, height = 5, device = cairo_pdf)
-
-
-# Heatmap: disrupted complexes by organelle × KO
-for (nt in c("iN", "iDA")) {
-  complex_org_wide <- complex_org_ko_summary |>
-    dplyr::filter(neuron == nt) |>
-    tidyr::pivot_wider(
-      names_from = organelle,
-      values_from = n_disrupted,
-      values_fill = 0
-    )
-  
-  if (nrow(complex_org_wide) < 2 || ncol(complex_org_wide) < 3) {
-    message("Insufficient data for complex heatmap (", nt, "); skipping.")
-    next
-  }
-  
-  complex_org_mat <- as.matrix(complex_org_wide[, -c(1:2)])
-  rownames(complex_org_mat) <- complex_org_wide$genotype
-  
-  pheatmap::pheatmap(
-    complex_org_mat,
-    scale = "none",
-    color = colorRampPalette(c("white", "#C51B7D"))(100),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    border_color = NA,
-    fontsize = 6,
-    cellwidth = 10,
-    cellheight = 10,
-    main = paste("Disrupted complexes by organelle –", nt),
-    filename = file.path(out_dir_ppi_vuln, "plots/multimer",paste0("heatmap_disrupted_complexes_by_organelle_", nt, ".pdf")),
-    width = 10,
-    height = 8
-  )
-}
-
-
-# --- Step 9: Network visualization of top disrupted complexes (optional) ---
-# Visualize the 5 most disrupted complexes
-top_disrupted <- complex_ko_summary |>
-  dplyr::filter(complex_state == "disrupted") |>
-  dplyr::count(complex_id, sort = TRUE) |>
-  head(5) |>
-  dplyr::pull(complex_id)
-
-for (cid in top_disrupted) {
-  # Get complex proteins
-  complex_proteins <- complexes_baseline |>
-    dplyr::inner_join(
-      complexes_summary |> dplyr::select(community_id, complex_id),
-      by = "community_id"
-    ) |>
-    dplyr::filter(complex_id == cid) |>
-    dplyr::pull(Gene)
-  
-  # Subgraph
-  complex_subnet <- igraph::induced_subgraph(baseline_net, complex_proteins)
-  
-  # Plot & save
-  pdf(file.path(out_dir_ppi_vuln, "plots/multimer", paste0("network_", cid, ".pdf")),width = 6, height = 6)
-  plot(
-    complex_subnet,
-    vertex.label = igraph::V(complex_subnet)$name,
-    vertex.size = 20,
-    vertex.color = "skyblue",
-    vertex.label.cex = 0.7,
-    edge.width = 2,
-    main = paste("Complex:", cid)
-  )
-  dev.off()
-}
+# Save the plot
+ggsave(file.path(out_dir_lysoip_ppi, "plots/multimer", "complex_status_by_annotation.pdf"), p_complex_status_annotation, width = 4, height = 4, device = cairo_pdf)
 
 message("Complex analysis complete!")
-```
-
-
-### GO?
-```{r}
-# # =========================================================================
-# # STEP x: Functional enrichment of lost/gained PPIs
-# # =========================================================================
-
-# message("\n=== Step 6: GO enrichment of disrupted interactions ===")
-
-# # Helper function for GO enrichment (adapted from your existing code)
-# run_topGO_for_ppi <- function(gene_set, background_genes, tag, out_dir) {
-#   if (length(gene_set) < 5) {
-#     message("Too few genes (", length(gene_set), ") for ", tag, "; skipping.")
-#     return(NULL)
-#   }
-  
-#   geneList <- factor(as.integer(background_genes %in% gene_set))
-#   names(geneList) <- background_genes
-  
-#   GOdata <- new("topGOdata", ontology = "BP", allGenes = geneList, geneSel = function(x) x == 1, annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol")
-  
-#   resultFisher <- runTest(GOdata, algorithm = "elim", statistic = "fisher")
-  
-#   go_table <- GenTable(GOdata, elimFisher = resultFisher, topNodes = 30) %>%
-#     mutate(
-#       raw_pval = score(resultFisher)[GO.ID],
-#       log10P = -log10(raw_pval),
-#       Significant = as.numeric(Significant),
-#       Expected = as.numeric(Expected),
-#       Enrichment = ifelse(Expected > 0, Significant / Expected, NA)
-#     ) %>%
-#     filter(!is.na(raw_pval)) %>%
-#     arrange(raw_pval) %>%
-#     slice_head(n = 10)
-  
-#   go_genes <- genesInTerm(GOdata)
-#   go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
-#     intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
-#   })
-  
-#   write_csv(go_table, file.path(out_dir, paste0("GO_results_", tag, ".csv")))
-  
-#   p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
-#     geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
-#     scale_fill_gradient(low = "white", high = "firebrick") +
-#     theme_bw(base_size = 7) +
-#     labs(x = "Fold Enrichment", y = "GO Term", size = expression(-log[10]*"P"), title = paste0("Top GO Terms: ", tag)) +
-#     theme(panel.grid = element_blank())
-  
-#   ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
-  
-#   return(go_table)
-# }
-
-# # Get genes involved in lost PPIs
-# genes_lost_ppis <- lysoip_edge_states %>%
-#   dplyr::filter(state == "lost") %>%
-#   dplyr::select(Gene1, Gene2) %>%
-#   tidyr::pivot_longer(everything(), values_to = "Gene") %>%
-#   dplyr::pull(Gene) %>%
-#   unique()
-
-# # Get genes involved in gained PPIs
-# genes_gained_ppis <- lysoip_edge_states %>%
-#   dplyr::filter(state == "gained") %>%
-#   dplyr::select(Gene1, Gene2) %>%
-#   tidyr::pivot_longer(everything(), values_to = "Gene") %>%
-#   dplyr::pull(Gene) %>%
-#   unique()
-
-# # Run GO enrichment
-# if (length(genes_lost_ppis) >= 5) {
-#   go_lost <- run_topGO_for_ppi(genes_lost_ppis, baseline_lysosomal_proteins, "lost_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
-# }
-
-# if (length(genes_gained_ppis) >= 5) {
-#   go_gained <- run_topGO_for_ppi(genes_gained_ppis, baseline_lysosomal_proteins, "gained_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
-# }
-
-
-# =========================================================================
-# Final Summary
-# =========================================================================
-
-message("\n=== Analysis Complete! ===")
-message("Baseline lysosomal proteome: ", length(baseline_lysosomal_proteins), " proteins")
-message("Baseline PPI edges: ", nrow(lysoip_baseline_edges))
-message("Lost edges: ", sum(lysoip_edge_states$state == "lost"))
-message("Gained edges: ", sum(lysoip_edge_states$state == "gained"))
-message("Retained edges: ", sum(lysoip_edge_states$state == "retained"))
-message("\nResults saved to: ", out_dir_lysoip_ppi)
 ```
