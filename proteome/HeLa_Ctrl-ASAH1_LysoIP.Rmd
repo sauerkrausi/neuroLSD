@@ -2072,87 +2072,89 @@ p_annotation_edges <- ggplot(annotation_edge_summary, aes(x = annotation, y = n_
     panel.grid = element_blank(), 
     panel.border = element_rect(color = "black", fill = NA),
     axis.text.x = element_text(angle = 45, hjust = 1)
-)
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +  # Ensure consistent dimensions with space for n=0
+  facet_wrap(~ state, scales = "free_y", ncol = 1)  # Add facets for each state to show n=0 bars
 
 # Save the plot
-ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_annotation_edges, width = 4, height = 4.5, device = cairo_pdf)
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_annotation_edges, width = 3, height = 6, device = cairo_pdf)
 
 
-# =========================================================================
-# STEP 6: Functional enrichment of lost/gained PPIs
-# =========================================================================
+# # =========================================================================
+# # STEP x: Functional enrichment of lost/gained PPIs
+# # =========================================================================
 
-message("\n=== Step 6: GO enrichment of disrupted interactions ===")
+# message("\n=== Step 6: GO enrichment of disrupted interactions ===")
 
-# Helper function for GO enrichment (adapted from your existing code)
-run_topGO_for_ppi <- function(gene_set, background_genes, tag, out_dir) {
-  if (length(gene_set) < 5) {
-    message("Too few genes (", length(gene_set), ") for ", tag, "; skipping.")
-    return(NULL)
-  }
+# # Helper function for GO enrichment (adapted from your existing code)
+# run_topGO_for_ppi <- function(gene_set, background_genes, tag, out_dir) {
+#   if (length(gene_set) < 5) {
+#     message("Too few genes (", length(gene_set), ") for ", tag, "; skipping.")
+#     return(NULL)
+#   }
   
-  geneList <- factor(as.integer(background_genes %in% gene_set))
-  names(geneList) <- background_genes
+#   geneList <- factor(as.integer(background_genes %in% gene_set))
+#   names(geneList) <- background_genes
   
-  GOdata <- new("topGOdata", ontology = "BP", allGenes = geneList, geneSel = function(x) x == 1, annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol")
+#   GOdata <- new("topGOdata", ontology = "BP", allGenes = geneList, geneSel = function(x) x == 1, annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol")
   
-  resultFisher <- runTest(GOdata, algorithm = "elim", statistic = "fisher")
+#   resultFisher <- runTest(GOdata, algorithm = "elim", statistic = "fisher")
   
-  go_table <- GenTable(GOdata, elimFisher = resultFisher, topNodes = 30) %>%
-    mutate(
-      raw_pval = score(resultFisher)[GO.ID],
-      log10P = -log10(raw_pval),
-      Significant = as.numeric(Significant),
-      Expected = as.numeric(Expected),
-      Enrichment = ifelse(Expected > 0, Significant / Expected, NA)
-    ) %>%
-    filter(!is.na(raw_pval)) %>%
-    arrange(raw_pval) %>%
-    slice_head(n = 10)
+#   go_table <- GenTable(GOdata, elimFisher = resultFisher, topNodes = 30) %>%
+#     mutate(
+#       raw_pval = score(resultFisher)[GO.ID],
+#       log10P = -log10(raw_pval),
+#       Significant = as.numeric(Significant),
+#       Expected = as.numeric(Expected),
+#       Enrichment = ifelse(Expected > 0, Significant / Expected, NA)
+#     ) %>%
+#     filter(!is.na(raw_pval)) %>%
+#     arrange(raw_pval) %>%
+#     slice_head(n = 10)
   
-  go_genes <- genesInTerm(GOdata)
-  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
-    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
-  })
+#   go_genes <- genesInTerm(GOdata)
+#   go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
+#     intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
+#   })
   
-  write_csv(go_table, file.path(out_dir, paste0("GO_results_", tag, ".csv")))
+#   write_csv(go_table, file.path(out_dir, paste0("GO_results_", tag, ".csv")))
   
-  p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
-    geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
-    scale_fill_gradient(low = "white", high = "firebrick") +
-    theme_bw(base_size = 7) +
-    labs(x = "Fold Enrichment", y = "GO Term", size = expression(-log[10]*"P"), title = paste0("Top GO Terms: ", tag)) +
-    theme(panel.grid = element_blank())
+#   p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
+#     geom_point(aes(size = log10P, fill = Enrichment), shape = 21, color = "black", stroke = 0.25) +
+#     scale_fill_gradient(low = "white", high = "firebrick") +
+#     theme_bw(base_size = 7) +
+#     labs(x = "Fold Enrichment", y = "GO Term", size = expression(-log[10]*"P"), title = paste0("Top GO Terms: ", tag)) +
+#     theme(panel.grid = element_blank())
   
-  ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
+#   ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 5, height = 3.5, device = cairo_pdf)
   
-  return(go_table)
-}
+#   return(go_table)
+# }
 
-# Get genes involved in lost PPIs
-genes_lost_ppis <- lysoip_edge_states %>%
-  dplyr::filter(state == "lost") %>%
-  dplyr::select(Gene1, Gene2) %>%
-  tidyr::pivot_longer(everything(), values_to = "Gene") %>%
-  dplyr::pull(Gene) %>%
-  unique()
+# # Get genes involved in lost PPIs
+# genes_lost_ppis <- lysoip_edge_states %>%
+#   dplyr::filter(state == "lost") %>%
+#   dplyr::select(Gene1, Gene2) %>%
+#   tidyr::pivot_longer(everything(), values_to = "Gene") %>%
+#   dplyr::pull(Gene) %>%
+#   unique()
 
-# Get genes involved in gained PPIs
-genes_gained_ppis <- lysoip_edge_states %>%
-  dplyr::filter(state == "gained") %>%
-  dplyr::select(Gene1, Gene2) %>%
-  tidyr::pivot_longer(everything(), values_to = "Gene") %>%
-  dplyr::pull(Gene) %>%
-  unique()
+# # Get genes involved in gained PPIs
+# genes_gained_ppis <- lysoip_edge_states %>%
+#   dplyr::filter(state == "gained") %>%
+#   dplyr::select(Gene1, Gene2) %>%
+#   tidyr::pivot_longer(everything(), values_to = "Gene") %>%
+#   dplyr::pull(Gene) %>%
+#   unique()
 
-# Run GO enrichment
-if (length(genes_lost_ppis) >= 5) {
-  go_lost <- run_topGO_for_ppi(genes_lost_ppis, baseline_lysosomal_proteins, "lost_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
-}
+# # Run GO enrichment
+# if (length(genes_lost_ppis) >= 5) {
+#   go_lost <- run_topGO_for_ppi(genes_lost_ppis, baseline_lysosomal_proteins, "lost_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
+# }
 
-if (length(genes_gained_ppis) >= 5) {
-  go_gained <- run_topGO_for_ppi(genes_gained_ppis, baseline_lysosomal_proteins, "gained_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
-}
+# if (length(genes_gained_ppis) >= 5) {
+#   go_gained <- run_topGO_for_ppi(genes_gained_ppis, baseline_lysosomal_proteins, "gained_PPIs", file.path(out_dir_lysoip_ppi, "plots"))
+# }
 
 
 # =========================================================================
