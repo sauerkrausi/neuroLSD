@@ -167,11 +167,8 @@ helalysoip_annotated_df <- helalysoip_df %>%
   left_join(binary_matrix_helalysoip, by = c("Gene.Symbol" = "Genes")) %>%
   mutate(across(where(is.logical) | where(is.numeric), ~ replace_na(., FALSE)))
 
-write.csv(
-  helalysoip_annotated_df,
-  file = file.path(out_dir_lysoip_dataframes, "helalysoip_annotated.csv"),
-  row.names = FALSE
-)
+# save as csv file 
+write.csv(helalysoip_annotated_df, file = file.path(out_dir_lysoip_dataframes, "helalysoip_annotated.csv"), row.names = FALSE)
 ```
 
 # III. Heatmaps of dataframe w/ clusters of interst 
@@ -188,7 +185,7 @@ expr_cols_lysoip <- c(
 mat_helalysoip <- helalysoip_annotated_df %>%
   filter(!is.na(Gene.Symbol)) %>%
   mutate(Gene.Symbol = make.unique(as.character(Gene.Symbol))) %>%
-  dplyr::dplyr::select(Gene.Symbol, cluster, all_of(expr_cols_lysoip))
+  dplyr::select(Gene.Symbol, cluster, all_of(expr_cols_lysoip))
 
 row_cluster <- mat_helalysoip$cluster
 rownames(mat_helalysoip) <- mat_helalysoip$Gene.Symbol
@@ -1470,7 +1467,7 @@ ggsave(file.path(out_dir_lysoip_autophagy, "autophagy_updown_stackedbar.pdf"), s
 
 # --- 5. Build gene-level membership table
 sig_gene_summary_autophagy <- autophagy_long %>%
-  dplyr::dplyr::select(Gene.Symbol, Annotation, Ctrl_status, ASAH1_status) %>%
+  dplyr::select(Gene.Symbol, Annotation, Ctrl_status, ASAH1_status) %>%
   distinct()
 
 
@@ -1634,3 +1631,10 @@ plot_topGO_for_geneset(
 )
 
 ```
+
+
+# To do list for evaluation 
+- this will be a list here for future implementations 
+- see if sync works wit git
+- mayeb it fails again 
+
