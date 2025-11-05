@@ -1719,7 +1719,7 @@ plot_topGO_for_geneset(
 
 
 
-# IX. PPI eval on LysoIP data 
+# VII. PPI eval on LysoIP data 
 ## Base: identification of lost / gained PPIs comparing Control and ASAH1 KO LysoIPs
 ```{r}
 # =========================================================================
