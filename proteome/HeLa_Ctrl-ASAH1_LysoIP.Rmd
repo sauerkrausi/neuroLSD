@@ -1749,7 +1749,7 @@ message("\n=== Step 1: Defining lysosomal proteome baseline ===")
 enrichment_thresh <- 0.25   # log2FC threshold for lysosomal proteins
 depletion_thresh <- -0.25   # log2FC threshold for background/contaminants
 
-# Step  1b. Lysosomal proteins: enriched in CtrlLysoIP vs untagged
+# Step 1b. Lysosomal proteins: enriched in CtrlLysoIP vs untagged
 baseline_lysosomal_proteins <- helalysoip_annotated_df %>%
   dplyr::filter(
     log2FC_CtrlLysoIP.untagged > enrichment_thresh,
@@ -1758,122 +1758,54 @@ baseline_lysosomal_proteins <- helalysoip_annotated_df %>%
   dplyr::pull(Gene.Symbol) %>%
   unique()
 
-# Step 1c. Background proteins: depleted in CtrlLysoIP vs untagged
-background_proteins <- helalysoip_annotated_df %>%
-  dplyr::filter(
-    log2FC_CtrlLysoIP.untagged < depletion_thresh,
-    is.finite(log2FC_CtrlLysoIP.untagged)
-  ) %>%
+# Step 1c. Create baseline dataframe with nuclear contaminant removal
+lysoip_baseline_df_clean <- helalysoip_annotated_df %>%
+  dplyr::filter(Gene.Symbol %in% baseline_lysosomal_proteins) %>%
+  dplyr::filter(is.na(Nucleus) | Nucleus == FALSE) %>%  # Remove nuclear contaminants
+  dplyr::mutate(in_baseline = TRUE)
+
+# Update baseline proteins list
+baseline_lysosomal_proteins_clean <- lysoip_baseline_df_clean %>%
   dplyr::pull(Gene.Symbol) %>%
   unique()
 
-message("Lysosomal proteins (enriched): ", length(baseline_lysosomal_proteins))
-message("Background proteins (depleted): ", length(background_proteins))
-
-# Step 1d. Create baseline dataframe
-lysoip_baseline_df <- helalysoip_annotated_df %>%
-  dplyr::filter(Gene.Symbol %in% baseline_lysosomal_proteins) %>%
-  dplyr::mutate(in_baseline = TRUE)
+message("Original lysosomal proteins (enriched): ", length(baseline_lysosomal_proteins))
+message("Clean lysosomal proteins (nuclear removed): ", length(baseline_lysosomal_proteins_clean))
+message("Nuclear contaminants removed: ", length(baseline_lysosomal_proteins) - length(baseline_lysosomal_proteins_clean))
 
 # Save results
-write_csv(lysoip_baseline_df, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_proteome.csv"))
-
+write_csv(lysoip_baseline_df_clean, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_proteome_clean.csv"))
 
 # =========================================================================
-# STEP 2: Map baseline PPIs using Predictome80 + IntAct
+# STEP 2: Map baseline PPIs using baseline
 # =========================================================================
 
 message("\n=== Step 2: Mapping baseline PPIs ===")
 
-# Load PPI data (adapt paths from your existing code)
-# NOTE: You'll need to point these to your actual PPI files
-path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
-path_intact_tsv <- "/Users/felix/Desktop/ppi/interact.tsv"
-
-# Helper function for undirected keys
-.make_undirected_key <- function(a, b) {
-  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
-}
-
-# Step 2a. Load Predictome80
-if (file.exists(path_predictome80)) {
-  predictome_raw <- data.table::fread(path_predictome80, sep = "\t", header = TRUE, skip = 28, fill = TRUE, quote = "", data.table = FALSE)
-  predictome_raw <- predictome_raw[!grepl("^#", predictome_raw$Protein1), ]
-  
-  prob_cols <- intersect(c("RFprob", "AFprob", "AFMprob", "CFprob", "AFprob5"), names(predictome_raw))
-  
-  predictome_edges <- predictome_raw %>%
-    mutate(across(all_of(prob_cols), ~ suppressWarnings(as.numeric(.x)))) %>%
-    mutate(
-      Predictome_conf = do.call(pmax, c(across(all_of(prob_cols)), list(na.rm = TRUE))),
-      key = .make_undirected_key(Name1, Name2),  # Use gene symbols
-      Predictome_present = TRUE
-    ) %>%
-    dplyr::select(key, Gene1 = Name1, Gene2 = Name2, Predictome_conf, Predictome_present) %>%
-    dplyr::distinct(key, .keep_all = TRUE)
-  
-  message("Predictome edges loaded: ", nrow(predictome_edges))
-} else {
-  stop("Predictome file not found at: ", path_predictome80)
-}
-
-# Step 2b. Load IntAct
-if (file.exists(path_intact_tsv)) {
-  intact_raw <- read_tsv(path_intact_tsv, show_col_types = FALSE)
-  
-  intact_edges <- intact_raw %>%
-    transmute(
-      Gene1 = sub("^uniprotkb:", "", sub("\\(.*", "", `Alias(es) interactor A`)),
-      Gene2 = sub("^uniprotkb:", "", sub("\\(.*", "", `Alias(es) interactor B`)),
-      IntAct_MIscore = suppressWarnings(as.numeric(sub("^.*miscore:", "", `Confidence value(s)`))),
-      key = .make_undirected_key(Gene1, Gene2),
-      IntAct_present = TRUE
-    ) %>%
-    dplyr::distinct(key, .keep_all = TRUE)
-  
-  message("IntAct edges loaded: ", nrow(intact_edges))
-} else {
-  warning("IntAct file not found; proceeding with Predictome only")
-  intact_edges <- tibble(key = character(), Gene1 = character(), Gene2 = character(), IntAct_present = logical())
-}
-
-# Step 2c. Merge PPI sources
-ppi_evidence <- full_join(predictome_edges, intact_edges, by = "key") %>%
-  mutate(
-    Gene1 = coalesce(Gene1.x, Gene1.y),
-    Gene2 = coalesce(Gene2.x, Gene2.y),
-    Predictome_present = replace_na(Predictome_present, FALSE),
-    IntAct_present = replace_na(IntAct_present, FALSE),
-    Overlap_flag = Predictome_present & IntAct_present
-  ) %>%
-  dplyr::select(key, Gene1, Gene2, Predictome_conf, Predictome_present, IntAct_present, Overlap_flag)
-
-message("Total PPI edges (all proteins): ", nrow(ppi_evidence))
-
-# Step 2d. Filter to lysosomal baseline proteins
-lysoip_baseline_edges <- ppi_evidence %>%
+# Step 2d. Filter to CLEAN lysosomal baseline proteins
+lysoip_baseline_edges_clean <- ppi_evidence %>%
   dplyr::filter(
-    Gene1 %in% baseline_lysosomal_proteins,
-    Gene2 %in% baseline_lysosomal_proteins
+    Gene1 %in% baseline_lysosomal_proteins_clean,
+    Gene2 %in% baseline_lysosomal_proteins_clean
   )
 
-message("PPI edges within lysosomal baseline: ", nrow(lysoip_baseline_edges))
+message("PPI edges within CLEAN lysosomal baseline: ", nrow(lysoip_baseline_edges_clean))
+message("Edges removed by nuclear filtering: ", nrow(lysoip_baseline_edges) - nrow(lysoip_baseline_edges_clean))
 
-# save csv of baseline PPIs in outdir 
-write_csv(lysoip_baseline_edges, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_edges.csv"))
-
+# save csv of clean baseline PPIs
+write_csv(lysoip_baseline_edges_clean, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_edges_clean.csv"))
 
 # =========================================================================
-# STEP 3: Assess PPI state changes (Control → ASAH1)
+# STEP 3: Assess PPI state changes using baseline
 # =========================================================================
 
-message("\n=== Step 3: Computing PPI state changes ===")
+message("\n=== Step 3: Computing PPI state changes with clean baseline ===")
 
 drop_thresh <- -0.25   # Partner lost if log2FC < -0.25
 gain_thresh <- 0.25    # Partner gained if log2FC > 0.25
 
-# Step 3a. Match edges to protein abundance changes (ASAH1 vs Ctrl)
-lysoip_edge_states <- lysoip_baseline_edges %>%
+# Step 3a. Match CLEAN edges to protein abundance changes (ASAH1 vs Ctrl)
+lysoip_edge_states_clean <- lysoip_baseline_edges_clean %>%
   dplyr::left_join(
     helalysoip_annotated_df %>% dplyr::select(Gene.Symbol, log2FC_ASAH1LysoIP.CtrlLysoIP),
     by = c("Gene1" = "Gene.Symbol")
@@ -1896,20 +1828,25 @@ lysoip_edge_states <- lysoip_baseline_edges %>%
     )
   )
 
-# Ssave csv file of PPI edge changes
-write_csv(lysoip_edge_states, file.path(out_dir_lysoip_ppi, "tables", "lysoip_edge_states.csv"))
-
+# Save csv file of PPI edge changes
+write_csv(lysoip_edge_states_clean, file.path(out_dir_lysoip_ppi, "tables", "lysoip_edge_states_clean.csv"))
 
 # Step 3b. Summary statistics
-edge_summary <- lysoip_edge_states %>%
+edge_summary_clean <- lysoip_edge_states_clean %>%
   dplyr::count(state, name = "n_edges") %>%
   dplyr::mutate(frac = n_edges / sum(n_edges))
 
-message("\nPPI edge state summary:")
-print(edge_summary)
+message("\nCLEAN PPI edge state summary:")
+print(edge_summary_clean)
 
-# save csv file for summary stats for egdes 
-write_csv(edge_summary, file.path(out_dir_lysoip_ppi, "tables", "edge_state_summary_ContolToASAH1.csv"))
+# Compare with original
+message("\nComparison with original (uncleaned) baseline:")
+message("Original edges: ", nrow(lysoip_edge_states))
+message("Clean edges: ", nrow(lysoip_edge_states_clean))
+
+# save csv file for clean summary stats
+write_csv(edge_summary_clean, file.path(out_dir_lysoip_ppi, "tables", "edge_state_summary_clean_ControlToASAH1.csv"))
+
 
 
 # =========================================================================
@@ -2127,7 +2064,7 @@ if (nrow(high_conf_edges) < 100) {
 }
 
 if (nrow(high_conf_edges) < 50) {
-  conf_threshold <- 0.85
+  conf_threshold <- 0.65
   high_conf_edges <- lysoip_baseline_edges %>%
     dplyr::filter(
       Predictome_conf >= conf_threshold,
