@@ -2094,7 +2094,7 @@ dir.create(file.path(out_dir_lysoip_ppi, "plots/trimers"), recursive = TRUE, sho
 dir.create(file.path(out_dir_lysoip_ppi, "tables/trimers"), recursive = TRUE, showWarnings = FALSE)
 
 # --- Step 1: Filter to LYSOSOMAL high-confidence PPIs only ---
-conf_threshold <- 0.95
+conf_threshold <- 0.80
 
 # Get lysosomal genes from baseline
 lysosomal_genes <- unique(c(lysoip_edge_states$Gene1, lysoip_edge_states$Gene2))
@@ -2115,7 +2115,7 @@ message("High-confidence lysosomal edges (≥", conf_threshold, "): ", nrow(high
 
 # If too few, reduce threshold
 if (nrow(high_conf_edges) < 100) {
-  conf_threshold <- 0.90
+  conf_threshold <- 0.75
   high_conf_edges <- lysoip_baseline_edges %>%
     dplyr::filter(
       Predictome_conf >= conf_threshold,
