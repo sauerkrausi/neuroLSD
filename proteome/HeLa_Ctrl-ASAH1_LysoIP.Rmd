@@ -924,6 +924,10 @@ for (ann in target_ann) {
 # Hydrolase abundance in lysosome Ctrl vs ASAH1-/-
 # ─────────────────────────────────────────────────────────────────────────────
 
+# --- add lyso hydrolases to df
+helalysoip_annotated_df$LysoHydrolase <- helalysoip_annotated_df$Gene.Symbol %in% lysohydrolases
+
+
 # --- Step 1: Prepare data for slope plot
 hydro_df <- helalysoip_annotated_df %>% 
   filter(LysoHydrolase == TRUE) %>%
@@ -952,9 +956,7 @@ p_slope <- ggplot(hydro_df, aes(x = Sample, y = log2FC, group = Gene.Symbol)) +
   )
 
 # --- Step 3: Save as square PDF
-ggsave(filename = file.path(out_dir_lysoip_organelle_dist,
-                            "lysohydrolase_slopeplot.pdf"),
-       plot = p_slope, width = 2, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(out_dir_lysoip_organelle_dist,"lysohydrolase_slopeplot.pdf"),plot = p_slope, width = 2, height = 4, device = cairo_pdf)
 
 
 
