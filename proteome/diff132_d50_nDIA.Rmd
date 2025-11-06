@@ -4978,9 +4978,9 @@ plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols
 ```
 
 
-# -------------------------------------------------- 
+# =================================================
 # -------- Organelle Correlations Analysis
-# --------------------------------------------------  
+# =================================================
 
 
 # XI. Organelle Cross-DF correlations
@@ -6576,9 +6576,9 @@ ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
 
 
 
-# -------------------------------------------------- 
+# =================================================
 # -------- Disease Class Analysis Neuron
-# --------------------------------------------------  
+# =================================================
 
 
 # XII. Sph mutant investigation
@@ -9337,9 +9337,9 @@ ggsave("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/
 
 
     
-# -------------------------------------------------- 
+# =================================================
 # -------- nDIA-nMOST comparative analysis
-# --------------------------------------------------  
+# =================================================
 
 
 
@@ -10253,10 +10253,16 @@ pheatmap::pheatmap(
 ```
 
 
-# -------------------------------------------------- 
-# -------- Protein Protein Interaction / Multimer Evaluation 
-# --------------------------------------------------  
 
+
+# =================================================
+# ---- Protein Protein Interaction / Multimer Evaluation 
+# =================================================
+
+
+# ----------------------------
+# ----- Neuronal iN iDA nDIA Dataset ----- 
+# ----------------------------
 
 # XVIII. PPI vulnerability pipeline in iN and iDA LSD mutants
 Build a Protein–Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. The goal is to integrate experimental proteome shifts with predicted and experimentally validated interaction data (Predictome 80% and IntAct) to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type–specific effects.
@@ -15758,6 +15764,13 @@ message("  - Summary tables in: tables/")
 ```
 
 
+
+# ----------------------------
+# ----- HeLa nMOST Dataset ----- 
+# ---------------------------
+
+# XiX. PPI vulnerability pipeline in iN and iDA LSD mutants
+
 # to do
 - by_ko heatmap correlations: 
 should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
@@ -15778,10 +15791,6 @@ should calculate to the baseline, not across all the genotypes. since it should 
 - then calculate PPI based on KO and also based on disease group 
 - can we match which trimers and complexes match between neurons and hela? have iN and iDa on x y axis and bubble size of hela correlation. based by organelle
 
-4. HeLa LysoIP PPIs
-- calculate PPIs based on control and ASAH1 PPI
-==> should be able to see both loss of edges and also gain of edges. Maybe there should be more edges in KO to ER?
-- can we map Lyso Membrane vs lumenal protein PPIs? see if there are differences
 
 
 X. Misc
