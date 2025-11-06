@@ -9547,9 +9547,7 @@ disease_colors <- c(
   Integral.membrane.protein.disorders = "#E6F598", PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
 )
-ko_to_class <- enframe(disease_classes, name = "class", value = "KO_list") %>%
-  unnest(KO_list) %>%
-  rename(KO = KO_list)
+ko_to_class <- map_dfr(disease_classes, ~data.frame(KO = .x), .id = "class")
 
 # -----------------------------
 # II. Data Preparation
