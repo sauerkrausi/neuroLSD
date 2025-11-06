@@ -9568,10 +9568,11 @@ neuron_df <- neuron_long %>%
   summarise(mean_log2_abundance = mean(log2_abundance), .groups = "drop") %>%
   pivot_wider(names_from = neuron, values_from = mean_log2_abundance)
 
-HeLa_long <- HeLaWCnMOST_df %>%
-  rename(Genes = Gene.names) %>%
-  pivot_longer(cols = ends_with(".KO"), names_to = "genotype", values_to = "hela_abundance") %>%
-  mutate(genotype = str_remove(genotype, "\\.KO"))
+HeLa_long <- dplyr::rename(HeLaWCnMOST_df, Genes = Gene.names) %>%
+  tidyr::pivot_longer(cols = ends_with(".KO"),
+                      names_to = "genotype",
+                      values_to = "hela_abundance") %>%
+  dplyr::mutate(genotype = stringr::str_remove(genotype, "\\.KO"))
 
 merged_df <- inner_join(neuron_df, HeLa_long, by = c("Genes", "genotype"))
 
@@ -9876,6 +9877,7 @@ HeLaWCnMOST_df_annotated <- HeLaWCnMOST_df %>%
   mutate(across(all_of(colnames(binary_matrix)[-1]), ~ ifelse(. == TRUE, TRUE, FALSE))) %>%
   replace(is.na(.), FALSE)
 
+# save as csv
 write.csv(HeLaWCnMOST_df_annotated,file = file.path(out_dir_d50_nMOST_nDIAcorrelation,"HeLaWCnMOST_annotated.csv"),row.names = FALSE)
 
 
