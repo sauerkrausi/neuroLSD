@@ -9528,7 +9528,7 @@ read in HeLa nMOST file
 # Neuron–HeLa Proteome Correlation Analysis
 # --------------------------------------------------- #
 library(tidyverse)
-library(ComplexHeatmap)
+detach("package:ComplexHeatmap", unload = TRUE)
 # -----------------------------
 # I. Disease Class Definitions
 # -----------------------------
@@ -9580,7 +9580,7 @@ merged_df <- inner_join(neuron_df, HeLa_long, by = c("Genes", "genotype"))
 merged_wide <- merged_df %>%
   pivot_longer(c(iN, iDA), names_to = "neuron_type", values_to = "neuron_abundance") %>%
   mutate(sample = paste(genotype, neuron_type, sep = "_")) %>%
-  select(Genes, sample, abundance = neuron_abundance) %>%
+  dplyr::select(Genes, sample, abundance = neuron_abundance) %>%
   bind_rows(
     merged_df %>%
       mutate(sample = paste0(genotype, "_HeLa")) %>%
@@ -9601,6 +9601,9 @@ correlation_matrix_nMOSTnDIA <- cor(abundance_matrix, method = "pearson", use = 
 # -----------------------------
 # III. Circos Plot Setup
 # -----------------------------
+
+library(ComplexHeatmap)
+
 sample_groups <- tibble(
   sample = colnames(correlation_matrix_nMOSTnDIA),
   group = case_when(
@@ -9745,6 +9748,8 @@ plot_dual_layer_circos(
   output_path = "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/neuron_hela_circos_interonly.pdf"
 )
 #dev.off()
+
+detach("package:ComplexHeatmap", unload = TRUE)
 ```
 
 
