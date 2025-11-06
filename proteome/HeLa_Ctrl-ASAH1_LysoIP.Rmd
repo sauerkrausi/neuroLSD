@@ -1758,7 +1758,7 @@ baseline_lysosomal_proteins <- helalysoip_annotated_df %>%
   dplyr::pull(Gene.Symbol) %>%
   unique()
 
-# Step 1c. Create baseline dataframe with nuclear contaminant removal
+# Step 1c. Create baseline dataframe were we remove nuclear contaminants. (annotation based)
 lysoip_baseline_df_clean <- helalysoip_annotated_df %>%
   dplyr::filter(Gene.Symbol %in% baseline_lysosomal_proteins) %>%
   dplyr::filter(is.na(Nucleus) | Nucleus == FALSE) %>%  # Remove nuclear contaminants
@@ -2030,53 +2030,53 @@ ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_
 dir.create(file.path(out_dir_lysoip_ppi, "plots/trimers"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_lysoip_ppi, "tables/trimers"), recursive = TRUE, showWarnings = FALSE)
 
-# --- Step 1: Filter to LYSOSOMAL high-confidence PPIs only ---
+# --- Step 1: Filter to lysosomal high-confidence PPIs only ---
 conf_threshold <- 0.80
 
-# Get lysosomal genes from baseline
-lysosomal_genes <- unique(c(lysoip_edge_states$Gene1, lysoip_edge_states$Gene2))
-lysosomal_genes <- lysosomal_genes[!is.na(lysosomal_genes)]
+# Get lysosomal genes
+lysosomal_genes_clean <- unique(c(lysoip_edge_states_clean$Gene1, lysoip_edge_states_clean$Gene2))
+lysosomal_genes_clean <- lysosomal_genes_clean[!is.na(lysosomal_genes_clean)]
 
-message("Number of lysosomal genes: ", length(lysosomal_genes))
+message("Number of CLEAN lysosomal genes: ", length(lysosomal_genes_clean))
 
 # Filter high-confidence edges to lysosomal proteome
-high_conf_edges <- lysoip_baseline_edges %>%
+high_conf_edges_clean <- lysoip_baseline_edges_clean %>%
   dplyr::filter(
     Predictome_conf >= conf_threshold,
-    Gene1 %in% lysosomal_genes,
-    Gene2 %in% lysosomal_genes
+    Gene1 %in% lysosomal_genes_clean,
+    Gene2 %in% lysosomal_genes_clean
   ) %>%
   dplyr::select(key, Gene1, Gene2, Predictome_conf)
 
-message("High-confidence lysosomal edges (≥", conf_threshold, "): ", nrow(high_conf_edges))
+message("High-confidence CLEAN lysosomal edges (≥", conf_threshold, "): ", nrow(high_conf_edges_clean))
 
-# If too few, reduce threshold
-if (nrow(high_conf_edges) < 100) {
+# Reduce threshold if needed
+if (nrow(high_conf_edges_clean) < 100) {
   conf_threshold <- 0.75
-  high_conf_edges <- lysoip_baseline_edges %>%
+  high_conf_edges_clean <- lysoip_baseline_edges_clean %>%
     dplyr::filter(
       Predictome_conf >= conf_threshold,
-      Gene1 %in% lysosomal_genes,
-      Gene2 %in% lysosomal_genes
+      Gene1 %in% lysosomal_genes_clean,
+      Gene2 %in% lysosomal_genes_clean
     ) %>%
     dplyr::select(key, Gene1, Gene2, Predictome_conf)
-  message("Reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
+  message("Reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges_clean), " edges")
 }
 
-if (nrow(high_conf_edges) < 50) {
+if (nrow(high_conf_edges_clean) < 50) {
   conf_threshold <- 0.65
-  high_conf_edges <- lysoip_baseline_edges %>%
+  high_conf_edges_clean <- lysoip_baseline_edges_clean %>%
     dplyr::filter(
       Predictome_conf >= conf_threshold,
-      Gene1 %in% lysosomal_genes,
-      Gene2 %in% lysosomal_genes
+      Gene1 %in% lysosomal_genes_clean,
+      Gene2 %in% lysosomal_genes_clean
     ) %>%
     dplyr::select(key, Gene1, Gene2, Predictome_conf)
-  message("Further reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges), " edges")
+  message("Further reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges_clean), " edges")
 }
 
 # Save high confidence dimers
-write_csv(high_conf_edges, file.path(out_dir_lysoip_ppi, "tables", "high_confidence_dimers.csv"))
+write_csv(high_conf_edges_clean, file.path(out_dir_lysoip_ppi, "tables", "high_confidence_dimers_clean.csv"))
 
 # --- Step 2: Find all potential trimers (A-B, B-C, A-C all present) ---
 # Create adjacency list
@@ -2140,7 +2140,7 @@ write_csv(trimers_baseline, file.path(out_dir_lysoip_ppi, "tables/trimers", "bas
 annotations <- c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome", "Autophagy", "vATPase")
 
 # Create gene-to-annotation mapping from helalysoip_annotated_df
-gene_to_org <- helalysoip_annotated_df %>%
+gene_to_org <- lysoip_baseline_df_clean %>%
   dplyr::select(Gene.Symbol, all_of(annotations))
 
 trimers_annotated <- trimers_baseline %>%
@@ -2175,6 +2175,7 @@ trimer_org_summary <- trimers_annotated %>%
 message("Trimers by organelle:")
 print(trimer_org_summary)
 
+# save csv
 write_csv(trimer_org_summary, file.path(out_dir_lysoip_ppi, "tables/trimers", "baseline_trimers_by_organelle.csv"))
 
 # --- Step 4: Assess trimer integrity for Control vs ASAH1 ---
@@ -2237,6 +2238,7 @@ trimer_lyso_summary <- trimers_lyso_states %>%
     frac_partial = n_partial / n_total
   )
 
+# save csv
 write_csv(trimer_lyso_summary, file.path(out_dir_lysoip_ppi, "tables/trimers", "trimer_lyso_summary.csv"))
 
 message("Trimer breakage summary:")
@@ -2264,7 +2266,8 @@ trimer_affected_org <- trimers_affected %>%
   ) %>%
   dplyr::arrange(desc(frac_affected))
 
-write_csv(trimer_affected_org, file.path(out_dir_lysoip_ppi, "tables/multimer", "trimer_affected_by_organelle.csv"))
+# save csv
+write_csv(trimer_affected_org, file.path(out_dir_lysoip_ppi, "tables/trimers", "trimer_affected_by_organelle.csv"))
 
 message("Affected trimers by organelle:")
 print(trimer_affected_org)
@@ -2336,6 +2339,10 @@ ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "trimer_status_by_annotati
 #  Identify protein complexes via community detection 
 # =========================================================================
 
+# --- Step 0: Create output directories ---
+dir.create(file.path(out_dir_lysoip_ppi, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_lysoip_ppi, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
+
 # --- Step 1: Build baseline network from high-confidence edges ---
 message("Building baseline PPI network...")
 
@@ -2368,6 +2375,7 @@ protein_communities <- data.frame(
 
 message("Found ", max(protein_communities$community_id), " communities")
 
+
 # --- Step 3: Filter to meaningful complexes (size 3-10) ---
 community_sizes <- protein_communities %>%
   dplyr::count(community_id, name = "size")
@@ -2392,10 +2400,12 @@ complexes_summary <- complexes_baseline %>%
   ) %>%
   dplyr::arrange(desc(n_proteins))
 
+# save as csv
 write_csv(complexes_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "baseline_complexes.csv"))
 
 message("Baseline complexes summary:")
 print(head(complexes_summary, 20))
+
 
 # --- Step 4: Annotate complexes with organelles ---
 complexes_annotated <- complexes_baseline %>%
@@ -2429,6 +2439,7 @@ write_csv(complex_org_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", 
 message("Complexes by organelle:")
 print(complex_org_summary)
 
+
 # --- Step 5: Assess complex integrity for Control vs ASAH1 ---
 # Get all edges within each complex
 complex_edges_list <- list()
@@ -2456,6 +2467,7 @@ complex_edges_df <- complex_edges_df %>%
   )
 
 message("Total edges in complexes: ", nrow(complex_edges_df))
+
 
 # --- Step 6: Match complex edges to LysoIP states ---
 complex_edges_df <- complex_edges_df %>%
@@ -2497,7 +2509,9 @@ complex_lyso_summary <- complexes_lyso_states %>%
     )
   )
 
+# save csv
 write_csv(complex_lyso_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "complexes_lyso_states.csv"))
+
 
 # --- Step 7: Summary statistics ---
 complex_disruption_summary <- complex_lyso_summary %>%
@@ -2521,6 +2535,7 @@ complex_org_disrupted <- complex_lyso_summary %>%
   dplyr::arrange(desc(n_disrupted))
 
 write_csv(complex_org_disrupted, file.path(out_dir_lysoip_ppi, "tables/multimer", "complex_disrupted_by_organelle.csv"))
+
 
 # --- Step 8: Visualizations ---
 # Barplot: complex states
