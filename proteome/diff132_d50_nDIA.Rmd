@@ -9527,6 +9527,7 @@ read in HeLa nMOST file
 # iNeuron - Hela Proteome Correlations 
 # Neuron–HeLa Proteome Correlation Analysis
 # --------------------------------------------------- #
+library(tidyverse)
 library(ComplexHeatmap)
 # -----------------------------
 # I. Disease Class Definitions
@@ -9546,7 +9547,9 @@ disease_colors <- c(
   Integral.membrane.protein.disorders = "#E6F598", PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
 )
-ko_to_class <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, class = name)
+ko_to_class <- enframe(disease_classes, name = "class", value = "KO_list") %>%
+  unnest(KO_list) %>%
+  rename(KO = KO_list)
 
 # -----------------------------
 # II. Data Preparation
