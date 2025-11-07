@@ -15778,8 +15778,11 @@ message("  - Summary tables in: tables/")
 # ----- HeLa nMOST Dataset ----- 
 # ---------------------------
 
-# XiX. PPI vulnerability pipeline in iN and iDA LSD mutants
+# XiX. PPI vulnerability pipeline in HeLa Whole cell proteomic data 
 ```{r}
+# Data from nMOST proteomics 
+# DOI: 10.1126/sciadv.adu5787
+1
 # --- Step 0: create outdirs and setup of environment 
 # Setup output directories
 out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/HeLaPPI"
@@ -17266,6 +17269,14 @@ message("  - plots/multimer/: Trimer and complex analysis plots")
 message("  - plots/qc/: Quality control and baseline validation plots")
 message("  - tables/: All summary statistics and detailed results")
 message("  - tables/multimer/: Trimer and complex analysis results")
+```
+
+
+
+
+# XX. PPI vulnerbaility matches between HeLa <=> Neuron
+```{r}
+
 ```
 
 
