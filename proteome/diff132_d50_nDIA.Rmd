@@ -17275,6 +17275,18 @@ message("  - tables/multimer/: Trimer and complex analysis results")
 
 
 # XX. PPI vulnerbaility matches between HeLa <=> Neuron
+Have PPI calcualted for both dimers, trimers and complexes in HeLa and iN and iDA. (see code pasted)
+question is now how well do the vulnearbility match between the same KO across cell types? 
+- new outdir "PPIcomp" in the PPI folder 
+- we could check how many PPIs are losted in each KO in a numerical value, but also by annotation
+- but we also have to check if the same PPI are lost or disruped between the cell types (HeLa - iN - iDA)
+- make we can make a streamgraph for the vizualization. have the cell types in different colors [steamgraph_palette <- c(iN = "grey60", iDA = "grey80", HeLa = "skyblue")]. 
+- have two plots: 
+  1. x axis of the steamgraph are the differnet KOs and on the y axis we have the PPI lost 
+  2. a plot for each KO and the x axis are the organelles and we plot the mean PPIs lost per organelle on the y axis 
+  3. we can do that then also for the Trimers and multimers?
+
+- have also table for the ppis, timers and multimers for whcich PPIs are maytched and which ones are lost. also say which direction they are lost (like lost in iN or iDa or HeLa or in any combinatoin)
 ```{r}
 
 ```
