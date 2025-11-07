@@ -15780,14 +15780,7 @@ message("  - Summary tables in: tables/")
 
 # XiX. PPI vulnerability pipeline in iN and iDA LSD mutants
 ```{r}
-# =================================================
-# ---- HeLa Protein-Protein Interaction Vulnerability Analysis ----
-# =================================================
-
-# ----------------------------
-# ----- HeLa Dataset Analysis ----- 
-# ----------------------------
-
+# --- Step 0: create outdirs and setup of environment 
 # Setup output directories
 out_dir_hela_ppi <- file.path(out_dir, "HeLaPPI")
 dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
@@ -15804,6 +15797,7 @@ control_outlier_thresh <- 0.25
 
 # Load HeLa control data
 HeLaWCControl_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_WCCcontrol.csv")
+
 
 # ---------------------------------------------------
 # --- Step 1: Process HeLa Control Data and Create Baseline ---
@@ -15912,6 +15906,7 @@ p_sample_outliers <- ggplot(control_sample_stats,
 ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_sample_outlier_rates.pdf"), 
        p_sample_outliers, width = 6, height = 4, device = cairo_pdf)
 
+
 # ---------------------------------------------------
 # --- Step 2: Create HeLa-specific baseline using stable proteins ---
 message("\n=== Creating HeLa-specific PPI baseline ===")
@@ -15932,6 +15927,8 @@ message("HeLa baseline edges: ", nrow(baseline_edges_hela))
 
 # Save HeLa baseline
 write_csv(baseline_edges_hela, file.path(out_dir_hela_ppi, "tables", "baseline_edges_hela.csv"))
+
+
 
 # ---------------------------------------------------
 # --- Step 3: Prepare HeLa KO proteome data ---
