@@ -16179,31 +16179,75 @@ print(head(hela_summary_global, 10))
 # --- Step 6: Add organelle annotations ---
 message("\n=== Adding organelle annotations ===")
 
+# Check for existing organelle columns in baseline_edges_hela
+existing_org_cols <- grep("_prot[12]\\.(x|y)$", colnames(baseline_edges_hela), value = TRUE)
+
+if (length(existing_org_cols) > 0) {
+  message("WARNING: Found existing organelle columns with .x/.y suffixes")
+  message("Removing duplicate organelle columns and keeping only .x versions...")
+  
+  # Remove .y columns
+  cols_to_remove <- grep("_prot[12]\\.y$", colnames(baseline_edges_hela), value = TRUE)
+  baseline_edges_hela <- baseline_edges_hela %>%
+    dplyr::select(-dplyr::all_of(cols_to_remove))
+  
+  # Rename .x columns to remove .x suffix
+  colnames(baseline_edges_hela) <- gsub("_prot1\\.x$", "_prot1", colnames(baseline_edges_hela))
+  colnames(baseline_edges_hela) <- gsub("_prot2\\.x$", "_prot2", colnames(baseline_edges_hela))
+  
+  message("Cleaned column names")
+}
+
 # Use existing organelle annotations from HeLaWCnMOST_df_annotated
 organelle_tags_hela <- setdiff(colnames(HeLaWCnMOST_df_annotated), 
                               c("Protein.IDs", "Genes", ko_cols))
+
+message("Found ", length(organelle_tags_hela), " organelle tags")
+message("Sample tags: ", paste(head(organelle_tags_hela, 5), collapse = ", "))
 
 # Build gene-to-organelle mapping
 gene_to_org_hela <- HeLaWCnMOST_df_annotated %>%
   dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
   dplyr::filter(!is.na(Genes), Genes != "")
 
-# Add organelle annotations to baseline edges
-# Create separate dataframes for protein 1 and protein 2 annotations
-prot1_annotations <- gene_to_org_hela %>%
-  dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
-  dplyr::rename_with(~paste0(.x, "_prot1"), all_of(organelle_tags_hela)) %>%
-  dplyr::rename(Gene1 = Genes)
+# Check if baseline_edges_hela already has organelle annotations
+has_org_annotations <- any(grepl("_prot1$", colnames(baseline_edges_hela)))
 
-prot2_annotations <- gene_to_org_hela %>%
-  dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
-  dplyr::rename_with(~paste0(.x, "_prot2"), all_of(organelle_tags_hela)) %>%
-  dplyr::rename(Gene2 = Genes)
+if (!has_org_annotations) {
+  message("Adding organelle annotations to baseline edges...")
+  
+  # Create separate dataframes for protein 1 and protein 2 annotations
+  prot1_annotations <- gene_to_org_hela %>%
+    dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
+    dplyr::rename_with(~paste0(.x, "_prot1"), all_of(organelle_tags_hela)) %>%
+    dplyr::rename(Gene1 = Genes)
+  
+  prot2_annotations <- gene_to_org_hela %>%
+    dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
+    dplyr::rename_with(~paste0(.x, "_prot2"), all_of(organelle_tags_hela)) %>%
+    dplyr::rename(Gene2 = Genes)
+  
+  # Now join both annotation sets to the baseline edges
+  baseline_edges_hela_annotated <- baseline_edges_hela %>%
+    dplyr::left_join(prot1_annotations, by = "Gene1", relationship = "many-to-one") %>%
+    dplyr::left_join(prot2_annotations, by = "Gene2", relationship = "many-to-one")
+} else {
+  message("Organelle annotations already present in baseline_edges_hela")
+  baseline_edges_hela_annotated <- baseline_edges_hela
+}
 
-# Now join both annotation sets to the baseline edges
-baseline_edges_hela_annotated <- baseline_edges_hela %>%
-  dplyr::left_join(prot1_annotations, by = "Gene1") %>%
-  dplyr::left_join(prot2_annotations, by = "Gene2")
+# Verify final column names
+message("Final organelle columns:")
+org_cols_final <- grep("_prot[12]$", colnames(baseline_edges_hela_annotated), value = TRUE)
+message("  Found ", length(org_cols_final), " organelle annotation columns")
+message("  Sample: ", paste(head(org_cols_final, 5), collapse = ", "))
+
+# Check for any remaining .x or .y suffixes
+problematic_cols <- grep("_prot[12]\\.(x|y)$", colnames(baseline_edges_hela_annotated), value = TRUE)
+if (length(problematic_cols) > 0) {
+  message("ERROR: Still found ", length(problematic_cols), " columns with .x/.y suffixes!")
+  message("These will cause issues. Sample: ", paste(head(problematic_cols, 5), collapse = ", "))
+}
 
 # Function to determine same organelle
 .same_organelle_hela <- function(df, organelle_tags) {
@@ -16228,10 +16272,15 @@ baseline_edges_hela_annotated <- baseline_edges_hela %>%
   ifelse(rowSums(shared) > 0, "same", "cross")
 }
 
-# Create shared organelle mapping similar to neuronal analysis
-# Define organelle column names based on the annotated dataframe
-org1_cols <- paste0(organelle_tags_hela, "_prot1")
-org2_cols <- paste0(organelle_tags_hela, "_prot2")
+# Extract clean organelle tag names (without _prot1/_prot2 suffix)
+org1_cols_clean <- grep("_prot1$", colnames(baseline_edges_hela_annotated), value = TRUE)
+organelle_tags_clean <- sub("_prot1$", "", org1_cols_clean)
+
+message("Clean organelle tags: ", length(organelle_tags_clean))
+
+# Create shared organelle mapping
+org1_cols <- paste0(organelle_tags_clean, "_prot1")
+org2_cols <- paste0(organelle_tags_clean, "_prot2")
 
 # Verify that these columns exist in the annotated dataframe
 existing_org1_cols <- intersect(org1_cols, colnames(baseline_edges_hela_annotated))
@@ -16270,11 +16319,13 @@ shared_long_hela <- {
   }
 }
 
+message("Created shared_long_hela with ", nrow(shared_long_hela), " rows")
+
 # Update edge states with organelle pairing
 hela_edge_states <- hela_edge_states %>%
   dplyr::mutate(
     OrgPair = .same_organelle_hela(baseline_edges_hela_annotated[match(key, baseline_edges_hela_annotated$key), ], 
-                                  organelle_tags_hela)
+                                  organelle_tags_clean)
   )
 
 
