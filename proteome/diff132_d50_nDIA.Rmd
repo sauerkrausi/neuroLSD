@@ -17045,7 +17045,7 @@ for (ko in top_affected_kos) {
 
 
 
-r# ---------------------------------------------------
+# ---------------------------------------------------
 # --- Step 14: QC plots for PPI confidence by organelle ---
 message("\n=== Creating QC plots for PPI confidence by organelle ===")
 
@@ -17089,8 +17089,7 @@ plot_hela_confidence_distribution <- function(df, score_col, out_dir, org_colors
       legend.key.size = unit(0.3, "cm")
     )
   
-  ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle_hela.pdf")), 
-         p_density, width = 8, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle_hela.pdf")), p_density, width = 8, height = 4, device = cairo_pdf)
   
   # Box plot by organelle
   p_box <- ggplot(df_plot, aes(x = reorder(tag, !!sym(score_col), median), 
@@ -17109,8 +17108,7 @@ plot_hela_confidence_distribution <- function(df, score_col, out_dir, org_colors
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
   
-  ggsave(file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle_hela.pdf")), 
-         p_box, width = 8, height = 4.5, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle_hela.pdf")), p_box, width = 8, height = 4.5, device = cairo_pdf)
 }
 
 # Apply to all prediction scores
@@ -17168,8 +17166,7 @@ if (nrow(ppi_qc_hela) > 0) {
         legend.key.size = unit(0.3, "cm")
       )
     
-    ggsave(file.path(out_dir_hela_ppi, "plots/qc", "bubble_AFMprob_vs_PredictomeConf_byOrganelle_hela.pdf"),
-           p_qc_bubble_hela, width = 7, height = 5, device = cairo_pdf)
+    ggsave(file.path(out_dir_hela_ppi, "plots/qc", "bubble_AFMprob_vs_PredictomeConf_byOrganelle_hela.pdf"), p_qc_bubble_hela, width = 7, height = 5, device = cairo_pdf)
     
     # Alternative bubble plot: AFprob vs Predictome_conf
     p_qc_bubble_af_hela <- ggplot(qc_tag_summary_hela,
@@ -17197,12 +17194,10 @@ if (nrow(ppi_qc_hela) > 0) {
         legend.key.size = unit(0.3, "cm")
       )
     
-    ggsave(file.path(out_dir_hela_ppi, "plots/qc", "bubble_AFprob_vs_PredictomeConf_byOrganelle_hela.pdf"),
-           p_qc_bubble_af_hela, width = 7, height = 5, device = cairo_pdf)
+    ggsave(file.path(out_dir_hela_ppi, "plots/qc", "bubble_AFprob_vs_PredictomeConf_byOrganelle_hela.pdf"), p_qc_bubble_af_hela, width = 7, height = 5, device = cairo_pdf)
     
     # Save summary statistics
-    write_csv(qc_tag_summary_hela, 
-              file.path(out_dir_hela_ppi, "tables", "qc_confidence_by_organelle_summary.csv"))
+    write_csv(qc_tag_summary_hela, file.path(out_dir_hela_ppi, "tables", "qc_confidence_by_organelle_summary.csv"))
     
     message("Created bubble plots for PPI confidence by organelle")
   } else {
