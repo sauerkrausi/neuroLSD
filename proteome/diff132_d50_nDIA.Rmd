@@ -15797,6 +15797,17 @@ gain_up_thresh <- 0.5
 conf_bins <- c(0, 0.5, 0.75, 0.9, 1)
 control_outlier_thresh <- 0.25
 
+
+# Helper functions
+.make_undirected_key <- function(a, b) {
+  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+}
+
+.bin_conf <- function(x, bins) {
+  cut(x, breaks = bins, include.lowest = TRUE, right = TRUE, labels = FALSE)
+}
+
+
 # Load HeLa control data
 HeLaWCControl_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_WCCcontrol.csv")
 
@@ -15904,8 +15915,9 @@ p_sample_outliers <- ggplot(control_sample_stats,
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_sample_outlier_rates.pdf"), 
-       p_sample_outliers, width = 6, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_sample_outlier_rates.pdf"), p_sample_outliers, width = 6, height = 4, device = cairo_pdf)
+
+
 
 # ---------------------------------------------------
 # --- Step 2: Create HeLa-specific baseline using stable proteins ---
@@ -15918,15 +15930,17 @@ stable_hela_proteins <- control_stats %>%
 
 message("Stable HeLa proteins for baseline: ", length(stable_hela_proteins))
 
-# Filter baseline edges to HeLa proteome
+# Filter baseline edges to HeLa proteome and add key column
 baseline_edges_hela <- baseline_edges_union %>%
-  dplyr::filter(Gene1 %in% stable_hela_proteins, Gene2 %in% stable_hela_proteins)
+  dplyr::filter(Gene1 %in% stable_hela_proteins, Gene2 %in% stable_hela_proteins) %>%
+  dplyr::mutate(key = .make_undirected_key(Gene1, Gene2))
 
 message("Original baseline edges: ", nrow(baseline_edges_union))
 message("HeLa baseline edges: ", nrow(baseline_edges_hela))
 
 # Save HeLa baseline
 write_csv(baseline_edges_hela, file.path(out_dir_hela_ppi, "tables", "baseline_edges_hela.csv"))
+
 
 # ---------------------------------------------------
 # --- Step 3: Prepare HeLa KO proteome data ---
@@ -15955,6 +15969,8 @@ write_csv(hela_prot_long, file.path(out_dir_hela_ppi, "tables", "hela_proteome_l
 
 message("HeLa proteome summary:")
 print(table(hela_prot_long$genotype))
+
+
 
 # ---------------------------------------------------
 # --- Step 4: Compute PPI edge states per KO ---
@@ -16127,6 +16143,7 @@ hela_edge_states <- hela_edge_states %>%
                                   organelle_tags_hela)
   )
 
+
 # ---------------------------------------------------
 # --- Step 7: Summary by organelle ---
 message("\n=== Computing summary by organelle ===")
@@ -16146,6 +16163,8 @@ hela_summary_by_organelle <- hela_edge_states %>%
 
 # Save organelle summary
 write_csv(hela_summary_by_organelle, file.path(out_dir_hela_ppi, "tables", "hela_summary_by_organelle.csv"))
+
+
 
 # ---------------------------------------------------
 # --- Step 8: Visualization functions ---
