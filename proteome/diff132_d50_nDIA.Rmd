@@ -16298,32 +16298,13 @@ plot_hela_ppi_vulnerability <- function(df_edges,
   }
   
   # ----- GLOBAL KO×KO CORRELATION HEATMAP -----
-    if ("global_corr" %in% plot_set) {
-    # Fix: Ensure unique genotype+key combinations before pivot
+  if ("global_corr" %in% plot_set) {
     lost_df <- df_states %>%
-      dplyr::group_by(genotype, key) %>%
-      dplyr::summarise(lost = as.integer(any(state == "lost")), .groups = "drop")
+      dplyr::transmute(genotype, key, lost = as.integer(state == "lost"))
     
     if (nrow(lost_df) == 0) return(invisible(NULL))
     
-    # Check for remaining duplicates and fix them
-    check_duplicates <- lost_df %>%
-      dplyr::count(genotype, key) %>%
-      dplyr::filter(n > 1)
-    
-    if (nrow(check_duplicates) > 0) {
-      message("Warning: Still found ", nrow(check_duplicates), " duplicate genotype+key combinations")
-      lost_df <- lost_df %>%
-        dplyr::distinct(genotype, key, .keep_all = TRUE)
-    }
-    
-    lost_wide <- tidyr::pivot_wider(
-      lost_df, 
-      names_from = key, 
-      values_from = lost, 
-      values_fill = 0
-    )
-    
+    lost_wide <- tidyr::pivot_wider(lost_df, names_from = key, values_from = lost, values_fill = 0)
     lost_mat <- as.data.frame(lost_wide)
     rownames(lost_mat) <- lost_mat$genotype
     lost_mat$genotype <- NULL
@@ -16332,7 +16313,6 @@ plot_hela_ppi_vulnerability <- function(df_edges,
     
     rho <- suppressWarnings(stats::cor(t(as.matrix(lost_mat)),
                                       method = "spearman", use = "pairwise.complete.obs"))
-    
     
     # Annotations
     annotation_df <- data.frame(genotype = rownames(rho), stringsAsFactors = FALSE)
@@ -16425,14 +16405,27 @@ plot_hela_ppi_vulnerability <- function(df_edges,
         dplyr::filter(n_tot >= 5)  # Minimum edge count
       
       if (nrow(frac_by_ko_org) > 0) {
-        # Heatmap - Fix the pivot_wider call
-        hm_wide <- frac_by_ko_org %>%
+        # Add deduplication before pivot_wider
+        frac_by_ko_org_clean <- frac_by_ko_org %>%
+          dplyr::group_by(genotype, organelle) %>%
+          dplyr::summarise(
+            fraction_lost = mean(fraction_lost, na.rm = TRUE),  # Take mean if duplicates
+            .groups = "drop"
+          )
+        
+        hm_wide <- frac_by_ko_org_clean %>%
           dplyr::select(genotype, organelle, fraction_lost) %>%
           tidyr::pivot_wider(
             names_from = organelle, 
             values_from = fraction_lost, 
             values_fill = 0
           )
+        
+        # Handle duplicate genotype names
+        if (any(duplicated(hm_wide$genotype))) {
+          message("Warning: Found duplicate genotypes in organelle data, making unique...")
+          hm_wide$genotype <- make.unique(as.character(hm_wide$genotype))
+        }
         
         hm_mat <- as.matrix(hm_wide[, -1, drop = FALSE])
         rownames(hm_mat) <- hm_wide$genotype
