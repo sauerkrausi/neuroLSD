@@ -15782,7 +15782,7 @@ message("  - Summary tables in: tables/")
 ```{r}
 # --- Step 0: create outdirs and setup of environment 
 # Setup output directories
-out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/HeLaPPI"
+out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPIHeLaPPI"
 dir.create(out_dir_hela_ppi, recursive = TRUE, showWarnings = FALSE)
 
 dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
@@ -15799,7 +15799,6 @@ control_outlier_thresh <- 0.25
 
 # Load HeLa control data
 HeLaWCControl_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_WCCcontrol.csv")
-
 
 # ---------------------------------------------------
 # --- Step 1: Process HeLa Control Data and Create Baseline ---
@@ -15908,7 +15907,6 @@ p_sample_outliers <- ggplot(control_sample_stats,
 ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_sample_outlier_rates.pdf"), 
        p_sample_outliers, width = 6, height = 4, device = cairo_pdf)
 
-
 # ---------------------------------------------------
 # --- Step 2: Create HeLa-specific baseline using stable proteins ---
 message("\n=== Creating HeLa-specific PPI baseline ===")
@@ -15929,8 +15927,6 @@ message("HeLa baseline edges: ", nrow(baseline_edges_hela))
 
 # Save HeLa baseline
 write_csv(baseline_edges_hela, file.path(out_dir_hela_ppi, "tables", "baseline_edges_hela.csv"))
-
-
 
 # ---------------------------------------------------
 # --- Step 3: Prepare HeLa KO proteome data ---
@@ -15959,8 +15955,6 @@ write_csv(hela_prot_long, file.path(out_dir_hela_ppi, "tables", "hela_proteome_l
 
 message("HeLa proteome summary:")
 print(table(hela_prot_long$genotype))
-
-
 
 # ---------------------------------------------------
 # --- Step 4: Compute PPI edge states per KO ---
@@ -16007,8 +16001,6 @@ if (exists("disease_classes_dataframe")) {
 # Save edge states
 write_csv(hela_edge_states, file.path(out_dir_hela_ppi, "tables", "hela_edge_states.csv"))
 
-
-
 # ---------------------------------------------------
 # --- Step 5: Global summary statistics ---
 message("\n=== Computing global summary statistics ===")
@@ -16047,11 +16039,21 @@ gene_to_org_hela <- HeLaWCnMOST_df_annotated %>%
   dplyr::filter(!is.na(Genes), Genes != "")
 
 # Add organelle annotations to baseline edges
-baseline_edges_hela_annotated <- baseline_edges_hela %>%
-  dplyr::left_join(gene_to_org_hela, by = c("Gene1" = "Genes")) %>%
+# Create separate dataframes for protein 1 and protein 2 annotations
+prot1_annotations <- gene_to_org_hela %>%
+  dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
   dplyr::rename_with(~paste0(.x, "_prot1"), all_of(organelle_tags_hela)) %>%
-  dplyr::left_join(gene_to_org_hela, by = c("Gene2" = "Genes")) %>%
-  dplyr::rename_with(~paste0(.x, "_prot2"), all_of(organelle_tags_hela))
+  dplyr::rename(Gene1 = Genes)
+
+prot2_annotations <- gene_to_org_hela %>%
+  dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
+  dplyr::rename_with(~paste0(.x, "_prot2"), all_of(organelle_tags_hela)) %>%
+  dplyr::rename(Gene2 = Genes)
+
+# Now join both annotation sets to the baseline edges
+baseline_edges_hela_annotated <- baseline_edges_hela %>%
+  dplyr::left_join(prot1_annotations, by = "Gene1") %>%
+  dplyr::left_join(prot2_annotations, by = "Gene2")
 
 # Create shared organelle mapping similar to neuronal analysis
 org1_cols <- paste0(organelle_tags_hela, "_prot1")
@@ -16098,7 +16100,6 @@ hela_edge_states <- hela_edge_states %>%
                                   organelle_tags_hela)
   )
 
-
 # ---------------------------------------------------
 # --- Step 7: Summary by organelle ---
 message("\n=== Computing summary by organelle ===")
@@ -16118,8 +16119,6 @@ hela_summary_by_organelle <- hela_edge_states %>%
 
 # Save organelle summary
 write_csv(hela_summary_by_organelle, file.path(out_dir_hela_ppi, "tables", "hela_summary_by_organelle.csv"))
-
-
 
 # ---------------------------------------------------
 # --- Step 8: Visualization functions ---
