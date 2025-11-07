@@ -17119,6 +17119,8 @@ for (score in c("RFprob", "AFprob", "AFMprob", "Predictome_conf")) {
   )
 }
 
+
+
 # ---------------------------------------------------
 # --- Step 15: Final summary and reports ---
 message("\n=== Creating final summary ===")
@@ -17172,9 +17174,10 @@ if (exists("complex_disruption_hela")) {
 message("\nOutput structure:")
 message("  - plots/global/: Cross-KO comparison plots")
 message("  - plots/by_ko/: Individual KO detailed plots") 
+message("  - plots/multimer/: Trimer and complex analysis plots")
 message("  - plots/qc/: Quality control and baseline validation plots")
 message("  - tables/: All summary statistics and detailed results")
-message("  - multimer/: Trimer and complex analysis results")
+message("  - tables/multimer/: Trimer and complex analysis results")
 ```
 
 
