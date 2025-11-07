@@ -15811,6 +15811,41 @@ control_outlier_thresh <- 0.25
 # Load HeLa control data
 HeLaWCControl_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_WCCcontrol.csv")
 
+
+# ---------------------------------------------------
+# --- Fix gene names - take only first gene before semicolon ---
+message("=== Cleaning gene names ===")
+
+# Check original gene names
+message("Original unique genes: ", length(unique(HeLaWCnMOST_df_annotated$Genes)))
+message("Sample original genes: ", paste(head(HeLaWCnMOST_df_annotated$Genes, 5), collapse = ", "))
+
+# Clean gene names - take only the first gene before semicolon
+HeLaWCnMOST_df_annotated <- HeLaWCnMOST_df_annotated %>%
+  dplyr::mutate(
+    Genes = sapply(strsplit(Genes, ";"), function(x) x[1])
+  )
+
+# Check cleaned gene names
+message("Cleaned unique genes: ", length(unique(HeLaWCnMOST_df_annotated$Genes)))
+message("Sample cleaned genes: ", paste(head(HeLaWCnMOST_df_annotated$Genes, 5), collapse = ", "))
+
+# Also clean the control data
+message("=== Cleaning control gene names ===")
+
+# Check original control gene names
+message("Original control unique genes: ", length(unique(HeLaWCControl_df$Gene.names)))
+
+# Clean control gene names
+HeLaWCControl_df <- HeLaWCControl_df %>%
+  dplyr::mutate(
+    Gene.names = sapply(strsplit(Gene.names, ";"), function(x) x[1])
+  )
+
+message("Cleaned control unique genes: ", length(unique(HeLaWCControl_df$Gene.names)))
+
+
+
 # ---------------------------------------------------
 # --- Step 1: Process HeLa Control Data and Create Baseline ---
 message("=== Processing HeLa control data ===")
