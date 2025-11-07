@@ -15976,11 +15976,22 @@ print(table(hela_prot_long$genotype))
 # --- Step 4: Compute PPI edge states per KO ---
 message("\n=== Computing PPI edge states per KO ===")
 
-# Expand baseline to all KO contexts
+# Expand baseline to all KO contexts - FIXED VERSION
 ko_list <- unique(hela_prot_long$genotype)
 
+# Create the expansion manually to preserve the key column structure
 baseline_expanded_hela <- baseline_edges_hela %>%
-  tidyr::crossing(genotype = ko_list)
+  # Add a temporary column for the cross join
+  dplyr::mutate(temp_join = 1) %>%
+  dplyr::left_join(
+    data.frame(genotype = ko_list, temp_join = 1),
+    by = "temp_join"
+  ) %>%
+  dplyr::select(-temp_join)
+
+# Alternative approach using crossing that preserves structure:
+# baseline_expanded_hela <- baseline_edges_hela %>%
+#   tidyr::crossing(genotype = ko_list)
 
 # Join proteome data for both partners
 hela_edge_states <- baseline_expanded_hela %>%
@@ -16000,22 +16011,18 @@ hela_edge_states <- baseline_expanded_hela %>%
       !is.na(dB) & dB < drop_thresh ~ "lost",
       (!is.na(dA) | !is.na(dB))     ~ "retained",
       TRUE                          ~ "unknown"
-    ),
-    # Add organelle pairing info
-    OrgPair = ifelse(!is.na(Gene1) & !is.na(Gene2), "same", "cross")  # Simplified for now
+    )
   )
 
-# Add disease class information if available
-if (exists("disease_classes_dataframe")) {
-  hela_edge_states <- hela_edge_states %>%
-    dplyr::left_join(
-      disease_classes_dataframe %>% dplyr::rename(genotype = sample),
-      by = "genotype"
-    )
+# Verify that key column exists
+if (!"key" %in% colnames(hela_edge_states)) {
+  stop("ERROR: key column missing from hela_edge_states!")
 }
 
-# Save edge states
-write_csv(hela_edge_states, file.path(out_dir_hela_ppi, "tables", "hela_edge_states.csv"))
+message("hela_edge_states has ", ncol(hela_edge_states), " columns including key: ", "key" %in% colnames(hela_edge_states))
+
+
+
 
 # ---------------------------------------------------
 # --- Step 5: Global summary statistics ---
