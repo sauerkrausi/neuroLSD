@@ -16240,8 +16240,13 @@ plot_hela_ppi_vulnerability <- function(df_edges,
       dplyr::mutate(state = factor(state, levels = c("retained", "lost", "unknown")))
     
     if (!is.null(disease_class_df)) {
+      # Fix the many-to-many relationship issue
+      disease_class_clean <- disease_class_df %>% 
+        dplyr::distinct(sample, .keep_all = TRUE) %>%
+        dplyr::rename(genotype = sample)
+      
       hela_ppi_global <- hela_ppi_global %>%
-        dplyr::left_join(disease_class_df %>% dplyr::rename(genotype = sample), by = "genotype")
+        dplyr::left_join(disease_class_clean, by = "genotype", relationship = "many-to-one")
     }
     
     hela_ppi_global_sum <- hela_ppi_global %>%
@@ -16355,9 +16360,14 @@ plot_hela_ppi_vulnerability <- function(df_edges,
       })
       shared_long <- dplyr::bind_rows(shared_long)
       
+      # Skip organelle analysis if no shared organelles found
+      if (is.null(shared_long) || nrow(shared_long) == 0) {
+        message("No shared organelles found; skipping organelle heatmap.")
+        return(invisible(NULL))
+      }
+      
       # Fraction lost per KO × organelle
       frac_by_ko_org <- df_states %>%
-        dplyr::filter(OrgPair == "same") %>%
         dplyr::select(key, genotype, state) %>%
         dplyr::inner_join(shared_long, by = "key") %>%
         dplyr::group_by(genotype, organelle) %>%
@@ -16370,11 +16380,16 @@ plot_hela_ppi_vulnerability <- function(df_edges,
         dplyr::filter(n_tot >= 5)  # Minimum edge count
       
       if (nrow(frac_by_ko_org) > 0) {
-        # Heatmap
+        # Heatmap - Fix the pivot_wider call
         hm_wide <- frac_by_ko_org %>%
-          tidyr::pivot_wider(names_from = organelle, values_from = fraction_lost, values_fill = 0)
+          dplyr::select(genotype, organelle, fraction_lost) %>%
+          tidyr::pivot_wider(
+            names_from = organelle, 
+            values_from = fraction_lost, 
+            values_fill = 0
+          )
         
-        hm_mat <- as.matrix(hm_wide[, -1])
+        hm_mat <- as.matrix(hm_wide[, -1, drop = FALSE])
         rownames(hm_mat) <- hm_wide$genotype
         
         pheatmap::pheatmap(
@@ -16397,6 +16412,8 @@ plot_hela_ppi_vulnerability <- function(df_edges,
           filename = file.path(out_dir, "plots/global", "heatmap_organelle_fraction_lost_hela.pdf"), 
           width = 12, height = 10
         )
+      } else {
+        message("No organelle data with sufficient edges found; skipping organelle heatmap.")
       }
     }
   }
