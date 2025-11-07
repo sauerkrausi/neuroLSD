@@ -16007,25 +16007,42 @@ print(table(hela_prot_long$genotype))
 
 
 # ---------------------------------------------------
+# --- Step 3b: Fix duplicate genes in proteome data ---
+message("\n=== Fixing duplicate genes in proteome data ===")
+
+# Check for duplicates in the proteome data
+prot_duplicates <- hela_prot_long %>%
+  dplyr::count(Genes, genotype) %>%
+  dplyr::filter(n > 1)
+
+message("Duplicates in hela_prot_long: ", nrow(prot_duplicates))
+
+if(nrow(prot_duplicates) > 0) {
+  message("Sample protein duplicates:")
+  print(head(prot_duplicates))
+  
+  # Fix by taking the mean of duplicate measurements
+  hela_prot_long <- hela_prot_long %>%
+    dplyr::group_by(Genes, genotype) %>%
+    dplyr::summarise(log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+  
+  message("Fixed hela_prot_long rows: ", nrow(hela_prot_long))
+  
+  # Save the fixed version
+  write_csv(hela_prot_long, file.path(out_dir_hela_ppi, "tables", "hela_proteome_long_deduplicated.csv"))
+} else {
+  message("No duplicates found in proteome data")
+}
+
+# ---------------------------------------------------
 # --- Step 4: Compute PPI edge states per KO ---
 message("\n=== Computing PPI edge states per KO ===")
 
-# Expand baseline to all KO contexts - FIXED VERSION
+# Expand baseline to all KO contexts
 ko_list <- unique(hela_prot_long$genotype)
 
-# Create the expansion manually to preserve the key column structure
 baseline_expanded_hela <- baseline_edges_hela %>%
-  # Add a temporary column for the cross join
-  dplyr::mutate(temp_join = 1) %>%
-  dplyr::left_join(
-    data.frame(genotype = ko_list, temp_join = 1),
-    by = "temp_join"
-  ) %>%
-  dplyr::select(-temp_join)
-
-# Alternative approach using crossing that preserves structure:
-# baseline_expanded_hela <- baseline_edges_hela %>%
-#   tidyr::crossing(genotype = ko_list)
+  tidyr::crossing(genotype = ko_list)
 
 # Join proteome data for both partners
 hela_edge_states <- baseline_expanded_hela %>%
@@ -16045,15 +16062,23 @@ hela_edge_states <- baseline_expanded_hela %>%
       !is.na(dB) & dB < drop_thresh ~ "lost",
       (!is.na(dA) | !is.na(dB))     ~ "retained",
       TRUE                          ~ "unknown"
-    )
+    ),
+    # Add organelle pairing info
+    OrgPair = ifelse(!is.na(Gene1) & !is.na(Gene2), "same", "cross")  # Simplified for now
   )
 
-# Verify that key column exists
-if (!"key" %in% colnames(hela_edge_states)) {
-  stop("ERROR: key column missing from hela_edge_states!")
+# Add disease class information if available
+if (exists("disease_classes_dataframe")) {
+  hela_edge_states <- hela_edge_states %>%
+    dplyr::left_join(
+      disease_classes_dataframe %>% dplyr::rename(genotype = sample),
+      by = "genotype"
+    )
 }
 
-message("hela_edge_states has ", ncol(hela_edge_states), " columns including key: ", "key" %in% colnames(hela_edge_states))
+# Save edge states
+write_csv(hela_edge_states, file.path(out_dir_hela_ppi, "tables", "hela_edge_states.csv"))
+
 
 
 
@@ -16273,13 +16298,32 @@ plot_hela_ppi_vulnerability <- function(df_edges,
   }
   
   # ----- GLOBAL KO×KO CORRELATION HEATMAP -----
-  if ("global_corr" %in% plot_set) {
+    if ("global_corr" %in% plot_set) {
+    # Fix: Ensure unique genotype+key combinations before pivot
     lost_df <- df_states %>%
-      dplyr::transmute(genotype, key, lost = as.integer(state == "lost"))
+      dplyr::group_by(genotype, key) %>%
+      dplyr::summarise(lost = as.integer(any(state == "lost")), .groups = "drop")
     
     if (nrow(lost_df) == 0) return(invisible(NULL))
     
-    lost_wide <- tidyr::pivot_wider(lost_df, names_from = key, values_from = lost, values_fill = 0)
+    # Check for remaining duplicates and fix them
+    check_duplicates <- lost_df %>%
+      dplyr::count(genotype, key) %>%
+      dplyr::filter(n > 1)
+    
+    if (nrow(check_duplicates) > 0) {
+      message("Warning: Still found ", nrow(check_duplicates), " duplicate genotype+key combinations")
+      lost_df <- lost_df %>%
+        dplyr::distinct(genotype, key, .keep_all = TRUE)
+    }
+    
+    lost_wide <- tidyr::pivot_wider(
+      lost_df, 
+      names_from = key, 
+      values_from = lost, 
+      values_fill = 0
+    )
+    
     lost_mat <- as.data.frame(lost_wide)
     rownames(lost_mat) <- lost_mat$genotype
     lost_mat$genotype <- NULL
@@ -16288,6 +16332,7 @@ plot_hela_ppi_vulnerability <- function(df_edges,
     
     rho <- suppressWarnings(stats::cor(t(as.matrix(lost_mat)),
                                       method = "spearman", use = "pairwise.complete.obs"))
+    
     
     # Annotations
     annotation_df <- data.frame(genotype = rownames(rho), stringsAsFactors = FALSE)
@@ -16430,6 +16475,19 @@ plot_hela_ppi_vulnerability(
   plot_set = c("global_bar", "global_corr", "organelle"),
   disease_class_df = disease_classes_dataframe
 )
+
+
+
+# Test with just the bar plot to isolate the issue
+plot_hela_ppi_vulnerability(
+  df_edges = baseline_edges_hela_annotated,
+  df_states = hela_edge_states,
+  out_dir = out_dir_hela_ppi,
+  plot_set = c("global_bar"),  # Only bar plot
+  disease_class_df = disease_classes_dataframe
+)
+
+
 
 # ---------------------------------------------------
 # --- Step 10: Trimer Analysis for HeLa ---
