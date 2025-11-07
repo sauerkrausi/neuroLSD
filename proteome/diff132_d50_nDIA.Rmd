@@ -15787,9 +15787,10 @@ dir.create(out_dir_hela_ppi, recursive = TRUE, showWarnings = FALSE)
 
 dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_ppi, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_ppi, "plots/qc"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_ppi, "tables"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_hela_ppi, "multimer"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
 
 # Parameters
 drop_thresh <- -0.5
@@ -16633,15 +16634,15 @@ plot_hela_ppi_vulnerability(
 )
 
 
-
-# Test with just the bar plot to isolate the issue
-plot_hela_ppi_vulnerability(
-  df_edges = baseline_edges_hela_annotated,
-  df_states = hela_edge_states,
-  out_dir = out_dir_hela_ppi,
-  plot_set = c("global_bar"),  # Only bar plot
-  disease_class_df = disease_classes_dataframe
-)
+## test single function for trial and error 
+# # Test with just the bar plot to isolate the issue
+# plot_hela_ppi_vulnerability(
+#   df_edges = baseline_edges_hela_annotated,
+#   df_states = hela_edge_states,
+#   out_dir = out_dir_hela_ppi,
+#   plot_set = c("global_bar"),  # Only bar plot
+#   disease_class_df = disease_classes_dataframe
+# )
 
 
 
@@ -16707,7 +16708,7 @@ if (exists("trimers_baseline")) {
   )
   
   # Save trimer states
-  write_csv(hela_trimer_states, file.path(out_dir_hela_ppi, "tables", "hela_trimer_states.csv"))
+  write_csv(hela_trimer_states, file.path(out_dir_hela_ppi, "tables/multimer", "hela_trimer_states.csv"))
   
   # Summary
   hela_trimer_summary <- hela_trimer_states %>%
@@ -16723,7 +16724,7 @@ if (exists("trimers_baseline")) {
     dplyr::arrange(desc(frac_broken))
   
   # Save trimer summary
-  write_csv(hela_trimer_summary, file.path(out_dir_hela_ppi, "tables", "hela_trimer_summary.csv"))
+  write_csv(hela_trimer_summary, file.path(out_dir_hela_ppi, "tables/multimer", "hela_trimer_summary.csv"))
   
   message("Trimer breakage summary (top 10):")
   print(head(hela_trimer_summary, 10))
@@ -16745,8 +16746,7 @@ if (exists("trimers_baseline")) {
       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
     )
   
-  ggsave(file.path(out_dir_hela_ppi, "plots/global", "bars_broken_trimers_hela.pdf"), 
-         p_trimer_bar, width = 8, height = 5, device = cairo_pdf)
+  ggsave(file.path(out_dir_hela_ppi, "plots/multimer", "bars_broken_trimers_hela.pdf"), p_trimer_bar, width = 8, height = 5, device = cairo_pdf)
   
   # Affected trimers by organelle
   trimer_affected_org <- hela_trimer_states %>%
@@ -16774,7 +16774,7 @@ if (exists("trimers_baseline")) {
     dplyr::arrange(desc(n_affected))
   
   # Save organelle-specific trimer results
-  write_csv(trimer_affected_org, file.path(out_dir_hela_ppi, "tables", "hela_trimers_by_organelle.csv"))
+  write_csv(trimer_affected_org, file.path(out_dir_hela_ppi, "tables/multimer", "hela_trimers_by_organelle.csv"))
 }
 
 # ---------------------------------------------------
@@ -16823,7 +16823,7 @@ if (exists("complexes_summary") && exists("complex_edges_df")) {
     )
   
   # Save complex states
-  write_csv(complex_hela_summary, file.path(out_dir_hela_ppi, "tables", "hela_complex_states.csv"))
+  write_csv(complex_hela_summary, file.path(out_dir_hela_ppi, "tables/multimer", "hela_complex_states.csv"))
   
   # Summary statistics
   complex_disruption_hela <- complex_hela_summary %>%
@@ -16839,7 +16839,7 @@ if (exists("complexes_summary") && exists("complex_edges_df")) {
     dplyr::arrange(desc(frac_disrupted))
   
   # Save disruption summary
-  write_csv(complex_disruption_hela, file.path(out_dir_hela_ppi, "tables", "hela_complex_disruption_summary.csv"))
+  write_csv(complex_disruption_hela, file.path(out_dir_hela_ppi, "tables/multimer", "hela_complex_disruption_summary.csv"))
   
   message("Complex disruption summary (top 10):")
   print(head(complex_disruption_hela, 10))
@@ -16861,7 +16861,7 @@ if (exists("complexes_summary") && exists("complex_edges_df")) {
       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
     )
   
-  ggsave(file.path(out_dir_hela_ppi, "plots/global", "bars_disrupted_complexes_hela.pdf"), 
+  ggsave(file.path(out_dir_hela_ppi, "plots/multimer", "bars_disrupted_complexes_hela.pdf"), 
          p_complex_bar, width = 8, height = 5, device = cairo_pdf)
   
   # Per organelle analysis
@@ -16872,7 +16872,7 @@ if (exists("complexes_summary") && exists("complex_edges_df")) {
     dplyr::arrange(desc(n_disrupted))
   
   # Save organelle-specific complex results
-  write_csv(complex_org_hela, file.path(out_dir_hela_ppi, "tables", "hela_complexes_by_organelle.csv"))
+  write_csv(complex_org_hela, file.path(out_dir_hela_ppi, "tables/multimer", "hela_complexes_by_organelle.csv"))
   
   # Heatmap - disrupted complexes by organelle × KO
   if (nrow(complex_org_hela) > 0) {
@@ -16900,7 +16900,7 @@ if (exists("complexes_summary") && exists("complex_edges_df")) {
         cellwidth = 10,
         cellheight = 10,
         main = "Disrupted complexes by organelle (HeLa)",
-        filename = file.path(out_dir_hela_ppi, "plots/global", "heatmap_disrupted_complexes_by_organelle_hela.pdf"),
+        filename = file.path(out_dir_hela_ppi, "plots/multimer", "heatmap_disrupted_complexes_by_organelle_hela.pdf"),
         width = 12, height = 10
       )
     }
