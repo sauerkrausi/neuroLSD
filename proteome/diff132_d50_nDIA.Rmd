@@ -16055,14 +16055,21 @@ baseline_edges_hela_annotated <- baseline_edges_hela %>%
   dplyr::left_join(prot1_annotations, by = "Gene1") %>%
   dplyr::left_join(prot2_annotations, by = "Gene2")
 
-# Create shared organelle mapping similar to neuronal analysis
-org1_cols <- paste0(organelle_tags_hela, "_prot1")
-org2_cols <- paste0(organelle_tags_hela, "_prot2")
-
 # Function to determine same organelle
 .same_organelle_hela <- function(df, organelle_tags) {
-  prot1_mat <- as.data.frame(df[paste0(organelle_tags, "_prot1")])
-  prot2_mat <- as.data.frame(df[paste0(organelle_tags, "_prot2")])
+  existing_org1_cols <- paste0(organelle_tags, "_prot1")
+  existing_org2_cols <- paste0(organelle_tags, "_prot2")
+  
+  # Only use columns that actually exist
+  existing_org1_cols <- intersect(existing_org1_cols, colnames(df))
+  existing_org2_cols <- intersect(existing_org2_cols, colnames(df))
+  
+  if (length(existing_org1_cols) == 0 || length(existing_org2_cols) == 0) {
+    return(rep("cross", nrow(df)))
+  }
+  
+  prot1_mat <- as.data.frame(df[existing_org1_cols])
+  prot2_mat <- as.data.frame(df[existing_org2_cols])
   
   prot1_mat[] <- lapply(prot1_mat, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
   prot2_mat[] <- lapply(prot2_mat, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
@@ -16071,26 +16078,46 @@ org2_cols <- paste0(organelle_tags_hela, "_prot2")
   ifelse(rowSums(shared) > 0, "same", "cross")
 }
 
+# Create shared organelle mapping similar to neuronal analysis
+# Define organelle column names based on the annotated dataframe
+org1_cols <- paste0(organelle_tags_hela, "_prot1")
+org2_cols <- paste0(organelle_tags_hela, "_prot2")
+
+# Verify that these columns exist in the annotated dataframe
+existing_org1_cols <- intersect(org1_cols, colnames(baseline_edges_hela_annotated))
+existing_org2_cols <- intersect(org2_cols, colnames(baseline_edges_hela_annotated))
+
+message("Found ", length(existing_org1_cols), " prot1 organelle columns")
+message("Found ", length(existing_org2_cols), " prot2 organelle columns")
+
 # Create shared_long_hela for organelle-specific analysis
 shared_long_hela <- {
-  m1 <- baseline_edges_hela_annotated[, org1_cols] %>% 
-    lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
-    as.data.frame()
-  m2 <- baseline_edges_hela_annotated[, org2_cols] %>% 
-    lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
-    as.data.frame()
-  
-  shared_mat <- as.matrix(m1) & as.matrix(m2)
-  
-  bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
-    idx <- which(shared_mat[i, ])
-    if (!length(idx)) return(NULL)
-    data.frame(
-      key = baseline_edges_hela_annotated$key[i], 
-      tag = organelle_tags_hela[idx], 
-      stringsAsFactors = FALSE
-    )
-  }))
+  if (length(existing_org1_cols) == 0 || length(existing_org2_cols) == 0) {
+    message("No organelle columns found, creating empty shared_long_hela")
+    data.frame(key = character(0), tag = character(0), stringsAsFactors = FALSE)
+  } else {
+    m1 <- baseline_edges_hela_annotated[, existing_org1_cols, drop = FALSE] %>% 
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
+      as.data.frame()
+    m2 <- baseline_edges_hela_annotated[, existing_org2_cols, drop = FALSE] %>% 
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
+      as.data.frame()
+    
+    shared_mat <- as.matrix(m1) & as.matrix(m2)
+    
+    # Get the organelle tags that actually exist
+    existing_tags <- sub("_prot1$", "", existing_org1_cols)
+    
+    bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
+      idx <- which(shared_mat[i, ])
+      if (!length(idx)) return(NULL)
+      data.frame(
+        key = baseline_edges_hela_annotated$key[i], 
+        tag = existing_tags[idx], 
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
 }
 
 # Update edge states with organelle pairing
