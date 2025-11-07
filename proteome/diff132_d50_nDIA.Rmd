@@ -15976,6 +15976,7 @@ message("HeLa baseline edges: ", nrow(baseline_edges_hela))
 write_csv(baseline_edges_hela, file.path(out_dir_hela_ppi, "tables", "baseline_edges_hela.csv"))
 
 
+
 # ---------------------------------------------------
 # --- Step 3: Prepare HeLa KO proteome data ---
 message("\n=== Preparing HeLa KO proteome data ===")
@@ -16003,7 +16004,6 @@ write_csv(hela_prot_long, file.path(out_dir_hela_ppi, "tables", "hela_proteome_l
 
 message("HeLa proteome summary:")
 print(table(hela_prot_long$genotype))
-
 
 
 # ---------------------------------------------------
@@ -16054,7 +16054,6 @@ if (!"key" %in% colnames(hela_edge_states)) {
 }
 
 message("hela_edge_states has ", ncol(hela_edge_states), " columns including key: ", "key" %in% colnames(hela_edge_states))
-
 
 
 
@@ -16183,6 +16182,7 @@ hela_edge_states <- hela_edge_states %>%
     OrgPair = .same_organelle_hela(baseline_edges_hela_annotated[match(key, baseline_edges_hela_annotated$key), ], 
                                   organelle_tags_hela)
   )
+
 
 
 # ---------------------------------------------------
