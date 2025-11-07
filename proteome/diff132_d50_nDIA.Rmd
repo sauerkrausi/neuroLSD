@@ -15782,7 +15782,7 @@ message("  - Summary tables in: tables/")
 ```{r}
 # --- Step 0: create outdirs and setup of environment 
 # Setup output directories
-out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPIHeLaPPI"
+out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/HeLaPPI"
 dir.create(out_dir_hela_ppi, recursive = TRUE, showWarnings = FALSE)
 
 dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
@@ -15795,7 +15795,7 @@ dir.create(file.path(out_dir_hela_ppi, "multimer"), recursive = TRUE, showWarnin
 drop_thresh <- -0.5
 gain_up_thresh <- 0.5
 conf_bins <- c(0, 0.5, 0.75, 0.9, 1)
-control_outlier_thresh <- 0.25
+control_outlier_thresh <- 0.4
 
 
 # Helper functions
@@ -15904,8 +15904,7 @@ p_control_stability <- ggplot(control_stats, aes(x = max_abs_log2FC)) +
     panel.border = element_rect(color = "black", fill = NA)
   )
 
-ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_variability_histogram.pdf"), 
-       p_control_stability, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_variability_histogram.pdf"), p_control_stability, width = 5, height = 4, device = cairo_pdf)
 
 # Per-control-sample outlier analysis
 control_sample_stats <- HeLaWCControl_df %>%
