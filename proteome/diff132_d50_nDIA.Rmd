@@ -17275,20 +17275,620 @@ message("  - tables/multimer/: Trimer and complex analysis results")
 
 
 # XX. PPI vulnerbaility matches between HeLa <=> Neuron
-Have PPI calcualted for both dimers, trimers and complexes in HeLa and iN and iDA. (see code pasted)
-question is now how well do the vulnearbility match between the same KO across cell types? 
-- new outdir "PPIcomp" in the PPI folder 
-- we could check how many PPIs are losted in each KO in a numerical value, but also by annotation
-- but we also have to check if the same PPI are lost or disruped between the cell types (HeLa - iN - iDA)
-- make we can make a streamgraph for the vizualization. have the cell types in different colors [steamgraph_palette <- c(iN = "grey60", iDA = "grey80", HeLa = "skyblue")]. 
-- have two plots: 
-  1. x axis of the steamgraph are the differnet KOs and on the y axis we have the PPI lost 
-  2. a plot for each KO and the x axis are the organelles and we plot the mean PPIs lost per organelle on the y axis 
-  3. we can do that then also for the Trimers and multimers?
-
-- have also table for the ppis, timers and multimers for whcich PPIs are maytched and which ones are lost. also say which direction they are lost (like lost in iN or iDa or HeLa or in any combinatoin)
 ```{r}
+# =========================================================================
+# PPI Vulnerability Comparison Across Cell Types (HeLa, iN, iDA)
+# Analyze dimers, trimers, and complexes across all three cell types
+# =========================================================================
 
+# --- Step 0: Setup ---
+library(tidyverse)
+library(ggplot2)
+library(ggstream)
+library(pheatmap)
+library(RColorBrewer)
+
+out_dir_ppi_comp <- file.path(out_dir_PPI, "PPIcomp")
+dir.create(file.path(out_dir_ppi_comp, "plots/dimers"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_comp, "plots/trimers"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_comp, "plots/complexes"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_comp, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+# Color palettes
+streamgraph_palette <- c(iN = "grey60", iDA = "grey80", HeLa = "skyblue")
+organelle_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(50)
+
+
+# --- Step 1: Load and harmonize PPI data from all cell types ---
+message("\n=== Loading PPI data from all cell types ===")
+
+# Load iN/iDA edge states (from neuronal analysis)
+neuronal_edge_states <- ko_edge_states %>%
+  dplyr::select(key, Gene1, Gene2, genotype, neuron, state, OrgPair) %>%
+  dplyr::mutate(cell_type = neuron) %>%
+  dplyr::select(-neuron)
+
+# Load HeLa edge states
+hela_edge_states_comp <- hela_edge_states %>%
+  dplyr::select(key, Gene1, Gene2, genotype, state, OrgPair) %>%
+  dplyr::mutate(cell_type = "HeLa")
+
+# Combine all edge states
+all_edge_states <- dplyr::bind_rows(neuronal_edge_states, hela_edge_states_comp) %>%
+  dplyr::filter(!is.na(cell_type), !is.na(genotype))
+
+message("Combined edge states: ", nrow(all_edge_states), " rows")
+message("Cell types: ", paste(unique(all_edge_states$cell_type), collapse = ", "))
+message("Genotypes: ", paste(unique(all_edge_states$genotype), collapse = ", "))
+
+# Find common genotypes across all cell types
+common_genotypes <- all_edge_states %>%
+  dplyr::distinct(genotype, cell_type) %>%
+  dplyr::count(genotype) %>%
+  dplyr::filter(n == 3) %>%  # Present in all 3 cell types
+  dplyr::pull(genotype)
+
+message("Common genotypes across all cell types: ", length(common_genotypes))
+message("Genotypes: ", paste(common_genotypes, collapse = ", "))
+
+
+# --- Step 2: Global PPI loss comparison ---
+message("\n=== Computing global PPI loss per KO × cell type ===")
+
+global_ppi_loss <- all_edge_states %>%
+  dplyr::group_by(genotype, cell_type) %>%
+  dplyr::summarise(
+    total_edges = n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    n_retained = sum(state == "retained", na.rm = TRUE),
+    frac_lost = n_lost / total_edges,
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    cell_type = factor(cell_type, levels = c("iN", "iDA", "HeLa"))
+  )
+
+write_csv(global_ppi_loss, file.path(out_dir_ppi_comp, "tables", "global_ppi_loss_all_celltypes.csv"))
+
+message("Global PPI loss summary (top 10 by total lost):")
+global_ppi_loss %>%
+  dplyr::group_by(genotype) %>%
+  dplyr::summarise(total_lost = sum(n_lost), .groups = "drop") %>%
+  dplyr::arrange(desc(total_lost)) %>%
+  head(10) %>%
+  print()
+
+
+# --- Step 3: Streamgraph - Lost PPIs per KO across cell types ---
+message("\n=== Creating streamgraph: Lost PPIs per KO ===")
+
+# Prepare data for streamgraph (only common genotypes)
+stream_data_ko <- global_ppi_loss %>%
+  dplyr::filter(genotype %in% common_genotypes) %>%
+  dplyr::arrange(genotype, cell_type)
+
+# Create streamgraph
+p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost, fill = cell_type)) +
+  geom_stream(type = "ridge", bw = 0.8) +
+  scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+  labs(
+    title = "Lost PPIs per KO across cell types",
+    x = "Genotype",
+    y = "Number of lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "top"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "streamgraph_lost_ppis_per_ko.pdf"), p_stream_ko, width = 10, height = 5, device = cairo_pdf)
+
+
+# --- Step 4: Add organelle annotations ---
+message("\n=== Adding organelle annotations ===")
+
+# Create unified organelle mapping
+all_edge_states_annotated <- all_edge_states %>%
+  dplyr::left_join(
+    dplyr::bind_rows(
+      shared_long %>% dplyr::mutate(source = "neuronal"),
+      shared_long_hela %>% dplyr::mutate(source = "hela")
+    ) %>%
+    dplyr::distinct(key, tag),
+    by = "key"
+  )
+
+
+# --- Step 5: PPI loss by organelle per KO × cell type ---
+message("\n=== Computing PPI loss by organelle ===")
+
+ppi_loss_by_organelle <- all_edge_states_annotated %>%
+  dplyr::filter(!is.na(tag), state == "lost") %>%
+  dplyr::group_by(genotype, cell_type, tag) %>%
+  dplyr::summarise(n_lost = n(), .groups = "drop")
+
+write_csv(ppi_loss_by_organelle, file.path(out_dir_ppi_comp, "tables", "ppi_loss_by_organelle_all_celltypes.csv"))
+
+
+# --- Step 6: Per-KO streamgraphs by organelle ---
+message("\n=== Creating per-KO organelle streamgraphs ===")
+
+# Select top KOs by total loss
+top_kos <- global_ppi_loss %>%
+  dplyr::group_by(genotype) %>%
+  dplyr::summarise(total_lost = sum(n_lost), .groups = "drop") %>%
+  dplyr::arrange(desc(total_lost)) %>%
+  dplyr::slice_head(n = 10) %>%
+  dplyr::pull(genotype)
+
+for (ko in top_kos) {
+  
+  ko_org_data <- ppi_loss_by_organelle %>%
+    dplyr::filter(genotype == ko) %>%
+    dplyr::group_by(tag) %>%
+    dplyr::mutate(mean_lost = mean(n_lost)) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(desc(mean_lost))
+  
+  if (nrow(ko_org_data) == 0) next
+  
+  # Streamgraph for this KO
+  p_stream_org <- ggplot(ko_org_data, aes(x = tag, y = n_lost, fill = cell_type)) +
+    geom_stream(type = "ridge", bw = 0.8) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    labs(
+      title = paste("Lost PPIs by organelle –", ko),
+      x = "Organelle",
+      y = "Number of lost PPIs"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", paste0("streamgraph_organelle_", ko, ".pdf")), p_stream_org, width = 8, height = 5, device = cairo_pdf)
+}
+
+
+# --- Step 7: Matched vs unique lost PPIs ---
+message("\n=== Computing matched vs unique lost PPIs ===")
+
+# Create PPI × cell_type matrix for each genotype
+compute_ppi_matching <- function(edges_df, genotype_name) {
+  
+  ko_edges <- edges_df %>%
+    dplyr::filter(genotype == genotype_name, state == "lost") %>%
+    dplyr::select(key, cell_type) %>%
+    dplyr::distinct()
+  
+  if (nrow(ko_edges) == 0) return(NULL)
+  
+  # Pivot to wide format
+  ppi_matrix <- ko_edges %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(
+      names_from = cell_type,
+      values_from = present,
+      values_fill = 0
+    )
+  
+  # Classify PPIs
+  ppi_classified <- ppi_matrix %>%
+    dplyr::mutate(
+      n_celltypes = iN + iDA + HeLa,
+      pattern = dplyr::case_when(
+        n_celltypes == 3 ~ "All_three",
+        n_celltypes == 2 & iN == 1 & iDA == 1 ~ "iN_iDA",
+        n_celltypes == 2 & iN == 1 & HeLa == 1 ~ "iN_HeLa",
+        n_celltypes == 2 & iDA == 1 & HeLa == 1 ~ "iDA_HeLa",
+        n_celltypes == 1 & iN == 1 ~ "iN_only",
+        n_celltypes == 1 & iDA == 1 ~ "iDA_only",
+        n_celltypes == 1 & HeLa == 1 ~ "HeLa_only",
+        TRUE ~ "Unknown"
+      ),
+      genotype = genotype_name
+    )
+  
+  return(ppi_classified)
+}
+
+# Apply to all common genotypes
+ppi_matching_all <- lapply(common_genotypes, function(ko) {
+  compute_ppi_matching(all_edge_states, ko)
+}) %>%
+  dplyr::bind_rows()
+
+write_csv(ppi_matching_all, file.path(out_dir_ppi_comp, "tables", "ppi_matching_all_genotypes.csv"))
+
+# Summary statistics
+ppi_matching_summary <- ppi_matching_all %>%
+  dplyr::group_by(genotype, pattern) %>%
+  dplyr::summarise(n_ppis = n(), .groups = "drop")
+
+write_csv(ppi_matching_summary, file.path(out_dir_ppi_comp, "tables", "ppi_matching_summary.csv"))
+
+
+# --- Step 8: Visualize PPI matching patterns ---
+message("\n=== Visualizing PPI matching patterns ===")
+
+# Stacked bar plot
+pattern_colors <- c(
+  All_three = "#D53E4F",
+  iN_iDA = "#F46D43",
+  iN_HeLa = "#FDAE61",
+  iDA_HeLa = "#FEE08B",
+  iN_only = "#E6F598",
+  iDA_only = "#ABDDA4",
+  HeLa_only = "#66C2A5"
+)
+
+p_matching <- ggplot(ppi_matching_summary, aes(x = reorder(genotype, -n_ppis), y = n_ppis, fill = pattern)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = pattern_colors, name = "Loss Pattern") +
+  labs(
+    title = "PPI loss patterns across cell types",
+    x = "Genotype",
+    y = "Number of lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "right"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "bars_ppi_matching_patterns.pdf"), p_matching, width = 10, height = 5, device = cairo_pdf)
+
+
+# --- Step 9: Trimer analysis across cell types ---
+message("\n=== Trimer analysis across cell types ===")
+
+# Load trimer data from all cell types
+trimer_states_all <- dplyr::bind_rows(
+  timecourse_multi_trimer_states %>%
+    dplyr::filter(Day == "d50") %>%
+    dplyr::mutate(cell_type = Neuron) %>%
+    dplyr::select(trimer_id, genotype = Genotype, cell_type, trimer_state),
+  hela_trimer_states %>%
+    dplyr::mutate(cell_type = "HeLa") %>%
+    dplyr::select(trimer_id, genotype, cell_type, trimer_state)
+) %>%
+  dplyr::filter(genotype %in% common_genotypes)
+
+# Summary of broken trimers
+trimer_loss_summary <- trimer_states_all %>%
+  dplyr::filter(trimer_state == "broken") %>%
+  dplyr::group_by(genotype, cell_type) %>%
+  dplyr::summarise(n_broken = n(), .groups = "drop") %>%
+  dplyr::mutate(cell_type = factor(cell_type, levels = c("iN", "iDA", "HeLa")))
+
+write_csv(trimer_loss_summary, file.path(out_dir_ppi_comp, "tables", "trimer_loss_summary.csv"))
+
+# Streamgraph for trimers
+p_stream_trimers <- ggplot(trimer_loss_summary, aes(x = genotype, y = n_broken, fill = cell_type)) +
+  geom_stream(type = "ridge", bw = 0.8) +
+  scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+  labs(
+    title = "Broken trimers per KO across cell types",
+    x = "Genotype",
+    y = "Number of broken trimers"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "top"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/trimers", "streamgraph_broken_trimers_per_ko.pdf"), p_stream_trimers, width = 10, height = 5, device = cairo_pdf)
+
+
+# --- Step 10: Trimer matching analysis ---
+message("\n=== Computing trimer matching patterns ===")
+
+compute_trimer_matching <- function(trimer_df, genotype_name) {
+  
+  ko_trimers <- trimer_df %>%
+    dplyr::filter(genotype == genotype_name, trimer_state == "broken") %>%
+    dplyr::select(trimer_id, cell_type) %>%
+    dplyr::distinct()
+  
+  if (nrow(ko_trimers) == 0) return(NULL)
+  
+  trimer_matrix <- ko_trimers %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(
+      names_from = cell_type,
+      values_from = present,
+      values_fill = 0
+    )
+  
+  trimer_classified <- trimer_matrix %>%
+    dplyr::mutate(
+      n_celltypes = iN + iDA + HeLa,
+      pattern = dplyr::case_when(
+        n_celltypes == 3 ~ "All_three",
+        n_celltypes == 2 & iN == 1 & iDA == 1 ~ "iN_iDA",
+        n_celltypes == 2 & iN == 1 & HeLa == 1 ~ "iN_HeLa",
+        n_celltypes == 2 & iDA == 1 & HeLa == 1 ~ "iDA_HeLa",
+        n_celltypes == 1 & iN == 1 ~ "iN_only",
+        n_celltypes == 1 & iDA == 1 ~ "iDA_only",
+        n_celltypes == 1 & HeLa == 1 ~ "HeLa_only",
+        TRUE ~ "Unknown"
+      ),
+      genotype = genotype_name
+    )
+  
+  return(trimer_classified)
+}
+
+trimer_matching_all <- lapply(common_genotypes, function(ko) {
+  compute_trimer_matching(trimer_states_all, ko)
+}) %>%
+  dplyr::bind_rows()
+
+write_csv(trimer_matching_all, file.path(out_dir_ppi_comp, "tables", "trimer_matching_all_genotypes.csv"))
+
+# Summary
+trimer_matching_summary <- trimer_matching_all %>%
+  dplyr::group_by(genotype, pattern) %>%
+  dplyr::summarise(n_trimers = n(), .groups = "drop")
+
+write_csv(trimer_matching_summary, file.path(out_dir_ppi_comp, "tables", "trimer_matching_summary.csv"))
+
+# Stacked bar plot
+p_trimer_matching <- ggplot(trimer_matching_summary, aes(x = reorder(genotype, -n_trimers), y = n_trimers, fill = pattern)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = pattern_colors, name = "Breakage Pattern") +
+  labs(
+    title = "Trimer breakage patterns across cell types",
+    x = "Genotype",
+    y = "Number of broken trimers"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "right"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/trimers", "bars_trimer_matching_patterns.pdf"), p_trimer_matching, width = 10, height = 5, device = cairo_pdf)
+
+
+# --- Step 11: Complex analysis across cell types ---
+message("\n=== Complex analysis across cell types ===")
+
+# Load complex data
+complex_states_all <- dplyr::bind_rows(
+  complex_multi_timecourse_summary %>%
+    dplyr::filter(Day == "d50") %>%
+    dplyr::mutate(cell_type = Neuron) %>%
+    dplyr::select(complex_id, genotype = Genotype, cell_type, complex_state),
+  complex_hela_summary %>%
+    dplyr::mutate(cell_type = "HeLa") %>%
+    dplyr::select(complex_id, genotype, cell_type, complex_state)
+) %>%
+  dplyr::filter(genotype %in% common_genotypes)
+
+# Summary of disrupted complexes
+complex_loss_summary <- complex_states_all %>%
+  dplyr::filter(complex_state == "disrupted") %>%
+  dplyr::group_by(genotype, cell_type) %>%
+  dplyr::summarise(n_disrupted = n(), .groups = "drop") %>%
+  dplyr::mutate(cell_type = factor(cell_type, levels = c("iN", "iDA", "HeLa")))
+
+write_csv(complex_loss_summary, file.path(out_dir_ppi_comp, "tables", "complex_loss_summary.csv"))
+
+# Streamgraph for complexes
+p_stream_complexes <- ggplot(complex_loss_summary, aes(x = genotype, y = n_disrupted, fill = cell_type)) +
+  geom_stream(type = "ridge", bw = 0.8) +
+  scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+  labs(
+    title = "Disrupted complexes per KO across cell types",
+    x = "Genotype",
+    y = "Number of disrupted complexes"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "top"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/complexes", "streamgraph_disrupted_complexes_per_ko.pdf"), p_stream_complexes, width = 10, height = 5, device = cairo_pdf)
+
+
+# --- Step 12: Complex matching analysis ---
+message("\n=== Computing complex matching patterns ===")
+
+compute_complex_matching <- function(complex_df, genotype_name) {
+  
+  ko_complexes <- complex_df %>%
+    dplyr::filter(genotype == genotype_name, complex_state == "disrupted") %>%
+    dplyr::select(complex_id, cell_type) %>%
+    dplyr::distinct()
+  
+  if (nrow(ko_complexes) == 0) return(NULL)
+  
+  complex_matrix <- ko_complexes %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(
+      names_from = cell_type,
+      values_from = present,
+      values_fill = 0
+    )
+  
+  complex_classified <- complex_matrix %>%
+    dplyr::mutate(
+      n_celltypes = iN + iDA + HeLa,
+      pattern = dplyr::case_when(
+        n_celltypes == 3 ~ "All_three",
+        n_celltypes == 2 & iN == 1 & iDA == 1 ~ "iN_iDA",
+        n_celltypes == 2 & iN == 1 & HeLa == 1 ~ "iN_HeLa",
+        n_celltypes == 2 & iDA == 1 & HeLa == 1 ~ "iDA_HeLa",
+        n_celltypes == 1 & iN == 1 ~ "iN_only",
+        n_celltypes == 1 & iDA == 1 ~ "iDA_only",
+        n_celltypes == 1 & HeLa == 1 ~ "HeLa_only",
+        TRUE ~ "Unknown"
+      ),
+      genotype = genotype_name
+    )
+  
+  return(complex_classified)
+}
+
+complex_matching_all <- lapply(common_genotypes, function(ko) {
+  compute_complex_matching(complex_states_all, ko)
+}) %>%
+  dplyr::bind_rows()
+
+write_csv(complex_matching_all, file.path(out_dir_ppi_comp, "tables", "complex_matching_all_genotypes.csv"))
+
+# Summary
+complex_matching_summary <- complex_matching_all %>%
+  dplyr::group_by(genotype, pattern) %>%
+  dplyr::summarise(n_complexes = n(), .groups = "drop")
+
+write_csv(complex_matching_summary, file.path(out_dir_ppi_comp, "tables", "complex_matching_summary.csv"))
+
+# Stacked bar plot
+p_complex_matching <- ggplot(complex_matching_summary, aes(x = reorder(genotype, -n_complexes), y = n_complexes, fill = pattern)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = pattern_colors, name = "Disruption Pattern") +
+  labs(
+    title = "Complex disruption patterns across cell types",
+    x = "Genotype",
+    y = "Number of disrupted complexes"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "right"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/complexes", "bars_complex_matching_patterns.pdf"), p_complex_matching, width = 10, height = 5, device = cairo_pdf)
+
+
+# --- Step 13: Mean organelle loss plots per KO ---
+message("\n=== Creating mean organelle loss plots per KO ===")
+
+# Compute mean loss per organelle across cell types
+mean_org_loss <- ppi_loss_by_organelle %>%
+  dplyr::group_by(genotype, tag) %>%
+  dplyr::summarise(
+    mean_lost = mean(n_lost, na.rm = TRUE),
+    sd_lost = sd(n_lost, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create plots for top KOs
+for (ko in top_kos) {
+  
+  ko_data <- ppi_loss_by_organelle %>%
+    dplyr::filter(genotype == ko)
+  
+  ko_mean_data <- mean_org_loss %>%
+    dplyr::filter(genotype == ko) %>%
+    dplyr::arrange(desc(mean_lost)) %>%
+    dplyr::slice_head(n = 20)
+  
+  if (nrow(ko_data) == 0) next
+  
+  # Individual cell type bars with mean overlay
+  p_org_mean <- ggplot() +
+    geom_col(data = ko_data, aes(x = reorder(tag, -n_lost), y = n_lost, fill = cell_type),
+             position = position_dodge(0.8), width = 0.7, color = "black", linewidth = 0.2) +
+    geom_point(data = ko_mean_data, aes(x = tag, y = mean_lost),
+               shape = 23, size = 3, fill = "red", color = "black", stroke = 0.5) +
+    geom_errorbar(data = ko_mean_data, aes(x = tag, ymin = mean_lost - sd_lost, ymax = mean_lost + sd_lost),
+                  width = 0.2, color = "red", linewidth = 0.3) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    labs(
+      title = paste("Mean PPI loss per organelle –", ko),
+      subtitle = "Red diamonds show mean ± SD across cell types",
+      x = "Organelle",
+      y = "Number of lost PPIs"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", paste0("bars_mean_organelle_loss_", ko, ".pdf")), p_org_mean, width = 10, height = 5, device = cairo_pdf)
+}
+
+
+# --- Step 14: Correlation heatmaps across cell types ---
+message("\n=== Creating correlation heatmaps ===")
+
+# PPI loss correlation
+ppi_loss_wide <- global_ppi_loss %>%
+  dplyr::select(genotype, cell_type, n_lost) %>%
+  tidyr::pivot_wider(names_from = cell_type, values_from = n_lost, values_fill = 0)
+
+ppi_cor_mat <- cor(ppi_loss_wide[, -1], method = "spearman")
+
+pheatmap::pheatmap(
+  ppi_cor_mat,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
+  breaks = seq(-1, 1, length.out = 102),
+  main = "PPI loss correlation across cell types",
+  fontsize = 8,
+  cellwidth = 40,
+  cellheight = 40,
+  border_color = "black",
+  filename = file.path(out_dir_ppi_comp, "plots/dimers", "heatmap_ppi_loss_correlation.pdf"),
+  width = 4, height = 3.5
+)
+
+
+# --- Step 15: Summary statistics ---
+message("\n=== Creating summary statistics ===")
+
+# Overall matching statistics
+overall_matching <- dplyr::bind_rows(
+  ppi_matching_summary %>% dplyr::mutate(type = "PPIs"),
+  trimer_matching_summary %>% dplyr::mutate(type = "Trimers") %>% dplyr::rename(n_ppis = n_trimers),
+  complex_matching_summary %>% dplyr::mutate(type = "Complexes") %>% dplyr::rename(n_ppis = n_complexes)
+)
+
+write_csv(overall_matching, file.path(out_dir_ppi_comp, "tables", "overall_matching_statistics.csv"))
+
+# Summary by pattern
+pattern_summary <- overall_matching %>%
+  dplyr::group_by(type, pattern) %>%
+  dplyr::summarise(
+    total = sum(n_ppis),
+    mean = mean(n_ppis),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(type, desc(total))
+
+write_csv(pattern_summary, file.path(out_dir_ppi_comp, "tables", "pattern_summary_statistics.csv"))
+
+message("\nPattern summary:")
+print(pattern_summary)
+
+
+# --- Final summary ---
+message("\n=== PPI comparison analysis complete
 ```
 
 
