@@ -15782,7 +15782,9 @@ message("  - Summary tables in: tables/")
 ```{r}
 # --- Step 0: create outdirs and setup of environment 
 # Setup output directories
-out_dir_hela_ppi <- file.path(out_dir, "HeLaPPI")
+out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/HeLaPPI"
+dir.create(out_dir_hela_ppi, recursive = TRUE, showWarnings = FALSE)
+
 dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_ppi, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_ppi, "plots/qc"), recursive = TRUE, showWarnings = FALSE)
@@ -15958,6 +15960,8 @@ write_csv(hela_prot_long, file.path(out_dir_hela_ppi, "tables", "hela_proteome_l
 message("HeLa proteome summary:")
 print(table(hela_prot_long$genotype))
 
+
+
 # ---------------------------------------------------
 # --- Step 4: Compute PPI edge states per KO ---
 message("\n=== Computing PPI edge states per KO ===")
@@ -16003,6 +16007,8 @@ if (exists("disease_classes_dataframe")) {
 # Save edge states
 write_csv(hela_edge_states, file.path(out_dir_hela_ppi, "tables", "hela_edge_states.csv"))
 
+
+
 # ---------------------------------------------------
 # --- Step 5: Global summary statistics ---
 message("\n=== Computing global summary statistics ===")
@@ -16024,6 +16030,8 @@ write_csv(hela_summary_global, file.path(out_dir_hela_ppi, "tables", "hela_summa
 
 message("Global PPI loss summary (top 10):")
 print(head(hela_summary_global, 10))
+
+
 
 # ---------------------------------------------------
 # --- Step 6: Add organelle annotations ---
@@ -16090,6 +16098,7 @@ hela_edge_states <- hela_edge_states %>%
                                   organelle_tags_hela)
   )
 
+
 # ---------------------------------------------------
 # --- Step 7: Summary by organelle ---
 message("\n=== Computing summary by organelle ===")
@@ -16109,6 +16118,8 @@ hela_summary_by_organelle <- hela_edge_states %>%
 
 # Save organelle summary
 write_csv(hela_summary_by_organelle, file.path(out_dir_hela_ppi, "tables", "hela_summary_by_organelle.csv"))
+
+
 
 # ---------------------------------------------------
 # --- Step 8: Visualization functions ---
