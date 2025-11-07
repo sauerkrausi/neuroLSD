@@ -16034,9 +16034,25 @@ if(nrow(prot_duplicates) > 0) {
   message("No duplicates found in proteome data")
 }
 
+
+
 # ---------------------------------------------------
 # --- Step 4: Compute PPI edge states per KO ---
 message("\n=== Computing PPI edge states per KO ===")
+
+# First, check for duplicates in baseline_edges_hela
+message("Checking baseline_edges_hela for duplicate keys...")
+baseline_dup_check <- baseline_edges_hela %>%
+  dplyr::count(key) %>%
+  dplyr::filter(n > 1)
+
+if (nrow(baseline_dup_check) > 0) {
+  message("WARNING: Found ", nrow(baseline_dup_check), " duplicate keys in baseline_edges_hela")
+  message("Deduplicating baseline edges...")
+  baseline_edges_hela <- baseline_edges_hela %>%
+    dplyr::distinct(key, .keep_all = TRUE)
+  message("Baseline edges after deduplication: ", nrow(baseline_edges_hela))
+}
 
 # Expand baseline to all KO contexts
 ko_list <- unique(hela_prot_long$genotype)
@@ -16044,16 +16060,33 @@ ko_list <- unique(hela_prot_long$genotype)
 baseline_expanded_hela <- baseline_edges_hela %>%
   tidyr::crossing(genotype = ko_list)
 
+message("Baseline expanded rows: ", nrow(baseline_expanded_hela))
+message("Expected rows: ", nrow(baseline_edges_hela), " * ", length(ko_list), " = ", nrow(baseline_edges_hela) * length(ko_list))
+
+# Check for duplicates after expansion
+expand_dup_check <- baseline_expanded_hela %>%
+  dplyr::count(key, genotype) %>%
+  dplyr::filter(n > 1)
+
+if (nrow(expand_dup_check) > 0) {
+  message("ERROR: Found ", nrow(expand_dup_check), " duplicate key-genotype pairs after expansion!")
+  message("This should not happen. Deduplicating...")
+  baseline_expanded_hela <- baseline_expanded_hela %>%
+    dplyr::distinct(key, genotype, .keep_all = TRUE)
+}
+
 # Join proteome data for both partners
 hela_edge_states <- baseline_expanded_hela %>%
   dplyr::left_join(
     hela_prot_long %>% dplyr::select(Genes, genotype, log2FC),
-    by = c("Gene1" = "Genes", "genotype")
+    by = c("Gene1" = "Genes", "genotype"),
+    relationship = "many-to-one"  # Each edge-genotype should match one Gene1 measurement
   ) %>%
   dplyr::rename(dA = log2FC) %>%
   dplyr::left_join(
     hela_prot_long %>% dplyr::select(Genes, genotype, log2FC),
-    by = c("Gene2" = "Genes", "genotype")
+    by = c("Gene2" = "Genes", "genotype"),
+    relationship = "many-to-one"  # Each edge-genotype should match one Gene2 measurement
   ) %>%
   dplyr::rename(dB = log2FC) %>%
   dplyr::mutate(
@@ -16067,17 +16100,53 @@ hela_edge_states <- baseline_expanded_hela %>%
     OrgPair = ifelse(!is.na(Gene1) & !is.na(Gene2), "same", "cross")  # Simplified for now
   )
 
+# **CRITICAL: Check for duplicates in final edge_states**
+message("Checking hela_edge_states for duplicate key-genotype pairs...")
+final_dup_check <- hela_edge_states %>%
+  dplyr::count(key, genotype) %>%
+  dplyr::filter(n > 1)
+
+if (nrow(final_dup_check) > 0) {
+  message("ERROR: Found ", nrow(final_dup_check), " duplicate key-genotype pairs in hela_edge_states!")
+  message("Sample duplicates:")
+  print(head(final_dup_check, 10))
+  
+  message("Investigating cause...")
+  # Check one example
+  example_dup <- final_dup_check[1, ]
+  message("Example duplicate: key=", example_dup$key, ", genotype=", example_dup$genotype)
+  
+  example_rows <- hela_edge_states %>%
+    dplyr::filter(key == example_dup$key, genotype == example_dup$genotype)
+  message("Number of rows for this example: ", nrow(example_rows))
+  print(example_rows)
+  
+  message("Deduplicating by taking first occurrence...")
+  hela_edge_states <- hela_edge_states %>%
+    dplyr::distinct(key, genotype, .keep_all = TRUE)
+  
+  message("Rows after deduplication: ", nrow(hela_edge_states))
+}
+
 # Add disease class information if available
 if (exists("disease_classes_dataframe")) {
+  # Deduplicate disease classes first
+  disease_classes_clean <- disease_classes_dataframe %>%
+    dplyr::distinct(sample, .keep_all = TRUE)
+  
   hela_edge_states <- hela_edge_states %>%
     dplyr::left_join(
-      disease_classes_dataframe %>% dplyr::rename(genotype = sample),
-      by = "genotype"
+      disease_classes_clean %>% dplyr::rename(genotype = sample),
+      by = "genotype",
+      relationship = "many-to-one"
     )
 }
 
 # Save edge states
 write_csv(hela_edge_states, file.path(out_dir_hela_ppi, "tables", "hela_edge_states.csv"))
+
+message("Final hela_edge_states rows: ", nrow(hela_edge_states))
+message("Expected rows: ", nrow(baseline_edges_hela), " * ", length(ko_list), " = ", nrow(baseline_edges_hela) * length(ko_list))
 
 
 
@@ -16236,7 +16305,6 @@ write_csv(hela_summary_by_organelle, file.path(out_dir_hela_ppi, "tables", "hela
 # --- Step 8: Visualization functions ---
 message("\n=== Creating visualization functions ===")
 
-# Adapt the plotting function for HeLa (single condition, no neuron types)
 plot_hela_ppi_vulnerability <- function(df_edges,
                                         df_states,
                                         out_dir,
@@ -16304,7 +16372,28 @@ plot_hela_ppi_vulnerability <- function(df_edges,
     
     if (nrow(lost_df) == 0) return(invisible(NULL))
     
-    lost_wide <- tidyr::pivot_wider(lost_df, names_from = key, values_from = lost, values_fill = 0)
+    # **FIX: Add deduplication before pivot_wider**
+    message("Checking for duplicates in lost_df...")
+    dup_check <- lost_df %>% 
+      dplyr::count(genotype, key) %>% 
+      dplyr::filter(n > 1)
+    
+    if (nrow(dup_check) > 0) {
+      message("WARNING: Found ", nrow(dup_check), " duplicate genotype-key pairs")
+      message("Taking mean of duplicates...")
+      lost_df <- lost_df %>%
+        dplyr::group_by(genotype, key) %>%
+        dplyr::summarise(lost = mean(lost, na.rm = TRUE), .groups = "drop")
+    }
+    
+    # **FIX: Use named list for values_fill**
+    lost_wide <- tidyr::pivot_wider(
+      lost_df, 
+      names_from = key, 
+      values_from = lost, 
+      values_fill = list(lost = 0)  # Named list instead of scalar
+    )
+    
     lost_mat <- as.data.frame(lost_wide)
     rownames(lost_mat) <- lost_mat$genotype
     lost_mat$genotype <- NULL
@@ -16317,8 +16406,13 @@ plot_hela_ppi_vulnerability <- function(df_edges,
     # Annotations
     annotation_df <- data.frame(genotype = rownames(rho), stringsAsFactors = FALSE)
     if (!is.null(disease_class_df)) {
+      # Add deduplication for disease_class_df
+      disease_class_clean <- disease_class_df %>% 
+        dplyr::distinct(sample, .keep_all = TRUE) %>%
+        dplyr::rename(genotype = sample)
+      
       annotation_df <- annotation_df %>%
-        dplyr::left_join(disease_class_df %>% dplyr::rename(genotype = sample), by = "genotype")
+        dplyr::left_join(disease_class_clean, by = "genotype")
     }
     rownames(annotation_df) <- annotation_df$genotype
     annotation_df$genotype <- NULL
@@ -16391,10 +16485,13 @@ plot_hela_ppi_vulnerability <- function(df_edges,
         return(invisible(NULL))
       }
       
+      # Deduplicate shared_long
+      shared_long <- shared_long %>% dplyr::distinct(key, organelle)
+      
       # Fraction lost per KO × organelle
       frac_by_ko_org <- df_states %>%
         dplyr::select(key, genotype, state) %>%
-        dplyr::inner_join(shared_long, by = "key") %>%
+        dplyr::inner_join(shared_long, by = "key", relationship = "many-to-many") %>%
         dplyr::group_by(genotype, organelle) %>%
         dplyr::summarise(
           n_tot = dplyr::n(),
@@ -16405,57 +16502,72 @@ plot_hela_ppi_vulnerability <- function(df_edges,
         dplyr::filter(n_tot >= 5)  # Minimum edge count
       
       if (nrow(frac_by_ko_org) > 0) {
-        # Add deduplication before pivot_wider
+        # **COMPLETE ALTERNATIVE: Build matrix manually without pivot_wider**
         frac_by_ko_org_clean <- frac_by_ko_org %>%
+          dplyr::ungroup() %>%
+          dplyr::mutate(
+            genotype = as.character(genotype),
+            organelle = as.character(organelle),
+            fraction_lost = as.numeric(fraction_lost)
+          ) %>%
           dplyr::group_by(genotype, organelle) %>%
           dplyr::summarise(
-            fraction_lost = mean(fraction_lost, na.rm = TRUE),  # Take mean if duplicates
+            fraction_lost = mean(fraction_lost, na.rm = TRUE),
             .groups = "drop"
-          )
+          ) %>%
+          dplyr::filter(!is.na(fraction_lost))
         
-        hm_wide <- frac_by_ko_org_clean %>%
-          dplyr::select(genotype, organelle, fraction_lost) %>%
-          tidyr::pivot_wider(
-            names_from = organelle, 
-            values_from = fraction_lost, 
-            values_fill = 0
-          )
+        message("Rows after cleaning: ", nrow(frac_by_ko_org_clean))
         
-        # Handle duplicate genotype names
-        if (any(duplicated(hm_wide$genotype))) {
-          message("Warning: Found duplicate genotypes in organelle data, making unique...")
-          hm_wide$genotype <- make.unique(as.character(hm_wide$genotype))
+        # Build matrix manually
+        all_genotypes <- unique(frac_by_ko_org_clean$genotype)
+        all_organelles <- unique(frac_by_ko_org_clean$organelle)
+        
+        # Initialize matrix with zeros
+        hm_mat <- matrix(0, 
+                         nrow = length(all_genotypes), 
+                         ncol = length(all_organelles),
+                         dimnames = list(all_genotypes, all_organelles))
+        
+        # Fill matrix
+        for (i in seq_len(nrow(frac_by_ko_org_clean))) {
+          row_idx <- frac_by_ko_org_clean$genotype[i]
+          col_idx <- frac_by_ko_org_clean$organelle[i]
+          hm_mat[row_idx, col_idx] <- frac_by_ko_org_clean$fraction_lost[i]
         }
         
-        hm_mat <- as.matrix(hm_wide[, -1, drop = FALSE])
-        rownames(hm_mat) <- hm_wide$genotype
-        
-        pheatmap::pheatmap(
-          mat = hm_mat,
-          scale = "none",
-          color = colorRampPalette(c("white", "#C51B7D"))(100),
-          breaks = seq(0, 1, length.out = 101),
-          na_col = "grey90",
-          cluster_rows = TRUE,
-          cluster_cols = TRUE,
-          show_rownames = TRUE,
-          show_colnames = TRUE,
-          use_raster = FALSE,
-          angle_col = "90",
-          main = "Fraction lost by organelle (HeLa)",
-          fontsize = 6,
-          cellwidth = 8,
-          cellheight = 8,
-          border_color = NA,
-          filename = file.path(out_dir, "plots/global", "heatmap_organelle_fraction_lost_hela.pdf"), 
-          width = 12, height = 10
-        )
+        # Only create heatmap if we have enough data
+        if (nrow(hm_mat) >= 2 && ncol(hm_mat) >= 2) {
+          pheatmap::pheatmap(
+            mat = hm_mat,
+            scale = "none",
+            color = colorRampPalette(c("white", "#C51B7D"))(100),
+            breaks = seq(0, 1, length.out = 101),
+            na_col = "grey90",
+            cluster_rows = TRUE,
+            cluster_cols = TRUE,
+            show_rownames = TRUE,
+            show_colnames = TRUE,
+            use_raster = FALSE,
+            angle_col = "90",
+            main = "Fraction lost by organelle (HeLa)",
+            fontsize = 6,
+            cellwidth = 8,
+            cellheight = 8,
+            border_color = NA,
+            filename = file.path(out_dir, "plots/global", "heatmap_organelle_fraction_lost_hela.pdf"), 
+            width = 12, height = 10
+          )
+        } else {
+          message("Insufficient dimensions for heatmap (need >= 2 rows and cols); skipping.")
+        }
       } else {
         message("No organelle data with sufficient edges found; skipping organelle heatmap.")
       }
     }
   }
 }
+
 
 # ---------------------------------------------------
 # --- Step 9: Run visualizations ---
