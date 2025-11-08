@@ -17282,11 +17282,10 @@ message("  - tables/multimer/: Trimer and complex analysis results")
 # =========================================================================
 
 # --- Step 0: Setup ---
-library(tidyverse)
-library(ggplot2)
+#remotes::install_github("davidsjoberg/ggstream")
 library(ggstream)
-library(pheatmap)
-library(RColorBrewer)
+#library(pheatmap)
+#library(RColorBrewer)
 
 out_dir_ppi_comp <- file.path(out_dir_PPI, "PPIcomp")
 dir.create(file.path(out_dir_ppi_comp, "plots/dimers"), recursive = TRUE, showWarnings = FALSE)
