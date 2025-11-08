@@ -17560,6 +17560,7 @@ p_matching <- ggplot(ppi_matching_summary, aes(x = reorder(genotype, -n_ppis), y
 ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "bars_ppi_matching_patterns.pdf"), p_matching, width = 10, height = 5, device = cairo_pdf)
 
 
+
 # --- Step 9: Trimer analysis across cell types ---
 message("\n=== Trimer analysis across cell types ===")
 
@@ -17582,6 +17583,7 @@ trimer_loss_summary <- trimer_states_all %>%
   dplyr::summarise(n_broken = n(), .groups = "drop") %>%
   dplyr::mutate(cell_type = factor(cell_type, levels = c("iN", "iDA", "HeLa")))
 
+# save csv of lossed ppis in trimeric form
 write_csv(trimer_loss_summary, file.path(out_dir_ppi_comp, "tables", "trimer_loss_summary.csv"))
 
 # Streamgraph for trimers
@@ -17602,6 +17604,7 @@ p_stream_trimers <- ggplot(trimer_loss_summary, aes(x = genotype, y = n_broken, 
   )
 
 ggsave(file.path(out_dir_ppi_comp, "plots/trimers", "streamgraph_broken_trimers_per_ko.pdf"), p_stream_trimers, width = 10, height = 5, device = cairo_pdf)
+
 
 
 # --- Step 10: Trimer matching analysis ---
