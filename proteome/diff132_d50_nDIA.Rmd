@@ -17334,6 +17334,7 @@ message("Common genotypes across all cell types: ", length(common_genotypes))
 message("Genotypes: ", paste(common_genotypes, collapse = ", "))
 
 
+
 # --- Step 2: Global PPI loss comparison ---
 message("\n=== Computing global PPI loss per KO × cell type ===")
 
@@ -17360,6 +17361,7 @@ global_ppi_loss %>%
   dplyr::arrange(desc(total_lost)) %>%
   head(10) %>%
   print()
+
 
 
 # --- Step 3: Streamgraph - Lost PPIs per KO across cell types ---
@@ -17390,6 +17392,7 @@ p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost, fill = cell_
 ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "streamgraph_lost_ppis_per_ko.pdf"), p_stream_ko, width = 10, height = 5, device = cairo_pdf)
 
 
+
 # --- Step 4: Add organelle annotations ---
 message("\n=== Adding organelle annotations ===")
 
@@ -17405,6 +17408,7 @@ all_edge_states_annotated <- all_edge_states %>%
   )
 
 
+
 # --- Step 5: PPI loss by organelle per KO × cell type ---
 message("\n=== Computing PPI loss by organelle ===")
 
@@ -17417,15 +17421,17 @@ ppi_loss_by_organelle <- all_edge_states_annotated %>%
 write_csv(ppi_loss_by_organelle, file.path(out_dir_ppi_comp, "tables", "ppi_loss_by_organelle_all_celltypes.csv"))
 
 
+
 # --- Step 6: Per-KO streamgraphs by organelle ---
 message("\n=== Creating per-KO organelle streamgraphs ===")
 
-# Select top KOs by total loss
+# OPTIONAL: Select top affected KOs by total loss
+# can also just put 23 and then we have all
 top_kos <- global_ppi_loss %>%
   dplyr::group_by(genotype) %>%
   dplyr::summarise(total_lost = sum(n_lost), .groups = "drop") %>%
   dplyr::arrange(desc(total_lost)) %>%
-  dplyr::slice_head(n = 10) %>%
+  dplyr::slice_head(n = 23) %>%
   dplyr::pull(genotype)
 
 for (ko in top_kos) {
@@ -17458,6 +17464,7 @@ for (ko in top_kos) {
   
   ggsave(file.path(out_dir_ppi_comp, "plots/dimers", paste0("streamgraph_organelle_", ko, ".pdf")), p_stream_org, width = 8, height = 5, device = cairo_pdf)
 }
+
 
 
 # --- Step 7: Matched vs unique lost PPIs ---
@@ -17508,6 +17515,7 @@ ppi_matching_all <- lapply(common_genotypes, function(ko) {
 }) %>%
   dplyr::bind_rows()
 
+# save csv file of matching genotypes
 write_csv(ppi_matching_all, file.path(out_dir_ppi_comp, "tables", "ppi_matching_all_genotypes.csv"))
 
 # Summary statistics
@@ -17515,6 +17523,7 @@ ppi_matching_summary <- ppi_matching_all %>%
   dplyr::group_by(genotype, pattern) %>%
   dplyr::summarise(n_ppis = n(), .groups = "drop")
 
+# save summary csv
 write_csv(ppi_matching_summary, file.path(out_dir_ppi_comp, "tables", "ppi_matching_summary.csv"))
 
 
