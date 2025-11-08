@@ -17316,6 +17316,9 @@ hela_edge_states_comp <- hela_edge_states %>%
 all_edge_states <- dplyr::bind_rows(neuronal_edge_states, hela_edge_states_comp) %>%
   dplyr::filter(!is.na(cell_type), !is.na(genotype))
 
+# save combined edge state df
+write_csv(all_edge_states, file.path(out_dir_ppi_comp, "tables", "iN_iDA_Hela_combined_edges.csv"))
+
 message("Combined edge states: ", nrow(all_edge_states), " rows")
 message("Cell types: ", paste(unique(all_edge_states$cell_type), collapse = ", "))
 message("Genotypes: ", paste(unique(all_edge_states$genotype), collapse = ", "))
@@ -17347,6 +17350,7 @@ global_ppi_loss <- all_edge_states %>%
     cell_type = factor(cell_type, levels = c("iN", "iDA", "HeLa"))
   )
 
+# save csv file of lossed PPIs across matched KOs 
 write_csv(global_ppi_loss, file.path(out_dir_ppi_comp, "tables", "global_ppi_loss_all_celltypes.csv"))
 
 message("Global PPI loss summary (top 10 by total lost):")
@@ -17409,6 +17413,7 @@ ppi_loss_by_organelle <- all_edge_states_annotated %>%
   dplyr::group_by(genotype, cell_type, tag) %>%
   dplyr::summarise(n_lost = n(), .groups = "drop")
 
+# save csv of annotation level mapped lossed PPIs
 write_csv(ppi_loss_by_organelle, file.path(out_dir_ppi_comp, "tables", "ppi_loss_by_organelle_all_celltypes.csv"))
 
 
