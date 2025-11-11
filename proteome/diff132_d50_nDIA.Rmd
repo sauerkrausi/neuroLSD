@@ -17364,20 +17364,27 @@ global_ppi_loss %>%
 
 
 
-# --- Step 3: Streamgraph - Lost PPIs per KO across cell types ---
+# --- Step 3: Streamgraph - Lost PPIs per KO across cell types (HeLa on bottom) ---
 message("\n=== Creating streamgraph: Lost PPIs per KO ===")
 
 # Prepare data for streamgraph (only common genotypes)
 stream_data_ko <- global_ppi_loss %>%
   dplyr::filter(genotype %in% common_genotypes) %>%
+  dplyr::mutate(
+    # Make HeLa values negative for bottom positioning
+    n_lost_display = ifelse(cell_type == "HeLa", -n_lost, n_lost)
+  ) %>%
   dplyr::arrange(genotype, cell_type)
 
-# Create streamgraph
-p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost, fill = cell_type)) +
+# Create streamgraph with HeLa on bottom
+p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost_display, fill = cell_type)) +
   geom_stream(type = "ridge", bw = 0.8) +
   scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+  scale_y_continuous(labels = abs) +  # Show absolute values on y-axis
+  geom_hline(yintercept = 0, linetype = "solid", color = "black", linewidth = 0.3) +
   labs(
     title = "Lost PPIs per KO across cell types",
+    subtitle = "Neurons (top) vs HeLa (bottom)",
     x = "Genotype",
     y = "Number of lost PPIs"
   ) +
@@ -17390,6 +17397,7 @@ p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost, fill = cell_
   )
 
 ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "streamgraph_lost_ppis_per_ko.pdf"), p_stream_ko, width = 10, height = 5, device = cairo_pdf)
+
 
 
 
@@ -17422,11 +17430,10 @@ write_csv(ppi_loss_by_organelle, file.path(out_dir_ppi_comp, "tables", "ppi_loss
 
 
 
-# --- Step 6: Per-KO streamgraphs by organelle ---
+# --- Step 6: Per-KO streamgraphs by organelle (HeLa on bottom) ---
 message("\n=== Creating per-KO organelle streamgraphs ===")
 
 # OPTIONAL: Select top affected KOs by total loss
-# can also just put 23 and then we have all
 top_kos <- global_ppi_loss %>%
   dplyr::group_by(genotype) %>%
   dplyr::summarise(total_lost = sum(n_lost), .groups = "drop") %>%
@@ -17438,19 +17445,26 @@ for (ko in top_kos) {
   
   ko_org_data <- ppi_loss_by_organelle %>%
     dplyr::filter(genotype == ko) %>%
+    dplyr::mutate(
+      # Make HeLa values negative for bottom positioning
+      n_lost_display = ifelse(cell_type == "HeLa", -n_lost, n_lost)
+    ) %>%
     dplyr::group_by(tag) %>%
-    dplyr::mutate(mean_lost = mean(n_lost)) %>%
+    dplyr::mutate(mean_lost = mean(abs(n_lost_display))) %>%
     dplyr::ungroup() %>%
     dplyr::arrange(desc(mean_lost))
   
   if (nrow(ko_org_data) == 0) next
   
-  # Streamgraph for this KO
-  p_stream_org <- ggplot(ko_org_data, aes(x = tag, y = n_lost, fill = cell_type)) +
+  # Streamgraph for this KO with HeLa on bottom
+  p_stream_org <- ggplot(ko_org_data, aes(x = tag, y = n_lost_display, fill = cell_type)) +
     geom_stream(type = "ridge", bw = 0.8) +
     scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    scale_y_continuous(labels = abs) +  # Show absolute values
+    geom_hline(yintercept = 0, linetype = "solid", color = "black", linewidth = 0.3) +
     labs(
       title = paste("Lost PPIs by organelle –", ko),
+      subtitle = "Neurons (top) vs HeLa (bottom)",
       x = "Organelle",
       y = "Number of lost PPIs"
     ) +
