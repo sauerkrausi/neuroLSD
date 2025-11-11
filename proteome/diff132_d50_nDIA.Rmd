@@ -17935,13 +17935,14 @@ pheatmap::pheatmap(
   color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
   breaks = seq(-1, 1, length.out = 102),
   main = "PPI loss correlation across cell types",
-  fontsize = 8,
-  cellwidth = 40,
-  cellheight = 40,
-  border_color = "black",
+  fontsize = 6,
+  cellwidth = 20,
+  cellheight = 20,
+  border_color = NA,
   filename = file.path(out_dir_ppi_comp, "plots/dimers", "heatmap_ppi_loss_correlation.pdf"),
   width = 4, height = 3.5
 )
+
 
 
 # --- Step 15: Summary statistics ---
@@ -17954,6 +17955,7 @@ overall_matching <- dplyr::bind_rows(
   complex_matching_summary %>% dplyr::mutate(type = "Complexes") %>% dplyr::rename(n_ppis = n_complexes)
 )
 
+# save matching stats csv for overall inter-cell type PPI loss matching 
 write_csv(overall_matching, file.path(out_dir_ppi_comp, "tables", "overall_matching_statistics.csv"))
 
 # Summary by pattern
@@ -17966,6 +17968,7 @@ pattern_summary <- overall_matching %>%
   ) %>%
   dplyr::arrange(type, desc(total))
 
+# save summary csv for overall inter-cell type PPI loss matching 
 write_csv(pattern_summary, file.path(out_dir_ppi_comp, "tables", "pattern_summary_statistics.csv"))
 
 message("\nPattern summary:")
@@ -17973,7 +17976,7 @@ print(pattern_summary)
 
 
 # --- Final summary ---
-message("\n=== PPI comparison analysis complete
+message("\n=== PPI comparison analysis complete")
 ```
 
 
