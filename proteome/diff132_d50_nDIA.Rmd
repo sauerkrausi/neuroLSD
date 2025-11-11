@@ -17661,7 +17661,7 @@ compute_trimer_matching <- function(trimer_df, genotype_name) {
       values_fill = 0
     )
   
-  # **FIX: Check which columns actually exist before referencing them**
+  # Check which columns actually exist before referencing them
   has_iN <- "iN" %in% colnames(trimer_matrix)
   has_iDA <- "iDA" %in% colnames(trimer_matrix)
   has_HeLa <- "HeLa" %in% colnames(trimer_matrix)
@@ -17801,6 +17801,16 @@ compute_complex_matching <- function(complex_df, genotype_name) {
       values_fill = 0
     )
   
+  # Check which columns actually exist before referencing them
+  has_iN <- "iN" %in% colnames(complex_matrix)
+  has_iDA <- "iDA" %in% colnames(complex_matrix)
+  has_HeLa <- "HeLa" %in% colnames(complex_matrix)
+  
+  # Add missing columns as 0
+  if (!has_iN) complex_matrix$iN <- 0
+  if (!has_iDA) complex_matrix$iDA <- 0
+  if (!has_HeLa) complex_matrix$HeLa <- 0
+  
   complex_classified <- complex_matrix %>%
     dplyr::mutate(
       n_celltypes = iN + iDA + HeLa,
@@ -17825,7 +17835,6 @@ complex_matching_all <- lapply(common_genotypes, function(ko) {
 }) %>%
   dplyr::bind_rows()
 
-# Save outputs
 write_csv(complex_matching_all, file.path(out_dir_ppi_comp, "tables", "complex_matching_all_genotypes.csv"))
 
 complex_matching_summary <- complex_matching_all %>%
