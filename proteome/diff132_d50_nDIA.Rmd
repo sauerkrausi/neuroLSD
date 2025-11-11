@@ -17627,6 +17627,16 @@ compute_trimer_matching <- function(trimer_df, genotype_name) {
       values_fill = 0
     )
   
+  # **FIX: Check which columns actually exist before referencing them**
+  has_iN <- "iN" %in% colnames(trimer_matrix)
+  has_iDA <- "iDA" %in% colnames(trimer_matrix)
+  has_HeLa <- "HeLa" %in% colnames(trimer_matrix)
+  
+  # Add missing columns as 0
+  if (!has_iN) trimer_matrix$iN <- 0
+  if (!has_iDA) trimer_matrix$iDA <- 0
+  if (!has_HeLa) trimer_matrix$HeLa <- 0
+  
   trimer_classified <- trimer_matrix %>%
     dplyr::mutate(
       n_celltypes = iN + iDA + HeLa,
