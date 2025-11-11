@@ -17364,39 +17364,44 @@ global_ppi_loss %>%
 
 
 
-# --- Step 3: Streamgraph - iN, iDA (above) and HeLa (below) ---
-message("\n=== Creating streamgraph: Lost PPIs for all cell types ===")
+# --- Step 3: Streamgraph - iN, iDA (above) and HeLa (below) - THREE TYPES ---
+message("\n=== Creating streamgraphs: Lost PPIs for all cell types ===")
 
 # All three cell types
 stream_data_all <- global_ppi_loss %>%
   dplyr::filter(genotype %in% common_genotypes) %>%
   dplyr::mutate(
-    #n_lost = ifelse(cell_type == "HeLa", -n_lost, n_lost),
     cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa"))
   ) %>%
   dplyr::arrange(genotype, cell_type)
 
-# Create streamgraph
-p_stream_all <- ggplot(stream_data_all, aes(x = genotype, y = n_lost, fill = cell_type)) +
-  geom_stream(type = "mirror", sorting = "inside_out", lwd = 0.25) + # ridge or mirror or proportional
-  scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
-  scale_y_continuous(labels = abs) +
-  labs(
-    title = "Lost PPIs per KO across cell types",
-    subtitle = "Neurons (above) vs HeLa (below)",
-    x = "Genotype",
-    y = "Number of lost PPIs"
-  ) +
-  theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5), 
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    legend.position = "top"
-  )
+# Create function for streamgraph with different types
+create_streamgraph <- function(data, stream_type, filename) {
+  p <- ggplot(data, aes(x = genotype, y = n_lost, fill = cell_type)) +
+    geom_stream(type = stream_type, sorting = "inside_out", lwd = 0.25) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    scale_y_continuous(labels = abs) +
+    labs(
+      title = paste0("Lost PPIs per KO across cell types (", stream_type, ")"),
+      subtitle = "Neurons vs HeLa",
+      x = "Genotype",
+      y = "Number of lost PPIs"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", filename), p, width = 5, height = 5, device = cairo_pdf)
+}
 
-ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "streamgraph_lost_ppis_per_ko.pdf"), p_stream_all, width = 5, height = 5, device = cairo_pdf)
-
+# Create all three types
+create_streamgraph(stream_data_all, "ridge", "streamgraph_lost_ppis_per_ko_ridge.pdf")
+create_streamgraph(stream_data_all, "mirror", "streamgraph_lost_ppis_per_ko_mirror.pdf")
+create_streamgraph(stream_data_all, "proportional", "streamgraph_lost_ppis_per_ko_proportional.pdf")
 
 
 
@@ -17424,15 +17429,15 @@ ppi_loss_by_organelle <- all_edge_states_annotated %>%
   dplyr::group_by(genotype, cell_type, tag) %>%
   dplyr::summarise(n_lost = n(), .groups = "drop")
 
-# save csv of annotation level mapped lossed PPIs
+# save csv of annotation level mapped lost PPIs
 write_csv(ppi_loss_by_organelle, file.path(out_dir_ppi_comp, "tables", "ppi_loss_by_organelle_all_celltypes.csv"))
 
 
 
-# --- Step 6: Per-KO streamgraphs by organelle (HeLa on bottom) ---
+# --- Step 6: Per-KO streamgraphs by organelle - THREE TYPES ---
 message("\n=== Creating per-KO organelle streamgraphs ===")
 
-# OPTIONAL: Select top affected KOs by total loss
+# Select top affected KOs by total loss
 top_kos <- global_ppi_loss %>%
   dplyr::group_by(genotype) %>%
   dplyr::summarise(total_lost = sum(n_lost), .groups = "drop") %>%
@@ -17440,44 +17445,50 @@ top_kos <- global_ppi_loss %>%
   dplyr::slice_head(n = 23) %>%
   dplyr::pull(genotype)
 
-for (ko in top_kos) {
-  
-  ko_org_data <- ppi_loss_by_organelle %>%
-    dplyr::filter(genotype == ko) %>%
-    dplyr::mutate(
-      # Make HeLa values negative for bottom positioning
-      n_lost_display = ifelse(cell_type == "HeLa", -n_lost, n_lost)
-    ) %>%
-    dplyr::group_by(tag) %>%
-    dplyr::mutate(mean_lost = mean(abs(n_lost_display))) %>%
-    dplyr::ungroup() %>%
-    dplyr::arrange(desc(mean_lost))
-  
-  if (nrow(ko_org_data) == 0) next
-  
-  # Streamgraph for this KO with HeLa on bottom
-  p_stream_org <- ggplot(ko_org_data, aes(x = tag, y = n_lost_display, fill = cell_type)) +
-    geom_stream(type = "ridge", bw = 0.8) +
+# Function to create organelle streamgraph
+create_organelle_streamgraph <- function(ko_data, ko_name, stream_type, filename) {
+  p <- ggplot(ko_data, aes(x = tag, y = n_lost, fill = cell_type)) +
+    geom_stream(type = stream_type, sorting = "inside_out", lwd = 0.25) +
     scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
-    scale_y_continuous(labels = abs) +  # Show absolute values
-    geom_hline(yintercept = 0, linetype = "solid", color = "black", linewidth = 0.3) +
+    scale_y_continuous(labels = abs) +
     labs(
-      title = paste("Lost PPIs by organelle –", ko),
-      subtitle = "Neurons (top) vs HeLa (bottom)",
+      title = paste0("Lost PPIs by organelle – ", ko_name, " (", stream_type, ")"),
+      subtitle = "Neurons vs HeLa",
       x = "Organelle",
       y = "Number of lost PPIs"
     ) +
     theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
       axis.text.x = element_text(angle = 45, hjust = 1),
       legend.position = "top"
     )
   
-  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", paste0("streamgraph_organelle_", ko, ".pdf")), p_stream_org, width = 8, height = 5, device = cairo_pdf)
+  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", filename), p, width = 8, height = 5, device = cairo_pdf)
 }
 
+for (ko in top_kos) {
+  
+  ko_org_data <- ppi_loss_by_organelle %>%
+    dplyr::filter(genotype == ko) %>%
+    dplyr::mutate(
+      cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa"))
+    ) %>%
+    dplyr::group_by(tag) %>%
+    dplyr::mutate(mean_lost = mean(n_lost)) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(desc(mean_lost))
+  
+  if (nrow(ko_org_data) == 0) next
+  
+  # Create all three types for this KO
+  create_organelle_streamgraph(ko_org_data, ko, "ridge", paste0("streamgraph_organelle_", ko, "_ridge.pdf"))
+  create_organelle_streamgraph(ko_org_data, ko, "mirror", paste0("streamgraph_organelle_", ko, "_mirror.pdf"))
+  create_organelle_streamgraph(ko_org_data, ko, "proportional", paste0("streamgraph_organelle_", ko, "_proportional.pdf"))
+}
+
+message("\n=== Streamgraph creation complete ===")
 
 
 # --- Step 7: Matched vs unique lost PPIs ---
