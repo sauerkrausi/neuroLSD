@@ -17835,12 +17835,14 @@ complex_matching_all <- lapply(common_genotypes, function(ko) {
 }) %>%
   dplyr::bind_rows()
 
+# save csv file of matching complexes by genotype 
 write_csv(complex_matching_all, file.path(out_dir_ppi_comp, "tables", "complex_matching_all_genotypes.csv"))
 
 complex_matching_summary <- complex_matching_all %>%
   dplyr::group_by(genotype, pattern) %>%
   dplyr::summarise(n_complexes = n(), .groups = "drop")
 
+# save summary csv for top level summary 
 write_csv(complex_matching_summary, file.path(out_dir_ppi_comp, "tables", "complex_matching_summary.csv"))
 
 # Stacked bar plot of disruption patterns
@@ -17894,9 +17896,9 @@ for (ko in top_kos) {
     geom_col(data = ko_data, aes(x = reorder(tag, -n_lost), y = n_lost, fill = cell_type),
              position = position_dodge(0.8), width = 0.7, color = "black", linewidth = 0.2) +
     geom_point(data = ko_mean_data, aes(x = tag, y = mean_lost),
-               shape = 23, size = 3, fill = "red", color = "black", stroke = 0.5) +
+               shape = 23, size = 1.5, fill = "firebrick", color = "black", stroke = 0.5) +
     geom_errorbar(data = ko_mean_data, aes(x = tag, ymin = mean_lost - sd_lost, ymax = mean_lost + sd_lost),
-                  width = 0.2, color = "red", linewidth = 0.3) +
+                  width = 0.2, color = "firebrick", linewidth = 0.3) +
     scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
     labs(
       title = paste("Mean PPI loss per organelle –", ko),
