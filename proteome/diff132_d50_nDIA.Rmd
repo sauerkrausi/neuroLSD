@@ -17367,17 +17367,18 @@ global_ppi_loss %>%
 # --- Step 3: Streamgraph - iN, iDA (above) and HeLa (below) ---
 message("\n=== Creating streamgraph: Lost PPIs for all cell types ===")
 
-# All three cell types - make HeLa negative
+# All three cell types
 stream_data_all <- global_ppi_loss %>%
   dplyr::filter(genotype %in% common_genotypes) %>%
   dplyr::mutate(
+    #n_lost = ifelse(cell_type == "HeLa", -n_lost, n_lost),
     cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa"))
   ) %>%
   dplyr::arrange(genotype, cell_type)
 
 # Create streamgraph
 p_stream_all <- ggplot(stream_data_all, aes(x = genotype, y = n_lost, fill = cell_type)) +
-  geom_stream(type = "mirror", sorting = "inside_out", lwd = 0.25) +
+  geom_stream(type = "mirror", sorting = "inside_out", lwd = 0.25) + # ridge or mirror or proportional
   scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
   scale_y_continuous(labels = abs) +
   labs(
@@ -17389,11 +17390,13 @@ p_stream_all <- ggplot(stream_data_all, aes(x = genotype, y = n_lost, fill = cel
   theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5), 
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     legend.position = "top"
   )
 
 ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "streamgraph_lost_ppis_per_ko.pdf"), p_stream_all, width = 5, height = 5, device = cairo_pdf)
+
 
 
 
