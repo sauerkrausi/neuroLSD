@@ -17725,10 +17725,11 @@ p_trimer_matching <- ggplot(trimer_matching_summary, aes(x = reorder(genotype, -
 ggsave(file.path(out_dir_ppi_comp, "plots/trimers", "bars_trimer_matching_patterns.pdf"), p_trimer_matching, width = 10, height = 5, device = cairo_pdf)
 
 
+
 # --- Step 11: Complex analysis across cell types ---
 message("\n=== Complex analysis across cell types ===")
 
-# Load complex data
+# Load complex data from all cell types
 complex_states_all <- dplyr::bind_rows(
   complex_multi_timecourse_summary %>%
     dplyr::filter(Day == "d50") %>%
@@ -17745,28 +17746,39 @@ complex_loss_summary <- complex_states_all %>%
   dplyr::filter(complex_state == "disrupted") %>%
   dplyr::group_by(genotype, cell_type) %>%
   dplyr::summarise(n_disrupted = n(), .groups = "drop") %>%
-  dplyr::mutate(cell_type = factor(cell_type, levels = c("iN", "iDA", "HeLa")))
+  dplyr::mutate(cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa")))
 
+# Save summary table
 write_csv(complex_loss_summary, file.path(out_dir_ppi_comp, "tables", "complex_loss_summary.csv"))
 
-# Streamgraph for complexes
-p_stream_complexes <- ggplot(complex_loss_summary, aes(x = genotype, y = n_disrupted, fill = cell_type)) +
-  geom_stream(type = "ridge", bw = 0.8) +
-  scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
-  labs(
-    title = "Disrupted complexes per KO across cell types",
-    x = "Genotype",
-    y = "Number of disrupted complexes"
-  ) +
-  theme_bw(base_size = 6) +
-  theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    legend.position = "top"
-  )
+# Function to create complex streamgraph
+create_complex_streamgraph <- function(data, stream_type, filename) {
+  p <- ggplot(data, aes(x = genotype, y = n_disrupted, fill = cell_type)) +
+    geom_stream(type = stream_type, sorting = "inside_out", lwd = 0.25) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    scale_y_continuous(labels = abs) +
+    labs(
+      title = paste0("Disrupted complexes per KO across cell types (", stream_type, ")"),
+      subtitle = "Neurons vs HeLa",
+      x = "Genotype",
+      y = "Number of disrupted complexes"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/complexes", filename), p, width = 5, height = 5, device = cairo_pdf)
+}
 
-ggsave(file.path(out_dir_ppi_comp, "plots/complexes", "streamgraph_disrupted_complexes_per_ko.pdf"), p_stream_complexes, width = 10, height = 5, device = cairo_pdf)
+# Create all three streamgraph types
+create_complex_streamgraph(complex_loss_summary, "ridge", "streamgraph_disrupted_complexes_per_ko_ridge.pdf")
+create_complex_streamgraph(complex_loss_summary, "mirror", "streamgraph_disrupted_complexes_per_ko_mirror.pdf")
+create_complex_streamgraph(complex_loss_summary, "proportional", "streamgraph_disrupted_complexes_per_ko_proportional.pdf")
+
 
 
 # --- Step 12: Complex matching analysis ---
@@ -17813,16 +17825,16 @@ complex_matching_all <- lapply(common_genotypes, function(ko) {
 }) %>%
   dplyr::bind_rows()
 
+# Save outputs
 write_csv(complex_matching_all, file.path(out_dir_ppi_comp, "tables", "complex_matching_all_genotypes.csv"))
 
-# Summary
 complex_matching_summary <- complex_matching_all %>%
   dplyr::group_by(genotype, pattern) %>%
   dplyr::summarise(n_complexes = n(), .groups = "drop")
 
 write_csv(complex_matching_summary, file.path(out_dir_ppi_comp, "tables", "complex_matching_summary.csv"))
 
-# Stacked bar plot
+# Stacked bar plot of disruption patterns
 p_complex_matching <- ggplot(complex_matching_summary, aes(x = reorder(genotype, -n_complexes), y = n_complexes, fill = pattern)) +
   geom_col(position = "stack", color = "black", linewidth = 0.2) +
   scale_fill_manual(values = pattern_colors, name = "Disruption Pattern") +
@@ -17834,12 +17846,13 @@ p_complex_matching <- ggplot(complex_matching_summary, aes(x = reorder(genotype,
   theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     legend.position = "right"
   )
 
-ggsave(file.path(out_dir_ppi_comp, "plots/complexes", "bars_complex_matching_patterns.pdf"), p_complex_matching, width = 10, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_comp, "plots/complexes", "bars_complex_matching_patterns.pdf"), p_complex_matching, width = 5, height = 5, device = cairo_pdf)
+
 
 
 # --- Step 13: Mean organelle loss plots per KO ---
