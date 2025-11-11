@@ -17368,27 +17368,23 @@ global_ppi_loss %>%
 message("\n=== Creating streamgraph: Lost PPIs per KO ===")
 
 # Prepare data for streamgraph (only common genotypes)
-# Separate neurons and HeLa, make HeLa negative
 stream_data_ko <- global_ppi_loss %>%
   dplyr::filter(genotype %in% common_genotypes) %>%
   dplyr::mutate(
-    # Make HeLa values negative so they appear below x-axis
+    # Make HeLa values negative for bottom positioning
     n_lost_signed = ifelse(cell_type == "HeLa", -n_lost, n_lost)
   ) %>%
-  dplyr::arrange(genotype, cell_type)
+  dplyr::arrange(cell_type, genotype)  # Important: sort by cell_type first
 
-# Create streamgraph with HeLa below x-axis
-p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost_signed, fill = cell_type)) +
-  geom_area(position = "identity", alpha = 0.8) +  # Use geom_area instead of geom_stream
+# Create streamgraph with proper grouping
+p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost_signed, fill = cell_type, group = cell_type)) +
+  geom_stream(bw = 0.8, sorting = "none") +  # sorting = "none" keeps our order
   scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
-  scale_y_continuous(
-    labels = abs,  # Show absolute values on axis
-    breaks = seq(-2500, 2500, 100)
-  ) +
-  geom_hline(yintercept = 0, linetype = "solid", color = "black", linewidth = 0.5) +
+  scale_y_continuous(labels = abs) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.3) +
   labs(
     title = "Lost PPIs per KO across cell types",
-    subtitle = "Neurons (above) vs HeLa (below x-axis)",
+    subtitle = "Neurons (above) vs HeLa (below)",
     x = "Genotype",
     y = "Number of lost PPIs"
   ) +
@@ -17401,6 +17397,9 @@ p_stream_ko <- ggplot(stream_data_ko, aes(x = genotype, y = n_lost_signed, fill 
   )
 
 ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "streamgraph_lost_ppis_per_ko.pdf"), p_stream_ko, width = 10, height = 5, device = cairo_pdf)
+
+
+
 
 
 
