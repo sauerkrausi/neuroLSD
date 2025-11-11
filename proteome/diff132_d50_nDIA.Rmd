@@ -17661,6 +17661,7 @@ trimer_matching_all <- lapply(common_genotypes, function(ko) {
 }) %>%
   dplyr::bind_rows()
 
+# save csv file of matching PPI trimers 
 write_csv(trimer_matching_all, file.path(out_dir_ppi_comp, "tables", "trimer_matching_all_genotypes.csv"))
 
 # Summary
