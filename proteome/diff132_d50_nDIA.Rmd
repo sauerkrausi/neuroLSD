@@ -18374,8 +18374,12 @@ run_matching_analysis <- function(xlms_data, neuronal_baseline, hela_baseline, a
   # Bar plot - percentages
   p_matching_pct <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) + 
     geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) + 
-    geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 3.5, fontface = "bold") + scale_y_continuous(labels = scales::percent) + scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") + 
-    labs(title = paste("XL-MS Validation Rate:", analysis_name, "PPIs"), subtitle = "Percentage of predicted PPIs validated by XL-MS", x = "Cell Type", y = "Percentage") + 
+    geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 3.5, fontface = "bold") + 
+    scale_y_continuous(labels = scales::percent) + 
+    scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), 
+                      labels = c("Matched", "Not Matched"), name = "Status") + 
+    labs(title = paste("XL-MS Validation Rate:", analysis_name, "PPIs"), 
+         subtitle = "Percentage of predicted PPIs validated by XL-MS", x = "Cell Type", y = "Percentage") + 
     theme_bw(base_size = 8) + 
     theme(panel.grid = element_blank(), 
           panel.border = element_rect(color = "black", fill = NA), 
@@ -18410,6 +18414,16 @@ summary_all <- run_matching_analysis(
   analysis_name = "All",
   out_dir = out_dir_xlms_validation
 )
+
+message("\n=== ANALYSIS 1a: All PPIs - STRICT mode (both proteins mito) ===")
+summary_all_strict <- run_matching_analysis(xlms_data = xlms_all_unique, neuronal_baseline = neuronal_baseline_with_flags, hela_baseline = hela_baseline_with_flags, analysis_name = "All", out_dir = out_dir_xlms_validation, match_mode = "strict")
+
+message("\n=== ANALYSIS 1b: All PPIs - RELAXED mode (≥1 protein mito) ===")
+summary_all_relaxed <- run_matching_analysis(xlms_data = xlms_all_unique, neuronal_baseline = neuronal_baseline_with_flags, hela_baseline = hela_baseline_with_flags, analysis_name = "All", out_dir = out_dir_xlms_validation, match_mode = "relaxed")
+
+message("\n=== ANALYSIS 1c: All PPIs - ALL mode (no mito constraint) ===")
+summary_all_all <- run_matching_analysis(xlms_data = xlms_all_unique, neuronal_baseline = neuronal_baseline_with_flags, hela_baseline = hela_baseline_with_flags, analysis_name = "All", out_dir = out_dir_xlms_validation, match_mode = "all")
+
 
 
 
@@ -18516,6 +18530,29 @@ validation_report <- list(
   )
 )
 
+message("\n=== Creating comparison across matching modes ===")
+
+comparison_all_modes <- dplyr::bind_rows(summary_all_strict, summary_all_relaxed, summary_all_all) %>% dplyr::mutate(match_mode = factor(match_mode, levels = c("strict", "relaxed", "all")))
+
+# csv file of comparison between matching modes (strict vs relaxed vs all)
+write_csv(comparison_all_modes, file.path(out_dir_xlms_validation, "tables", "comparison_matching_modes.csv"))
+
+p_mode_comparison <- ggplot(comparison_all_modes, aes(x = cell_type, y = pct_matched, fill = match_mode)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = paste0(pct_matched, "%")), position = position_dodge(0.7), vjust = -0.5, size = 2.5) +
+  scale_fill_manual(values = c(strict = "#E78AC3", relaxed = "#A6D854", all = "grey70"), name = "Match Mode", labels = c(strict = "Both Mito", relaxed = "≥1 Mito", all = "No Filter")) +
+  labs(title = "XL-MS Validation: Matching Mode Comparison", subtitle = "Impact of relaxing mitochondrial constraints", x = "Cell Type", y = "Validation Rate (%)") +
+  ylim(0, max(comparison_all_modes$pct_matched) * 1.15) +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+# plot of XL-MS validation across matching modes (strict vs relaxed vs all)
+ggsave(file.path(out_dir_xlms_validation, "plots", "mode_comparison_all_ppis.pdf"), p_mode_comparison, width = 5, height = 4, device = cairo_pdf)
+
+message("\n=== XL-MS Validation Analysis Complete ===")
+message("Results saved to: ", out_dir_xlms_validation)
+message("\nMatching Modes Comparison:")
+print(comparison_all_modes)
 
 # --- Final summary message ---
 message("\n=== XL-MS Validation Analysis Complete ===")
