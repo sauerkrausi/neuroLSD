@@ -18538,8 +18538,13 @@ matching_stats <- data.frame(
   Matched_PPIs = c(nrow(overlap_neuro), nrow(overlap_hela), nrow(rbind(overlap_neuro, overlap_hela) |> distinct(edge_key))),
   Percent_Matched = c(nrow(overlap_neuro) / nrow(clasp_both_mapped) * 100, nrow(overlap_hela) / nrow(clasp_both_mapped) * 100, nrow(rbind(overlap_neuro, overlap_hela) |> distinct(edge_key)) / nrow(clasp_both_mapped) * 100)
 )
+
+# save csv file of matching PPI stats
 write.csv(matching_stats, file.path(out_dir_xlms_validationCLASP, "tables", "matching_statistics.csv"), row.names = FALSE)
 print(matching_stats)
+
+
+
 
 # --- Step 6: Plots ---
 message("\nGenerating plots...")
@@ -18566,8 +18571,11 @@ p1 <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
   scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
   labs(title = "XL-MS CLASP Validation Rate", subtitle = "Percentage of CLASP PPIs matching baseline networks", x = "Cell Type", y = "Percentage") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
-ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "01_validation_rate_stacked.pdf"), p1, width = 5, height = 4)
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top")
+
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "01_validation_rate_stacked.pdf"), p1, width = 4, height = 4)
 
 # Plot 2: Absolute numbers for reference
 matching_abs <- data.frame(
@@ -18582,11 +18590,11 @@ p2 <- ggplot(matching_abs, aes(x = cell_type, y = count, fill = status)) +
   scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
   labs(title = "XL-MS CLASP Validation Counts", subtitle = paste0("Total CLASP PPIs mapped: ", nrow(clasp_both_mapped)), x = "Cell Type", y = "Number of PPIs") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.major.x = element_blank(), 
+  theme(panel.grid = element_blank(), 
         panel.border = element_rect(color = "black", fill = NA), 
         legend.position = "top")
 
-ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pdf"), p2, width = 5, height = 4)
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pdf"), p2, width = 4, height = 4)
 
 message("\n=== Mitochondrial Annotation Analysis ===")
 
