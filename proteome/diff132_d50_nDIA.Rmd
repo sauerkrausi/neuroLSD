@@ -18561,7 +18561,7 @@ matching_summary <- data.frame(
 # Plot 1: Stacked percentage plot
 p1 <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
   geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
-  geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 3.5, fontface = "regular") +
+  geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 2, fontface = "plain") +
   scale_y_continuous(labels = percent) +
   scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
   labs(title = "XL-MS CLASP Validation Rate", subtitle = "Percentage of CLASP PPIs matching baseline networks", x = "Cell Type", y = "Percentage") +
@@ -18578,15 +18578,66 @@ matching_abs <- data.frame(
 
 p2 <- ggplot(matching_abs, aes(x = cell_type, y = count, fill = status)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.6) +
-  geom_text(aes(label = count), position = position_dodge(0.6), vjust = -0.3, size = 3) +
+  geom_text(aes(label = count), position = position_dodge(0.6), vjust = -0.3, size = 2) +
   scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
   labs(title = "XL-MS CLASP Validation Counts", subtitle = paste0("Total CLASP PPIs mapped: ", nrow(clasp_both_mapped)), x = "Cell Type", y = "Number of PPIs") +
   theme_bw(base_size = 6) +
   theme(panel.grid.major.x = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
 ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pdf"), p2, width = 5, height = 4)
 
-message("\n=== XL-MS CLASP Matching Complete ===")
-message("Output directory: ", out_dir_xlms_validationCLASP)
+message("\n=== Mitochondrial Annotation Analysis ===")
+
+# Helper function to check if protein has any mito tag
+has_mito_annotation <- function(df, prot_col_suffix) {
+  mito_cols <- paste0(mito_tags, "_", prot_col_suffix)
+  mito_cols_present <- mito_cols[mito_cols %in% colnames(df)]
+  if (length(mito_cols_present) == 0) return(rep(FALSE, nrow(df)))
+  rowSums(df[, mito_cols_present], na.rm = TRUE) > 0
+}
+
+# Analyze mitochondrial annotations in matched PPIs
+overlap_neuro_detail$neuro_prot1_mito <- has_mito_annotation(overlap_neuro_detail, "prot1")
+overlap_neuro_detail$neuro_prot2_mito <- has_mito_annotation(overlap_neuro_detail, "prot2")
+overlap_neuro_detail$neuro_both_mito <- overlap_neuro_detail$neuro_prot1_mito & overlap_neuro_detail$neuro_prot2_mito
+
+overlap_hela_detail$hela_prot1_mito <- has_mito_annotation(overlap_hela_detail, "prot1")
+overlap_hela_detail$hela_prot2_mito <- has_mito_annotation(overlap_hela_detail, "prot2")
+overlap_hela_detail$hela_both_mito <- overlap_hela_detail$hela_prot1_mito & overlap_hela_detail$hela_prot2_mito
+
+# Summary statistics for mitochondrial matches
+mito_stats <- data.frame(
+  CellType = c("Neuro", "HeLa"),
+  Total_Matched = c(nrow(overlap_neuro_detail), nrow(overlap_hela_detail)),
+  Both_Proteins_Mito = c(sum(overlap_neuro_detail$neuro_both_mito), sum(overlap_hela_detail$hela_both_mito)),
+  At_Least_One_Mito = c(sum(overlap_neuro_detail$neuro_prot1_mito | overlap_neuro_detail$neuro_prot2_mito), sum(overlap_hela_detail$hela_prot1_mito | overlap_hela_detail$hela_prot2_mito)),
+  No_Mito_Annotation = c(sum(!overlap_neuro_detail$neuro_prot1_mito & !overlap_neuro_detail$neuro_prot2_mito), sum(!overlap_hela_detail$hela_prot1_mito & !overlap_hela_detail$hela_prot2_mito))
+)
+mito_stats$Pct_Both_Mito <- round(mito_stats$Both_Proteins_Mito / mito_stats$Total_Matched * 100, 1)
+mito_stats$Pct_At_Least_One <- round(mito_stats$At_Least_One_Mito / mito_stats$Total_Matched * 100, 1)
+
+write.csv(mito_stats, file.path(out_dir_xlms_validationCLASP, "tables", "mito_annotation_stats.csv"), row.names = FALSE)
+message("Mitochondrial annotation statistics:")
+print(mito_stats)
+
+# Prepare data for mito annotation stacked plot
+mito_long <- data.frame(
+  cell_type = rep(c("Neuro", "HeLa"), each = 3),
+  annotation = rep(c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"), 2),
+  count = c(mito_stats$Both_Proteins_Mito[1], mito_stats$At_Least_One_Mito[1] - mito_stats$Both_Proteins_Mito[1], mito_stats$No_Mito_Annotation[1],
+            mito_stats$Both_Proteins_Mito[2], mito_stats$At_Least_One_Mito[2] - mito_stats$Both_Proteins_Mito[2], mito_stats$No_Mito_Annotation[2])
+)
+mito_long$annotation <- factor(mito_long$annotation, levels = c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"))
+
+# Plot 3: Mitochondrial annotation breakdown
+p3 <- ggplot(mito_long, aes(x = cell_type, y = count, fill = annotation)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 2) +
+  scale_fill_manual(values = c("Both Proteins Mito" = "#1B9E77", "At Least One Mito" = "#D95F02", "No Mito Annotation" = "grey70"), name = "Mito Annotation") +
+  labs(title = "Matched CLASP PPIs - Mitochondrial Annotation", subtitle = "Breakdown by mitochondrial protein annotation in baseline networks", x = "Cell Type", y = "Number of PPIs") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "03_mito_annotation_breakdown.pdf"), p3, width = 4, height = 4)
 
 
 
