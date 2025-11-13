@@ -18044,25 +18044,7 @@ create_xlms_qc_plots <- function(df, name, out_dir_xlms_validation) {
     )
   
   ggsave(file.path(out_dir_xlms_validation, paste0("histogram_ppi_score_", name, ".pdf")), p_score, width = 5, height = 4, device = cairo_pdf)
-  
-  # Crosslink count scatter
-  p_crosslinks <- ggplot(df, aes(x = crosslinks_ab, y = crosslinks_ba, color = target_decoy)) +
-    geom_point(alpha = 0.6, size = 1) +
-    scale_color_manual(values = c(target = "dodgerblue3", decoy = "coral"), name = "Type") +
-    labs(
-      title = paste(name, "- Bidirectional Crosslinks"),
-      x = "Crosslinks A→B",
-      y = "Crosslinks B→A"
-    ) +
-    theme_bw(base_size = 6) +
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA)
-    )
-  
-  ggsave(file.path(out_dir_xlms_validation, paste0("scatter_crosslinks_", name, ".pdf")), 
-         p_crosslinks, width = 5, height = 4, device = cairo_pdf)
-}
+
 
 create_xlms_qc_plots(mt_XL_DSSO, "DSSO", file.path(out_dir_xlms_validation, "qc"))
 create_xlms_qc_plots(mt_XL_DSBSO, "DSBSO", file.path(out_dir_xlms_validation, "qc"))
