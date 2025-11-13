@@ -17981,6 +17981,7 @@ message("\n=== PPI comparison analysis complete")
 
 
 
+
 # XXI. XL-MS proteome validation
 ### XXIa. mitochondrial XL-MS data 
 use Zhu et al., 2019 (https://www.nature.com/articles/s41467-024-47569-x) for XL-MS data of mitochondria (DSSO and DSBSO?) to check which structures are found in both prediction and XL-MS
@@ -17988,8 +17989,488 @@ take overlap of DSSO and DSBSO and check which ones work out
 
 
 ```{r}
+# --- Step 0: Setup ---
+out_dir_xlms_validation <- file.path(out_dir_PPI, "validation_mito")
+dir.create(file.path(out_dir_xlms_validation, "qc"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_xlms_validation, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_xlms_validation, "plots"), recursive = TRUE, showWarnings = FALSE)
+
+message("\n=== XL-MS Validation Analysis ===")
+
+# Load XL-MS data
 mt_XL_DSSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO.csv")
-mt_XL_DSBSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSBSO.csv") #MS cleavable Xlinker
+mt_XL_DSBSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSBSO.csv")
+
+message("Loaded DSSO XL-MS data: ", nrow(mt_XL_DSSO), " interactions")
+message("Loaded DSBSO XL-MS data: ", nrow(mt_XL_DSBSO), " interactions")
+
+
+# --- Step 1: QC and data exploration ---
+message("\n=== XL-MS Data Quality Control ===")
+
+# Function to explore XL-MS dataset
+explore_xlms_data <- function(df, name) {
+  message("\n--- ", name, " ---")
+  message("Columns: ", paste(colnames(df), collapse = ", "))
+  message("Total interactions: ", nrow(df))
+  message("Unique protein A: ", length(unique(df$gene_a)))
+  message("Unique protein B: ", length(unique(df$gene_b)))
+  message("Target/Decoy distribution:")
+  print(table(df$target_decoy))
+  
+  # Check score distributions
+  message("\nScore distributions:")
+  message("  PPI score range: ", round(min(df$ppi_score, na.rm = TRUE), 2), 
+          " to ", round(max(df$ppi_score, na.rm = TRUE), 2))
+  message("  Mean crosslinks A→B: ", round(mean(df$crosslinks_ab, na.rm = TRUE), 2))
+  message("  Mean crosslinks B→A: ", round(mean(df$crosslinks_ba, na.rm = TRUE), 2))
+}
+
+explore_xlms_data(mt_XL_DSSO, "DSSO")
+explore_xlms_data(mt_XL_DSBSO, "DSBSO")
+
+# QC plots - Score distributions
+create_xlms_qc_plots <- function(df, name, out_dir) {
+  
+  # PPI score distribution
+  p_score <- ggplot(df, aes(x = ppi_score, fill = target_decoy)) +
+    geom_histogram(bins = 50, position = "identity", alpha = 0.7, color = "black", linewidth = 0.2) +
+    scale_fill_manual(values = c(target = "skyblue", decoy = "coral"), name = "Type") +
+    labs(
+      title = paste(name, "- PPI Score Distribution"),
+      x = "PPI Score",
+      y = "Count"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA)
+    )
+  
+  ggsave(file.path(out_dir, paste0("histogram_ppi_score_", name, ".pdf")), 
+         p_score, width = 5, height = 4, device = cairo_pdf)
+  
+  # Crosslink count scatter
+  p_crosslinks <- ggplot(df, aes(x = crosslinks_ab, y = crosslinks_ba, color = target_decoy)) +
+    geom_point(alpha = 0.6, size = 1) +
+    scale_color_manual(values = c(target = "skyblue", decoy = "coral"), name = "Type") +
+    labs(
+      title = paste(name, "- Bidirectional Crosslinks"),
+      x = "Crosslinks A→B",
+      y = "Crosslinks B→A"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA)
+    )
+  
+  ggsave(file.path(out_dir, paste0("scatter_crosslinks_", name, ".pdf")), 
+         p_crosslinks, width = 5, height = 4, device = cairo_pdf)
+}
+
+create_xlms_qc_plots(mt_XL_DSSO, "DSSO", file.path(out_dir_xlms_validation, "qc"))
+create_xlms_qc_plots(mt_XL_DSBSO, "DSBSO", file.path(out_dir_xlms_validation, "qc"))
+
+
+# --- Step 2: Process XL-MS data - Keep only target interactions ---
+message("\n=== Processing XL-MS data (targets only) ===")
+
+process_xlms_for_matching <- function(df, name) {
+  # Keep only target interactions
+  df_targets <- df %>%
+    dplyr::filter(target_decoy == "target") %>%
+    dplyr::select(gene_a, gene_b, ppi_score, crosslinks_ab, crosslinks_ba, score_ab, score_ba) %>%
+    dplyr::mutate(
+      # Create undirected PPI key
+      key_xlms = .make_undirected_key(gene_a, gene_b),
+      # Add source identifier
+      xlms_source = name,
+      # Total crosslinks
+      total_crosslinks = crosslinks_ab + crosslinks_ba
+    ) %>%
+    dplyr::distinct(key_xlms, .keep_all = TRUE)
+  
+  message(name, " - Target interactions: ", nrow(df_targets))
+  return(df_targets)
+}
+
+dsso_processed <- process_xlms_for_matching(mt_XL_DSSO, "DSSO")
+dsbso_processed <- process_xlms_for_matching(mt_XL_DSBSO, "DSBSO")
+
+
+# --- Step 3: Find overlap between DSSO and DSBSO ---
+message("\n=== Finding overlap between DSSO and DSBSO ===")
+
+# Find interactions present in both datasets
+xlms_overlap <- dsso_processed %>%
+  dplyr::inner_join(
+    dsbso_processed,
+    by = c("gene_a", "gene_b", "key_xlms"),
+    suffix = c("_dsso", "_dsbso")
+  ) %>%
+  dplyr::mutate(
+    # Average PPI scores across both methods
+    ppi_score_mean = (ppi_score_dsso + ppi_score_dsbso) / 2,
+    # Combined crosslinks
+    total_crosslinks_combined = total_crosslinks_dsso + total_crosslinks_dsbso
+  )
+
+message("Interactions in DSSO only: ", nrow(dsso_processed))
+message("Interactions in DSBSO only: ", nrow(dsbso_processed))
+message("Interactions in BOTH (overlap): ", nrow(xlms_overlap))
+
+# Save overlap
+write_csv(xlms_overlap, file.path(out_dir_xlms_validation, "tables", "xlms_overlap_dsso_dsbso.csv"))
+
+# Venn diagram data
+xlms_venn_data <- data.frame(
+  category = c("DSSO only", "DSBSO only", "Both"),
+  count = c(
+    nrow(dsso_processed) - nrow(xlms_overlap),
+    nrow(dsbso_processed) - nrow(xlms_overlap),
+    nrow(xlms_overlap)
+  )
+)
+
+write_csv(xlms_venn_data, file.path(out_dir_xlms_validation, "tables", "xlms_venn_summary.csv"))
+
+
+# --- Step 4: Combine all XL-MS data for matching ---
+message("\n=== Combining XL-MS data for matching ===")
+
+# Combine all unique XL-MS interactions
+xlms_all_unique <- dplyr::bind_rows(
+  dsso_processed %>% dplyr::mutate(in_dsso = TRUE),
+  dsbso_processed %>% dplyr::mutate(in_dsbso = TRUE)
+) %>%
+  dplyr::group_by(key_xlms) %>%
+  dplyr::summarise(
+    gene_a = first(gene_a),
+    gene_b = first(gene_b),
+    in_dsso = any(in_dsso, na.rm = TRUE),
+    in_dsbso = any(in_dsbso, na.rm = TRUE),
+    in_both = in_dsso & in_dsbso,
+    ppi_score_mean = mean(ppi_score, na.rm = TRUE),
+    total_crosslinks_mean = mean(total_crosslinks, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+message("Total unique XL-MS PPIs: ", nrow(xlms_all_unique))
+
+write_csv(xlms_all_unique, file.path(out_dir_xlms_validation, "tables", "xlms_all_unique.csv"))
+
+
+# --- Step 5: Match against neuronal baseline PPIs (iN and iDA control) ---
+message("\n=== Matching against neuronal baseline PPIs ===")
+
+# Prepare neuronal baseline (control/baseline edges)
+neuronal_baseline_keys <- baseline_edges_union %>%
+  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+
+message("Neuronal baseline PPIs: ", nrow(neuronal_baseline_keys))
+
+# Match XL-MS against neuronal predictions
+neuronal_xlms_match <- xlms_all_unique %>%
+  dplyr::left_join(
+    neuronal_baseline_keys,
+    by = c("key_xlms" = "key_pred")
+  ) %>%
+  dplyr::mutate(
+    matched_neuronal = !is.na(Predictome_conf),
+    cell_type = "Neuronal (iN/iDA)"
+  )
+
+n_matched_neuronal <- sum(neuronal_xlms_match$matched_neuronal)
+n_unmatched_neuronal <- nrow(neuronal_xlms_match) - n_matched_neuronal
+
+message("Matched with neuronal predictions: ", n_matched_neuronal, 
+        " (", round(n_matched_neuronal / nrow(neuronal_xlms_match) * 100, 1), "%)")
+
+write_csv(neuronal_xlms_match, 
+          file.path(out_dir_xlms_validation, "tables", "xlms_neuronal_matches.csv"))
+
+
+# --- Step 6: Match against HeLa baseline PPIs ---
+message("\n=== Matching against HeLa baseline PPIs ===")
+
+# Prepare HeLa baseline
+hela_baseline_keys <- baseline_edges_hela_annotated %>%
+  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+
+message("HeLa baseline PPIs: ", nrow(hela_baseline_keys))
+
+# Match XL-MS against HeLa predictions
+hela_xlms_match <- xlms_all_unique %>%
+  dplyr::left_join(
+    hela_baseline_keys,
+    by = c("key_xlms" = "key_pred")
+  ) %>%
+  dplyr::mutate(
+    matched_hela = !is.na(Predictome_conf),
+    cell_type = "HeLa"
+  )
+
+n_matched_hela <- sum(hela_xlms_match$matched_hela)
+n_unmatched_hela <- nrow(hela_xlms_match) - n_matched_hela
+
+message("Matched with HeLa predictions: ", n_matched_hela, 
+        " (", round(n_matched_hela / nrow(hela_xlms_match) * 100, 1), "%)")
+
+write_csv(hela_xlms_match, 
+          file.path(out_dir_xlms_validation, "tables", "xlms_hela_matches.csv"))
+
+
+# --- Step 7: Combined matching summary ---
+message("\n=== Creating combined matching summary ===")
+
+matching_summary <- data.frame(
+  cell_type = c("Neuronal (iN/iDA)", "HeLa"),
+  total_xlms_ppis = c(nrow(neuronal_xlms_match), nrow(hela_xlms_match)),
+  matched = c(n_matched_neuronal, n_matched_hela),
+  unmatched = c(n_unmatched_neuronal, n_unmatched_hela),
+  pct_matched = c(
+    round(n_matched_neuronal / nrow(neuronal_xlms_match) * 100, 1),
+    round(n_matched_hela / nrow(hela_xlms_match) * 100, 1)
+  )
+)
+
+write_csv(matching_summary, 
+          file.path(out_dir_xlms_validation, "tables", "matching_summary.csv"))
+
+message("\nMatching Summary:")
+print(matching_summary)
+
+
+# --- Step 8: Bar plot - Matched vs Unmatched PPIs ---
+message("\n=== Creating visualization: Matched vs Unmatched ===")
+
+matching_long <- matching_summary %>%
+  tidyr::pivot_longer(
+    cols = c(matched, unmatched),
+    names_to = "status",
+    values_to = "count"
+  ) %>%
+  dplyr::mutate(
+    status = factor(status, levels = c("matched", "unmatched"))
+  )
+
+p_matching <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) +
+  scale_fill_manual(
+    values = c(matched = "#66C2A5", unmatched = "grey70"),
+    labels = c("Matched", "Not Matched"),
+    name = "Status"
+  ) +
+  labs(
+    title = "XL-MS Validation of Predicted PPIs",
+    subtitle = paste0("Total XL-MS PPIs validated: ", nrow(xlms_all_unique)),
+    x = "Cell Type",
+    y = "Number of PPIs"
+  ) +
+  theme_bw(base_size = 8) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "top"
+  )
+
+ggsave(file.path(out_dir_xlms_validation, "plots", "bars_xlms_matching_summary.pdf"), 
+       p_matching, width = 4, height = 4, device = cairo_pdf)
+
+
+# --- Step 9: Percentage bar plot ---
+p_matching_pct <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(
+    data = matching_summary,
+    aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL),
+    size = 3.5, fontface = "bold"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(
+    values = c(matched = "#66C2A5", unmatched = "grey70"),
+    labels = c("Matched", "Not Matched"),
+    name = "Status"
+  ) +
+  labs(
+    title = "XL-MS Validation Rate",
+    subtitle = "Percentage of predicted PPIs validated by XL-MS",
+    x = "Cell Type",
+    y = "Percentage"
+  ) +
+  theme_bw(base_size = 8) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "top"
+  )
+
+ggsave(file.path(out_dir_xlms_validation, "plots", "bars_xlms_matching_percentage.pdf"), 
+       p_matching_pct, width = 4, height = 4, device = cairo_pdf)
+
+
+# --- Step 10: Confidence score comparison - Matched vs Unmatched ---
+message("\n=== Comparing confidence scores ===")
+
+# Prepare data for confidence comparison
+confidence_comparison <- dplyr::bind_rows(
+  neuronal_xlms_match %>%
+    dplyr::mutate(
+      cell_type = "Neuronal",
+      matched = matched_neuronal
+    ) %>%
+    dplyr::select(key_xlms, cell_type, matched, Predictome_conf),
+  
+  hela_xlms_match %>%
+    dplyr::mutate(
+      cell_type = "HeLa",
+      matched = matched_hela
+    ) %>%
+    dplyr::select(key_xlms, cell_type, matched, Predictome_conf)
+) %>%
+  dplyr::filter(!is.na(Predictome_conf))
+
+if (nrow(confidence_comparison) > 0) {
+  # Box plot of confidence scores
+  p_conf <- ggplot(confidence_comparison, aes(x = cell_type, y = Predictome_conf, fill = matched)) +
+    geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
+    scale_fill_manual(
+      values = c(`TRUE` = "#66C2A5", `FALSE` = "grey70"),
+      labels = c("Matched", "Not Matched"),
+      name = "XL-MS Validation"
+    ) +
+    labs(
+      title = "Prediction Confidence: XL-MS Validated vs Not Validated",
+      x = "Cell Type",
+      y = "Predictome Confidence"
+    ) +
+    theme_bw(base_size = 8) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_xlms_validation, "plots", "boxplot_confidence_by_validation.pdf"), 
+         p_conf, width = 5, height = 4, device = cairo_pdf)
+  
+  # Statistical test
+  conf_stats <- confidence_comparison %>%
+    dplyr::group_by(cell_type, matched) %>%
+    dplyr::summarise(
+      n = n(),
+      mean_conf = mean(Predictome_conf, na.rm = TRUE),
+      median_conf = median(Predictome_conf, na.rm = TRUE),
+      sd_conf = sd(Predictome_conf, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  write_csv(conf_stats, 
+            file.path(out_dir_xlms_validation, "tables", "confidence_comparison_stats.csv"))
+  
+  message("\nConfidence score statistics:")
+  print(conf_stats)
+}
+
+
+# --- Step 11: Analyze validation by DSSO/DSBSO overlap ---
+message("\n=== Validation by XL-MS method overlap ===")
+
+overlap_validation <- xlms_all_unique %>%
+  dplyr::mutate(
+    xlms_category = dplyr::case_when(
+      in_both ~ "Both (DSSO+DSBSO)",
+      in_dsso ~ "DSSO only",
+      in_dsbso ~ "DSBSO only",
+      TRUE ~ "Unknown"
+    )
+  ) %>%
+  dplyr::left_join(
+    neuronal_baseline_keys,
+    by = c("key_xlms" = "key_pred")
+  ) %>%
+  dplyr::mutate(
+    matched_neuronal = !is.na(Predictome_conf)
+  ) %>%
+  dplyr::group_by(xlms_category) %>%
+  dplyr::summarise(
+    n_total = n(),
+    n_matched = sum(matched_neuronal),
+    pct_matched = round(n_matched / n_total * 100, 1),
+    .groups = "drop"
+  )
+
+write_csv(overlap_validation, 
+          file.path(out_dir_xlms_validation, "tables", "validation_by_xlms_method.csv"))
+
+message("\nValidation by XL-MS method:")
+print(overlap_validation)
+
+# Bar plot
+p_overlap <- ggplot(overlap_validation, aes(x = xlms_category, y = pct_matched)) +
+  geom_col(fill = "#66C2A5", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = paste0(pct_matched, "%\n(", n_matched, "/", n_total, ")")), 
+            vjust = -0.5, size = 3) +
+  labs(
+    title = "Validation Rate by XL-MS Method",
+    subtitle = "Neuronal predictions",
+    x = "XL-MS Category",
+    y = "Percentage Matched (%)"
+  ) +
+  theme_bw(base_size = 8) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+ggsave(file.path(out_dir_xlms_validation, "plots", "bars_validation_by_xlms_method.pdf"), 
+       p_overlap, width = 5, height = 4, device = cairo_pdf)
+
+
+# --- Step 12: Create summary report ---
+message("\n=== Creating summary report ===")
+
+validation_report <- list(
+  total_xlms_ppis = nrow(xlms_all_unique),
+  dsso_unique = nrow(dsso_processed),
+  dsbso_unique = nrow(dsbso_processed),
+  overlap_both = nrow(xlms_overlap),
+  neuronal_baseline = nrow(neuronal_baseline_keys),
+  neuronal_matched = n_matched_neuronal,
+  neuronal_pct = round(n_matched_neuronal / nrow(xlms_all_unique) * 100, 1),
+  hela_baseline = nrow(hela_baseline_keys),
+  hela_matched = n_matched_hela,
+  hela_pct = round(n_matched_hela / nrow(xlms_all_unique) * 100, 1)
+)
+
+jsonlite::write_json(validation_report, 
+                    file.path(out_dir_xlms_validation, "tables", "validation_summary_report.json"), 
+                    pretty = TRUE)
+
+
+# --- Final summary ---
+message("\n=== XL-MS Validation Analysis Complete ===")
+message("Results saved to: ", out_dir_xlms_validation)
+message("\nKey findings:")
+message("  - Total unique XL-MS PPIs: ", validation_report$total_xlms_ppis)
+message("  - DSSO interactions: ", validation_report$dsso_unique)
+message("  - DSBSO interactions: ", validation_report$dsbso_unique)
+message("  - Overlap (both methods): ", validation_report$overlap_both)
+message("\nNeuronal (iN/iDA) validation:")
+message("  - Baseline PPIs: ", validation_report$neuronal_baseline)
+message("  - XL-MS validated: ", validation_report$neuronal_matched, 
+        " (", validation_report$neuronal_pct, "%)")
+message("\nHeLa validation:")
+message("  - Baseline PPIs: ", validation_report$hela_baseline)
+message("  - XL-MS validated: ", validation_report$hela_matched, 
+        " (", validation_report$hela_pct, "%)")
 
 ```
 
