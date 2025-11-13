@@ -15193,10 +15193,8 @@ if (!exists("trimers_baseline")) {
     edge_states = timecourse_multi_edge_genes
   )
   
-  write_csv(
-    timecourse_multi_trimer_states,
-    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_states.csv")
-  )
+  # save csv file of trimer and umultimer states
+  write_csv(timecourse_multi_trimer_states, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_states.csv"))
   
   # Summary
   timecourse_multi_trimer_summary <- timecourse_multi_trimer_states %>%
@@ -15210,10 +15208,8 @@ if (!exists("trimers_baseline")) {
       .groups = "drop"
     )
   
-  write_csv(
-    timecourse_multi_trimer_summary,
-    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_summary.csv")
-  )
+  # save csv file summary of trimer and umultimer states
+  write_csv(timecourse_multi_trimer_summary, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_summary.csv"))
   
   # Barplot
   p_trimer_bars <- ggplot(
@@ -18209,6 +18205,34 @@ message("Matched with neuronal predictions: ", n_matched_neuronal,
 write_csv(neuronal_xlms_match, file.path(out_dir_xlms_validation, "tables", "xlms_neuronal_matches.csv"))
 
 
+# --- Step 5.1: Prepare mitochondrial protein annotations ---
+message("\n=== Preparing mitochondrial protein annotations ===")
+
+# Extract individual proteins from mitochondrial-tagged PPI keys
+identify_mito_proteins <- function(shared_long_df, mito_tags) {
+  mito_protein_keys <- shared_long_df %>% dplyr::filter(tag %in% mito_tags) %>% dplyr::pull(key) %>% unique()
+  mito_proteins <- unique(c(str_extract(mito_protein_keys, "^[^|]+"), str_extract(mito_protein_keys, "[^|]+$")))
+  return(mito_proteins)
+}
+
+neuronal_mito_proteins <- identify_mito_proteins(shared_long, mito_tags)
+hela_mito_proteins <- identify_mito_proteins(shared_long_hela, mito_tags)
+
+message("Neuronal mitochondrial proteins identified: ", length(neuronal_mito_proteins))
+message("HeLa mitochondrial proteins identified: ", length(hela_mito_proteins))
+
+# Add mitochondrial status flags to baseline edges
+prepare_baseline_with_mito_flag <- function(baseline_edges, mito_proteins) {
+  baseline_edges %>% dplyr::mutate(key_pred = key, gene1_is_mito = Gene1 %in% mito_proteins, gene2_is_mito = Gene2 %in% mito_proteins, at_least_one_mito = gene1_is_mito | gene2_is_mito, both_mito = gene1_is_mito & gene2_is_mito) %>% dplyr::select(key_pred, Gene1, Gene2, Predictome_conf, gene1_is_mito, gene2_is_mito, at_least_one_mito, both_mito)
+}
+
+neuronal_baseline_with_flags <- prepare_baseline_with_mito_flag(baseline_edges_union, neuronal_mito_proteins)
+hela_baseline_with_flags <- prepare_baseline_with_mito_flag(baseline_edges_hela_annotated, hela_mito_proteins)
+
+message("Neuronal baseline with flags: ", nrow(neuronal_baseline_with_flags))
+message("HeLa baseline with flags: ", nrow(hela_baseline_with_flags))
+
+
 
 # --- Step 6: Match against HeLa baseline PPIs ---
 message("\n=== Matching against HeLa baseline PPIs ===")
@@ -18268,149 +18292,102 @@ print(matching_summary)
 # --- Step 8: Create matching analysis function ---
 message("\n=== Creating matching analysis function ===")
 
-run_matching_analysis <- function(xlms_data, 
-                                  neuronal_baseline, 
-                                  hela_baseline, 
-                                  analysis_name = "All",
-                                  out_dir) {
+run_matching_analysis <- function(xlms_data, neuronal_baseline, hela_baseline, analysis_name = "All", out_dir, match_mode = "relaxed") {
+  # match_mode: "strict" (both mito), "relaxed" (at least one mito), "all" (no constraint)
   
-  message("\n--- Running ", analysis_name, " PPI Matching ---")
-  
-  # Create filename prefix
+  message("\n--- Running ", analysis_name, " PPI Matching (mode: ", match_mode, ") ---")
   file_prefix <- tolower(gsub(" ", "_", analysis_name))
   
+  # Filter baseline based on match_mode
+  filter_by_mode <- function(baseline_df, mode) {
+    if (mode == "strict") { return(baseline_df %>% dplyr::filter(both_mito)) }
+    else if (mode == "relaxed") { return(baseline_df %>% dplyr::filter(at_least_one_mito)) }
+    else { return(baseline_df) } # "all" — no filter
+  }
+  
+  neuronal_baseline_filtered <- filter_by_mode(neuronal_baseline, match_mode)
+  hela_baseline_filtered <- filter_by_mode(hela_baseline, match_mode)
+  
+  message("  Neuronal baseline (", match_mode, "): ", nrow(neuronal_baseline_filtered))
+  message("  HeLa baseline (", match_mode, "): ", nrow(hela_baseline_filtered))
+  
   # Neuronal matching
-  neuronal_xlms_match <- xlms_data %>%
-    dplyr::left_join(
-      neuronal_baseline,
-      by = c("key_xlms" = "key_pred")
-    ) %>%
-    dplyr::mutate(
-      matched_neuronal = !is.na(Predictome_conf),
-      cell_type = "Neuronal (iN/iDA)"
-    )
+  neuronal_xlms_match <- xlms_data %>% dplyr::left_join(neuronal_baseline_filtered %>% dplyr::select(key_pred, Gene1, Gene2, Predictome_conf, gene1_is_mito, gene2_is_mito, both_mito), by = c("key_xlms" = "key_pred")) %>% dplyr::mutate(matched_neuronal = !is.na(Predictome_conf), cell_type = "Neuronal (iN/iDA)")
   
   n_matched_neuronal <- sum(neuronal_xlms_match$matched_neuronal)
   n_unmatched_neuronal <- nrow(neuronal_xlms_match) - n_matched_neuronal
   
-  message("  Neuronal baseline PPIs: ", nrow(neuronal_baseline))
-  message("  Matched: ", n_matched_neuronal, 
-          " (", round(n_matched_neuronal / nrow(xlms_data) * 100, 1), "%)")
+  message("  Matched: ", n_matched_neuronal, " (", round(n_matched_neuronal / nrow(xlms_data) * 100, 1), "%)")
   
-  # save csv file of neuronal PPI <-> mito XL-MS crosslinks
-  write_csv(neuronal_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_neuronal_matches.csv")))
-  
+  # csv file of neuronal PPI mtXL matched crosslinks (match_mode)
+  write_csv(neuronal_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_", match_mode, "_neuronal_matches.csv")))
   
   # HeLa matching
-  hela_xlms_match <- xlms_data %>%
-    dplyr::left_join(
-      hela_baseline,
-      by = c("key_xlms" = "key_pred")
-    ) %>%
-    dplyr::mutate(
-      matched_hela = !is.na(Predictome_conf),
-      cell_type = "HeLa"
-    )
+  hela_xlms_match <- xlms_data %>% 
+    dplyr::left_join(hela_baseline_filtered %>% 
+    dplyr::select(key_pred, Gene1, Gene2, Predictome_conf, gene1_is_mito, gene2_is_mito, both_mito), by = c("key_xlms" = "key_pred")) %>% 
+    dplyr::mutate(matched_hela = !is.na(Predictome_conf), cell_type = "HeLa")
   
   n_matched_hela <- sum(hela_xlms_match$matched_hela)
   n_unmatched_hela <- nrow(hela_xlms_match) - n_matched_hela
   
-  message("  HeLa baseline PPIs: ", nrow(hela_baseline))
-  message("  Matched: ", n_matched_hela, 
-          " (", round(n_matched_hela / nrow(xlms_data) * 100, 1), "%)")
+  message("  Matched: ", n_matched_hela, " (", round(n_matched_hela / nrow(xlms_data) * 100, 1), "%)")
   
-  # save csv file of HeLa nMOST PPI <-> mito XL-MS crosslinks
-  write_csv(hela_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_hela_matches.csv")))
-  
+  # csv file of HeLa nMOST PPI mtXL matched crosslinks (match_mode)
+  write_csv(hela_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_", match_mode, "_hela_matches.csv")))
   
   # Combined summary
   matching_summary <- data.frame(
     cell_type = c("Neuronal (iN/iDA)", "HeLa"),
-    baseline_ppis = c(nrow(neuronal_baseline), nrow(hela_baseline)),
+    baseline_ppis = c(nrow(neuronal_baseline_filtered), nrow(hela_baseline_filtered)),
     total_xlms_ppis = c(nrow(xlms_data), nrow(xlms_data)),
     matched = c(n_matched_neuronal, n_matched_hela),
     unmatched = c(n_unmatched_neuronal, n_unmatched_hela),
-    pct_matched = c(
-      round(n_matched_neuronal / nrow(xlms_data) * 100, 1),
-      round(n_matched_hela / nrow(xlms_data) * 100, 1)
-    )
+    pct_matched = c(round(n_matched_neuronal / nrow(xlms_data) * 100, 1), round(n_matched_hela / nrow(xlms_data) * 100, 1)),
+    match_mode = match_mode
   )
   
-  # save csv file of neuronal & HeLa nMOST PPI <-> mito XL-MS crosslinks
-  write_csv(matching_summary, file.path(out_dir, "tables", paste0(file_prefix, "_matching_summary.csv")))
+  # csv file of neuronal & HeLa nMOST PPI mtXL matched crosslinks summary (match_mode)
+  write_csv(matching_summary, file.path(out_dir, "tables", paste0(file_prefix, "_", match_mode, "_summary.csv")))
   
   message("  Summary saved")
   
-  
   # Visualizations
-  matching_long <- matching_summary %>%
-    tidyr::pivot_longer(
-      cols = c(matched, unmatched),
-      names_to = "status",
-      values_to = "count"
-    ) %>%
-    dplyr::mutate(
-      status = factor(status, levels = c("matched", "unmatched"))
-    )
+  matching_long <- matching_summary %>% 
+    tidyr::pivot_longer(cols = c(matched, unmatched), names_to = "status", values_to = "count") %>% 
+    dplyr::mutate(status = factor(status, levels = c("matched", "unmatched")))
   
   # Bar plot - counts
-  p_matching <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
-    geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.7) +
-    geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) +
-    scale_fill_manual(
-      values = c(matched = "#66C2A5", unmatched = "grey70"),
-      labels = c("Matched", "Not Matched"),
-      name = "Status"
-    ) +
-    labs(
-      title = paste("XL-MS Validation:", analysis_name, "PPIs"),
-      subtitle = paste0("Total XL-MS PPIs: ", nrow(xlms_data)),
-      x = "Cell Type",
-      y = "Number of PPIs"
-    ) +
-    theme_bw(base_size = 8) +
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA),
-      legend.position = "top"
-    )
+  p_matching <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) + 
+    geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.7) + 
+    geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) + 
+    scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") + 
+    labs(title = paste("XL-MS Validation:", analysis_name, "PPIs"), 
+         subtitle = paste0("Total XL-MS PPIs: ", nrow(xlms_data), " (", match_mode, " mode)"), x = "Cell Type", y = "Number of PPIs") + 
+    theme_bw(base_size = 8) + 
+    theme(panel.grid = element_blank(), 
+          panel.border = element_rect(color = "black", fill = NA), 
+          legend.position = "top")
   
-  ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_matching_counts.pdf")), p_matching, width = 4, height = 4, device = cairo_pdf)
-  
+  ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_", match_mode, "_counts.pdf")), p_matching, width = 4, height = 4, device = cairo_pdf)
   
   # Bar plot - percentages
-  p_matching_pct <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
-    geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
-    geom_text(
-      data = matching_summary,
-      aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL),
-      size = 3.5, fontface = "bold"
-    ) +
-    scale_y_continuous(labels = scales::percent) +
-    scale_fill_manual(
-      values = c(matched = "#66C2A5", unmatched = "grey70"),
-      labels = c("Matched", "Not Matched"),
-      name = "Status"
-    ) +
-    labs(
-      title = paste("XL-MS Validation Rate:", analysis_name, "PPIs"),
-      subtitle = "Percentage of predicted PPIs validated by XL-MS",
-      x = "Cell Type",
-      y = "Percentage"
-    ) +
-    theme_bw(base_size = 8) +
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA),
-      legend.position = "top"
-    )
+  p_matching_pct <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) + 
+    geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) + 
+    geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 3.5, fontface = "bold") + scale_y_continuous(labels = scales::percent) + scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") + 
+    labs(title = paste("XL-MS Validation Rate:", analysis_name, "PPIs"), subtitle = "Percentage of predicted PPIs validated by XL-MS", x = "Cell Type", y = "Percentage") + 
+    theme_bw(base_size = 8) + 
+    theme(panel.grid = element_blank(), 
+          panel.border = element_rect(color = "black", fill = NA), 
+          legend.position = "top")
   
-  ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_matching_percentage.pdf")), p_matching_pct, width = 4, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_", match_mode, "_percentage.pdf")), p_matching_pct, width = 4, height = 4, device = cairo_pdf)
   
   message("  Plots saved")
   
   return(matching_summary)
 }
+
 
 
 # --- Step 9: Run analysis for ALL PPIs ---
@@ -18433,6 +18410,7 @@ summary_all <- run_matching_analysis(
   analysis_name = "All",
   out_dir = out_dir_xlms_validation
 )
+
 
 
 # --- Step 10: Run analysis for MITOCHONDRIAL PPIs only ---
@@ -18537,9 +18515,6 @@ validation_report <- list(
     hela_mito_pct = summary_mito$pct_matched[summary_mito$cell_type == "HeLa"]
   )
 )
-
-# save json file of validation summary report
-jsonlite::write_json(validation_report, file.path(out_dir_xlms_validation, "tables", "validation_summary_report.json"), pretty = TRUE)
 
 
 # --- Final summary message ---
