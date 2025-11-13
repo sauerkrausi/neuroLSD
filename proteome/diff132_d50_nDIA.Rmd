@@ -18587,57 +18587,70 @@ ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pd
 
 message("\n=== Mitochondrial Annotation Analysis ===")
 
-# Helper function to check if protein has any mito tag
-has_mito_annotation <- function(df, prot_col_suffix) {
-  mito_cols <- paste0(mito_tags, "_", prot_col_suffix)
-  mito_cols_present <- mito_cols[mito_cols %in% colnames(df)]
-  if (length(mito_cols_present) == 0) return(rep(FALSE, nrow(df)))
-  rowSums(df[, mito_cols_present], na.rm = TRUE) > 0
+# Extract mitochondrial gene lists from baseline networks
+message("Extracting mitochondrial genes from baseline networks...")
+get_mito_genes <- function(df, mito_tags_vec) {
+  mito_genes <- character()
+  for (tag in mito_tags_vec) {
+    prot1_col <- paste0(tag, "_prot1")
+    prot2_col <- paste0(tag, "_prot2")
+    if (prot1_col %in% colnames(df)) mito_genes <- c(mito_genes, df$Gene1[df[[prot1_col]] == TRUE])
+    if (prot2_col %in% colnames(df)) mito_genes <- c(mito_genes, df$Gene2[df[[prot2_col]] == TRUE])
+  }
+  return(unique(na.omit(mito_genes)))
 }
 
-# Analyze mitochondrial annotations in matched PPIs
-overlap_neuro_detail$neuro_prot1_mito <- has_mito_annotation(overlap_neuro_detail, "prot1")
-overlap_neuro_detail$neuro_prot2_mito <- has_mito_annotation(overlap_neuro_detail, "prot2")
-overlap_neuro_detail$neuro_both_mito <- overlap_neuro_detail$neuro_prot1_mito & overlap_neuro_detail$neuro_prot2_mito
+mito_genes_neuro <- get_mito_genes(baseline_edges_union, mito_tags)
+mito_genes_hela <- get_mito_genes(baseline_edges_hela_annotated, mito_tags)
+mito_genes_combined <- union(mito_genes_neuro, mito_genes_hela)
 
-overlap_hela_detail$hela_prot1_mito <- has_mito_annotation(overlap_hela_detail, "prot1")
-overlap_hela_detail$hela_prot2_mito <- has_mito_annotation(overlap_hela_detail, "prot2")
-overlap_hela_detail$hela_both_mito <- overlap_hela_detail$hela_prot1_mito & overlap_hela_detail$hela_prot2_mito
+message("Mitochondrial genes in Neuro: ", length(mito_genes_neuro))
+message("Mitochondrial genes in HeLa: ", length(mito_genes_hela))
+message("Combined mitochondrial genes: ", length(mito_genes_combined))
+
+# Check CLASP overlaps for mitochondrial proteins
+overlap_neuro_detail$clasp_prot1_mito <- overlap_neuro_detail$predicted_gene %in% mito_genes_neuro
+overlap_neuro_detail$clasp_prot2_mito <- overlap_neuro_detail$predicting_gene %in% mito_genes_neuro
+overlap_neuro_detail$clasp_both_mito <- overlap_neuro_detail$clasp_prot1_mito & overlap_neuro_detail$clasp_prot2_mito
+
+overlap_hela_detail$clasp_prot1_mito <- overlap_hela_detail$predicted_gene %in% mito_genes_hela
+overlap_hela_detail$clasp_prot2_mito <- overlap_hela_detail$predicting_gene %in% mito_genes_hela
+overlap_hela_detail$clasp_both_mito <- overlap_hela_detail$clasp_prot1_mito & overlap_hela_detail$clasp_prot2_mito
 
 # Summary statistics for mitochondrial matches
-mito_stats <- data.frame(
+mito_match_stats <- data.frame(
   CellType = c("Neuro", "HeLa"),
-  Total_Matched = c(nrow(overlap_neuro_detail), nrow(overlap_hela_detail)),
-  Both_Proteins_Mito = c(sum(overlap_neuro_detail$neuro_both_mito), sum(overlap_hela_detail$hela_both_mito)),
-  At_Least_One_Mito = c(sum(overlap_neuro_detail$neuro_prot1_mito | overlap_neuro_detail$neuro_prot2_mito), sum(overlap_hela_detail$hela_prot1_mito | overlap_hela_detail$hela_prot2_mito)),
-  No_Mito_Annotation = c(sum(!overlap_neuro_detail$neuro_prot1_mito & !overlap_neuro_detail$neuro_prot2_mito), sum(!overlap_hela_detail$hela_prot1_mito & !overlap_hela_detail$hela_prot2_mito))
+  Total_Matched_PPIs = c(nrow(overlap_neuro_detail), nrow(overlap_hela_detail)),
+  Both_Proteins_Mito = c(sum(overlap_neuro_detail$clasp_both_mito), sum(overlap_hela_detail$clasp_both_mito)),
+  At_Least_One_Mito = c(sum(overlap_neuro_detail$clasp_prot1_mito | overlap_neuro_detail$clasp_prot2_mito), sum(overlap_hela_detail$clasp_prot1_mito | overlap_hela_detail$clasp_prot2_mito)),
+  No_Mito_Annotation = c(sum(!overlap_neuro_detail$clasp_prot1_mito & !overlap_neuro_detail$clasp_prot2_mito), sum(!overlap_hela_detail$clasp_prot1_mito & !overlap_hela_detail$clasp_prot2_mito))
 )
-mito_stats$Pct_Both_Mito <- round(mito_stats$Both_Proteins_Mito / mito_stats$Total_Matched * 100, 1)
-mito_stats$Pct_At_Least_One <- round(mito_stats$At_Least_One_Mito / mito_stats$Total_Matched * 100, 1)
+mito_match_stats$Pct_Both_Mito <- round(mito_match_stats$Both_Proteins_Mito / mito_match_stats$Total_Matched_PPIs * 100, 1)
+mito_match_stats$Pct_At_Least_One <- round(mito_match_stats$At_Least_One_Mito / mito_match_stats$Total_Matched_PPIs * 100, 1)
 
-write.csv(mito_stats, file.path(out_dir_xlms_validationCLASP, "tables", "mito_annotation_stats.csv"), row.names = FALSE)
-message("Mitochondrial annotation statistics:")
-print(mito_stats)
+write.csv(mito_match_stats, file.path(out_dir_xlms_validationCLASP, "tables", "mito_match_stats.csv"), row.names = FALSE)
+message("Mitochondrial protein statistics in matched CLASP PPIs:")
+print(mito_match_stats)
 
 # Prepare data for mito annotation stacked plot
-mito_long <- data.frame(
+mito_match_long <- data.frame(
   cell_type = rep(c("Neuro", "HeLa"), each = 3),
   annotation = rep(c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"), 2),
-  count = c(mito_stats$Both_Proteins_Mito[1], mito_stats$At_Least_One_Mito[1] - mito_stats$Both_Proteins_Mito[1], mito_stats$No_Mito_Annotation[1],
-            mito_stats$Both_Proteins_Mito[2], mito_stats$At_Least_One_Mito[2] - mito_stats$Both_Proteins_Mito[2], mito_stats$No_Mito_Annotation[2])
+  count = c(mito_match_stats$Both_Proteins_Mito[1], mito_match_stats$At_Least_One_Mito[1] - mito_match_stats$Both_Proteins_Mito[1], mito_match_stats$No_Mito_Annotation[1],
+            mito_match_stats$Both_Proteins_Mito[2], mito_match_stats$At_Least_One_Mito[2] - mito_match_stats$Both_Proteins_Mito[2], mito_match_stats$No_Mito_Annotation[2])
 )
-mito_long$annotation <- factor(mito_long$annotation, levels = c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"))
+mito_match_long$annotation <- factor(mito_match_long$annotation, levels = c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"))
 
-# Plot 3: Mitochondrial annotation breakdown
-p3 <- ggplot(mito_long, aes(x = cell_type, y = count, fill = annotation)) +
+# Plot 3: Mitochondrial protein composition in matched PPIs
+p3 <- ggplot(mito_match_long, aes(x = cell_type, y = count, fill = annotation)) +
   geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.6) +
   geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 2) +
   scale_fill_manual(values = c("Both Proteins Mito" = "#1B9E77", "At Least One Mito" = "#D95F02", "No Mito Annotation" = "grey70"), name = "Mito Annotation") +
-  labs(title = "Matched CLASP PPIs - Mitochondrial Annotation", subtitle = "Breakdown by mitochondrial protein annotation in baseline networks", x = "Cell Type", y = "Number of PPIs") +
+  labs(title = "Matched CLASP PPIs - Mitochondrial Composition", subtitle = "Mitochondrial protein content in validated interactions", x = "Cell Type", y = "Number of PPIs") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
 
-ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "03_mito_annotation_breakdown.pdf"), p3, width = 4, height = 4)
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "03_mito_match_composition.pdf"), p3, width = 4, height = 4)
 
 
 
