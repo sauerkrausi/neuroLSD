@@ -17981,6 +17981,15 @@ message("\n=== PPI comparison analysis complete")
 
 
 
+# XXI. XL-MS proteome validation
+### XXIa. mitochondrial XL-MS data 
+use Zhu et al., 2019 (https://www.nature.com/articles/s41467-024-47569-x) for XL-MS data of mitochondria (DSSO and DSBSO?) to check which structures are found in both prediction and XL-MS
+```{r}
+
+
+```
+
+
 
 # to do
 - by_ko heatmap correlations: 
