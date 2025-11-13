@@ -18007,19 +18007,15 @@ message("\n=== XL-MS Data Quality Control ===")
 # Function to explore XL-MS dataset
 explore_xlms_data <- function(df, name) {
   message("\n--- ", name, " ---")
-  message("Columns: ", paste(colnames(df), collapse = ", "))
   message("Total interactions: ", nrow(df))
   message("Unique protein A: ", length(unique(df$gene_a)))
   message("Unique protein B: ", length(unique(df$gene_b)))
   message("Target/Decoy distribution:")
   print(table(df$target_decoy))
-  
-  # Check score distributions
-  message("\nScore distributions:")
-  message("  PPI score range: ", round(min(df$ppi_score, na.rm = TRUE), 2), 
-          " to ", round(max(df$ppi_score, na.rm = TRUE), 2))
-  message("  Mean crosslinks A→B: ", round(mean(df$crosslinks_ab, na.rm = TRUE), 2))
-  message("  Mean crosslinks B→A: ", round(mean(df$crosslinks_ba, na.rm = TRUE), 2))
+  message("\nPPI score distribution:")
+  message("  Range: ", round(min(df$ppi_score, na.rm = TRUE), 2), " to ", round(max(df$ppi_score, na.rm = TRUE), 2))
+  message("  Mean: ", round(mean(df$ppi_score, na.rm = TRUE), 2))
+  message("  Median: ", round(median(df$ppi_score, na.rm = TRUE), 2))
 }
 
 explore_xlms_data(mt_XL_DSSO, "DSSO")
@@ -18027,29 +18023,33 @@ explore_xlms_data(mt_XL_DSBSO, "DSBSO")
 
 # QC plots - Score distributions
 create_xlms_qc_plots <- function(df, name, out_dir_xlms_validation) {
-  
-  # PPI score distribution
   p_score <- ggplot(df, aes(x = ppi_score, fill = target_decoy)) +
     geom_histogram(bins = 25, position = "identity", alpha = 0.7, color = "black", linewidth = 0.2) +
     scale_fill_manual(values = c(target = "dodgerblue3", decoy = "coral"), name = "Type") +
-    labs(
-      title = paste(name, "- PPI Score Distribution"),
-      x = "PPI Score",
-      y = "Count"
-    ) +
+    labs(title = paste(name, "- PPI Score Distribution"), x = "PPI Score", y = "Count") +
     theme_bw(base_size = 6) +
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA)
-    )
-  
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  # plot of PPI score distribution histogram for DSSO/DSBSO
   ggsave(file.path(out_dir_xlms_validation, paste0("histogram_ppi_score_", name, ".pdf")), p_score, width = 5, height = 4, device = cairo_pdf)
-
+}
 
 create_xlms_qc_plots(mt_XL_DSSO, "DSSO", file.path(out_dir_xlms_validation, "qc"))
 create_xlms_qc_plots(mt_XL_DSBSO, "DSBSO", file.path(out_dir_xlms_validation, "qc"))
 
+# --- Extract UniProt IDs from protein identifiers ---
+message("\n=== Extracting UniProt IDs ===")
+
+extract_uniprot_id <- function(df) {
+  df %>% dplyr::mutate(uniprot_a = str_extract(protein_a, "(?<=\\|)[^|]+(?=\\|)"), uniprot_b = str_extract(protein_b, "(?<=\\|)[^|]+(?=\\|)"))
 }
+
+mt_XL_DSSO <- extract_uniprot_id(mt_XL_DSSO)
+mt_XL_DSBSO <- extract_uniprot_id(mt_XL_DSBSO)
+
+message("DSSO - UniProt IDs extracted: ", sum(!is.na(mt_XL_DSSO$uniprot_a)), " / ", nrow(mt_XL_DSSO))
+message("DSBSO - UniProt IDs extracted: ", sum(!is.na(mt_XL_DSBSO$uniprot_a)), " / ", nrow(mt_XL_DSBSO))
+
+
 
 # --- Step 2: Process XL-MS data - Keep only target interactions ---
 message("\n=== Processing XL-MS data (targets only) ===")
@@ -18405,7 +18405,6 @@ summary_all_relaxed <- run_matching_analysis(xlms_data = xlms_all_unique, neuron
 
 message("\n=== ANALYSIS 1c: All PPIs - ALL mode (no mito constraint) ===")
 summary_all_all <- run_matching_analysis(xlms_data = xlms_all_unique, neuronal_baseline = neuronal_baseline_with_flags, hela_baseline = hela_baseline_with_flags, analysis_name = "All", out_dir = out_dir_xlms_validation, match_mode = "all")
-
 
 
 
