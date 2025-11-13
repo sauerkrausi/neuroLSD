@@ -18265,7 +18265,309 @@ print(matching_summary)
 
 
 
+You're right, I apologize! Let me add back all your comments:
+r# --- Step 8: Create matching analysis function ---
+message("\n=== Creating matching analysis function ===")
 
+run_matching_analysis <- function(xlms_data, 
+                                  neuronal_baseline, 
+                                  hela_baseline, 
+                                  analysis_name = "All",
+                                  out_dir) {
+  
+  message("\n--- Running ", analysis_name, " PPI Matching ---")
+  
+  # Create filename prefix
+  file_prefix <- tolower(gsub(" ", "_", analysis_name))
+  
+  # Neuronal matching
+  neuronal_xlms_match <- xlms_data %>%
+    dplyr::left_join(
+      neuronal_baseline,
+      by = c("key_xlms" = "key_pred")
+    ) %>%
+    dplyr::mutate(
+      matched_neuronal = !is.na(Predictome_conf),
+      cell_type = "Neuronal (iN/iDA)"
+    )
+  
+  n_matched_neuronal <- sum(neuronal_xlms_match$matched_neuronal)
+  n_unmatched_neuronal <- nrow(neuronal_xlms_match) - n_matched_neuronal
+  
+  message("  Neuronal baseline PPIs: ", nrow(neuronal_baseline))
+  message("  Matched: ", n_matched_neuronal, 
+          " (", round(n_matched_neuronal / nrow(xlms_data) * 100, 1), "%)")
+  
+  # save csv file of neuronal PPI <-> mito XL-MS crosslinks
+  write_csv(neuronal_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_neuronal_matches.csv")))
+  
+  
+  # HeLa matching
+  hela_xlms_match <- xlms_data %>%
+    dplyr::left_join(
+      hela_baseline,
+      by = c("key_xlms" = "key_pred")
+    ) %>%
+    dplyr::mutate(
+      matched_hela = !is.na(Predictome_conf),
+      cell_type = "HeLa"
+    )
+  
+  n_matched_hela <- sum(hela_xlms_match$matched_hela)
+  n_unmatched_hela <- nrow(hela_xlms_match) - n_matched_hela
+  
+  message("  HeLa baseline PPIs: ", nrow(hela_baseline))
+  message("  Matched: ", n_matched_hela, 
+          " (", round(n_matched_hela / nrow(xlms_data) * 100, 1), "%)")
+  
+  # save csv file of HeLa nMOST PPI <-> mito XL-MS crosslinks
+  write_csv(hela_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_hela_matches.csv")))
+  
+  
+  # Combined summary
+  matching_summary <- data.frame(
+    cell_type = c("Neuronal (iN/iDA)", "HeLa"),
+    baseline_ppis = c(nrow(neuronal_baseline), nrow(hela_baseline)),
+    total_xlms_ppis = c(nrow(xlms_data), nrow(xlms_data)),
+    matched = c(n_matched_neuronal, n_matched_hela),
+    unmatched = c(n_unmatched_neuronal, n_unmatched_hela),
+    pct_matched = c(
+      round(n_matched_neuronal / nrow(xlms_data) * 100, 1),
+      round(n_matched_hela / nrow(xlms_data) * 100, 1)
+    )
+  )
+  
+  # save csv file of neuronal & HeLa nMOST PPI <-> mito XL-MS crosslinks
+  write_csv(matching_summary, file.path(out_dir, "tables", paste0(file_prefix, "_matching_summary.csv")))
+  
+  message("  Summary saved")
+  
+  
+  # Visualizations
+  matching_long <- matching_summary %>%
+    tidyr::pivot_longer(
+      cols = c(matched, unmatched),
+      names_to = "status",
+      values_to = "count"
+    ) %>%
+    dplyr::mutate(
+      status = factor(status, levels = c("matched", "unmatched"))
+    )
+  
+  # Bar plot - counts
+  p_matching <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+    geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.7) +
+    geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) +
+    scale_fill_manual(
+      values = c(matched = "#66C2A5", unmatched = "grey70"),
+      labels = c("Matched", "Not Matched"),
+      name = "Status"
+    ) +
+    labs(
+      title = paste("XL-MS Validation:", analysis_name, "PPIs"),
+      subtitle = paste0("Total XL-MS PPIs: ", nrow(xlms_data)),
+      x = "Cell Type",
+      y = "Number of PPIs"
+    ) +
+    theme_bw(base_size = 8) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_matching_counts.pdf")), p_matching, width = 4, height = 4, device = cairo_pdf)
+  
+  
+  # Bar plot - percentages
+  p_matching_pct <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+    geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
+    geom_text(
+      data = matching_summary,
+      aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL),
+      size = 3.5, fontface = "bold"
+    ) +
+    scale_y_continuous(labels = scales::percent) +
+    scale_fill_manual(
+      values = c(matched = "#66C2A5", unmatched = "grey70"),
+      labels = c("Matched", "Not Matched"),
+      name = "Status"
+    ) +
+    labs(
+      title = paste("XL-MS Validation Rate:", analysis_name, "PPIs"),
+      subtitle = "Percentage of predicted PPIs validated by XL-MS",
+      x = "Cell Type",
+      y = "Percentage"
+    ) +
+    theme_bw(base_size = 8) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_matching_percentage.pdf")), p_matching_pct, width = 4, height = 4, device = cairo_pdf)
+  
+  message("  Plots saved")
+  
+  return(matching_summary)
+}
+
+
+# --- Step 9: Run analysis for ALL PPIs ---
+message("\n=== ANALYSIS 1: All PPIs ===")
+
+neuronal_baseline_all <- baseline_edges_union %>%
+  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+
+hela_baseline_all <- baseline_edges_hela_annotated %>%
+  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+
+summary_all <- run_matching_analysis(
+  xlms_data = xlms_all_unique,
+  neuronal_baseline = neuronal_baseline_all,
+  hela_baseline = hela_baseline_all,
+  analysis_name = "All",
+  out_dir = out_dir_xlms_validation
+)
+
+
+# --- Step 10: Run analysis for MITOCHONDRIAL PPIs only ---
+message("\n=== ANALYSIS 2: Mitochondrial PPIs ===")
+
+mito_tags <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+message("Mitochondrial tags: ", paste(mito_tags, collapse = ", "))
+
+identify_mito_ppis <- function(baseline_edges, shared_long_df, mito_tags) {
+  mito_keys <- shared_long_df %>%
+    dplyr::filter(tag %in% mito_tags) %>%
+    dplyr::pull(key) %>%
+    unique()
+  
+  mito_ppis <- baseline_edges %>%
+    dplyr::filter(key %in% mito_keys) %>%
+    dplyr::mutate(key_pred = key) %>%
+    dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+  
+  return(mito_ppis)
+}
+
+neuronal_baseline_mito <- identify_mito_ppis(baseline_edges_union, shared_long, mito_tags)
+hela_baseline_mito <- identify_mito_ppis(baseline_edges_hela_annotated, shared_long_hela, mito_tags)
+
+message("Neuronal mitochondrial PPIs: ", nrow(neuronal_baseline_mito))
+message("HeLa mitochondrial PPIs: ", nrow(hela_baseline_mito))
+
+summary_mito <- run_matching_analysis(
+  xlms_data = xlms_all_unique,
+  neuronal_baseline = neuronal_baseline_mito,
+  hela_baseline = hela_baseline_mito,
+  analysis_name = "Mitochondrial",
+  out_dir = out_dir_xlms_validation
+)
+
+
+# --- Step 11: Comparison plot - All vs Mitochondrial ---
+message("\n=== Creating comparison: All vs Mitochondrial ===")
+
+comparison_data <- dplyr::bind_rows(
+  summary_all %>% dplyr::mutate(subset = "All PPIs"),
+  summary_mito %>% dplyr::mutate(subset = "Mitochondrial PPIs")
+)
+
+# save csv file of comparison between all and mito PPIs
+write_csv(comparison_data, file.path(out_dir_xlms_validation, "tables", "comparison_all_vs_mito.csv"))
+
+p_comparison <- ggplot(comparison_data, aes(x = cell_type, y = pct_matched, fill = subset)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = paste0(pct_matched, "%")), position = position_dodge(0.7), vjust = -0.5, size = 3) +
+  scale_fill_manual(
+    values = c("All PPIs" = "grey70", "Mitochondrial PPIs" = "#66C2A5"),
+    name = "PPI Subset"
+  ) +
+  labs(
+    title = "XL-MS Validation: All vs Mitochondrial PPIs",
+    subtitle = "Comparison of validation rates",
+    x = "Cell Type",
+    y = "Validation Rate (%)"
+  ) +
+  theme_bw(base_size = 8) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    legend.position = "top"
+  )
+
+ggsave(file.path(out_dir_xlms_validation, "plots", "comparison_all_vs_mito.pdf"), p_comparison, width = 5, height = 4, device = cairo_pdf)
+
+message("\n=== Both analyses complete! ===")
+
+
+# --- Step 12: Create comprehensive summary report ---
+message("\n=== Creating comprehensive summary report ===")
+
+validation_report <- list(
+  # XL-MS data overview
+  total_xlms_ppis = nrow(xlms_all_unique),
+  dsso_unique = nrow(dsso_processed),
+  dsbso_unique = nrow(dsbso_processed),
+  overlap_both = nrow(xlms_overlap),
+  
+  # All PPIs analysis
+  all_ppis = list(
+    neuronal_baseline = nrow(neuronal_baseline_all),
+    neuronal_matched = summary_all$matched[summary_all$cell_type == "Neuronal (iN/iDA)"],
+    neuronal_pct = summary_all$pct_matched[summary_all$cell_type == "Neuronal (iN/iDA)"],
+    hela_baseline = nrow(hela_baseline_all),
+    hela_matched = summary_all$matched[summary_all$cell_type == "HeLa"],
+    hela_pct = summary_all$pct_matched[summary_all$cell_type == "HeLa"]
+  ),
+  
+  # Mitochondrial PPIs analysis
+  mitochondrial_ppis = list(
+    mito_tags_used = paste(mito_tags, collapse = ", "),
+    neuronal_mito_baseline = nrow(neuronal_baseline_mito),
+    neuronal_mito_matched = summary_mito$matched[summary_mito$cell_type == "Neuronal (iN/iDA)"],
+    neuronal_mito_pct = summary_mito$pct_matched[summary_mito$cell_type == "Neuronal (iN/iDA)"],
+    hela_mito_baseline = nrow(hela_baseline_mito),
+    hela_mito_matched = summary_mito$matched[summary_mito$cell_type == "HeLa"],
+    hela_mito_pct = summary_mito$pct_matched[summary_mito$cell_type == "HeLa"]
+  )
+)
+
+# save json file of validation summary report
+jsonlite::write_json(validation_report, file.path(out_dir_xlms_validation, "tables", "validation_summary_report.json"), pretty = TRUE)
+
+
+# --- Final summary message ---
+message("\n=== XL-MS Validation Analysis Complete ===")
+message("Results saved to: ", out_dir_xlms_validation)
+message("\nXL-MS Data Overview:")
+message("  - Total unique XL-MS PPIs: ", validation_report$total_xlms_ppis)
+message("  - DSSO interactions: ", validation_report$dsso_unique)
+message("  - DSBSO interactions: ", validation_report$dsbso_unique)
+message("  - Overlap (both methods): ", validation_report$overlap_both)
+
+message("\nAll PPIs Validation:")
+message("  Neuronal (iN/iDA):")
+message("    - Baseline PPIs: ", validation_report$all_ppis$neuronal_baseline)
+message("    - XL-MS validated: ", validation_report$all_ppis$neuronal_matched, " (", validation_report$all_ppis$neuronal_pct, "%)")
+message("  HeLa:")
+message("    - Baseline PPIs: ", validation_report$all_ppis$hela_baseline)
+message("    - XL-MS validated: ", validation_report$all_ppis$hela_matched, " (", validation_report$all_ppis$hela_pct, "%)")
+
+message("\nMitochondrial PPIs Validation:")
+message("  Tags used: ", validation_report$mitochondrial_ppis$mito_tags_used)
+message("  Neuronal (iN/iDA):")
+message("    - Mito baseline PPIs: ", validation_report$mitochondrial_ppis$neuronal_mito_baseline)
+message("    - XL-MS validated: ", validation_report$mitochondrial_ppis$neuronal_mito_matched, " (", validation_report$mitochondrial_ppis$neuronal_mito_pct, "%)")
+message("  HeLa:")
+message("    - Mito baseline PPIs: ", validation_report$mitochondrial_ppis$hela_mito_baseline)
+message("    - XL-MS validated: ", validation_report$mitochondrial_ppis$hela_mito_matched, " (", validation_report$mitochondrial_ppis$hela_mito_pct, "%)")
 
 ```
 
