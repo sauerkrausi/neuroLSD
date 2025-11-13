@@ -18477,7 +18477,9 @@ message("\n=== XL-MS CLASP UniProt Matching ===")
 mt_XL_DSSO_CLASP <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO_CLASP.csv")
 message("Loaded DSSO-CLASP XL-MS data: ", nrow(mt_XL_DSSO_CLASP), " interactions")
 
-mito_tags <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+mito_tags <- c("Mito")
+#mito_tags <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+
 
 # --- Step 1: Create gene-to-UniProt mapping ---
 message("\nCreating gene-to-UniProt mapping...")
@@ -18488,6 +18490,8 @@ gene_to_uniprot <- rbind(
   baseline_edges_hela_annotated[, c("Gene2", "Protein2")] |> setnames(c("Gene", "UniProt"))
 ) |> unique()
 message("Gene-to-UniProt mapping: ", nrow(gene_to_uniprot), " unique mappings")
+
+
 
 # --- Step 2: Map CLASP to UniProt IDs ---
 message("\nMapping CLASP genes to UniProt IDs...")
@@ -18505,12 +18509,16 @@ mt_clasp_mapped$edge_key <- apply(mt_clasp_mapped[, c("predicted_uniprot", "pred
 baseline_edges_union$edge_key <- apply(baseline_edges_union[, c("Protein1", "Protein2")], 1, function(x) paste(sort(x), collapse = "::"))
 baseline_edges_hela_annotated$edge_key <- apply(baseline_edges_hela_annotated[, c("Protein1", "Protein2")], 1, function(x) paste(sort(x), collapse = "::"))
 
+
+
 # --- Step 3: Find overlaps ---
 message("\nFinding overlaps...")
 overlap_neuro <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key)
 overlap_hela <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key)
 message("Overlap with Neuronal baseline_edges_union: ", nrow(overlap_neuro))
 message("Overlap with HeLa baseline_edges_hela_annotated: ", nrow(overlap_hela))
+
+
 
 # --- Step 4: Create detailed overlap tables ---
 message("\nCreating detailed overlap tables...")
@@ -18528,6 +18536,8 @@ overlap_hela_detail <- mt_clasp_mapped |>
 write.csv(overlap_neuro_detail, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_CLASP_vs_neuro.csv"), row.names = FALSE)
 write.csv(overlap_hela_detail, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_CLASP_vs_hela.csv"), row.names = FALSE)
 message("Saved overlap tables")
+
+
 
 # --- Step 5: Matching statistics ---
 message("\nComputing matching statistics...")
@@ -18563,7 +18573,7 @@ matching_summary <- data.frame(
   pct_matched = round(c(nrow(overlap_neuro) / nrow(clasp_both_mapped) * 100, nrow(overlap_hela) / nrow(clasp_both_mapped) * 100), 1)
 )
 
-# Plot 1: Stacked percentage plot
+## Plot 1: Stacked percentage plot
 p1 <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
   geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
   geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 2, fontface = "plain") +
@@ -18577,7 +18587,7 @@ p1 <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
 
 ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "01_validation_rate_stacked.pdf"), p1, width = 4, height = 4)
 
-# Plot 2: Absolute numbers for reference
+## Plot 2: Absolute numbers for reference
 matching_abs <- data.frame(
   cell_type = c("Neuro", "HeLa"),
   matched = c(nrow(overlap_neuro), nrow(overlap_hela)),
@@ -18597,6 +18607,8 @@ p2 <- ggplot(matching_abs, aes(x = cell_type, y = count, fill = status)) +
 ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pdf"), p2, width = 4, height = 4)
 
 message("\n=== Mitochondrial Annotation Analysis ===")
+
+
 
 # Extract mitochondrial gene lists from baseline networks
 message("Extracting mitochondrial genes from baseline networks...")
@@ -18652,7 +18664,7 @@ mito_match_long <- data.frame(
 )
 mito_match_long$annotation <- factor(mito_match_long$annotation, levels = c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"))
 
-# Plot 3: Mitochondrial protein composition in matched PPIs
+## Plot 3: Mitochondrial protein composition in matched PPIs
 p3 <- ggplot(mito_match_long, aes(x = cell_type, y = count, fill = annotation)) +
   geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.6) +
   geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 2) +
@@ -18705,7 +18717,6 @@ reverse_stats <- data.frame(
 )
 reverse_stats$Pct_In_CLASP <- round(reverse_stats$In_CLASP / reverse_stats$Total_Mito_PPIs * 100, 1)
 
-# save reverse eval as csv
 write.csv(reverse_stats, file.path(out_dir_xlms_validationCLASP, "tables", "reverse_analysis_stats.csv"), row.names = FALSE)
 message("Reverse analysis statistics:")
 print(reverse_stats)
@@ -18719,15 +18730,12 @@ reverse_long <- data.frame(
 
 # Plot 4: Mitochondrial PPIs - CLASP coverage
 p4 <- ggplot(reverse_long, aes(x = cell_type, y = count, fill = status)) +
-  geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
-  geom_text(data = reverse_stats, aes(x = CellType, y = 0.5, label = paste0(Pct_In_CLASP, "%"), fill = NULL), size = 2) +
-  scale_y_continuous(labels = percent) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = count), position = position_dodge(0.6), vjust = -0.3, size = 2) +
   scale_fill_manual(values = c("In CLASP" = "#66C2A5", "Not in CLASP" = "grey70"), name = "Status") +
-  labs(title = "CLASP Coverage of Mitochondrial PPIs", subtitle = "Percentage of baseline mito-tagged PPIs found in XL-MS data", x = "Cell Type", y = "Percentage") +
+  labs(title = "CLASP Coverage of Mitochondrial PPIs", subtitle = "Baseline mito-tagged PPIs found in XL-MS data", x = "Cell Type", y = "Number of PPIs") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA), 
-        legend.position = "top")
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
 
 ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "04_clasp_coverage_mito_ppis.pdf"), p4, width = 4, height = 4)
 
