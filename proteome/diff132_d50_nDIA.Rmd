@@ -18466,240 +18466,109 @@ message("    - XL-MS validated: ", validation_report$mitochondrial_ppis$hela_mit
 
 ### XXIb. mtXL-MS CLASP Data comparison 
 ```{r}
+# --- Step 0: Setup ---
+out_dir_xlms_validationCLASP <- file.path(out_dir_PPI, "validation_mito_clasp")
+dir.create(out_dir_xlms_validationCLASP, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_xlms_validationCLASP, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_xlms_validationCLASP, "plots"), recursive = TRUE, showWarnings = FALSE)
+message("\n=== XL-MS CLASP UniProt Matching ===")
+
 # Load XL-MS data
-mt_XL_DSSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO.csv")
 mt_XL_DSSO_CLASP <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO_CLASP.csv")
-mt_XL_DSBSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSBSO.csv")
-
-message("Loaded DSSO XL-MS data: ", nrow(mt_XL_DSSO), " interactions")
 message("Loaded DSSO-CLASP XL-MS data: ", nrow(mt_XL_DSSO_CLASP), " interactions")
-message("Loaded DSBSO XL-MS data: ", nrow(mt_XL_DSBSO), " interactions")
-
-
-# --- Extract UniProt IDs from protein identifiers ---
-message("\n=== Extracting UniProt IDs ===")
-
-extract_uniprot_id <- function(df) {
-  df %>% dplyr::mutate(uniprot_a = str_extract(protein_a, "(?<=\\|)[^|]+(?=\\|)"), uniprot_b = str_extract(protein_b, "(?<=\\|)[^|]+(?=\\|)"))
-}
-
-mt_XL_DSSO <- extract_uniprot_id(mt_XL_DSSO)
-mt_XL_DSBSO <- extract_uniprot_id(mt_XL_DSBSO)
-
-message("DSSO - UniProt IDs extracted: ", sum(!is.na(mt_XL_DSSO$uniprot_a)), " / ", nrow(mt_XL_DSSO))
-message("DSBSO - UniProt IDs extracted: ", sum(!is.na(mt_XL_DSBSO$uniprot_a)), " / ", nrow(mt_XL_DSBSO))
-
-
-# --- Build master gene-to-UniProt lookup from DSSO/DSBSO ---
-message("\n=== Building master gene-to-UniProt lookup ===")
-
-master_lookup <- dplyr::bind_rows(
-  mt_XL_DSSO %>% dplyr::select(protein_a, uniprot_a) %>% dplyr::rename(gene = protein_a, uniprot = uniprot_a),
-  mt_XL_DSSO %>% dplyr::select(protein_b, uniprot_b) %>% dplyr::rename(gene = protein_b, uniprot = uniprot_b),
-  mt_XL_DSBSO %>% dplyr::select(protein_a, uniprot_a) %>% dplyr::rename(gene = protein_a, uniprot = uniprot_a),
-  mt_XL_DSBSO %>% dplyr::select(protein_b, uniprot_b) %>% dplyr::rename(gene = protein_b, uniprot = uniprot_b)
-) %>%
-  dplyr::filter(!is.na(uniprot)) %>%
-  dplyr::distinct(gene, uniprot, .keep_all = TRUE) %>%
-  dplyr::select(gene, uniprot)
-
-message("Master lookup entries: ", nrow(master_lookup))
-
-# csv file of master gene-to-UniProt lookup (protein ID => UniProt ID)
-write_csv(master_lookup, file.path(out_dir_xlms_validationCLASP, "tables", "master_gene_uniprot_lookup.csv"))
-
-
-# --- Convert DSSO-CLASP gene names to UniProt IDs using master lookup ---
-message("\n=== Processing DSSO-CLASP data (converting to UniProt IDs) ===")
-
-mt_XL_DSSO_CLASP <- mt_XL_DSSO_CLASP %>%
-  dplyr::left_join(master_lookup %>% dplyr::rename(uniprot_a = uniprot), by = c("predicted_gene" = "gene")) %>%
-  dplyr::left_join(master_lookup %>% dplyr::rename(uniprot_b = uniprot), by = c("predicting_gene" = "gene"))
-
-n_unmapped_a <- sum(is.na(mt_XL_DSSO_CLASP$uniprot_a))
-n_unmapped_b <- sum(is.na(mt_XL_DSSO_CLASP$uniprot_b))
-
-message("Unmapped predicted_gene: ", n_unmapped_a)
-message("Unmapped predicting_gene: ", n_unmapped_b)
-
-xlms_all_unique <- mt_XL_DSSO_CLASP %>%
-  dplyr::filter(!is.na(uniprot_a) & !is.na(uniprot_b)) %>%
-  dplyr::mutate(key_xlms = .make_undirected_key(uniprot_a, uniprot_b)) %>%
-  dplyr::select(uniprot_a, uniprot_b, key_xlms) %>%
-  dplyr::distinct(key_xlms, .keep_all = TRUE)
-
-message("Total unique DSSO-CLASP PPIs (mapped): ", nrow(xlms_all_unique))
-
-# csv file of unique DSSO-CLASP interactions (with UniProt IDs)
-write_csv(xlms_all_unique, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_dsso_clasp_unique.csv"))
-
-
-# --- Step 3: Prepare baseline datasets (neuronal and HeLa) ---
-message("\n=== Preparing baseline datasets ===")
-
-neuronal_baseline_keys <- baseline_edges_union %>%
-  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
-  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
-  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
-
-hela_baseline_keys <- baseline_edges_hela_annotated %>%
-  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
-  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
-  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
-
-message("Neuronal baseline PPIs: ", nrow(neuronal_baseline_keys))
-message("HeLa baseline PPIs: ", nrow(hela_baseline_keys))
-
-
-# --- Step 4: Match XL-MS against baseline datasets ---
-message("\n=== Matching DSSO-CLASP against baseline PPIs ===")
-
-neuronal_xlms_match <- xlms_all_unique %>%
-  dplyr::left_join(neuronal_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
-  dplyr::mutate(matched_neuronal = !is.na(Predictome_conf))
-
-n_matched_neuronal <- sum(neuronal_xlms_match$matched_neuronal)
-message("Matched with neuronal predictions: ", n_matched_neuronal, " (", round(n_matched_neuronal / nrow(xlms_all_unique) * 100, 1), "%)")
-
-# csv file of DSSO-CLASP matches with neuronal baseline
-write_csv(neuronal_xlms_match, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_clasp_neuronal_matches.csv"))
-
-hela_xlms_match <- xlms_all_unique %>%
-  dplyr::left_join(hela_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
-  dplyr::mutate(matched_hela = !is.na(Predictome_conf))
-
-n_matched_hela <- sum(hela_xlms_match$matched_hela)
-message("Matched with HeLa predictions: ", n_matched_hela, " (", round(n_matched_hela / nrow(xlms_all_unique) * 100, 1), "%)")
-
-# csv file of DSSO-CLASP matches with HeLa baseline
-write_csv(hela_xlms_match, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_clasp_hela_matches.csv"))
-
-
-# --- Step 5: Create overlap summary ---
-message("\n=== Creating overlap summary ===")
-
-overlap_summary <- data.frame(
-  dataset = c("DSSO-CLASP", "Neuronal (iN/iDA)", "HeLa"),
-  total_ppis = c(nrow(xlms_all_unique), nrow(neuronal_baseline_keys), nrow(hela_baseline_keys)),
-  matched_with_clasp = c(nrow(xlms_all_unique), n_matched_neuronal, n_matched_hela),
-  pct_overlap = c(100, round(n_matched_neuronal / nrow(xlms_all_unique) * 100, 1), round(n_matched_hela / nrow(xlms_all_unique) * 100, 1))
-)
-
-# csv file of overlap summary (DSSO-CLASP vs neuronal vs HeLa)
-write_csv(overlap_summary, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_summary.csv"))
-
-message("\nOverlap Summary:")
-print(overlap_summary)
-
-
-# --- Step 6: Plot overlap comparison ---
-message("\n=== Creating overlap comparison plot ===")
-
-p_overlap <- ggplot(overlap_summary %>% dplyr::filter(dataset != "DSSO-CLASP"), aes(x = dataset, y = matched_with_clasp, fill = dataset)) +
-  geom_col(color = "black", linewidth = 0.3, width = 0.6) +
-  geom_text(aes(label = matched_with_clasp), vjust = -0.5, size = 3.5) +
-  scale_fill_manual(values = c("Neuronal (iN/iDA)" = "#66C2A5", "HeLa" = "#FC8D62"), name = "Cell Type") +
-  labs(title = "DSSO-CLASP Overlap with Baseline Predictions", x = "Baseline Dataset", y = "Number of Overlapping PPIs") +
-  ylim(0, max(overlap_summary$matched_with_clasp) * 1.15) +
-  theme_bw(base_size = 9) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
-
-# plot of DSSO-CLASP overlap with neuronal and HeLa baselines
-ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "overlap_comparison.pdf"), p_overlap, width = 4, height = 4, device = cairo_pdf)
-
-
-# --- Step 7: Prepare mitochondrial protein annotations ---
-message("\n=== Preparing mitochondrial protein annotations ===")
 
 mito_tags <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
 
-identify_mito_proteins <- function(shared_long_df, mito_tags) {
-  mito_protein_keys <- shared_long_df %>% dplyr::filter(tag %in% mito_tags) %>% dplyr::pull(key) %>% unique()
-  mito_proteins <- unique(c(str_extract(mito_protein_keys, "^[^|]+"), str_extract(mito_protein_keys, "[^|]+$")))
-  return(mito_proteins)
-}
+# --- Step 1: Create gene-to-UniProt mapping ---
+message("\nCreating gene-to-UniProt mapping...")
+gene_to_uniprot <- rbind(
+  baseline_edges_union[, c("Gene1", "Protein1")] |> setnames(c("Gene", "UniProt")),
+  baseline_edges_union[, c("Gene2", "Protein2")] |> setnames(c("Gene", "UniProt")),
+  baseline_edges_hela_annotated[, c("Gene1", "Protein1")] |> setnames(c("Gene", "UniProt")),
+  baseline_edges_hela_annotated[, c("Gene2", "Protein2")] |> setnames(c("Gene", "UniProt"))
+) |> unique()
+message("Gene-to-UniProt mapping: ", nrow(gene_to_uniprot), " unique mappings")
 
-neuronal_mito_proteins <- identify_mito_proteins(shared_long, mito_tags)
-hela_mito_proteins <- identify_mito_proteins(shared_long_hela, mito_tags)
+# --- Step 2: Map CLASP to UniProt IDs ---
+message("\nMapping CLASP genes to UniProt IDs...")
+mt_clasp_mapped <- mt_XL_DSSO_CLASP |>
+  left_join(gene_to_uniprot, by = c("predicted_gene" = "Gene")) |>
+  rename(predicted_uniprot = UniProt) |>
+  left_join(gene_to_uniprot, by = c("predicting_gene" = "Gene")) |>
+  rename(predicting_uniprot = UniProt)
 
-message("Neuronal mitochondrial proteins identified: ", length(neuronal_mito_proteins))
-message("HeLa mitochondrial proteins identified: ", length(hela_mito_proteins))
+clasp_both_mapped <- mt_clasp_mapped |> filter(!is.na(predicted_uniprot) & !is.na(predicting_uniprot))
+message("CLASP PPIs with both proteins mapped: ", nrow(clasp_both_mapped), " / ", nrow(mt_XL_DSSO_CLASP))
 
+# Create standardized edge keys (sorted so direction doesn't matter)
+mt_clasp_mapped$edge_key <- apply(mt_clasp_mapped[, c("predicted_uniprot", "predicting_uniprot")], 1, function(x) paste(sort(na.omit(x)), collapse = "::"))
+baseline_edges_union$edge_key <- apply(baseline_edges_union[, c("Protein1", "Protein2")], 1, function(x) paste(sort(x), collapse = "::"))
+baseline_edges_hela_annotated$edge_key <- apply(baseline_edges_hela_annotated[, c("Protein1", "Protein2")], 1, function(x) paste(sort(x), collapse = "::"))
 
-# --- Step 8: Analyze mitochondrial PPIs in DSSO-CLASP ---
-message("\n=== Analyzing mitochondrial PPIs ===")
+# --- Step 3: Find overlaps ---
+message("\nFinding overlaps...")
+overlap_neuro <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key)
+overlap_hela <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key)
+message("Overlap with Neuronal baseline_edges_union: ", nrow(overlap_neuro))
+message("Overlap with HeLa baseline_edges_hela_annotated: ", nrow(overlap_hela))
 
-xlms_mito_status <- xlms_all_unique %>%
-  dplyr::mutate(
-    uniprot_a_is_mito_neuro = uniprot_a %in% neuronal_mito_proteins,
-    uniprot_b_is_mito_neuro = uniprot_b %in% neuronal_mito_proteins,
-    at_least_one_mito_neuro = uniprot_a_is_mito_neuro | uniprot_b_is_mito_neuro,
-    both_mito_neuro = uniprot_a_is_mito_neuro & uniprot_b_is_mito_neuro,
-    uniprot_a_is_mito_hela = uniprot_a %in% hela_mito_proteins,
-    uniprot_b_is_mito_hela = uniprot_b %in% hela_mito_proteins,
-    at_least_one_mito_hela = uniprot_a_is_mito_hela | uniprot_b_is_mito_hela,
-    both_mito_hela = uniprot_a_is_mito_hela & uniprot_b_is_mito_hela
-  )
+# --- Step 4: Create detailed overlap tables ---
+message("\nCreating detailed overlap tables...")
+overlap_neuro_detail <- mt_clasp_mapped |>
+  filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key) |>
+  left_join(baseline_edges_union |> select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
+  select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
 
-message("DSSO-CLASP PPIs with ≥1 neuronal mito protein: ", sum(xlms_mito_status$at_least_one_mito_neuro))
-message("DSSO-CLASP PPIs with both neuronal mito proteins: ", sum(xlms_mito_status$both_mito_neuro))
-message("DSSO-CLASP PPIs with ≥1 HeLa mito protein: ", sum(xlms_mito_status$at_least_one_mito_hela))
-message("DSSO-CLASP PPIs with both HeLa mito proteins: ", sum(xlms_mito_status$both_mito_hela))
+overlap_hela_detail <- mt_clasp_mapped |>
+  filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key) |>
+  left_join(baseline_edges_hela_annotated |> select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
+  select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
 
-# Match mitochondrial PPIs against baselines
-neuronal_mito_xlms_match <- xlms_mito_status %>%
-  dplyr::filter(at_least_one_mito_neuro) %>%
-  dplyr::left_join(neuronal_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
-  dplyr::mutate(matched = !is.na(Predictome_conf))
+# Save tables
+write.csv(overlap_neuro_detail, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_CLASP_vs_neuro.csv"), row.names = FALSE)
+write.csv(overlap_hela_detail, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_CLASP_vs_hela.csv"), row.names = FALSE)
+message("Saved overlap tables")
 
-n_matched_neuronal_mito <- sum(neuronal_mito_xlms_match$matched)
-total_neuronal_mito <- nrow(neuronal_mito_xlms_match)
-
-message("Neuronal mito PPIs matched: ", n_matched_neuronal_mito, " / ", total_neuronal_mito, " (", round(n_matched_neuronal_mito / total_neuronal_mito * 100, 1), "%)")
-
-hela_mito_xlms_match <- xlms_mito_status %>%
-  dplyr::filter(at_least_one_mito_hela) %>%
-  dplyr::left_join(hela_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
-  dplyr::mutate(matched = !is.na(Predictome_conf))
-
-n_matched_hela_mito <- sum(hela_mito_xlms_match$matched)
-total_hela_mito <- nrow(hela_mito_xlms_match)
-
-message("HeLa mito PPIs matched: ", n_matched_hela_mito, " / ", total_hela_mito, " (", round(n_matched_hela_mito / total_hela_mito * 100, 1), "%)")
-
-# csv file of mitochondrial PPI matches
-write_csv(xlms_mito_status, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_clasp_mito_status.csv"))
-
-
-# --- Step 9: Create mitochondrial comparison plot ---
-message("\n=== Creating mitochondrial comparison plot ===")
-
-mito_summary <- data.frame(
-  dataset = c("Neuronal (iN/iDA)", "HeLa"),
-  total_mito_ppis = c(total_neuronal_mito, total_hela_mito),
-  matched_mito = c(n_matched_neuronal_mito, n_matched_hela_mito),
-  unmatched_mito = c(total_neuronal_mito - n_matched_neuronal_mito, total_hela_mito - n_matched_hela_mito)
+# --- Step 5: Matching statistics ---
+message("\nComputing matching statistics...")
+matching_stats <- data.frame(
+  Dataset = c("CLASP", "CLASP", "CLASP"),
+  Comparison = c("vs Neuro (baseline_edges_union)", "vs HeLa (baseline_edges_hela_annotated)", "Union (either cell type)"),
+  Total_CLASP_PPIs = c(nrow(clasp_both_mapped), nrow(clasp_both_mapped), nrow(clasp_both_mapped)),
+  Matched_PPIs = c(nrow(overlap_neuro), nrow(overlap_hela), nrow(rbind(overlap_neuro, overlap_hela) |> distinct(edge_key))),
+  Percent_Matched = c(nrow(overlap_neuro) / nrow(clasp_both_mapped) * 100, nrow(overlap_hela) / nrow(clasp_both_mapped) * 100, nrow(rbind(overlap_neuro, overlap_hela) |> distinct(edge_key)) / nrow(clasp_both_mapped) * 100)
 )
+write.csv(matching_stats, file.path(out_dir_xlms_validationCLASP, "tables", "matching_statistics.csv"), row.names = FALSE)
+print(matching_stats)
 
-mito_long <- mito_summary %>%
-  tidyr::pivot_longer(cols = c(matched_mito, unmatched_mito), names_to = "status", values_to = "count") %>%
-  dplyr::mutate(status = factor(status, levels = c("matched_mito", "unmatched_mito")))
+# --- Step 6: Plots ---
+message("\nGenerating plots...")
+library(ggplot2)
 
-p_mito <- ggplot(mito_long, aes(x = dataset, y = count, fill = status)) +
-  geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.6) +
-  geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) +
-  scale_fill_manual(values = c(matched_mito = "#66C2A5", unmatched_mito = "grey70"), labels = c("matched_mito" = "Matched", "unmatched_mito" = "Not Matched"), name = "Status") +
-  labs(title = "DSSO-CLASP: Mitochondrial PPI Overlap", subtitle = "PPIs with ≥1 mitochondrial protein", x = "Cell Type", y = "Number of PPIs") +
-  theme_bw(base_size = 9) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+# Plot 1: Matching overview
+p1 <- ggplot(matching_stats[-3, ], aes(x = Comparison, y = Matched_PPIs, fill = Comparison)) +
+  geom_col() + geom_text(aes(label = paste0(Matched_PPIs, "\n(", round(Percent_Matched, 1), "%)")), vjust = -0.5, size = 3) +
+  labs(title = "CLASP XL-MS Overlap with Neuronal & HeLa PPI Networks", y = "Matched PPIs", x = "") +
+  theme_minimal() + theme(legend.position = "none", axis.text.x = element_text(angle = 20, hjust = 1))
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "01_matching_overview.pdf"), p1, width = 6, height = 4)
 
-# plot of mitochondrial PPI overlap (DSSO-CLASP vs baselines)
-ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "mito_ppi_overlap.pdf"), p_mito, width = 4, height = 4, device = cairo_pdf)
+# Plot 2: Matching breakdown (raw vs annotated dataset)
+breakdown_data <- data.frame(
+  Dataset = c("Raw", "Raw", "Annotated", "Annotated"),
+  CellType = c("Neuro", "HeLa", "Neuro", "HeLa"),
+  Matched = c(nrow(overlap_neuro), nrow(overlap_hela), nrow(overlap_neuro), nrow(overlap_hela))
+)
+p2 <- ggplot(breakdown_data, aes(x = CellType, y = Matched, fill = Dataset)) +
+  geom_col(position = "dodge") + geom_text(aes(label = Matched), position = position_dodge(0.9), vjust = -0.3, size = 3) +
+  labs(title = "CLASP Matches: Raw vs Annotated Baseline Datasets", y = "Number of Matched PPIs", x = "Cell Type") +
+  theme_minimal() + theme(legend.position = "bottom")
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_dataset_comparison.pdf"), p2, width = 6, height = 4)
 
-message("\n=== DSSO-CLASP Validation Analysis Complete ===")
-message("Results saved to: ", out_dir_xlms_validationCLASP)
-print(overlap_summary)
-print(mito_summary)
+message("\n=== XL-MS CLASP Matching Complete ===")
+message("Output directory: ", out_dir_xlms_validationCLASP)
+
+
+
 ```
 
 
