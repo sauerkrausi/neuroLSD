@@ -18582,7 +18582,10 @@ p2 <- ggplot(matching_abs, aes(x = cell_type, y = count, fill = status)) +
   scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
   labs(title = "XL-MS CLASP Validation Counts", subtitle = paste0("Total CLASP PPIs mapped: ", nrow(clasp_both_mapped)), x = "Cell Type", y = "Number of PPIs") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.major.x = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+  theme(panel.grid.major.x = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top")
+
 ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pdf"), p2, width = 5, height = 4)
 
 message("\n=== Mitochondrial Annotation Analysis ===")
@@ -18648,10 +18651,80 @@ p3 <- ggplot(mito_match_long, aes(x = cell_type, y = count, fill = annotation)) 
   scale_fill_manual(values = c("Both Proteins Mito" = "#1B9E77", "At Least One Mito" = "#D95F02", "No Mito Annotation" = "grey70"), name = "Mito Annotation") +
   labs(title = "Matched CLASP PPIs - Mitochondrial Composition", subtitle = "Mitochondrial protein content in validated interactions", x = "Cell Type", y = "Number of PPIs") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.position = "top")
 
 ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "03_mito_match_composition.pdf"), p3, width = 4, height = 4)
 
+
+
+# --- Step 7: Reverse analysis - Mito PPIs NOT in CLASP ---
+message("\n=== Reverse Analysis: Mito PPIs Not in CLASP ===")
+
+# Get all mito-tagged PPIs from baseline networks
+get_mito_ppis <- function(df, mito_tags_vec) {
+  mito_ppi_mask <- rep(FALSE, nrow(df))
+  for (tag in mito_tags_vec) {
+    prot1_col <- paste0(tag, "_prot1")
+    prot2_col <- paste0(tag, "_prot2")
+    if (prot1_col %in% colnames(df) && prot2_col %in% colnames(df)) {
+      mito_ppi_mask <- mito_ppi_mask | (df[[prot1_col]] == TRUE | df[[prot2_col]] == TRUE)
+    }
+  }
+  return(df[mito_ppi_mask, ])
+}
+
+mito_ppis_neuro <- get_mito_ppis(baseline_edges_union, mito_tags)
+mito_ppis_hela <- get_mito_ppis(baseline_edges_hela_annotated, mito_tags)
+
+message("Total mito-tagged PPIs in Neuro: ", nrow(mito_ppis_neuro))
+message("Total mito-tagged PPIs in HeLa: ", nrow(mito_ppis_hela))
+
+# Find mito PPIs IN CLASP
+mito_ppis_neuro_in_clasp <- mito_ppis_neuro |> filter(edge_key %in% mt_clasp_mapped$edge_key)
+mito_ppis_hela_in_clasp <- mito_ppis_hela |> filter(edge_key %in% mt_clasp_mapped$edge_key)
+
+message("Mito PPIs in Neuro that ARE in CLASP: ", nrow(mito_ppis_neuro_in_clasp))
+message("Mito PPIs in HeLa that ARE in CLASP: ", nrow(mito_ppis_hela_in_clasp))
+
+# Summary statistics for reverse analysis
+reverse_stats <- data.frame(
+  CellType = c("Neuro", "HeLa"),
+  Total_Mito_PPIs = c(nrow(mito_ppis_neuro), nrow(mito_ppis_hela)),
+  In_CLASP = c(nrow(mito_ppis_neuro_in_clasp), nrow(mito_ppis_hela_in_clasp)),
+  Not_In_CLASP = c(nrow(mito_ppis_neuro) - nrow(mito_ppis_neuro_in_clasp), nrow(mito_ppis_hela) - nrow(mito_ppis_hela_in_clasp))
+)
+reverse_stats$Pct_In_CLASP <- round(reverse_stats$In_CLASP / reverse_stats$Total_Mito_PPIs * 100, 1)
+
+# save reverse eval as csv
+write.csv(reverse_stats, file.path(out_dir_xlms_validationCLASP, "tables", "reverse_analysis_stats.csv"), row.names = FALSE)
+message("Reverse analysis statistics:")
+print(reverse_stats)
+
+# Prepare data for reverse analysis plot
+reverse_long <- data.frame(
+  cell_type = rep(c("Neuro", "HeLa"), each = 2),
+  status = rep(c("In CLASP", "Not in CLASP"), 2),
+  count = c(reverse_stats$In_CLASP[1], reverse_stats$Not_In_CLASP[1], reverse_stats$In_CLASP[2], reverse_stats$Not_In_CLASP[2])
+)
+
+# Plot 4: Mitochondrial PPIs - CLASP coverage
+p4 <- ggplot(reverse_long, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(data = reverse_stats, aes(x = CellType, y = 0.5, label = paste0(Pct_In_CLASP, "%"), fill = NULL), size = 2) +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = c("In CLASP" = "#66C2A5", "Not in CLASP" = "grey70"), name = "Status") +
+  labs(title = "CLASP Coverage of Mitochondrial PPIs", subtitle = "Percentage of baseline mito-tagged PPIs found in XL-MS data", x = "Cell Type", y = "Percentage") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top")
+
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "04_clasp_coverage_mito_ppis.pdf"), p4, width = 4, height = 4)
+
+message("\n=== XL-MS CLASP Matching Complete ===")
+message("Output directory: ", out_dir_xlms_validationCLASP)
 
 
 ```
