@@ -18111,6 +18111,8 @@ message("\nSample of DSBSO processed data:")
 print(head(dsbso_processed, 3))
 
 
+
+
 # --- Step 3: Find overlap between DSSO and DSBSO ---
 message("\n=== Finding overlap between DSSO and DSBSO ===")
 
@@ -18120,12 +18122,6 @@ xlms_overlap <- dsso_processed %>%
     dsbso_processed,
     by = c("gene_a", "gene_b", "key_xlms"),
     suffix = c("_dsso", "_dsbso")
-  ) %>%
-  dplyr::mutate(
-    # Average PPI scores across both methods
-    ppi_score_mean = (ppi_score_dsso + ppi_score_dsbso) / 2,
-    # Combined crosslinks
-    total_crosslinks_combined = total_crosslinks_dsso + total_crosslinks_dsbso
   )
 
 message("Interactions in DSSO only: ", nrow(dsso_processed))
@@ -18145,7 +18141,12 @@ xlms_venn_data <- data.frame(
   )
 )
 
+# save csv file of Xl matching matrix
 write_csv(xlms_venn_data, file.path(out_dir_xlms_validation, "tables", "xlms_venn_summary.csv"))
+
+message("\nVenn diagram summary:")
+print(xlms_venn_data)
+
 
 
 # --- Step 4: Combine all XL-MS data for matching ---
