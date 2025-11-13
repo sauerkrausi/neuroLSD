@@ -17984,8 +17984,12 @@ message("\n=== PPI comparison analysis complete")
 # XXI. XL-MS proteome validation
 ### XXIa. mitochondrial XL-MS data 
 use Zhu et al., 2019 (https://www.nature.com/articles/s41467-024-47569-x) for XL-MS data of mitochondria (DSSO and DSBSO?) to check which structures are found in both prediction and XL-MS
-```{r}
+take overlap of DSSO and DSBSO and check which ones work out
 
+
+```{r}
+mt_XL_DSSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO.csv")
+mt_XL_DSBSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSBSO.csv") #MS cleavable Xlinker
 
 ```
 
