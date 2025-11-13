@@ -18034,7 +18034,7 @@ create_xlms_qc_plots <- function(df, name, out_dir_xlms_validation) {
   
   # PPI score distribution
   p_score <- ggplot(df, aes(x = ppi_score, fill = target_decoy)) +
-    geom_histogram(bins = 50, position = "identity", alpha = 0.7, color = "black", linewidth = 0.2) +
+    geom_histogram(bins = 25, position = "identity", alpha = 0.7, color = "black", linewidth = 0.2) +
     scale_fill_manual(values = c(target = "dodgerblue3", decoy = "coral"), name = "Type") +
     labs(
       title = paste(name, "- PPI Score Distribution"),
@@ -18072,21 +18072,28 @@ create_xlms_qc_plots(mt_XL_DSSO, "DSSO", file.path(out_dir_xlms_validation, "qc"
 create_xlms_qc_plots(mt_XL_DSBSO, "DSBSO", file.path(out_dir_xlms_validation, "qc"))
 
 
+
 # --- Step 2: Process XL-MS data - Keep only target interactions ---
 message("\n=== Processing XL-MS data (targets only) ===")
+
+# First, let's check what columns we actually have
+message("Columns in DSSO: ", paste(colnames(mt_XL_DSSO), collapse = ", "))
+message("Columns in DSBSO: ", paste(colnames(mt_XL_DSBSO), collapse = ", "))
+
+# Check if ppi_score exists
+has_ppi_score <- "ppi_score" %in% colnames(mt_XL_DSSO)
+message("Has ppi_score column: ", has_ppi_score)
 
 process_xlms_for_matching <- function(df, name) {
   # Keep only target interactions
   df_targets <- df %>%
     dplyr::filter(target_decoy == "target") %>%
-    dplyr::select(gene_a, gene_b, ppi_score, crosslinks_ab, crosslinks_ba, score_ab, score_ba) %>%
+    dplyr::select(gene_a, gene_b) %>%
     dplyr::mutate(
       # Create undirected PPI key
       key_xlms = .make_undirected_key(gene_a, gene_b),
       # Add source identifier
-      xlms_source = name,
-      # Total crosslinks
-      total_crosslinks = crosslinks_ab + crosslinks_ba
+      xlms_source = name
     ) %>%
     dplyr::distinct(key_xlms, .keep_all = TRUE)
   
@@ -18096,6 +18103,12 @@ process_xlms_for_matching <- function(df, name) {
 
 dsso_processed <- process_xlms_for_matching(mt_XL_DSSO, "DSSO")
 dsbso_processed <- process_xlms_for_matching(mt_XL_DSBSO, "DSBSO")
+
+# Show sample of processed data
+message("\nSample of DSSO processed data:")
+print(head(dsso_processed, 3))
+message("\nSample of DSBSO processed data:")
+print(head(dsbso_processed, 3))
 
 
 # --- Step 3: Find overlap between DSSO and DSBSO ---
