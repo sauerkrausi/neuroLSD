@@ -18049,7 +18049,7 @@ create_xlms_qc_plots <- function(df, name, out_dir_xlms_validation) {
 create_xlms_qc_plots(mt_XL_DSSO, "DSSO", file.path(out_dir_xlms_validation, "qc"))
 create_xlms_qc_plots(mt_XL_DSBSO, "DSBSO", file.path(out_dir_xlms_validation, "qc"))
 
-
+}
 
 # --- Step 2: Process XL-MS data - Keep only target interactions ---
 message("\n=== Processing XL-MS data (targets only) ===")
