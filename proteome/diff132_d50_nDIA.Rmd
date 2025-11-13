@@ -18544,25 +18544,46 @@ print(matching_stats)
 # --- Step 6: Plots ---
 message("\nGenerating plots...")
 library(ggplot2)
+library(scales)
 
-# Plot 1: Matching overview
-p1 <- ggplot(matching_stats[-3, ], aes(x = Comparison, y = Matched_PPIs, fill = Comparison)) +
-  geom_col() + geom_text(aes(label = paste0(Matched_PPIs, "\n(", round(Percent_Matched, 1), "%)")), vjust = -0.5, size = 3) +
-  labs(title = "CLASP XL-MS Overlap with Neuronal & HeLa PPI Networks", y = "Matched PPIs", x = "") +
-  theme_minimal() + theme(legend.position = "none", axis.text.x = element_text(angle = 20, hjust = 1))
-ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "01_matching_overview.pdf"), p1, width = 6, height = 4)
-
-# Plot 2: Matching breakdown (raw vs annotated dataset)
-breakdown_data <- data.frame(
-  Dataset = c("Raw", "Raw", "Annotated", "Annotated"),
-  CellType = c("Neuro", "HeLa", "Neuro", "HeLa"),
-  Matched = c(nrow(overlap_neuro), nrow(overlap_hela), nrow(overlap_neuro), nrow(overlap_hela))
+# Prepare data for stacked percentage plot
+matching_long <- data.frame(
+  cell_type = rep(c("Neuro", "HeLa"), each = 2),
+  status = rep(c("matched", "unmatched"), 2),
+  count = c(nrow(overlap_neuro), nrow(clasp_both_mapped) - nrow(overlap_neuro), nrow(overlap_hela), nrow(clasp_both_mapped) - nrow(overlap_hela))
 )
-p2 <- ggplot(breakdown_data, aes(x = CellType, y = Matched, fill = Dataset)) +
-  geom_col(position = "dodge") + geom_text(aes(label = Matched), position = position_dodge(0.9), vjust = -0.3, size = 3) +
-  labs(title = "CLASP Matches: Raw vs Annotated Baseline Datasets", y = "Number of Matched PPIs", x = "Cell Type") +
-  theme_minimal() + theme(legend.position = "bottom")
-ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_dataset_comparison.pdf"), p2, width = 6, height = 4)
+
+matching_summary <- data.frame(
+  cell_type = c("Neuro", "HeLa"),
+  pct_matched = round(c(nrow(overlap_neuro) / nrow(clasp_both_mapped) * 100, nrow(overlap_hela) / nrow(clasp_both_mapped) * 100), 1)
+)
+
+# Plot 1: Stacked percentage plot
+p1 <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 3.5, fontface = "regular") +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
+  labs(title = "XL-MS CLASP Validation Rate", subtitle = "Percentage of CLASP PPIs matching baseline networks", x = "Cell Type", y = "Percentage") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "01_validation_rate_stacked.pdf"), p1, width = 5, height = 4)
+
+# Plot 2: Absolute numbers for reference
+matching_abs <- data.frame(
+  cell_type = c("Neuro", "HeLa"),
+  matched = c(nrow(overlap_neuro), nrow(overlap_hela)),
+  unmatched = c(nrow(clasp_both_mapped) - nrow(overlap_neuro), nrow(clasp_both_mapped) - nrow(overlap_hela))
+) |> tidyr::pivot_longer(-cell_type, names_to = "status", values_to = "count")
+
+p2 <- ggplot(matching_abs, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = count), position = position_dodge(0.6), vjust = -0.3, size = 3) +
+  scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
+  labs(title = "XL-MS CLASP Validation Counts", subtitle = paste0("Total CLASP PPIs mapped: ", nrow(clasp_both_mapped)), x = "Cell Type", y = "Number of PPIs") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid.major.x = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pdf"), p2, width = 5, height = 4)
 
 message("\n=== XL-MS CLASP Matching Complete ===")
 message("Output directory: ", out_dir_xlms_validationCLASP)
