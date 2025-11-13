@@ -18265,8 +18265,7 @@ print(matching_summary)
 
 
 
-You're right, I apologize! Let me add back all your comments:
-r# --- Step 8: Create matching analysis function ---
+# --- Step 8: Create matching analysis function ---
 message("\n=== Creating matching analysis function ===")
 
 run_matching_analysis <- function(xlms_data, 
