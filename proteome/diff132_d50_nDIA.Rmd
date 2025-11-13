@@ -18030,12 +18030,12 @@ explore_xlms_data(mt_XL_DSSO, "DSSO")
 explore_xlms_data(mt_XL_DSBSO, "DSBSO")
 
 # QC plots - Score distributions
-create_xlms_qc_plots <- function(df, name, out_dir) {
+create_xlms_qc_plots <- function(df, name, out_dir_xlms_validation) {
   
   # PPI score distribution
   p_score <- ggplot(df, aes(x = ppi_score, fill = target_decoy)) +
     geom_histogram(bins = 50, position = "identity", alpha = 0.7, color = "black", linewidth = 0.2) +
-    scale_fill_manual(values = c(target = "skyblue", decoy = "coral"), name = "Type") +
+    scale_fill_manual(values = c(target = "dodgerblue3", decoy = "coral"), name = "Type") +
     labs(
       title = paste(name, "- PPI Score Distribution"),
       x = "PPI Score",
@@ -18047,13 +18047,12 @@ create_xlms_qc_plots <- function(df, name, out_dir) {
       panel.border = element_rect(color = "black", fill = NA)
     )
   
-  ggsave(file.path(out_dir, paste0("histogram_ppi_score_", name, ".pdf")), 
-         p_score, width = 5, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_xlms_validation, paste0("histogram_ppi_score_", name, ".pdf")), p_score, width = 5, height = 4, device = cairo_pdf)
   
   # Crosslink count scatter
   p_crosslinks <- ggplot(df, aes(x = crosslinks_ab, y = crosslinks_ba, color = target_decoy)) +
     geom_point(alpha = 0.6, size = 1) +
-    scale_color_manual(values = c(target = "skyblue", decoy = "coral"), name = "Type") +
+    scale_color_manual(values = c(target = "dodgerblue3", decoy = "coral"), name = "Type") +
     labs(
       title = paste(name, "- Bidirectional Crosslinks"),
       x = "Crosslinks A→B",
@@ -18065,7 +18064,7 @@ create_xlms_qc_plots <- function(df, name, out_dir) {
       panel.border = element_rect(color = "black", fill = NA)
     )
   
-  ggsave(file.path(out_dir, paste0("scatter_crosslinks_", name, ".pdf")), 
+  ggsave(file.path(out_dir_xlms_validation, paste0("scatter_crosslinks_", name, ".pdf")), 
          p_crosslinks, width = 5, height = 4, device = cairo_pdf)
 }
 
