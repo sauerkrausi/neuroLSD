@@ -18238,8 +18238,9 @@ n_unmatched_hela <- nrow(hela_xlms_match) - n_matched_hela
 message("Matched with HeLa predictions: ", n_matched_hela, 
         " (", round(n_matched_hela / nrow(hela_xlms_match) * 100, 1), "%)")
 
-write_csv(hela_xlms_match, 
-          file.path(out_dir_xlms_validation, "tables", "xlms_hela_matches.csv"))
+# save csv file of HeLa nMOST PPI mtXL matched crosslinks
+write_csv(hela_xlms_match, file.path(out_dir_xlms_validation, "tables", "xlms_hela_matches.csv"))
+
 
 
 # --- Step 7: Combined matching summary ---
@@ -18256,11 +18257,12 @@ matching_summary <- data.frame(
   )
 )
 
-write_csv(matching_summary, 
-          file.path(out_dir_xlms_validation, "tables", "matching_summary.csv"))
+# save csv file of neuronal & HeLa PPI mtXL matched crosslinks
+write_csv(matching_summary, file.path(out_dir_xlms_validation, "tables", "matching_summary.csv"))
 
 message("\nMatching Summary:")
 print(matching_summary)
+
 
 
 # --- Step 8: Bar plot - Matched vs Unmatched PPIs ---
@@ -18297,8 +18299,7 @@ p_matching <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)
     legend.position = "top"
   )
 
-ggsave(file.path(out_dir_xlms_validation, "plots", "bars_xlms_matching_summary.pdf"), 
-       p_matching, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_xlms_validation, "plots", "bars_xlms_matching_summary.pdf"), p_matching, width = 4, height = 4, device = cairo_pdf)
 
 
 # --- Step 9: Percentage bar plot ---
