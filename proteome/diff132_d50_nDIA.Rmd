@@ -17995,9 +17995,11 @@ message("\n=== XL-MS Validation Analysis ===")
 
 # Load XL-MS data
 mt_XL_DSSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO.csv")
+mt_XL_DSSO_CLASP <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO_CLASP.csv")
 mt_XL_DSBSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSBSO.csv")
 
 message("Loaded DSSO XL-MS data: ", nrow(mt_XL_DSSO), " interactions")
+message("Loaded DSSO-CLASP XL-MS data: ", nrow(mt_XL_DSSO_CLASP), " interactions")
 message("Loaded DSBSO XL-MS data: ", nrow(mt_XL_DSBSO), " interactions")
 
 
@@ -18051,30 +18053,11 @@ message("DSBSO - UniProt IDs extracted: ", sum(!is.na(mt_XL_DSBSO$uniprot_a)), "
 
 
 
-# --- Step 2: Process XL-MS data - Keep only target interactions ---
-message("\n=== Processing XL-MS data (targets only) ===")
-
-# First, let's check what columns we actually have
-message("Columns in DSSO: ", paste(colnames(mt_XL_DSSO), collapse = ", "))
-message("Columns in DSBSO: ", paste(colnames(mt_XL_DSBSO), collapse = ", "))
-
-# Check if ppi_score exists
-has_ppi_score <- "ppi_score" %in% colnames(mt_XL_DSSO)
-message("Has ppi_score column: ", has_ppi_score)
+# --- Step 2: Process XL-MS data with UniProt IDs ---
+message("\n=== Processing XL-MS data (targets only, using UniProt IDs) ===")
 
 process_xlms_for_matching <- function(df, name) {
-  # Keep only target interactions
-  df_targets <- df %>%
-    dplyr::filter(target_decoy == "target") %>%
-    dplyr::select(gene_a, gene_b) %>%
-    dplyr::mutate(
-      # Create undirected PPI key
-      key_xlms = .make_undirected_key(gene_a, gene_b),
-      # Add source identifier
-      xlms_source = name
-    ) %>%
-    dplyr::distinct(key_xlms, .keep_all = TRUE)
-  
+  df_targets <- df %>% dplyr::filter(target_decoy == "target") %>% dplyr::select(uniprot_a, uniprot_b) %>% dplyr::mutate(key_xlms = .make_undirected_key(uniprot_a, uniprot_b), xlms_source = name) %>% dplyr::distinct(key_xlms, .keep_all = TRUE)
   message(name, " - Target interactions: ", nrow(df_targets))
   return(df_targets)
 }
@@ -18082,115 +18065,50 @@ process_xlms_for_matching <- function(df, name) {
 dsso_processed <- process_xlms_for_matching(mt_XL_DSSO, "DSSO")
 dsbso_processed <- process_xlms_for_matching(mt_XL_DSBSO, "DSBSO")
 
-# Show sample of processed data
 message("\nSample of DSSO processed data:")
 print(head(dsso_processed, 3))
 message("\nSample of DSBSO processed data:")
 print(head(dsbso_processed, 3))
 
 
-
-
 # --- Step 3: Find overlap between DSSO and DSBSO ---
 message("\n=== Finding overlap between DSSO and DSBSO ===")
 
-# Find interactions present in both datasets
-xlms_overlap <- dsso_processed %>%
-  dplyr::inner_join(
-    dsbso_processed,
-    by = c("gene_a", "gene_b", "key_xlms"),
-    suffix = c("_dsso", "_dsbso")
-  )
+xlms_overlap <- dsso_processed %>% dplyr::inner_join(dsbso_processed, by = c("uniprot_a", "uniprot_b", "key_xlms"), suffix = c("_dsso", "_dsbso"))
 
 message("Interactions in DSSO only: ", nrow(dsso_processed))
 message("Interactions in DSBSO only: ", nrow(dsbso_processed))
 message("Interactions in BOTH (overlap): ", nrow(xlms_overlap))
 
-# Save overlap
+# csv file of XL-MS overlap (DSSO & DSBSO)
 write_csv(xlms_overlap, file.path(out_dir_xlms_validation, "tables", "xlms_overlap_dsso_dsbso.csv"))
 
-# Venn diagram data
-xlms_venn_data <- data.frame(
-  category = c("DSSO only", "DSBSO only", "Both"),
-  count = c(
-    nrow(dsso_processed) - nrow(xlms_overlap),
-    nrow(dsbso_processed) - nrow(xlms_overlap),
-    nrow(xlms_overlap)
-  )
-)
+xlms_venn_data <- data.frame(category = c("DSSO only", "DSBSO only", "Both"), count = c(nrow(dsso_processed) - nrow(xlms_overlap), nrow(dsbso_processed) - nrow(xlms_overlap), nrow(xlms_overlap)))
 
-# save csv file of Xl matching matrix
+# csv file of XL-MS Venn diagram summary
 write_csv(xlms_venn_data, file.path(out_dir_xlms_validation, "tables", "xlms_venn_summary.csv"))
 
 message("\nVenn diagram summary:")
 print(xlms_venn_data)
 
 
-
 # --- Step 4: Combine all XL-MS data for matching ---
 message("\n=== Combining XL-MS data for matching ===")
 
-# Combine all unique XL-MS interactions
-xlms_all_unique <- dplyr::bind_rows(
-  dsso_processed %>% dplyr::mutate(in_dsso = TRUE, in_dsbso = FALSE),
-  dsbso_processed %>% dplyr::mutate(in_dsso = FALSE, in_dsbso = TRUE)
-) %>%
-  dplyr::group_by(key_xlms) %>%
-  dplyr::summarise(
-    gene_a = first(gene_a),
-    gene_b = first(gene_b),
-    in_dsso = any(in_dsso, na.rm = TRUE),
-    in_dsbso = any(in_dsbso, na.rm = TRUE),
-    in_both = in_dsso & in_dsbso,
-    .groups = "drop"
-  )
+xlms_all_unique <- dplyr::bind_rows(dsso_processed %>% dplyr::mutate(in_dsso = TRUE, in_dsbso = FALSE), dsbso_processed %>% dplyr::mutate(in_dsso = FALSE, in_dsbso = TRUE)) %>% dplyr::group_by(key_xlms) %>% dplyr::summarise(uniprot_a = first(uniprot_a), uniprot_b = first(uniprot_b), in_dsso = any(in_dsso, na.rm = TRUE), in_dsbso = any(in_dsbso, na.rm = TRUE), in_both = in_dsso & in_dsbso, .groups = "drop")
 
 message("Total unique XL-MS PPIs: ", nrow(xlms_all_unique))
 message("  - In DSSO: ", sum(xlms_all_unique$in_dsso))
 message("  - In DSBSO: ", sum(xlms_all_unique$in_dsbso))
 message("  - In both: ", sum(xlms_all_unique$in_both))
 
-# save csv of combined XL file 
+# csv file of combined unique XL-MS interactions (UniProt IDs)
 write_csv(xlms_all_unique, file.path(out_dir_xlms_validation, "tables", "xlms_all_unique.csv"))
-
-
-
-# --- Step 5: Match against neuronal baseline PPIs (iN and iDA control) ---
-message("\n=== Matching against neuronal baseline PPIs ===")
-
-# Prepare neuronal baseline (control/baseline edges)
-neuronal_baseline_keys <- baseline_edges_union %>%
-  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
-  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
-  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
-
-message("Neuronal baseline PPIs: ", nrow(neuronal_baseline_keys))
-
-# Match XL-MS against neuronal predictions
-neuronal_xlms_match <- xlms_all_unique %>%
-  dplyr::left_join(
-    neuronal_baseline_keys,
-    by = c("key_xlms" = "key_pred")
-  ) %>%
-  dplyr::mutate(
-    matched_neuronal = !is.na(Predictome_conf),
-    cell_type = "Neuronal (iN/iDA)"
-  )
-
-n_matched_neuronal <- sum(neuronal_xlms_match$matched_neuronal)
-n_unmatched_neuronal <- nrow(neuronal_xlms_match) - n_matched_neuronal
-
-message("Matched with neuronal predictions: ", n_matched_neuronal, 
-        " (", round(n_matched_neuronal / nrow(neuronal_xlms_match) * 100, 1), "%)")
-
-# save csv file of neuronal PPI mtXL matched crosslinks
-write_csv(neuronal_xlms_match, file.path(out_dir_xlms_validation, "tables", "xlms_neuronal_matches.csv"))
 
 
 # --- Step 5.1: Prepare mitochondrial protein annotations ---
 message("\n=== Preparing mitochondrial protein annotations ===")
 
-# Extract individual proteins from mitochondrial-tagged PPI keys
 identify_mito_proteins <- function(shared_long_df, mito_tags) {
   mito_protein_keys <- shared_long_df %>% dplyr::filter(tag %in% mito_tags) %>% dplyr::pull(key) %>% unique()
   mito_proteins <- unique(c(str_extract(mito_protein_keys, "^[^|]+"), str_extract(mito_protein_keys, "[^|]+$")))
@@ -18203,9 +18121,9 @@ hela_mito_proteins <- identify_mito_proteins(shared_long_hela, mito_tags)
 message("Neuronal mitochondrial proteins identified: ", length(neuronal_mito_proteins))
 message("HeLa mitochondrial proteins identified: ", length(hela_mito_proteins))
 
-# Add mitochondrial status flags to baseline edges
+# Add mitochondrial status flags to baseline edges (keep all columns, don't drop flags)
 prepare_baseline_with_mito_flag <- function(baseline_edges, mito_proteins) {
-  baseline_edges %>% dplyr::mutate(key_pred = key, gene1_is_mito = Gene1 %in% mito_proteins, gene2_is_mito = Gene2 %in% mito_proteins, at_least_one_mito = gene1_is_mito | gene2_is_mito, both_mito = gene1_is_mito & gene2_is_mito) %>% dplyr::select(key_pred, Gene1, Gene2, Predictome_conf, gene1_is_mito, gene2_is_mito, at_least_one_mito, both_mito)
+  baseline_edges %>% dplyr::mutate(key_pred = key, gene1_is_mito = Gene1 %in% mito_proteins, gene2_is_mito = Gene2 %in% mito_proteins, at_least_one_mito = gene1_is_mito | gene2_is_mito, both_mito = gene1_is_mito & gene2_is_mito)
 }
 
 neuronal_baseline_with_flags <- prepare_baseline_with_mito_flag(baseline_edges_union, neuronal_mito_proteins)
@@ -18275,16 +18193,13 @@ print(matching_summary)
 message("\n=== Creating matching analysis function ===")
 
 run_matching_analysis <- function(xlms_data, neuronal_baseline, hela_baseline, analysis_name = "All", out_dir, match_mode = "relaxed") {
-  # match_mode: "strict" (both mito), "relaxed" (at least one mito), "all" (no constraint)
-  
   message("\n--- Running ", analysis_name, " PPI Matching (mode: ", match_mode, ") ---")
   file_prefix <- tolower(gsub(" ", "_", analysis_name))
   
-  # Filter baseline based on match_mode
   filter_by_mode <- function(baseline_df, mode) {
     if (mode == "strict") { return(baseline_df %>% dplyr::filter(both_mito)) }
     else if (mode == "relaxed") { return(baseline_df %>% dplyr::filter(at_least_one_mito)) }
-    else { return(baseline_df) } # "all" — no filter
+    else { return(baseline_df) }
   }
   
   neuronal_baseline_filtered <- filter_by_mode(neuronal_baseline, match_mode)
@@ -18305,9 +18220,8 @@ run_matching_analysis <- function(xlms_data, neuronal_baseline, hela_baseline, a
   write_csv(neuronal_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_", match_mode, "_neuronal_matches.csv")))
   
   # HeLa matching
-  hela_xlms_match <- xlms_data %>% 
-    dplyr::left_join(hela_baseline_filtered %>% 
-    dplyr::select(key_pred, Gene1, Gene2, Predictome_conf, gene1_is_mito, gene2_is_mito, both_mito), by = c("key_xlms" = "key_pred")) %>% 
+  hela_xlms_match <- xlms_data %>%
+    dplyr::left_join(hela_baseline_filtered %>% dplyr::select(key_pred, Gene1, Gene2, Predictome_conf, gene1_is_mito, gene2_is_mito, both_mito), by = c("key_xlms" = "key_pred")) %>%
     dplyr::mutate(matched_hela = !is.na(Predictome_conf), cell_type = "HeLa")
   
   n_matched_hela <- sum(hela_xlms_match$matched_hela)
@@ -18318,55 +18232,40 @@ run_matching_analysis <- function(xlms_data, neuronal_baseline, hela_baseline, a
   # csv file of HeLa nMOST PPI mtXL matched crosslinks (match_mode)
   write_csv(hela_xlms_match, file.path(out_dir, "tables", paste0(file_prefix, "_", match_mode, "_hela_matches.csv")))
   
-  # Combined summary
-  matching_summary <- data.frame(
-    cell_type = c("Neuronal (iN/iDA)", "HeLa"),
-    baseline_ppis = c(nrow(neuronal_baseline_filtered), nrow(hela_baseline_filtered)),
-    total_xlms_ppis = c(nrow(xlms_data), nrow(xlms_data)),
-    matched = c(n_matched_neuronal, n_matched_hela),
-    unmatched = c(n_unmatched_neuronal, n_unmatched_hela),
-    pct_matched = c(round(n_matched_neuronal / nrow(xlms_data) * 100, 1), round(n_matched_hela / nrow(xlms_data) * 100, 1)),
-    match_mode = match_mode
-  )
+matching_summary <- data.frame(cell_type = c("Neuronal (iN/iDA)", "HeLa"), baseline_ppis = c(nrow(neuronal_baseline_filtered), nrow(hela_baseline_filtered)), total_xlms_ppis = c(nrow(xlms_data), nrow(xlms_data)), matched = c(n_matched_neuronal, n_matched_hela), unmatched = c(n_unmatched_neuronal, n_unmatched_hela), pct_matched = c(round(n_matched_neuronal / nrow(xlms_data) * 100, 1), round(n_matched_hela / nrow(xlms_data) * 100, 1)), match_mode = match_mode)
   
   # csv file of neuronal & HeLa nMOST PPI mtXL matched crosslinks summary (match_mode)
   write_csv(matching_summary, file.path(out_dir, "tables", paste0(file_prefix, "_", match_mode, "_summary.csv")))
   
   message("  Summary saved")
   
-  # Visualizations
-  matching_long <- matching_summary %>% 
-    tidyr::pivot_longer(cols = c(matched, unmatched), names_to = "status", values_to = "count") %>% 
-    dplyr::mutate(status = factor(status, levels = c("matched", "unmatched")))
+  matching_long <- matching_summary %>% tidyr::pivot_longer(cols = c(matched, unmatched), names_to = "status", values_to = "count") %>% dplyr::mutate(status = factor(status, levels = c("matched", "unmatched")))
   
-  # Bar plot - counts
-  p_matching <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) + 
-    geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.7) + 
-    geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) + 
-    scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") + 
-    labs(title = paste("XL-MS Validation:", analysis_name, "PPIs"), 
-         subtitle = paste0("Total XL-MS PPIs: ", nrow(xlms_data), " (", match_mode, " mode)"), x = "Cell Type", y = "Number of PPIs") + 
-    theme_bw(base_size = 8) + 
+  p_matching <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+    geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.7) +
+    geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) +
+    scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
+    labs(title = paste("XL-MS Validation:", analysis_name, "PPIs"), subtitle = paste0("Total XL-MS PPIs: ", nrow(xlms_data), " (", match_mode, " mode)"), x = "Cell Type", y = "Number of PPIs") +
+    theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), 
           panel.border = element_rect(color = "black", fill = NA), 
           legend.position = "top")
   
+  # plot of XL-MS validation counts (match_mode)
   ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_", match_mode, "_counts.pdf")), p_matching, width = 4, height = 4, device = cairo_pdf)
   
-  # Bar plot - percentages
-  p_matching_pct <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) + 
-    geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) + 
-    geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 3.5, fontface = "bold") + 
-    scale_y_continuous(labels = scales::percent) + 
-    scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), 
-                      labels = c("Matched", "Not Matched"), name = "Status") + 
-    labs(title = paste("XL-MS Validation Rate:", analysis_name, "PPIs"), 
-         subtitle = "Percentage of predicted PPIs validated by XL-MS", x = "Cell Type", y = "Percentage") + 
-    theme_bw(base_size = 8) + 
+  p_matching_pct <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+    geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
+    geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 3.5, fontface = "regular") +
+    scale_y_continuous(labels = scales::percent) +
+    scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
+    labs(title = paste("XL-MS Validation Rate:", analysis_name, "PPIs"), subtitle = "Percentage of predicted PPIs validated by XL-MS", x = "Cell Type", y = "Percentage") +
+    theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), 
           panel.border = element_rect(color = "black", fill = NA), 
           legend.position = "top")
   
+  # plot of XL-MS validation percentage (match_mode)
   ggsave(file.path(out_dir, "plots", paste0(file_prefix, "_", match_mode, "_percentage.pdf")), p_matching_pct, width = 4, height = 4, device = cairo_pdf)
   
   message("  Plots saved")
@@ -18379,23 +18278,23 @@ run_matching_analysis <- function(xlms_data, neuronal_baseline, hela_baseline, a
 # --- Step 9: Run analysis for ALL PPIs ---
 message("\n=== ANALYSIS 1: All PPIs ===")
 
-neuronal_baseline_all <- baseline_edges_union %>%
-  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
-  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
-  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
-
-hela_baseline_all <- baseline_edges_hela_annotated %>%
-  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
-  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
-  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
-
-summary_all <- run_matching_analysis(
-  xlms_data = xlms_all_unique,
-  neuronal_baseline = neuronal_baseline_all,
-  hela_baseline = hela_baseline_all,
-  analysis_name = "All",
-  out_dir = out_dir_xlms_validation
-)
+# neuronal_baseline_all <- baseline_edges_union %>%
+#   dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+#   dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+#   dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+# 
+# hela_baseline_all <- baseline_edges_hela_annotated %>%
+#   dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+#   dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+#   dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+# 
+# summary_all <- run_matching_analysis(
+#   xlms_data = xlms_all_unique,
+#   neuronal_baseline = neuronal_baseline_all,
+#   hela_baseline = hela_baseline_all,
+#   analysis_name = "All",
+#   out_dir = out_dir_xlms_validation
+# )
 
 message("\n=== ANALYSIS 1a: All PPIs - STRICT mode (both proteins mito) ===")
 summary_all_strict <- run_matching_analysis(xlms_data = xlms_all_unique, neuronal_baseline = neuronal_baseline_with_flags, hela_baseline = hela_baseline_with_flags, analysis_name = "All", out_dir = out_dir_xlms_validation, match_mode = "strict")
@@ -18563,6 +18462,245 @@ message("    - XL-MS validated: ", validation_report$mitochondrial_ppis$hela_mit
 
 ```
 
+
+
+### XXIb. mtXL-MS CLASP Data comparison 
+```{r}
+# Load XL-MS data
+mt_XL_DSSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO.csv")
+mt_XL_DSSO_CLASP <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO_CLASP.csv")
+mt_XL_DSBSO <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSBSO.csv")
+
+message("Loaded DSSO XL-MS data: ", nrow(mt_XL_DSSO), " interactions")
+message("Loaded DSSO-CLASP XL-MS data: ", nrow(mt_XL_DSSO_CLASP), " interactions")
+message("Loaded DSBSO XL-MS data: ", nrow(mt_XL_DSBSO), " interactions")
+
+
+# --- Extract UniProt IDs from protein identifiers ---
+message("\n=== Extracting UniProt IDs ===")
+
+extract_uniprot_id <- function(df) {
+  df %>% dplyr::mutate(uniprot_a = str_extract(protein_a, "(?<=\\|)[^|]+(?=\\|)"), uniprot_b = str_extract(protein_b, "(?<=\\|)[^|]+(?=\\|)"))
+}
+
+mt_XL_DSSO <- extract_uniprot_id(mt_XL_DSSO)
+mt_XL_DSBSO <- extract_uniprot_id(mt_XL_DSBSO)
+
+message("DSSO - UniProt IDs extracted: ", sum(!is.na(mt_XL_DSSO$uniprot_a)), " / ", nrow(mt_XL_DSSO))
+message("DSBSO - UniProt IDs extracted: ", sum(!is.na(mt_XL_DSBSO$uniprot_a)), " / ", nrow(mt_XL_DSBSO))
+
+
+# --- Build master gene-to-UniProt lookup from DSSO/DSBSO ---
+message("\n=== Building master gene-to-UniProt lookup ===")
+
+master_lookup <- dplyr::bind_rows(
+  mt_XL_DSSO %>% dplyr::select(protein_a, uniprot_a) %>% dplyr::rename(gene = protein_a, uniprot = uniprot_a),
+  mt_XL_DSSO %>% dplyr::select(protein_b, uniprot_b) %>% dplyr::rename(gene = protein_b, uniprot = uniprot_b),
+  mt_XL_DSBSO %>% dplyr::select(protein_a, uniprot_a) %>% dplyr::rename(gene = protein_a, uniprot = uniprot_a),
+  mt_XL_DSBSO %>% dplyr::select(protein_b, uniprot_b) %>% dplyr::rename(gene = protein_b, uniprot = uniprot_b)
+) %>%
+  dplyr::filter(!is.na(uniprot)) %>%
+  dplyr::distinct(gene, uniprot, .keep_all = TRUE) %>%
+  dplyr::select(gene, uniprot)
+
+message("Master lookup entries: ", nrow(master_lookup))
+
+# csv file of master gene-to-UniProt lookup (protein ID => UniProt ID)
+write_csv(master_lookup, file.path(out_dir_xlms_validationCLASP, "tables", "master_gene_uniprot_lookup.csv"))
+
+
+# --- Convert DSSO-CLASP gene names to UniProt IDs using master lookup ---
+message("\n=== Processing DSSO-CLASP data (converting to UniProt IDs) ===")
+
+mt_XL_DSSO_CLASP <- mt_XL_DSSO_CLASP %>%
+  dplyr::left_join(master_lookup %>% dplyr::rename(uniprot_a = uniprot), by = c("predicted_gene" = "gene")) %>%
+  dplyr::left_join(master_lookup %>% dplyr::rename(uniprot_b = uniprot), by = c("predicting_gene" = "gene"))
+
+n_unmapped_a <- sum(is.na(mt_XL_DSSO_CLASP$uniprot_a))
+n_unmapped_b <- sum(is.na(mt_XL_DSSO_CLASP$uniprot_b))
+
+message("Unmapped predicted_gene: ", n_unmapped_a)
+message("Unmapped predicting_gene: ", n_unmapped_b)
+
+xlms_all_unique <- mt_XL_DSSO_CLASP %>%
+  dplyr::filter(!is.na(uniprot_a) & !is.na(uniprot_b)) %>%
+  dplyr::mutate(key_xlms = .make_undirected_key(uniprot_a, uniprot_b)) %>%
+  dplyr::select(uniprot_a, uniprot_b, key_xlms) %>%
+  dplyr::distinct(key_xlms, .keep_all = TRUE)
+
+message("Total unique DSSO-CLASP PPIs (mapped): ", nrow(xlms_all_unique))
+
+# csv file of unique DSSO-CLASP interactions (with UniProt IDs)
+write_csv(xlms_all_unique, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_dsso_clasp_unique.csv"))
+
+
+# --- Step 3: Prepare baseline datasets (neuronal and HeLa) ---
+message("\n=== Preparing baseline datasets ===")
+
+neuronal_baseline_keys <- baseline_edges_union %>%
+  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+
+hela_baseline_keys <- baseline_edges_hela_annotated %>%
+  dplyr::mutate(key_pred = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::distinct(key_pred, .keep_all = TRUE) %>%
+  dplyr::select(key_pred, Gene1, Gene2, Predictome_conf)
+
+message("Neuronal baseline PPIs: ", nrow(neuronal_baseline_keys))
+message("HeLa baseline PPIs: ", nrow(hela_baseline_keys))
+
+
+# --- Step 4: Match XL-MS against baseline datasets ---
+message("\n=== Matching DSSO-CLASP against baseline PPIs ===")
+
+neuronal_xlms_match <- xlms_all_unique %>%
+  dplyr::left_join(neuronal_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
+  dplyr::mutate(matched_neuronal = !is.na(Predictome_conf))
+
+n_matched_neuronal <- sum(neuronal_xlms_match$matched_neuronal)
+message("Matched with neuronal predictions: ", n_matched_neuronal, " (", round(n_matched_neuronal / nrow(xlms_all_unique) * 100, 1), "%)")
+
+# csv file of DSSO-CLASP matches with neuronal baseline
+write_csv(neuronal_xlms_match, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_clasp_neuronal_matches.csv"))
+
+hela_xlms_match <- xlms_all_unique %>%
+  dplyr::left_join(hela_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
+  dplyr::mutate(matched_hela = !is.na(Predictome_conf))
+
+n_matched_hela <- sum(hela_xlms_match$matched_hela)
+message("Matched with HeLa predictions: ", n_matched_hela, " (", round(n_matched_hela / nrow(xlms_all_unique) * 100, 1), "%)")
+
+# csv file of DSSO-CLASP matches with HeLa baseline
+write_csv(hela_xlms_match, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_clasp_hela_matches.csv"))
+
+
+# --- Step 5: Create overlap summary ---
+message("\n=== Creating overlap summary ===")
+
+overlap_summary <- data.frame(
+  dataset = c("DSSO-CLASP", "Neuronal (iN/iDA)", "HeLa"),
+  total_ppis = c(nrow(xlms_all_unique), nrow(neuronal_baseline_keys), nrow(hela_baseline_keys)),
+  matched_with_clasp = c(nrow(xlms_all_unique), n_matched_neuronal, n_matched_hela),
+  pct_overlap = c(100, round(n_matched_neuronal / nrow(xlms_all_unique) * 100, 1), round(n_matched_hela / nrow(xlms_all_unique) * 100, 1))
+)
+
+# csv file of overlap summary (DSSO-CLASP vs neuronal vs HeLa)
+write_csv(overlap_summary, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_summary.csv"))
+
+message("\nOverlap Summary:")
+print(overlap_summary)
+
+
+# --- Step 6: Plot overlap comparison ---
+message("\n=== Creating overlap comparison plot ===")
+
+p_overlap <- ggplot(overlap_summary %>% dplyr::filter(dataset != "DSSO-CLASP"), aes(x = dataset, y = matched_with_clasp, fill = dataset)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = matched_with_clasp), vjust = -0.5, size = 3.5) +
+  scale_fill_manual(values = c("Neuronal (iN/iDA)" = "#66C2A5", "HeLa" = "#FC8D62"), name = "Cell Type") +
+  labs(title = "DSSO-CLASP Overlap with Baseline Predictions", x = "Baseline Dataset", y = "Number of Overlapping PPIs") +
+  ylim(0, max(overlap_summary$matched_with_clasp) * 1.15) +
+  theme_bw(base_size = 9) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+# plot of DSSO-CLASP overlap with neuronal and HeLa baselines
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "overlap_comparison.pdf"), p_overlap, width = 4, height = 4, device = cairo_pdf)
+
+
+# --- Step 7: Prepare mitochondrial protein annotations ---
+message("\n=== Preparing mitochondrial protein annotations ===")
+
+mito_tags <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+
+identify_mito_proteins <- function(shared_long_df, mito_tags) {
+  mito_protein_keys <- shared_long_df %>% dplyr::filter(tag %in% mito_tags) %>% dplyr::pull(key) %>% unique()
+  mito_proteins <- unique(c(str_extract(mito_protein_keys, "^[^|]+"), str_extract(mito_protein_keys, "[^|]+$")))
+  return(mito_proteins)
+}
+
+neuronal_mito_proteins <- identify_mito_proteins(shared_long, mito_tags)
+hela_mito_proteins <- identify_mito_proteins(shared_long_hela, mito_tags)
+
+message("Neuronal mitochondrial proteins identified: ", length(neuronal_mito_proteins))
+message("HeLa mitochondrial proteins identified: ", length(hela_mito_proteins))
+
+
+# --- Step 8: Analyze mitochondrial PPIs in DSSO-CLASP ---
+message("\n=== Analyzing mitochondrial PPIs ===")
+
+xlms_mito_status <- xlms_all_unique %>%
+  dplyr::mutate(
+    uniprot_a_is_mito_neuro = uniprot_a %in% neuronal_mito_proteins,
+    uniprot_b_is_mito_neuro = uniprot_b %in% neuronal_mito_proteins,
+    at_least_one_mito_neuro = uniprot_a_is_mito_neuro | uniprot_b_is_mito_neuro,
+    both_mito_neuro = uniprot_a_is_mito_neuro & uniprot_b_is_mito_neuro,
+    uniprot_a_is_mito_hela = uniprot_a %in% hela_mito_proteins,
+    uniprot_b_is_mito_hela = uniprot_b %in% hela_mito_proteins,
+    at_least_one_mito_hela = uniprot_a_is_mito_hela | uniprot_b_is_mito_hela,
+    both_mito_hela = uniprot_a_is_mito_hela & uniprot_b_is_mito_hela
+  )
+
+message("DSSO-CLASP PPIs with ≥1 neuronal mito protein: ", sum(xlms_mito_status$at_least_one_mito_neuro))
+message("DSSO-CLASP PPIs with both neuronal mito proteins: ", sum(xlms_mito_status$both_mito_neuro))
+message("DSSO-CLASP PPIs with ≥1 HeLa mito protein: ", sum(xlms_mito_status$at_least_one_mito_hela))
+message("DSSO-CLASP PPIs with both HeLa mito proteins: ", sum(xlms_mito_status$both_mito_hela))
+
+# Match mitochondrial PPIs against baselines
+neuronal_mito_xlms_match <- xlms_mito_status %>%
+  dplyr::filter(at_least_one_mito_neuro) %>%
+  dplyr::left_join(neuronal_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
+  dplyr::mutate(matched = !is.na(Predictome_conf))
+
+n_matched_neuronal_mito <- sum(neuronal_mito_xlms_match$matched)
+total_neuronal_mito <- nrow(neuronal_mito_xlms_match)
+
+message("Neuronal mito PPIs matched: ", n_matched_neuronal_mito, " / ", total_neuronal_mito, " (", round(n_matched_neuronal_mito / total_neuronal_mito * 100, 1), "%)")
+
+hela_mito_xlms_match <- xlms_mito_status %>%
+  dplyr::filter(at_least_one_mito_hela) %>%
+  dplyr::left_join(hela_baseline_keys, by = c("key_xlms" = "key_pred")) %>%
+  dplyr::mutate(matched = !is.na(Predictome_conf))
+
+n_matched_hela_mito <- sum(hela_mito_xlms_match$matched)
+total_hela_mito <- nrow(hela_mito_xlms_match)
+
+message("HeLa mito PPIs matched: ", n_matched_hela_mito, " / ", total_hela_mito, " (", round(n_matched_hela_mito / total_hela_mito * 100, 1), "%)")
+
+# csv file of mitochondrial PPI matches
+write_csv(xlms_mito_status, file.path(out_dir_xlms_validationCLASP, "tables", "xlms_clasp_mito_status.csv"))
+
+
+# --- Step 9: Create mitochondrial comparison plot ---
+message("\n=== Creating mitochondrial comparison plot ===")
+
+mito_summary <- data.frame(
+  dataset = c("Neuronal (iN/iDA)", "HeLa"),
+  total_mito_ppis = c(total_neuronal_mito, total_hela_mito),
+  matched_mito = c(n_matched_neuronal_mito, n_matched_hela_mito),
+  unmatched_mito = c(total_neuronal_mito - n_matched_neuronal_mito, total_hela_mito - n_matched_hela_mito)
+)
+
+mito_long <- mito_summary %>%
+  tidyr::pivot_longer(cols = c(matched_mito, unmatched_mito), names_to = "status", values_to = "count") %>%
+  dplyr::mutate(status = factor(status, levels = c("matched_mito", "unmatched_mito")))
+
+p_mito <- ggplot(mito_long, aes(x = dataset, y = count, fill = status)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 3) +
+  scale_fill_manual(values = c(matched_mito = "#66C2A5", unmatched_mito = "grey70"), labels = c("matched_mito" = "Matched", "unmatched_mito" = "Not Matched"), name = "Status") +
+  labs(title = "DSSO-CLASP: Mitochondrial PPI Overlap", subtitle = "PPIs with ≥1 mitochondrial protein", x = "Cell Type", y = "Number of PPIs") +
+  theme_bw(base_size = 9) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+# plot of mitochondrial PPI overlap (DSSO-CLASP vs baselines)
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "mito_ppi_overlap.pdf"), p_mito, width = 4, height = 4, device = cairo_pdf)
+
+message("\n=== DSSO-CLASP Validation Analysis Complete ===")
+message("Results saved to: ", out_dir_xlms_validationCLASP)
+print(overlap_summary)
+print(mito_summary)
+```
 
 
 # to do
