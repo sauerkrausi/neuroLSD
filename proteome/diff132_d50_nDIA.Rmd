@@ -18154,8 +18154,8 @@ message("\n=== Combining XL-MS data for matching ===")
 
 # Combine all unique XL-MS interactions
 xlms_all_unique <- dplyr::bind_rows(
-  dsso_processed %>% dplyr::mutate(in_dsso = TRUE),
-  dsbso_processed %>% dplyr::mutate(in_dsbso = TRUE)
+  dsso_processed %>% dplyr::mutate(in_dsso = TRUE, in_dsbso = FALSE),
+  dsbso_processed %>% dplyr::mutate(in_dsso = FALSE, in_dsbso = TRUE)
 ) %>%
   dplyr::group_by(key_xlms) %>%
   dplyr::summarise(
@@ -18164,14 +18164,17 @@ xlms_all_unique <- dplyr::bind_rows(
     in_dsso = any(in_dsso, na.rm = TRUE),
     in_dsbso = any(in_dsbso, na.rm = TRUE),
     in_both = in_dsso & in_dsbso,
-    ppi_score_mean = mean(ppi_score, na.rm = TRUE),
-    total_crosslinks_mean = mean(total_crosslinks, na.rm = TRUE),
     .groups = "drop"
   )
 
 message("Total unique XL-MS PPIs: ", nrow(xlms_all_unique))
+message("  - In DSSO: ", sum(xlms_all_unique$in_dsso))
+message("  - In DSBSO: ", sum(xlms_all_unique$in_dsbso))
+message("  - In both: ", sum(xlms_all_unique$in_both))
 
+# save csv of combined XL file 
 write_csv(xlms_all_unique, file.path(out_dir_xlms_validation, "tables", "xlms_all_unique.csv"))
+
 
 
 # --- Step 5: Match against neuronal baseline PPIs (iN and iDA control) ---
@@ -18202,8 +18205,9 @@ n_unmatched_neuronal <- nrow(neuronal_xlms_match) - n_matched_neuronal
 message("Matched with neuronal predictions: ", n_matched_neuronal, 
         " (", round(n_matched_neuronal / nrow(neuronal_xlms_match) * 100, 1), "%)")
 
-write_csv(neuronal_xlms_match, 
-          file.path(out_dir_xlms_validation, "tables", "xlms_neuronal_matches.csv"))
+# save csv file of neuronal PPI mtXL matched crosslinks
+write_csv(neuronal_xlms_match, file.path(out_dir_xlms_validation, "tables", "xlms_neuronal_matches.csv"))
+
 
 
 # --- Step 6: Match against HeLa baseline PPIs ---
