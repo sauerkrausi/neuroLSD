@@ -18280,7 +18280,14 @@ should calculate to the baseline, not across all the genotypes. since it should 
 
 
 
-
+check ASAH1 d5070 mito complexes? are they cI also what about CHCHD2
+d70 mito disrupted
+Complex_0067
+Complex_0188
+Complex_0304
+Complex_0448
+Complex_0139
+Complex_0055
 
 X. Misc
 - change color scheme for AFpob ascending boxplots. 
