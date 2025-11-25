@@ -18303,7 +18303,6 @@ X. Misc
 - change color scheme for AFpob ascending boxplots. 
 - added mtCI_AF to subcell annotation. check how they are behaving as well over differentiation
 
-- timecourse d30/50 add lillipop for each KO?
 
 
 
