@@ -924,6 +924,10 @@ for (ann in target_ann) {
 # Hydrolase abundance in lysosome Ctrl vs ASAH1-/-
 # ─────────────────────────────────────────────────────────────────────────────
 
+# --- add lyso hydrolases to df
+helalysoip_annotated_df$LysoHydrolase <- helalysoip_annotated_df$Gene.Symbol %in% lysohydrolases
+
+
 # --- Step 1: Prepare data for slope plot
 hydro_df <- helalysoip_annotated_df %>% 
   filter(LysoHydrolase == TRUE) %>%
@@ -952,9 +956,7 @@ p_slope <- ggplot(hydro_df, aes(x = Sample, y = log2FC, group = Gene.Symbol)) +
   )
 
 # --- Step 3: Save as square PDF
-ggsave(filename = file.path(out_dir_lysoip_organelle_dist,
-                            "lysohydrolase_slopeplot.pdf"),
-       plot = p_slope, width = 2, height = 4, device = cairo_pdf)
+ggsave(filename = file.path(out_dir_lysoip_organelle_dist,"lysohydrolase_slopeplot.pdf"),plot = p_slope, width = 2, height = 4, device = cairo_pdf)
 
 
 
@@ -1044,14 +1046,102 @@ label_df <- rain_df %>%
   ungroup()
 
 
+# # --- 4. Plot (old)
+# rainfall_plot <- ggplot(
+#   rain_df,
+#   aes(y = log2fc, x = y_group, fill = y_group)
+# ) +
+#   gghalves::geom_half_point(
+#     side = "b",
+#     range_scale = 0.2,
+#     alpha = 0.2,
+#     size = 1,
+#     shape = 16
+#   ) +
+#   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+#   ggdist::stat_halfeye(
+#     adjust = 2,
+#     width = 0.6,
+#     .width = 0,
+#     justification = -0.2,
+#     point_colour = NA
+#   ) +
+#   geom_boxplot(width = 0.15, outlier.shape = NA) +
+#   geom_text_repel(
+#     data = label_df,
+#     aes(label = Gene.Symbol),
+#     position = position_nudge(x = -0.25),
+#     size = 2,
+#     min.segment.length = 0,
+#     max.overlaps = Inf,
+#     box.padding = 0.2,
+#     point.padding = 0.1,
+#     segment.size = 0.2
+#   ) +
+#   scale_fill_manual(values = c(
+#     "Lysosome"   = "grey70",
+#     "Hydrolases" = "firebrick",
+#     "vATPase"    = "dodgerblue3"
+#   )) +
+#   coord_flip() +
+#   theme_bw(base_size = 6) +
+#   labs(y = "log2FC ASAH1LysoIP vs CtrlLysoIP", x = NULL,
+#        title = "ASAH1 vs Ctrl: Lysosome / Hydrolases / vATPase") +
+#   theme(panel.grid = element_blank(), legend.position = "none")
+
+# # --- 4b. ∆log2FC (norm) (Δlog2FC = ASAH1_vs_untagged − Ctrl_vs_untagged)
+# rain_df_delta <- helalysoip_annotated_df %>%
+#   filter(Gene.Symbol %in% vatpase_genes | Gene.Symbol %in% lysohydrolases | Lysosome == TRUE) %>%
+#   mutate(
+#     y_group = case_when(
+#       Gene.Symbol %in% lysohydrolases ~ "Hydrolases",
+#       Gene.Symbol %in% vatpase_genes  ~ "vATPase",
+#       Lysosome == TRUE                ~ "Lysosome",
+#       TRUE ~ NA_character_
+#     ),
+#     delta_log2fc = log2FC_ASAH1LysoIP.untagged - log2FC_CtrlLysoIP.untagged 
+#   ) %>%
+#   filter(!is.na(y_group), is.finite(delta_log2fc)) %>%
+#   mutate(y_group = factor(y_group, levels = c("Lysosome","Hydrolases","vATPase")))
+
+# # top 5 by Δlog2FC within each group
+# label_df_delta <- rain_df_delta %>%
+#   group_by(y_group) %>%
+#   slice_max(order_by = abs(delta_log2fc), n = 5, with_ties = FALSE) %>%
+#   ungroup()
+
+# # plot
+# rainfall_plot_delta <- ggplot(rain_df_delta, aes(y = delta_log2fc, x = y_group, fill = y_group)) +
+#   gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
+#   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
+#   ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
+#   geom_boxplot(width = 0.15, outlier.shape = NA) +
+#   geom_text_repel(data = label_df_delta, aes(label = Gene.Symbol), position = position_nudge(x = -0.25),
+#                   size = 2, min.segment.length = 0, max.overlaps = Inf, box.padding = 0.2,
+#                   point.padding = 0.1, segment.size = 0.2) +
+#   scale_fill_manual(values = c("Lysosome" = "grey70", "Hydrolases" = "firebrick", "vATPase" = "dodgerblue3")) +
+#   coord_flip() +
+#   theme_bw(base_size = 6) +
+#   labs(y = "∆FC (ASAH1−Ctrl)",
+#        x = NULL,
+#        title = "Δlog2FC ASAH1 vs Ctrl — Lysosome / Hydrolases / vATPase") +
+#   theme(panel.grid = element_blank(), legend.position = "none")
+
+
+# # --- 5. Save
+# ggsave(file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_deltalog2FC_LysoHydroVATPase.pdf"), rainfall_plot_delta, width = 4, height = 2, device = cairo_pdf)
+# ggsave(filename = file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_ASAH1vsCtrl_LysoHydroVATPase.pdf"),plot = rainfall_plot, width = 4, height = 2, device = cairo_pdf)
+
+
+
+
 # --- 4. Plot
 rainfall_plot <- ggplot(
   rain_df,
   aes(y = log2fc, x = y_group, fill = y_group)
 ) +
-  gghalves::geom_half_point(
-    side = "b",
-    range_scale = 0.2,
+  geom_jitter(
+    position = position_jitter(width = 0.15, height = 0),
     alpha = 0.2,
     size = 1,
     shape = 16
@@ -1088,35 +1178,35 @@ rainfall_plot <- ggplot(
   theme(panel.grid = element_blank(), legend.position = "none")
 
 # --- 4b. ∆log2FC (norm) (Δlog2FC = ASAH1_vs_untagged − Ctrl_vs_untagged)
-rain_df_delta <- helalysoip_annotated_df %>%
-  filter(Gene.Symbol %in% vatpase_genes | Gene.Symbol %in% lysohydrolases | Lysosome == TRUE) %>%
-  mutate(
-    y_group = case_when(
-      Gene.Symbol %in% lysohydrolases ~ "Hydrolases",
-      Gene.Symbol %in% vatpase_genes  ~ "vATPase",
-      Lysosome == TRUE                ~ "Lysosome",
-      TRUE ~ NA_character_
-    ),
-    delta_log2fc = log2FC_ASAH1LysoIP.untagged - log2FC_CtrlLysoIP.untagged 
-  ) %>%
-  filter(!is.na(y_group), is.finite(delta_log2fc)) %>%
-  mutate(y_group = factor(y_group, levels = c("Lysosome","Hydrolases","vATPase")))
-
-# top 5 by Δlog2FC within each group
-label_df_delta <- rain_df_delta %>%
-  group_by(y_group) %>%
-  slice_max(order_by = abs(delta_log2fc), n = 5, with_ties = FALSE) %>%
-  ungroup()
-
-# plot
 rainfall_plot_delta <- ggplot(rain_df_delta, aes(y = delta_log2fc, x = y_group, fill = y_group)) +
-  gghalves::geom_half_point(side = "b", range_scale = 0.2, alpha = 0.2, size = 1, shape = 16) +
+  geom_jitter(
+    position = position_jitter(width = 0.15, height = 0),
+    alpha = 0.2,
+    size = 1,
+    shape = 16
+  ) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5) +
-  ggdist::stat_halfeye(adjust = 2, width = 0.6, .width = 0, justification = -0.2, point_colour = NA) +
+  ggdist::stat_halfeye(
+    adjust = 2,
+    width = 0.6,
+    .width = 0,
+    justification = -0.2,
+    point_colour = NA
+  ) +
   geom_boxplot(width = 0.15, outlier.shape = NA) +
-  geom_text_repel(data = label_df_delta, aes(label = Gene.Symbol), position = position_nudge(x = -0.25),
-                  size = 2, min.segment.length = 0, max.overlaps = Inf, box.padding = 0.2,
-                  point.padding = 0.1, segment.size = 0.2) +
+  geom_text_repel(
+    data = label_df_delta,
+    aes(label = Gene.Symbol),
+    position = position_nudge(x = -0.1),
+    size = 2,
+    min.segment.length = 0,
+    max.overlaps = Inf,
+    box.padding = 0,        # changed from 0.1 to 0
+    point.padding = 0,      # changed from 0.05 to 0
+    segment.size = 0.1,
+    force = 100,             
+    direction = "x"
+  ) +
   scale_fill_manual(values = c("Lysosome" = "grey70", "Hydrolases" = "firebrick", "vATPase" = "dodgerblue3")) +
   coord_flip() +
   theme_bw(base_size = 6) +
@@ -1125,12 +1215,9 @@ rainfall_plot_delta <- ggplot(rain_df_delta, aes(y = delta_log2fc, x = y_group, 
        title = "Δlog2FC ASAH1 vs Ctrl — Lysosome / Hydrolases / vATPase") +
   theme(panel.grid = element_blank(), legend.position = "none")
 
-
 # --- 5. Save
 ggsave(file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_deltalog2FC_LysoHydroVATPase.pdf"), rainfall_plot_delta, width = 4, height = 2, device = cairo_pdf)
-ggsave(filename = file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_ASAH1vsCtrl_LysoHydroVATPase.pdf"),plot = rainfall_plot, width = 4, height = 2, device = cairo_pdf)
-
-
+ggsave(filename = file.path(out_dir_lysoip_organelle_rainfall, "LysoIP_rainfall_ASAH1vsCtrl_LysoHydroVATPase.pdf"), plot = rainfall_plot, width = 4, height = 2, device = cairo_pdf)
 
 ```
 
@@ -1633,8 +1720,866 @@ plot_topGO_for_geneset(
 ```
 
 
-# To do list for evaluation 
-- this will be a list here for future implementations 
-- see if sync works wit git
-- mayeb it fails again 
 
+# VII. PPI eval on LysoIP data 
+## Base: identification of lost / gained PPIs comparing Control and ASAH1 KO LysoIPs
+```{r}
+# =========================================================================
+# HeLa LysoIP PPI Analysis: Control vs ASAH1 KO
+# Identify lost and gained PPIs in ASAH1 knockout lysosomes
+# =========================================================================
+
+library(tidyverse)
+library(pheatmap)
+library(RColorBrewer)
+
+# --- Setup ---
+out_dir_lysoip_ppi <- file.path(out_dir_lysoip_dataframes, "../PPI")
+dir.create(file.path(out_dir_lysoip_ppi, "plots"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_lysoip_ppi, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+# Color palettes
+state_colors <- c(retained = "grey70", lost = "#f39dcfff", gained = "dodgerblue4")
+
+# =========================================================================
+# STEP 1: Define lysosomal proteome baseline (Control LysoIP)
+# =========================================================================
+
+message("\n=== Step 1: Defining lysosomal proteome baseline ===")
+
+# Step 1a. Define thresholds
+enrichment_thresh <- 0.25   # log2FC threshold for lysosomal proteins
+depletion_thresh <- -0.25   # log2FC threshold for background/contaminants
+
+# Step 1b. Lysosomal proteins: enriched in CtrlLysoIP vs untagged
+baseline_lysosomal_proteins <- helalysoip_annotated_df %>%
+  dplyr::filter(
+    log2FC_CtrlLysoIP.untagged > enrichment_thresh,
+    is.finite(log2FC_CtrlLysoIP.untagged)
+  ) %>%
+  dplyr::pull(Gene.Symbol) %>%
+  unique()
+
+# Step 1c. Create baseline dataframe were we remove nuclear contaminants. (annotation based)
+lysoip_baseline_df_clean <- helalysoip_annotated_df %>%
+  dplyr::filter(Gene.Symbol %in% baseline_lysosomal_proteins) %>%
+  dplyr::filter(is.na(Nucleus) | Nucleus == FALSE) %>%  # Remove nuclear contaminants
+  dplyr::mutate(in_baseline = TRUE)
+
+# Update baseline proteins list
+baseline_lysosomal_proteins_clean <- lysoip_baseline_df_clean %>%
+  dplyr::pull(Gene.Symbol) %>%
+  unique()
+
+message("Original lysosomal proteins (enriched): ", length(baseline_lysosomal_proteins))
+message("Clean lysosomal proteins (nuclear removed): ", length(baseline_lysosomal_proteins_clean))
+message("Nuclear contaminants removed: ", length(baseline_lysosomal_proteins) - length(baseline_lysosomal_proteins_clean))
+
+# Save results
+write_csv(lysoip_baseline_df_clean, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_proteome_clean.csv"))
+
+# =========================================================================
+# STEP 2: Map baseline PPIs using baseline
+# =========================================================================
+
+message("\n=== Step 2: Mapping baseline PPIs ===")
+
+# Step 2d. Filter to CLEAN lysosomal baseline proteins
+lysoip_baseline_edges_clean <- ppi_evidence %>%
+  dplyr::filter(
+    Gene1 %in% baseline_lysosomal_proteins_clean,
+    Gene2 %in% baseline_lysosomal_proteins_clean
+  )
+
+message("PPI edges within CLEAN lysosomal baseline: ", nrow(lysoip_baseline_edges_clean))
+message("Edges removed by nuclear filtering: ", nrow(lysoip_baseline_edges) - nrow(lysoip_baseline_edges_clean))
+
+# save csv of clean baseline PPIs
+write_csv(lysoip_baseline_edges_clean, file.path(out_dir_lysoip_ppi, "tables", "lysoip_baseline_edges_clean.csv"))
+
+# =========================================================================
+# STEP 3: Assess PPI state changes using baseline
+# =========================================================================
+
+message("\n=== Step 3: Computing PPI state changes with clean baseline ===")
+
+drop_thresh <- -0.25   # Partner lost if log2FC < -0.25
+gain_thresh <- 0.25    # Partner gained if log2FC > 0.25
+
+# Step 3a. Match CLEAN edges to protein abundance changes (ASAH1 vs Ctrl)
+lysoip_edge_states_clean <- lysoip_baseline_edges_clean %>%
+  dplyr::left_join(
+    helalysoip_annotated_df %>% dplyr::select(Gene.Symbol, log2FC_ASAH1LysoIP.CtrlLysoIP),
+    by = c("Gene1" = "Gene.Symbol")
+  ) %>%
+  dplyr::rename(dA = log2FC_ASAH1LysoIP.CtrlLysoIP) %>%
+  dplyr::left_join(
+    helalysoip_annotated_df %>% dplyr::select(Gene.Symbol, log2FC_ASAH1LysoIP.CtrlLysoIP),
+    by = c("Gene2" = "Gene.Symbol")
+  ) %>%
+  dplyr::rename(dB = log2FC_ASAH1LysoIP.CtrlLysoIP) %>%
+  dplyr::mutate(
+    state = case_when(
+      # Edge lost: either partner dropped significantly
+      (!is.na(dA) & dA < drop_thresh) | (!is.na(dB) & dB < drop_thresh) ~ "lost",
+      # Edge gained: both partners increased significantly
+      (!is.na(dA) & dA > gain_thresh) & (!is.na(dB) & dB > gain_thresh) ~ "gained",
+      # Edge retained: no significant change
+      !is.na(dA) | !is.na(dB) ~ "retained",
+      TRUE ~ "unknown"
+    )
+  )
+
+# Save csv file of PPI edge changes
+write_csv(lysoip_edge_states_clean, file.path(out_dir_lysoip_ppi, "tables", "lysoip_edge_states_clean.csv"))
+
+# Step 3b. Summary statistics
+edge_summary_clean <- lysoip_edge_states_clean %>%
+  dplyr::count(state, name = "n_edges") %>%
+  dplyr::mutate(frac = n_edges / sum(n_edges))
+
+message("\nCLEAN PPI edge state summary:")
+print(edge_summary_clean)
+
+# Compare with original
+message("\nComparison with original (uncleaned) baseline:")
+message("Original edges: ", nrow(lysoip_edge_states))
+message("Clean edges: ", nrow(lysoip_edge_states_clean))
+
+# save csv file for clean summary stats
+write_csv(edge_summary_clean, file.path(out_dir_lysoip_ppi, "tables", "edge_state_summary_clean_ControlToASAH1.csv"))
+
+
+
+# =========================================================================
+# STEP 4: Visualizations
+# =========================================================================
+
+message("\n=== Step 4: Creating visualizations ===")
+
+# Step 4a. Barplot of edge states
+p_edge_states <- ggplot(edge_summary, aes(x = state, y = n_edges, fill = state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n_edges), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = state_colors, name = "Edge State") +
+  labs(title = "PPI Edge States: Control → ASAH1 KO", x = NULL, y = "Number of Edges") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "bars_edge_states.pdf"), p_edge_states, width = 4, height = 4, device = cairo_pdf)
+
+
+# Step 4b. Scatter plot: Partner A vs Partner B fold changes
+scatter_data <- lysoip_edge_states %>%
+  dplyr::filter(state %in% c("lost", "gained", "retained")) %>%
+  dplyr::mutate(state = factor(state, levels = c("retained", "lost", "gained")))
+
+p_scatter <- ggplot(scatter_data, aes(x = dA, y = dB, color = state, alpha = state)) +
+  geom_point(size = 1.5, shape = 16) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "black", linewidth = 0.3) +
+  scale_color_manual(values = state_colors, name = "Edge State") +
+  scale_alpha_manual(values = c(retained = 0.3, lost = 0.8, gained = 0.8), guide = "none") +
+  labs(title = "PPI Partner Abundance Changes (ASAH1 vs Ctrl)", x = "log2FC Partner A", y = "log2FC Partner B") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "scatter_partner_changes.pdf"), p_scatter, width = 5, height = 4, device = cairo_pdf)
+
+
+# Step 4c. Network visualization (if igraph available)
+if (requireNamespace("igraph", quietly = TRUE)) {
+  library(igraph)
+  
+  # Build network from lost edges
+  lost_edges <- lysoip_edge_states %>%
+    dplyr::filter(state == "lost") %>%
+    dplyr::select(Gene1, Gene2)
+  
+  if (nrow(lost_edges) > 0) {
+    net_lost <- igraph::graph_from_data_frame(lost_edges, directed = FALSE)
+    
+    # Identify hubs (proteins with many lost interactions)
+    deg_lost <- igraph::degree(net_lost)
+    hubs_lost <- names(deg_lost)[deg_lost >= quantile(deg_lost, 0.9)]
+    
+    message("\nTop hubs with lost interactions:")
+    print(sort(deg_lost[hubs_lost], decreasing = TRUE))
+    
+    # Save hub list
+    hub_df <- tibble(Gene = names(deg_lost), degree = deg_lost) %>%
+      dplyr::arrange(desc(degree))
+    write_csv(hub_df, file.path(out_dir_lysoip_ppi, "tables", "lost_interaction_hubs.csv"))
+  }
+  
+  # Build network from gained edges
+  gained_edges <- lysoip_edge_states %>%
+    dplyr::filter(state == "gained") %>%
+    dplyr::select(Gene1, Gene2)
+  
+  if (nrow(gained_edges) > 0) {
+    net_gained <- igraph::graph_from_data_frame(gained_edges, directed = FALSE)
+    
+    deg_gained <- igraph::degree(net_gained)
+    hubs_gained <- names(deg_gained)[deg_gained >= quantile(deg_gained, 0.9)]
+    
+    message("\nTop hubs with gained interactions:")
+    print(sort(deg_gained[hubs_gained], decreasing = TRUE))
+    
+    hub_gained_df <- tibble(Gene = names(deg_gained), degree = deg_gained) %>%
+      dplyr::arrange(desc(degree))
+    write_csv(hub_gained_df, file.path(out_dir_lysoip_ppi, "tables", "gained_interaction_hubs.csv"))
+  }
+}
+
+
+# =========================================================================
+# STEP 5: Lysohydrolase-specific analysis
+# =========================================================================
+
+message("\n=== Step 5: Lysohydrolase-specific PPI analysis ===")
+
+# Focus on edges involving lysohydrolases
+hydrolase_edges <- lysoip_edge_states %>%
+  dplyr::filter(Gene1 %in% lysohydrolases | Gene2 %in% lysohydrolases)
+
+hydrolase_summary <- hydrolase_edges %>%
+  dplyr::count(state, name = "n_edges")
+
+message("\nLysohydrolase-involved edges:")
+print(hydrolase_summary)
+
+write_csv(hydrolase_edges, file.path(out_dir_lysoip_ppi, "tables", "lysohydrolase_edges.csv"))
+
+# Barplot
+p_hydrolase <- ggplot(hydrolase_summary, aes(x = state, y = n_edges, fill = state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n_edges), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = state_colors, name = "Edge State") +
+  labs(title = "Lysohydrolase PPI Changes (ASAH1 KO)", x = NULL, y = "Number of Edges") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "bars_lysohydrolase_edges.pdf"), p_hydrolase, width = 4, height = 4, device = cairo_pdf)
+
+
+
+# =========================================================================
+# STEP 6: Annotation-level analysis of gained/lost PPIs
+# =========================================================================
+
+message("\n=== Step 6: Annotation-level PPI analysis ===")
+
+# Step 6a. Define annotations of interest (must be logical columns in helalysoip_annotated_df)
+annotations <- c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome", "Autophagy", "vATPase")
+
+# "LysoHydrolase", "Mito", "MitoIMS", "MitoMatrix","MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI","Golgi", "Lysosome", "ER", "Cytoplasm","Nucleus", "Autophagy", "Autophagy_det", "SynGO","Endo_iN_curated_Hundley", "SynapseSVs", "Presynaptic", "Postsynaptic","EndoDetailLoac", "NeuroDev", "EndoLyso", "EarlyEndosome","RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis","vATPase" 
+
+# Step 6b. Helper function to count edges per annotation
+count_edges_by_annotation <- function(edges_df, annotation_col, annotation_name) {
+  edges_df %>%
+    filter(
+      Gene1 %in% (helalysoip_annotated_df %>% filter(!!sym(annotation_col) == TRUE) %>% pull(Gene.Symbol)) |
+      Gene2 %in% (helalysoip_annotated_df %>% filter(!!sym(annotation_col) == TRUE) %>% pull(Gene.Symbol))
+    ) %>%
+    count(state, name = "n_edges") %>%
+    mutate(annotation = annotation_name)
+}
+
+# Step 6c. Count edges for each annotation
+annotation_edge_counts <- map_dfr(annotations, ~ count_edges_by_annotation(lysoip_edge_states, .x, .x))
+
+# Summarize results
+annotation_edge_summary <- annotation_edge_counts %>%
+  group_by(annotation, state) %>%
+  summarize(n_edges = sum(n_edges), .groups = "drop") %>%
+  mutate(state = factor(state, levels = c("lost", "gained", "retained")))
+
+# Save annotation-level summary
+write_csv(annotation_edge_summary, file.path(out_dir_lysoip_ppi, "tables", "annotation_edge_summary.csv"))
+
+
+# Step 6d. Plot annotation-level PPI changes
+# Bar plot of gained/lost edges per annotation
+p_annotation_edges <- ggplot(annotation_edge_summary, aes(x = annotation, y = n_edges, fill = state)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_edges), position = position_dodge(width = 0.9), vjust = -0.5, size = 2.5) +
+  scale_fill_manual(values = state_colors, name = "Edge State") +
+  labs(title = "Annotation-level PPI Changes (Lyso IP Control -> ASAH1 KO)", x = "Annotation", y = "Number of Edges") +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +  # Ensure consistent dimensions with space for n=0
+  facet_wrap(~ state, ncol = 1)  # Remove free_y to ensure the same y-axis scale across all facets
+
+# Save the plot
+ggsave(file.path(out_dir_lysoip_ppi, "plots", "annotation_edge_changes.pdf"), p_annotation_edges, width = 3, height = 6, device = cairo_pdf)
+
+```
+
+
+### Trimer analysis of lysosomal PPIs 
+```{r}
+# =========================================================================
+#  Trimer identification and vulnerability analysis 
+# =========================================================================
+
+# --- Step 0: Create output directories ---
+dir.create(file.path(out_dir_lysoip_ppi, "plots/trimers"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_lysoip_ppi, "tables/trimers"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Step 1: Filter to lysosomal high-confidence PPIs only ---
+conf_threshold <- 0.80
+
+# Get lysosomal genes
+lysosomal_genes_clean <- unique(c(lysoip_edge_states_clean$Gene1, lysoip_edge_states_clean$Gene2))
+lysosomal_genes_clean <- lysosomal_genes_clean[!is.na(lysosomal_genes_clean)]
+
+message("Number of CLEAN lysosomal genes: ", length(lysosomal_genes_clean))
+
+# Filter high-confidence edges to lysosomal proteome
+high_conf_edges_clean <- lysoip_baseline_edges_clean %>%
+  dplyr::filter(
+    Predictome_conf >= conf_threshold,
+    Gene1 %in% lysosomal_genes_clean,
+    Gene2 %in% lysosomal_genes_clean
+  ) %>%
+  dplyr::select(key, Gene1, Gene2, Predictome_conf)
+
+message("High-confidence CLEAN lysosomal edges (≥", conf_threshold, "): ", nrow(high_conf_edges_clean))
+
+# Reduce threshold if needed
+if (nrow(high_conf_edges_clean) < 100) {
+  conf_threshold <- 0.75
+  high_conf_edges_clean <- lysoip_baseline_edges_clean %>%
+    dplyr::filter(
+      Predictome_conf >= conf_threshold,
+      Gene1 %in% lysosomal_genes_clean,
+      Gene2 %in% lysosomal_genes_clean
+    ) %>%
+    dplyr::select(key, Gene1, Gene2, Predictome_conf)
+  message("Reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges_clean), " edges")
+}
+
+if (nrow(high_conf_edges_clean) < 50) {
+  conf_threshold <- 0.65
+  high_conf_edges_clean <- lysoip_baseline_edges_clean %>%
+    dplyr::filter(
+      Predictome_conf >= conf_threshold,
+      Gene1 %in% lysosomal_genes_clean,
+      Gene2 %in% lysosomal_genes_clean
+    ) %>%
+    dplyr::select(key, Gene1, Gene2, Predictome_conf)
+  message("Further reduced threshold to ", conf_threshold, ": ", nrow(high_conf_edges_clean), " edges")
+}
+
+# Save high confidence dimers
+write_csv(high_conf_edges_clean, file.path(out_dir_lysoip_ppi, "tables", "high_confidence_dimers_clean.csv"))
+
+# --- Step 2: Find all potential trimers (A-B, B-C, A-C all present) ---
+# Create adjacency list
+edges_df <- high_conf_edges %>%
+  dplyr::select(Gene1, Gene2) %>%
+  dplyr::distinct()
+
+message("Starting trimer search...")
+
+# Find trimers: for each pair A-B, find all C where B-C and A-C both exist
+trimers_list <- list()
+
+for (i in seq_len(nrow(edges_df))) {
+  if (i %% 100 == 0) message("  Processed ", i, "/", nrow(edges_df), " edges...")
+  
+  A <- edges_df$Gene1[i]
+  B <- edges_df$Gene2[i]
+  
+  # Find all C connected to B
+  C_via_B <- edges_df %>%
+    dplyr::filter((Gene1 == B & Gene2 != A) | (Gene2 == B & Gene1 != A)) %>%
+    dplyr::mutate(C = ifelse(Gene1 == B, Gene2, Gene1)) %>%
+    dplyr::pull(C) %>%
+    unique()
+  
+  if (length(C_via_B) == 0) next
+  
+  # Check if A-C edge exists for each C
+  for (C in C_via_B) {
+    ac_exists <- any(
+      (edges_df$Gene1 == A & edges_df$Gene2 == C) |
+      (edges_df$Gene1 == C & edges_df$Gene2 == A)
+    )
+    
+    if (ac_exists) {
+      # Found a trimer! Sort genes to avoid duplicates
+      trimer <- sort(c(A, B, C))
+      trimer_id <- paste(trimer, collapse = "::")
+      trimers_list[[trimer_id]] <- trimer
+    }
+  }
+}
+
+message("Trimer search complete!")
+
+# Convert to dataframe
+trimers_baseline <- tibble::tibble(
+  trimer_id = names(trimers_list),
+  GeneA = sapply(trimers_list, `[`, 1),
+  GeneB = sapply(trimers_list, `[`, 2),
+  GeneC = sapply(trimers_list, `[`, 3)
+)
+
+message("Total trimers found in lysosomal baseline: ", nrow(trimers_baseline))
+
+# Save baseline trimers
+write_csv(trimers_baseline, file.path(out_dir_lysoip_ppi, "tables/trimers", "baseline_trimers.csv"))
+
+# --- Step 3: Add organelle annotations to trimers ---
+# Use the same annotation approach from the original code
+annotations <- c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley","EarlyEndosome","RecyclingEndosome", "Autophagy", "vATPase")
+
+# Create gene-to-annotation mapping from helalysoip_annotated_df
+gene_to_org <- lysoip_baseline_df_clean %>%
+  dplyr::select(Gene.Symbol, all_of(annotations))
+
+trimers_annotated <- trimers_baseline %>%
+  dplyr::left_join(gene_to_org, by = c("GeneA" = "Gene.Symbol")) %>%
+  dplyr::rename_with(~paste0(.x, "_A"), all_of(annotations)) %>%
+  dplyr::left_join(gene_to_org, by = c("GeneB" = "Gene.Symbol")) %>%
+  dplyr::rename_with(~paste0(.x, "_B"), all_of(annotations)) %>%
+  dplyr::left_join(gene_to_org, by = c("GeneC" = "Gene.Symbol")) %>%
+  dplyr::rename_with(~paste0(.x, "_C"), all_of(annotations))
+
+# Determine shared organelle(s) - all three proteins must be in same organelle
+trimers_annotated <- trimers_annotated %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    shared_organelle = {
+      org_A <- annotations[which(c_across(paste0(annotations, "_A")))]
+      org_B <- annotations[which(c_across(paste0(annotations, "_B")))]
+      org_C <- annotations[which(c_across(paste0(annotations, "_C")))]
+      
+      shared <- Reduce(intersect, list(org_A, org_B, org_C))
+      if (length(shared) == 0) "Other" else paste(shared, collapse = ";")
+    }
+  ) %>%
+  dplyr::ungroup()
+
+# Summary by organelle
+trimer_org_summary <- trimers_annotated %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::count(shared_organelle, name = "n_trimers") %>%
+  dplyr::arrange(desc(n_trimers))
+
+message("Trimers by organelle:")
+print(trimer_org_summary)
+
+# save csv
+write_csv(trimer_org_summary, file.path(out_dir_lysoip_ppi, "tables/trimers", "baseline_trimers_by_organelle.csv"))
+
+# --- Step 4: Assess trimer integrity for Control vs ASAH1 ---
+# Prepare trimer edges
+trimers_with_keys <- trimers_annotated %>%
+  dplyr::filter(!is.na(GeneA) & !is.na(GeneB) & !is.na(GeneC)) %>%
+  dplyr::mutate(
+    key_AB = .make_undirected_key(GeneA, GeneB),
+    key_BC = .make_undirected_key(GeneB, GeneC),
+    key_AC = .make_undirected_key(GeneA, GeneC)
+  ) %>%
+  dplyr::filter(!is.na(key_AB) & !is.na(key_BC) & !is.na(key_AC))
+
+message("Removed ", nrow(trimers_annotated) - nrow(trimers_with_keys), " trimers with missing edges.")
+
+# Join edge states from lysoip_edge_states
+trimers_lyso_states <- trimers_with_keys %>%
+  dplyr::left_join(
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_AB" = "key")
+  ) %>%
+  dplyr::rename(state_AB = state) %>%
+  dplyr::left_join(
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_BC" = "key")
+  ) %>%
+  dplyr::rename(state_BC = state) %>%
+  dplyr::left_join(
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_AC" = "key")
+  ) %>%
+  dplyr::rename(state_AC = state) %>%
+  dplyr::mutate(
+    state_AB = tidyr::replace_na(state_AB, "retained"),
+    state_BC = tidyr::replace_na(state_BC, "retained"),
+    state_AC = tidyr::replace_na(state_AC, "retained"),
+    n_lost = (state_AB == "lost") + (state_BC == "lost") + (state_AC == "lost"),
+    trimer_state = dplyr::case_when(
+      n_lost >= 2 ~ "broken",
+      n_lost == 1 ~ "partial",
+      n_lost == 0 ~ "intact",
+      TRUE ~ "unknown"
+    )
+  )
+
+message("Edge states joined successfully!")
+
+# Save detailed trimer states
+write_csv(trimers_lyso_states, file.path(out_dir_lysoip_ppi, "tables/trimers", "trimers_lyso_states.csv"))
+
+# --- Step 5: Summary: broken trimers for Control vs ASAH1 ---
+trimer_lyso_summary <- trimers_lyso_states %>%
+  dplyr::summarise(
+    n_total = n(),
+    n_intact = sum(trimer_state == "intact", na.rm = TRUE),
+    n_broken = sum(trimer_state == "broken", na.rm = TRUE),
+    n_partial = sum(trimer_state == "partial", na.rm = TRUE),
+    n_unknown = sum(trimer_state == "unknown", na.rm = TRUE),
+    frac_broken = n_broken / n_total,
+    frac_partial = n_partial / n_total
+  )
+
+# save csv
+write_csv(trimer_lyso_summary, file.path(out_dir_lysoip_ppi, "tables/trimers", "trimer_lyso_summary.csv"))
+
+message("Trimer breakage summary:")
+print(trimer_lyso_summary)
+
+# --- Step 6: Affected trimers by organelle ---
+trimers_affected <- trimers_lyso_states %>%
+  dplyr::mutate(
+    trimer_affected = ifelse(n_lost >= 1, "affected", "intact")
+  )
+
+# Count affected vs intact trimers per organelle
+trimer_affected_org <- trimers_affected %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::group_by(shared_organelle, trimer_affected) %>%
+  dplyr::summarise(n_trimers = dplyr::n(), .groups = "drop") %>%
+  tidyr::pivot_wider(
+    names_from = trimer_affected,
+    values_from = n_trimers,
+    values_fill = 0
+  ) %>%
+  dplyr::mutate(
+    total = affected + intact,
+    frac_affected = affected / total
+  ) %>%
+  dplyr::arrange(desc(frac_affected))
+
+# save csv
+write_csv(trimer_affected_org, file.path(out_dir_lysoip_ppi, "tables/trimers", "trimer_affected_by_organelle.csv"))
+
+message("Affected trimers by organelle:")
+print(trimer_affected_org)
+
+# --- Step 7: Visualizations ---
+# Barplot of trimer states
+trimer_state_counts <- trimers_lyso_states %>%
+  dplyr::count(trimer_state)
+
+p_trimer_states <- ggplot(trimer_state_counts, aes(x = trimer_state, y = n, fill = trimer_state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", broken = "dodgerblue4"), name = "Trimer State") +
+  labs(title = "Trimer States: Control → ASAH1 KO", x = NULL, y = "Number of Trimers") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "bars_trimer_states.pdf"), p_trimer_states, width = 4, height = 4, device = cairo_pdf)
+
+
+# --- Step 8: Plot trimer status by annotation ---
+# First create overall trimer state counts (like complex_state_counts)
+trimer_state_counts <- trimers_lyso_states %>%
+  dplyr::count(trimer_state)
+
+p_trimer_states <- ggplot(trimer_state_counts, aes(x = trimer_state, y = n, fill = trimer_state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", broken = "dodgerblue4"), name = "Trimer State") +
+  labs(title = "Trimer States: Control → ASAH1 KO", x = NULL, y = "Number of Trimers") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "bars_trimer_states.pdf"), p_trimer_states, width = 4, height = 4, device = cairo_pdf)
+
+# Count trimers by annotation and state
+trimer_status_by_annotation <- trimers_lyso_states %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::filter(!is.na(shared_organelle), shared_organelle != "Other") %>%
+  dplyr::filter(shared_organelle %in% c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")) %>%
+  dplyr::count(shared_organelle, trimer_state, name = "n_trimers") %>%
+  dplyr::mutate(
+    shared_organelle = factor(shared_organelle, levels = c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")),
+    trimer_state = factor(trimer_state, levels = c("intact", "partial", "broken"))
+  )
+
+# Plot trimer status by annotation
+p_trimer_status_annotation <- ggplot(trimer_status_by_annotation, aes(x = shared_organelle, y = n_trimers, fill = trimer_state)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", broken = "dodgerblue4"), name = "Trimer State") +
+  labs(title = "Trimer Status by Annotation", x = "Annotation", y = "Number of Trimers") +
+  theme_bw(base_size = 8) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+# Save the plot (matching complex dimensions)
+ggsave(file.path(out_dir_lysoip_ppi, "plots/trimers", "trimer_status_by_annotation.pdf"), p_trimer_status_annotation, width = 4, height = 4, device = cairo_pdf)
+
+```
+
+
+### Multimer Analysis of Lysosmal PPIs 
+```{r}
+# =========================================================================
+#  Identify protein complexes via community detection 
+# =========================================================================
+
+# --- Step 0: Create output directories ---
+dir.create(file.path(out_dir_lysoip_ppi, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_lysoip_ppi, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Step 1: Build baseline network from high-confidence edges ---
+message("Building baseline PPI network...")
+
+# Use same high_conf_edges from trimer analysis
+baseline_net <- igraph::graph_from_data_frame(
+  d = high_conf_edges %>% dplyr::select(Gene1, Gene2),
+  directed = FALSE,
+  vertices = data.frame(name = unique(c(high_conf_edges$Gene1, high_conf_edges$Gene2)))
+)
+
+# Add edge weights (confidence scores)
+igraph::E(baseline_net)$weight <- high_conf_edges$Predictome_conf
+
+message("Baseline network: ", vcount(baseline_net), " proteins, ", ecount(baseline_net), " edges")
+
+# --- Step 2: Community detection using Louvain algorithm ---
+message("Running Louvain community detection...")
+
+louvain_communities <- igraph::cluster_louvain(
+  baseline_net,
+  weights = igraph::E(baseline_net)$weight
+)
+
+# Extract community assignments
+protein_communities <- data.frame(
+  Gene = igraph::V(baseline_net)$name,
+  community_id = as.integer(igraph::membership(louvain_communities)),
+  stringsAsFactors = FALSE
+)
+
+message("Found ", max(protein_communities$community_id), " communities")
+
+
+# --- Step 3: Filter to meaningful complexes (size 3-10) ---
+community_sizes <- protein_communities %>%
+  dplyr::count(community_id, name = "size")
+
+valid_communities <- community_sizes %>%
+  dplyr::filter(size >= 3, size <= 10) %>%
+  dplyr::pull(community_id)
+
+message("Communities with 3-10 proteins: ", length(valid_communities))
+
+complexes_baseline <- protein_communities %>%
+  dplyr::filter(community_id %in% valid_communities) %>%
+  dplyr::arrange(community_id, Gene)
+
+complexes_summary <- complexes_baseline %>%
+  dplyr::group_by(community_id) %>%
+  dplyr::summarise(
+    complex_id = paste0("Complex_", sprintf("%04d", community_id[1])),
+    n_proteins = n(),
+    proteins = paste(Gene, collapse = ";"),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(n_proteins))
+
+# save as csv
+write_csv(complexes_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "baseline_complexes.csv"))
+
+message("Baseline complexes summary:")
+print(head(complexes_summary, 20))
+
+
+# --- Step 4: Annotate complexes with organelles ---
+complexes_annotated <- complexes_baseline %>%
+  dplyr::left_join(gene_to_org, by = c("Gene" = "Gene.Symbol"))
+
+# Determine dominant organelle per complex
+complex_organelle <- complexes_annotated %>%
+  tidyr::pivot_longer(
+    cols = all_of(annotations),
+    names_to = "organelle",
+    values_to = "present"
+  ) %>%
+  dplyr::filter(present == TRUE | present == 1) %>%
+  dplyr::group_by(community_id, organelle) %>%
+  dplyr::summarise(n_proteins = n(), .groups = "drop_last") %>%
+  dplyr::slice_max(n_proteins, n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(organelle = ifelse(is.na(organelle), "Other", organelle))
+
+complexes_summary <- complexes_summary %>%
+  dplyr::left_join(complex_organelle %>% dplyr::select(community_id, organelle), by = "community_id") %>%
+  dplyr::mutate(organelle = tidyr::replace_na(organelle, "Other"))
+
+# Count by organelle
+complex_org_summary <- complexes_summary %>%
+  dplyr::count(organelle, name = "n_complexes") %>%
+  dplyr::arrange(desc(n_complexes))
+
+write_csv(complex_org_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "baseline_complexes_by_organelle.csv"))
+
+message("Complexes by organelle:")
+print(complex_org_summary)
+
+
+# --- Step 5: Assess complex integrity for Control vs ASAH1 ---
+# Get all edges within each complex
+complex_edges_list <- list()
+
+for (cid in valid_communities) {
+  complex_genes <- complexes_baseline %>%
+    dplyr::filter(community_id == cid) %>%
+    dplyr::pull(Gene)
+  
+  # Get all edges between proteins in this complex
+  complex_edges <- high_conf_edges %>%
+    dplyr::filter(Gene1 %in% complex_genes, Gene2 %in% complex_genes) %>%
+    dplyr::mutate(community_id = cid)
+  
+  complex_edges_list[[as.character(cid)]] <- complex_edges
+}
+
+complex_edges_df <- dplyr::bind_rows(complex_edges_list)
+
+# Add complex_id
+complex_edges_df <- complex_edges_df %>%
+  dplyr::left_join(
+    complexes_summary %>% dplyr::select(community_id, complex_id),
+    by = "community_id"
+  )
+
+message("Total edges in complexes: ", nrow(complex_edges_df))
+
+
+# --- Step 6: Match complex edges to LysoIP states ---
+complex_edges_df <- complex_edges_df %>%
+  dplyr::mutate(key_gene = .make_undirected_key(Gene1, Gene2))
+
+# Join edge states from lysoip_edge_states
+complexes_lyso_states <- complex_edges_df %>%
+  dplyr::left_join(
+    lysoip_edge_states %>% dplyr::select(key, state),
+    by = c("key_gene" = "key")
+  ) %>%
+  dplyr::left_join(
+    complexes_summary %>% dplyr::select(complex_id, organelle),
+    by = "complex_id"
+  ) %>%
+  dplyr::mutate(
+    state = tidyr::replace_na(state, "retained"),
+    edge_lost = state == "lost"
+  )
+
+# Aggregate per complex
+complex_lyso_summary <- complexes_lyso_states %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(
+    n_edges_total = n(),
+    n_edges_lost = sum(edge_lost, na.rm = TRUE),
+    frac_edges_lost = n_edges_lost / n_edges_total,
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(
+    complexes_summary %>% dplyr::select(complex_id, n_proteins, organelle),
+    by = "complex_id"
+  ) %>%
+  dplyr::mutate(
+    complex_state = case_when(
+      frac_edges_lost >= 0.75 ~ "disrupted",   # ≥75% edges lost
+      frac_edges_lost >= 0.25 ~ "partial",     # 25-75% lost
+      TRUE                    ~ "intact"
+    )
+  )
+
+# save csv
+write_csv(complex_lyso_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "complexes_lyso_states.csv"))
+
+
+# --- Step 7: Summary statistics ---
+complex_disruption_summary <- complex_lyso_summary %>%
+  dplyr::summarise(
+    n_complexes = n(),
+    n_intact = sum(complex_state == "intact"),
+    n_disrupted = sum(complex_state == "disrupted"),
+    n_partial = sum(complex_state == "partial"),
+    frac_disrupted = n_disrupted / n_complexes
+  )
+
+write_csv(complex_disruption_summary, file.path(out_dir_lysoip_ppi, "tables/multimer", "complex_disruption_summary.csv"))
+
+message("Complex disruption summary:")
+print(complex_disruption_summary)
+
+# Per organelle
+complex_org_disrupted <- complex_lyso_summary %>%
+  dplyr::filter(complex_state == "disrupted", organelle != "Other") %>%
+  dplyr::count(organelle, name = "n_disrupted") %>%
+  dplyr::arrange(desc(n_disrupted))
+
+write_csv(complex_org_disrupted, file.path(out_dir_lysoip_ppi, "tables/multimer", "complex_disrupted_by_organelle.csv"))
+
+
+# --- Step 8: Visualizations ---
+# Barplot: complex states
+complex_state_counts <- complex_lyso_summary %>%
+  dplyr::count(complex_state)
+
+p_complex_states <- ggplot(complex_state_counts, aes(x = complex_state, y = n, fill = complex_state)) +
+  geom_col(color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(aes(label = n), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", disrupted = "dodgerblue4"), name = "Complex State") +
+  labs(title = "Complex States: Control → ASAH1 KO", x = NULL, y = "Number of Complexes") +
+  theme_bw(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_lysoip_ppi, "plots/multimer", "bars_complex_states.pdf"), p_complex_states, width = 4, height = 4, device = cairo_pdf)
+
+# --- Step 9: Plot complex status by annotation ---
+# Count complexes by annotation and state from complex_lyso_summary
+complex_status_by_annotation <- complex_lyso_summary %>%
+  dplyr::filter(!is.na(organelle), organelle != "Other") %>%
+  dplyr::filter(organelle %in% c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")) %>%
+  dplyr::count(organelle, complex_state, name = "n_complexes") %>%
+  dplyr::mutate(
+    organelle = factor(organelle, levels = c("Mito", "ER", "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Autophagy", "vATPase")),
+    complex_state = factor(complex_state, levels = c("intact", "partial", "disrupted"))
+  )
+
+# Plot complex status by annotation
+p_complex_status_annotation <- ggplot(complex_status_by_annotation, aes(x = organelle, y = n_complexes, fill = complex_state)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = c(intact = "grey70", partial = "dodgerblue", disrupted = "dodgerblue4"), name = "Complex State") +
+  labs(title = "Complex Status by Annotation", x = "Annotation", y = "Number of Complexes") +
+  theme_bw(base_size = 8) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+# Save the plot
+ggsave(file.path(out_dir_lysoip_ppi, "plots/multimer", "complex_status_by_annotation.pdf"), p_complex_status_annotation, width = 4, height = 4, device = cairo_pdf)
+
+message("Complex analysis complete!")
+```

@@ -4978,9 +4978,9 @@ plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols
 ```
 
 
-# -------------------------------------------------- 
+# =================================================
 # -------- Organelle Correlations Analysis
-# --------------------------------------------------  
+# =================================================
 
 
 # XI. Organelle Cross-DF correlations
@@ -6576,9 +6576,9 @@ ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
 
 
 
-# -------------------------------------------------- 
+# =================================================
 # -------- Disease Class Analysis Neuron
-# --------------------------------------------------  
+# =================================================
 
 
 # XII. Sph mutant investigation
@@ -9337,9 +9337,9 @@ ggsave("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/
 
 
     
-# -------------------------------------------------- 
+# =================================================
 # -------- nDIA-nMOST comparative analysis
-# --------------------------------------------------  
+# =================================================
 
 
 
@@ -9527,7 +9527,8 @@ read in HeLa nMOST file
 # iNeuron - Hela Proteome Correlations 
 # Neuron–HeLa Proteome Correlation Analysis
 # --------------------------------------------------- #
-library(ComplexHeatmap)
+library(tidyverse)
+detach("package:ComplexHeatmap", unload = TRUE)
 # -----------------------------
 # I. Disease Class Definitions
 # -----------------------------
@@ -9546,7 +9547,7 @@ disease_colors <- c(
   Integral.membrane.protein.disorders = "#E6F598", PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
 )
-ko_to_class <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, class = name)
+ko_to_class <- map_dfr(disease_classes, ~data.frame(KO = .x), .id = "class")
 
 # -----------------------------
 # II. Data Preparation
@@ -9568,17 +9569,18 @@ neuron_df <- neuron_long %>%
   summarise(mean_log2_abundance = mean(log2_abundance), .groups = "drop") %>%
   pivot_wider(names_from = neuron, values_from = mean_log2_abundance)
 
-HeLa_long <- HeLaWCnMOST_df %>%
-  rename(Genes = Gene.names) %>%
-  pivot_longer(cols = ends_with(".KO"), names_to = "genotype", values_to = "hela_abundance") %>%
-  mutate(genotype = str_remove(genotype, "\\.KO"))
+HeLa_long <- dplyr::rename(HeLaWCnMOST_df, Genes = Gene.names) %>%
+  tidyr::pivot_longer(cols = ends_with(".KO"),
+                      names_to = "genotype",
+                      values_to = "hela_abundance") %>%
+  dplyr::mutate(genotype = stringr::str_remove(genotype, "\\.KO"))
 
 merged_df <- inner_join(neuron_df, HeLa_long, by = c("Genes", "genotype"))
 
 merged_wide <- merged_df %>%
   pivot_longer(c(iN, iDA), names_to = "neuron_type", values_to = "neuron_abundance") %>%
   mutate(sample = paste(genotype, neuron_type, sep = "_")) %>%
-  select(Genes, sample, abundance = neuron_abundance) %>%
+  dplyr::select(Genes, sample, abundance = neuron_abundance) %>%
   bind_rows(
     merged_df %>%
       mutate(sample = paste0(genotype, "_HeLa")) %>%
@@ -9596,9 +9598,13 @@ abundance_matrix <- merged_wide %>%
 
 correlation_matrix_nMOSTnDIA <- cor(abundance_matrix, method = "pearson", use = "pairwise.complete.obs")
 
+
 # -----------------------------
 # III. Circos Plot Setup
 # -----------------------------
+
+library(ComplexHeatmap)
+
 sample_groups <- tibble(
   sample = colnames(correlation_matrix_nMOSTnDIA),
   group = case_when(
@@ -9743,6 +9749,8 @@ plot_dual_layer_circos(
   output_path = "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/nMOST-nDIAcorrelation/neuron_hela_circos_interonly.pdf"
 )
 #dev.off()
+
+detach("package:ComplexHeatmap", unload = TRUE)
 ```
 
 
@@ -9876,6 +9884,7 @@ HeLaWCnMOST_df_annotated <- HeLaWCnMOST_df %>%
   mutate(across(all_of(colnames(binary_matrix)[-1]), ~ ifelse(. == TRUE, TRUE, FALSE))) %>%
   replace(is.na(.), FALSE)
 
+# save as csv
 write.csv(HeLaWCnMOST_df_annotated,file = file.path(out_dir_d50_nMOST_nDIAcorrelation,"HeLaWCnMOST_annotated.csv"),row.names = FALSE)
 
 
@@ -10253,10 +10262,16 @@ pheatmap::pheatmap(
 ```
 
 
-# -------------------------------------------------- 
-# -------- Protein Protein Interaction / Multimer Evaluation 
-# --------------------------------------------------  
 
+
+# =================================================
+# ---- Protein Protein Interaction / Multimer Evaluation 
+# =================================================
+
+
+# ----------------------------
+# ----- Neuronal iN iDA nDIA Dataset ----- 
+# ----------------------------
 
 # XVIII. PPI vulnerability pipeline in iN and iDA LSD mutants
 Build a Protein–Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. The goal is to integrate experimental proteome shifts with predicted and experimentally validated interaction data (Predictome 80% and IntAct) to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type–specific effects.
@@ -15178,10 +15193,8 @@ if (!exists("trimers_baseline")) {
     edge_states = timecourse_multi_edge_genes
   )
   
-  write_csv(
-    timecourse_multi_trimer_states,
-    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_states.csv")
-  )
+  # save csv file of trimer and umultimer states
+  write_csv(timecourse_multi_trimer_states, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_states.csv"))
   
   # Summary
   timecourse_multi_trimer_summary <- timecourse_multi_trimer_states %>%
@@ -15195,10 +15208,8 @@ if (!exists("trimers_baseline")) {
       .groups = "drop"
     )
   
-  write_csv(
-    timecourse_multi_trimer_summary,
-    file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_summary.csv")
-  )
+  # save csv file summary of trimer and umultimer states
+  write_csv(timecourse_multi_trimer_summary, file.path(out_dir_timecourse_multi, "tables", "timecourse_multi_trimer_summary.csv"))
   
   # Barplot
   p_trimer_bars <- ggplot(
@@ -15758,6 +15769,2501 @@ message("  - Summary tables in: tables/")
 ```
 
 
+
+# ----------------------------
+# ----- HeLa nMOST Dataset ----- 
+# ---------------------------
+
+# XiX. PPI vulnerability pipeline in HeLa Whole cell proteomic data 
+```{r}
+# Data from nMOST proteomics 
+# DOI: 10.1126/sciadv.adu5787
+1
+# --- Step 0: create outdirs and setup of environment 
+# Setup output directories
+out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/HeLaPPI"
+dir.create(out_dir_hela_ppi, recursive = TRUE, showWarnings = FALSE)
+
+dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "plots/qc"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
+
+# Parameters
+drop_thresh <- -0.5
+gain_up_thresh <- 0.5
+conf_bins <- c(0, 0.5, 0.75, 0.9, 1)
+control_outlier_thresh <- 0.4
+
+
+# Helper functions
+.make_undirected_key <- function(a, b) {
+  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+}
+
+.bin_conf <- function(x, bins) {
+  cut(x, breaks = bins, include.lowest = TRUE, right = TRUE, labels = FALSE)
+}
+
+
+# Load HeLa control data
+HeLaWCControl_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_WCCcontrol.csv")
+
+
+# ---------------------------------------------------
+# --- Fix gene names - take only first gene before semicolon ---
+message("=== Cleaning gene names ===")
+
+# Check original gene names
+message("Original unique genes: ", length(unique(HeLaWCnMOST_df_annotated$Genes)))
+message("Sample original genes: ", paste(head(HeLaWCnMOST_df_annotated$Genes, 5), collapse = ", "))
+
+# Clean gene names - take only the first gene before semicolon
+HeLaWCnMOST_df_annotated <- HeLaWCnMOST_df_annotated %>%
+  dplyr::mutate(
+    Genes = sapply(strsplit(Genes, ";"), function(x) x[1])
+  )
+
+# Check cleaned gene names
+message("Cleaned unique genes: ", length(unique(HeLaWCnMOST_df_annotated$Genes)))
+message("Sample cleaned genes: ", paste(head(HeLaWCnMOST_df_annotated$Genes, 5), collapse = ", "))
+
+# Also clean the control data
+message("=== Cleaning control gene names ===")
+
+# Check original control gene names
+message("Original control unique genes: ", length(unique(HeLaWCControl_df$Gene.names)))
+
+# Clean control gene names
+HeLaWCControl_df <- HeLaWCControl_df %>%
+  dplyr::mutate(
+    Gene.names = sapply(strsplit(Gene.names, ";"), function(x) x[1])
+  )
+
+message("Cleaned control unique genes: ", length(unique(HeLaWCControl_df$Gene.names)))
+
+
+
+# ---------------------------------------------------
+# --- Step 1: Process HeLa Control Data and Create Baseline ---
+message("=== Processing HeLa control data ===")
+
+# Check control variability
+control_cols <- grep("HeLa.Control", colnames(HeLaWCControl_df), value = TRUE)
+message("Found ", length(control_cols), " control samples")
+
+# Calculate statistics per protein across controls
+control_stats <- HeLaWCControl_df %>%
+  dplyr::select(Gene.names, all_of(control_cols)) %>%
+  dplyr::filter(!is.na(Gene.names), Gene.names != "") %>%
+  dplyr::rename(Genes = Gene.names) %>%
+  tidyr::pivot_longer(
+    cols = all_of(control_cols),
+    names_to = "Control_Sample",
+    values_to = "log2FC"
+  ) %>%
+  dplyr::filter(!is.na(log2FC)) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(
+    n_controls = n(),
+    mean_log2FC = mean(log2FC, na.rm = TRUE),
+    sd_log2FC = sd(log2FC, na.rm = TRUE),
+    max_abs_log2FC = max(abs(log2FC), na.rm = TRUE),
+    n_outliers = sum(abs(log2FC) > control_outlier_thresh, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    frac_outliers = n_outliers / n_controls,
+    stable_protein = max_abs_log2FC <= control_outlier_thresh
+  )
+
+# Summary of control stability
+message("Control stability summary:")
+message("  Proteins detected: ", nrow(control_stats))
+message("  Stable proteins (max |log2FC| <= ", control_outlier_thresh, "): ", sum(control_stats$stable_protein))
+message("  Unstable proteins: ", sum(!control_stats$stable_protein))
+
+# Save control statistics
+write_csv(control_stats, file.path(out_dir_hela_ppi, "tables", "control_stability_stats.csv"))
+
+# Create QC plots for control variability
+p_control_stability <- ggplot(control_stats, aes(x = max_abs_log2FC)) +
+  geom_histogram(bins = 50, fill = "skyblue", color = "black", linewidth = 0.2) +
+  geom_vline(xintercept = control_outlier_thresh, linetype = "dashed", color = "red") +
+  labs(
+    title = "Control sample variability",
+    subtitle = paste("Red line: outlier threshold =", control_outlier_thresh),
+    x = "Maximum |log2FC| across controls",
+    y = "Number of proteins"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+  )
+
+ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_variability_histogram.pdf"), p_control_stability, width = 5, height = 4, device = cairo_pdf)
+
+# Per-control-sample outlier analysis
+control_sample_stats <- HeLaWCControl_df %>%
+  dplyr::select(Gene.names, all_of(control_cols)) %>%
+  dplyr::filter(!is.na(Gene.names), Gene.names != "") %>%
+  dplyr::rename(Genes = Gene.names) %>%
+  tidyr::pivot_longer(
+    cols = all_of(control_cols),
+    names_to = "Control_Sample",
+    values_to = "log2FC"
+  ) %>%
+  dplyr::filter(!is.na(log2FC)) %>%
+  dplyr::group_by(Control_Sample) %>%
+  dplyr::summarise(
+    n_proteins = n(),
+    n_outliers = sum(abs(log2FC) > control_outlier_thresh, na.rm = TRUE),
+    frac_outliers = n_outliers / n_proteins,
+    mean_abs_log2FC = mean(abs(log2FC), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(frac_outliers))
+
+# Save per-sample stats
+write_csv(control_sample_stats, file.path(out_dir_hela_ppi, "tables", "control_sample_outlier_stats.csv"))
+
+# Plot per-sample outlier rates
+p_sample_outliers <- ggplot(control_sample_stats, 
+                           aes(x = reorder(Control_Sample, -frac_outliers), y = frac_outliers)) +
+  geom_col(fill = "coral", color = "black", linewidth = 0.2) +
+  geom_text(aes(label = sprintf("%.1f%%", frac_outliers * 100)), 
+            angle = 90, hjust = -0.1, size = 2) +
+  labs(
+    title = "Outlier rate per control sample",
+    subtitle = paste("Outlier threshold: |log2FC| >", control_outlier_thresh),
+    x = "Control sample",
+    y = "Fraction of outlier proteins"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+ggsave(file.path(out_dir_hela_ppi, "plots/qc", "control_sample_outlier_rates.pdf"), p_sample_outliers, width = 6, height = 4, device = cairo_pdf)
+
+
+
+# ---------------------------------------------------
+# --- Step 2: Create HeLa-specific baseline using stable proteins ---
+message("\n=== Creating HeLa-specific PPI baseline ===")
+
+# Get stable HeLa proteins
+stable_hela_proteins <- control_stats %>%
+  dplyr::filter(stable_protein) %>%
+  dplyr::pull(Genes)
+
+message("Stable HeLa proteins for baseline: ", length(stable_hela_proteins))
+
+# Filter baseline edges to HeLa proteome and add key column
+baseline_edges_hela <- baseline_edges_union %>%
+  dplyr::filter(Gene1 %in% stable_hela_proteins, Gene2 %in% stable_hela_proteins) %>%
+  dplyr::mutate(key = .make_undirected_key(Gene1, Gene2))
+
+message("Original baseline edges: ", nrow(baseline_edges_union))
+message("HeLa baseline edges: ", nrow(baseline_edges_hela))
+
+# Save HeLa baseline
+write_csv(baseline_edges_hela, file.path(out_dir_hela_ppi, "tables", "baseline_edges_hela.csv"))
+
+
+
+# ---------------------------------------------------
+# --- Step 3: Prepare HeLa KO proteome data ---
+message("\n=== Preparing HeLa KO proteome data ===")
+
+# Extract KO columns (excluding annotation columns)
+ko_cols <- colnames(HeLaWCnMOST_df_annotated)[grepl("\\.KO$", colnames(HeLaWCnMOST_df_annotated))]
+message("Found ", length(ko_cols), " KO conditions")
+
+# Convert to long format
+hela_prot_long <- HeLaWCnMOST_df_annotated %>%
+  dplyr::select(Genes, all_of(ko_cols)) %>%
+  dplyr::filter(!is.na(Genes), Genes != "") %>%
+  tidyr::pivot_longer(
+    cols = all_of(ko_cols),
+    names_to = "sample",
+    values_to = "log2FC"
+  ) %>%
+  dplyr::mutate(
+    genotype = gsub("\\.KO$", "", sample)
+  ) %>%
+  dplyr::filter(!is.na(log2FC))
+
+# Save long proteome data
+write_csv(hela_prot_long, file.path(out_dir_hela_ppi, "tables", "hela_proteome_long.csv"))
+
+message("HeLa proteome summary:")
+print(table(hela_prot_long$genotype))
+
+
+# ---------------------------------------------------
+# --- Step 3b: Fix duplicate genes in proteome data ---
+message("\n=== Fixing duplicate genes in proteome data ===")
+
+# Check for duplicates in the proteome data
+prot_duplicates <- hela_prot_long %>%
+  dplyr::count(Genes, genotype) %>%
+  dplyr::filter(n > 1)
+
+message("Duplicates in hela_prot_long: ", nrow(prot_duplicates))
+
+if(nrow(prot_duplicates) > 0) {
+  message("Sample protein duplicates:")
+  print(head(prot_duplicates))
+  
+  # Fix by taking the mean of duplicate measurements
+  hela_prot_long <- hela_prot_long %>%
+    dplyr::group_by(Genes, genotype) %>%
+    dplyr::summarise(log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+  
+  message("Fixed hela_prot_long rows: ", nrow(hela_prot_long))
+  
+  # Save the fixed version
+  write_csv(hela_prot_long, file.path(out_dir_hela_ppi, "tables", "hela_proteome_long_deduplicated.csv"))
+} else {
+  message("No duplicates found in proteome data")
+}
+
+
+
+# ---------------------------------------------------
+# --- Step 4: Compute PPI edge states per KO ---
+message("\n=== Computing PPI edge states per KO ===")
+
+# First, check for duplicates in baseline_edges_hela
+message("Checking baseline_edges_hela for duplicate keys...")
+baseline_dup_check <- baseline_edges_hela %>%
+  dplyr::count(key) %>%
+  dplyr::filter(n > 1)
+
+if (nrow(baseline_dup_check) > 0) {
+  message("WARNING: Found ", nrow(baseline_dup_check), " duplicate keys in baseline_edges_hela")
+  message("Deduplicating baseline edges...")
+  baseline_edges_hela <- baseline_edges_hela %>%
+    dplyr::distinct(key, .keep_all = TRUE)
+  message("Baseline edges after deduplication: ", nrow(baseline_edges_hela))
+}
+
+# Expand baseline to all KO contexts
+ko_list <- unique(hela_prot_long$genotype)
+
+baseline_expanded_hela <- baseline_edges_hela %>%
+  tidyr::crossing(genotype = ko_list)
+
+message("Baseline expanded rows: ", nrow(baseline_expanded_hela))
+message("Expected rows: ", nrow(baseline_edges_hela), " * ", length(ko_list), " = ", nrow(baseline_edges_hela) * length(ko_list))
+
+# Check for duplicates after expansion
+expand_dup_check <- baseline_expanded_hela %>%
+  dplyr::count(key, genotype) %>%
+  dplyr::filter(n > 1)
+
+if (nrow(expand_dup_check) > 0) {
+  message("ERROR: Found ", nrow(expand_dup_check), " duplicate key-genotype pairs after expansion!")
+  message("This should not happen. Deduplicating...")
+  baseline_expanded_hela <- baseline_expanded_hela %>%
+    dplyr::distinct(key, genotype, .keep_all = TRUE)
+}
+
+# Join proteome data for both partners
+hela_edge_states <- baseline_expanded_hela %>%
+  dplyr::left_join(
+    hela_prot_long %>% dplyr::select(Genes, genotype, log2FC),
+    by = c("Gene1" = "Genes", "genotype"),
+    relationship = "many-to-one"  # Each edge-genotype should match one Gene1 measurement
+  ) %>%
+  dplyr::rename(dA = log2FC) %>%
+  dplyr::left_join(
+    hela_prot_long %>% dplyr::select(Genes, genotype, log2FC),
+    by = c("Gene2" = "Genes", "genotype"),
+    relationship = "many-to-one"  # Each edge-genotype should match one Gene2 measurement
+  ) %>%
+  dplyr::rename(dB = log2FC) %>%
+  dplyr::mutate(
+    state = dplyr::case_when(
+      !is.na(dA) & dA < drop_thresh ~ "lost",
+      !is.na(dB) & dB < drop_thresh ~ "lost",
+      (!is.na(dA) | !is.na(dB))     ~ "retained",
+      TRUE                          ~ "unknown"
+    ),
+    # Add organelle pairing info
+    OrgPair = ifelse(!is.na(Gene1) & !is.na(Gene2), "same", "cross")  # Simplified for now
+  )
+
+# **CRITICAL: Check for duplicates in final edge_states**
+message("Checking hela_edge_states for duplicate key-genotype pairs...")
+final_dup_check <- hela_edge_states %>%
+  dplyr::count(key, genotype) %>%
+  dplyr::filter(n > 1)
+
+if (nrow(final_dup_check) > 0) {
+  message("ERROR: Found ", nrow(final_dup_check), " duplicate key-genotype pairs in hela_edge_states!")
+  message("Sample duplicates:")
+  print(head(final_dup_check, 10))
+  
+  message("Investigating cause...")
+  # Check one example
+  example_dup <- final_dup_check[1, ]
+  message("Example duplicate: key=", example_dup$key, ", genotype=", example_dup$genotype)
+  
+  example_rows <- hela_edge_states %>%
+    dplyr::filter(key == example_dup$key, genotype == example_dup$genotype)
+  message("Number of rows for this example: ", nrow(example_rows))
+  print(example_rows)
+  
+  message("Deduplicating by taking first occurrence...")
+  hela_edge_states <- hela_edge_states %>%
+    dplyr::distinct(key, genotype, .keep_all = TRUE)
+  
+  message("Rows after deduplication: ", nrow(hela_edge_states))
+}
+
+# Add disease class information if available
+if (exists("disease_classes_dataframe")) {
+  # Deduplicate disease classes first
+  disease_classes_clean <- disease_classes_dataframe %>%
+    dplyr::distinct(sample, .keep_all = TRUE)
+  
+  hela_edge_states <- hela_edge_states %>%
+    dplyr::left_join(
+      disease_classes_clean %>% dplyr::rename(genotype = sample),
+      by = "genotype",
+      relationship = "many-to-one"
+    )
+}
+
+# Save edge states
+write_csv(hela_edge_states, file.path(out_dir_hela_ppi, "tables", "hela_edge_states.csv"))
+
+message("Final hela_edge_states rows: ", nrow(hela_edge_states))
+message("Expected rows: ", nrow(baseline_edges_hela), " * ", length(ko_list), " = ", nrow(baseline_edges_hela) * length(ko_list))
+
+
+
+
+# ---------------------------------------------------
+# --- Step 5: Global summary statistics ---
+message("\n=== Computing global summary statistics ===")
+
+hela_summary_global <- hela_edge_states %>%
+  dplyr::group_by(genotype) %>%
+  dplyr::summarise(
+    total_baseline_edges = n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    n_retained = sum(state == "retained", na.rm = TRUE),
+    n_unknown = sum(state == "unknown", na.rm = TRUE),
+    fraction_lost = n_lost / total_baseline_edges,
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(fraction_lost))
+
+# Save global summary
+write_csv(hela_summary_global, file.path(out_dir_hela_ppi, "tables", "hela_summary_global.csv"))
+
+message("Global PPI loss summary (top 10):")
+print(head(hela_summary_global, 10))
+
+
+
+# ---------------------------------------------------
+# --- Step 6: Add organelle annotations ---
+message("\n=== Adding organelle annotations ===")
+
+# Check for existing organelle columns in baseline_edges_hela
+existing_org_cols <- grep("_prot[12]\\.(x|y)$", colnames(baseline_edges_hela), value = TRUE)
+
+if (length(existing_org_cols) > 0) {
+  message("WARNING: Found existing organelle columns with .x/.y suffixes")
+  message("Removing duplicate organelle columns and keeping only .x versions...")
+  
+  # Remove .y columns
+  cols_to_remove <- grep("_prot[12]\\.y$", colnames(baseline_edges_hela), value = TRUE)
+  baseline_edges_hela <- baseline_edges_hela %>%
+    dplyr::select(-dplyr::all_of(cols_to_remove))
+  
+  # Rename .x columns to remove .x suffix
+  colnames(baseline_edges_hela) <- gsub("_prot1\\.x$", "_prot1", colnames(baseline_edges_hela))
+  colnames(baseline_edges_hela) <- gsub("_prot2\\.x$", "_prot2", colnames(baseline_edges_hela))
+  
+  message("Cleaned column names")
+}
+
+# Use existing organelle annotations from HeLaWCnMOST_df_annotated
+organelle_tags_hela <- setdiff(colnames(HeLaWCnMOST_df_annotated), 
+                              c("Protein.IDs", "Genes", ko_cols))
+
+message("Found ", length(organelle_tags_hela), " organelle tags")
+message("Sample tags: ", paste(head(organelle_tags_hela, 5), collapse = ", "))
+
+# Build gene-to-organelle mapping
+gene_to_org_hela <- HeLaWCnMOST_df_annotated %>%
+  dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
+  dplyr::filter(!is.na(Genes), Genes != "")
+
+# Check if baseline_edges_hela already has organelle annotations
+has_org_annotations <- any(grepl("_prot1$", colnames(baseline_edges_hela)))
+
+if (!has_org_annotations) {
+  message("Adding organelle annotations to baseline edges...")
+  
+  # Create separate dataframes for protein 1 and protein 2 annotations
+  prot1_annotations <- gene_to_org_hela %>%
+    dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
+    dplyr::rename_with(~paste0(.x, "_prot1"), all_of(organelle_tags_hela)) %>%
+    dplyr::rename(Gene1 = Genes)
+  
+  prot2_annotations <- gene_to_org_hela %>%
+    dplyr::select(Genes, all_of(organelle_tags_hela)) %>%
+    dplyr::rename_with(~paste0(.x, "_prot2"), all_of(organelle_tags_hela)) %>%
+    dplyr::rename(Gene2 = Genes)
+  
+  # Now join both annotation sets to the baseline edges
+  baseline_edges_hela_annotated <- baseline_edges_hela %>%
+    dplyr::left_join(prot1_annotations, by = "Gene1", relationship = "many-to-one") %>%
+    dplyr::left_join(prot2_annotations, by = "Gene2", relationship = "many-to-one")
+} else {
+  message("Organelle annotations already present in baseline_edges_hela")
+  baseline_edges_hela_annotated <- baseline_edges_hela
+}
+
+# Verify final column names
+message("Final organelle columns:")
+org_cols_final <- grep("_prot[12]$", colnames(baseline_edges_hela_annotated), value = TRUE)
+message("  Found ", length(org_cols_final), " organelle annotation columns")
+message("  Sample: ", paste(head(org_cols_final, 5), collapse = ", "))
+
+# Check for any remaining .x or .y suffixes
+problematic_cols <- grep("_prot[12]\\.(x|y)$", colnames(baseline_edges_hela_annotated), value = TRUE)
+if (length(problematic_cols) > 0) {
+  message("ERROR: Still found ", length(problematic_cols), " columns with .x/.y suffixes!")
+  message("These will cause issues. Sample: ", paste(head(problematic_cols, 5), collapse = ", "))
+}
+
+# Function to determine same organelle
+.same_organelle_hela <- function(df, organelle_tags) {
+  existing_org1_cols <- paste0(organelle_tags, "_prot1")
+  existing_org2_cols <- paste0(organelle_tags, "_prot2")
+  
+  # Only use columns that actually exist
+  existing_org1_cols <- intersect(existing_org1_cols, colnames(df))
+  existing_org2_cols <- intersect(existing_org2_cols, colnames(df))
+  
+  if (length(existing_org1_cols) == 0 || length(existing_org2_cols) == 0) {
+    return(rep("cross", nrow(df)))
+  }
+  
+  prot1_mat <- as.data.frame(df[existing_org1_cols])
+  prot2_mat <- as.data.frame(df[existing_org2_cols])
+  
+  prot1_mat[] <- lapply(prot1_mat, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+  prot2_mat[] <- lapply(prot2_mat, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+  
+  shared <- prot1_mat & prot2_mat
+  ifelse(rowSums(shared) > 0, "same", "cross")
+}
+
+# Extract clean organelle tag names (without _prot1/_prot2 suffix)
+org1_cols_clean <- grep("_prot1$", colnames(baseline_edges_hela_annotated), value = TRUE)
+organelle_tags_clean <- sub("_prot1$", "", org1_cols_clean)
+
+message("Clean organelle tags: ", length(organelle_tags_clean))
+
+# Create shared organelle mapping
+org1_cols <- paste0(organelle_tags_clean, "_prot1")
+org2_cols <- paste0(organelle_tags_clean, "_prot2")
+
+# Verify that these columns exist in the annotated dataframe
+existing_org1_cols <- intersect(org1_cols, colnames(baseline_edges_hela_annotated))
+existing_org2_cols <- intersect(org2_cols, colnames(baseline_edges_hela_annotated))
+
+message("Found ", length(existing_org1_cols), " prot1 organelle columns")
+message("Found ", length(existing_org2_cols), " prot2 organelle columns")
+
+# Create shared_long_hela for organelle-specific analysis
+shared_long_hela <- {
+  if (length(existing_org1_cols) == 0 || length(existing_org2_cols) == 0) {
+    message("No organelle columns found, creating empty shared_long_hela")
+    data.frame(key = character(0), tag = character(0), stringsAsFactors = FALSE)
+  } else {
+    m1 <- baseline_edges_hela_annotated[, existing_org1_cols, drop = FALSE] %>% 
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
+      as.data.frame()
+    m2 <- baseline_edges_hela_annotated[, existing_org2_cols, drop = FALSE] %>% 
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
+      as.data.frame()
+    
+    shared_mat <- as.matrix(m1) & as.matrix(m2)
+    
+    # Get the organelle tags that actually exist
+    existing_tags <- sub("_prot1$", "", existing_org1_cols)
+    
+    bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
+      idx <- which(shared_mat[i, ])
+      if (!length(idx)) return(NULL)
+      data.frame(
+        key = baseline_edges_hela_annotated$key[i], 
+        tag = existing_tags[idx], 
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+}
+
+message("Created shared_long_hela with ", nrow(shared_long_hela), " rows")
+
+# Update edge states with organelle pairing
+hela_edge_states <- hela_edge_states %>%
+  dplyr::mutate(
+    OrgPair = .same_organelle_hela(baseline_edges_hela_annotated[match(key, baseline_edges_hela_annotated$key), ], 
+                                  organelle_tags_clean)
+  )
+
+
+
+# ---------------------------------------------------
+# --- Step 7: Summary by organelle ---
+message("\n=== Computing summary by organelle ===")
+
+hela_summary_by_organelle <- hela_edge_states %>%
+  dplyr::filter(OrgPair == "same") %>%
+  dplyr::left_join(shared_long_hela, by = "key") %>%
+  dplyr::filter(!is.na(tag)) %>%
+  dplyr::group_by(genotype, tag) %>%
+  dplyr::summarise(
+    n_edges = n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    fraction_lost = n_lost / n_edges,
+    .groups = "drop"
+  ) %>%
+  dplyr::filter(n_edges >= 10)  # Minimum edge count
+
+# Save organelle summary
+write_csv(hela_summary_by_organelle, file.path(out_dir_hela_ppi, "tables", "hela_summary_by_organelle.csv"))
+
+
+
+# ---------------------------------------------------
+# --- Step 8: Visualization functions ---
+message("\n=== Creating visualization functions ===")
+
+plot_hela_ppi_vulnerability <- function(df_edges,
+                                        df_states,
+                                        out_dir,
+                                        plot_set = c("global_bar", "global_corr", "organelle"),
+                                        disease_class_df = NULL,
+                                        save = TRUE) {
+  
+  # Disease class palette
+  disease_class_palette <- if (exists("disease_class_palette")) {
+    get("disease_class_palette", inherits = TRUE)
+  } else {
+    c(
+      Sphigolipidoses="#D53E4F",
+      Mucopolysaccharidoses="#F46D43",
+      Glycoproteinoses="#FDAE61",
+      Neuronal.ceroid.lipofucinoses="#FEE08B",
+      Integral.membrane.protein.disorders="#E6F598",
+      PTM.defects="#ABDDA4",
+      Lipid.storage.diseases="#66C2A5"
+    )
+  }
+  
+  # ----- GLOBAL STACKED BARS -----
+  if ("global_bar" %in% plot_set) {
+    hela_ppi_global <- df_states %>%
+      dplyr::mutate(state = factor(state, levels = c("retained", "lost", "unknown")))
+    
+    if (!is.null(disease_class_df)) {
+      # Fix the many-to-many relationship issue
+      disease_class_clean <- disease_class_df %>% 
+        dplyr::distinct(sample, .keep_all = TRUE) %>%
+        dplyr::rename(genotype = sample)
+      
+      hela_ppi_global <- hela_ppi_global %>%
+        dplyr::left_join(disease_class_clean, by = "genotype", relationship = "many-to-one")
+    }
+    
+    hela_ppi_global_sum <- hela_ppi_global %>%
+      dplyr::group_by(genotype, state) %>%
+      dplyr::summarise(n = dplyr::n(), .groups = "drop_last") %>%
+      dplyr::group_by(genotype) %>%
+      dplyr::mutate(frac = n / sum(n)) %>%
+      dplyr::ungroup()
+    
+    bar_ppi_global <- ggplot(hela_ppi_global_sum, aes(x = reorder(genotype, -n), y = n, fill = state)) +
+      geom_col(color = "black", linewidth = 0.2) +
+      scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
+      labs(x = NULL, y = "Edges", title = "Edge outcomes per KO (HeLa)") +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+      )
+    
+    if (save) {
+      ggsave(file.path(out_dir, "plots/global", "bars_edge_outcomes_hela.pdf"), 
+             bar_ppi_global, width = 8, height = 5, device = cairo_pdf)
+    }
+  }
+  
+  # ----- GLOBAL KO×KO CORRELATION HEATMAP -----
+  if ("global_corr" %in% plot_set) {
+    lost_df <- df_states %>%
+      dplyr::transmute(genotype, key, lost = as.integer(state == "lost"))
+    
+    if (nrow(lost_df) == 0) return(invisible(NULL))
+    
+    # **FIX: Add deduplication before pivot_wider**
+    message("Checking for duplicates in lost_df...")
+    dup_check <- lost_df %>% 
+      dplyr::count(genotype, key) %>% 
+      dplyr::filter(n > 1)
+    
+    if (nrow(dup_check) > 0) {
+      message("WARNING: Found ", nrow(dup_check), " duplicate genotype-key pairs")
+      message("Taking mean of duplicates...")
+      lost_df <- lost_df %>%
+        dplyr::group_by(genotype, key) %>%
+        dplyr::summarise(lost = mean(lost, na.rm = TRUE), .groups = "drop")
+    }
+    
+    # **FIX: Use named list for values_fill**
+    lost_wide <- tidyr::pivot_wider(
+      lost_df, 
+      names_from = key, 
+      values_from = lost, 
+      values_fill = list(lost = 0)  # Named list instead of scalar
+    )
+    
+    lost_mat <- as.data.frame(lost_wide)
+    rownames(lost_mat) <- lost_mat$genotype
+    lost_mat$genotype <- NULL
+    
+    if (nrow(lost_mat) < 2 || ncol(lost_mat) < 2) return(invisible(NULL))
+    
+    rho <- suppressWarnings(stats::cor(t(as.matrix(lost_mat)),
+                                      method = "spearman", use = "pairwise.complete.obs"))
+    
+    # Annotations
+    annotation_df <- data.frame(genotype = rownames(rho), stringsAsFactors = FALSE)
+    if (!is.null(disease_class_df)) {
+      # Add deduplication for disease_class_df
+      disease_class_clean <- disease_class_df %>% 
+        dplyr::distinct(sample, .keep_all = TRUE) %>%
+        dplyr::rename(genotype = sample)
+      
+      annotation_df <- annotation_df %>%
+        dplyr::left_join(disease_class_clean, by = "genotype")
+    }
+    rownames(annotation_df) <- annotation_df$genotype
+    annotation_df$genotype <- NULL
+    
+    ann_colors <- NULL
+    if ("DiseaseClass" %in% colnames(annotation_df)) {
+      present <- unique(stats::na.omit(annotation_df$DiseaseClass))
+      present <- intersect(names(disease_class_palette), present)
+      if (length(present) > 0) ann_colors <- list(DiseaseClass = disease_class_palette[present])
+    }
+    
+    pheatmap::pheatmap(
+      mat = rho,
+      scale = "none",
+      color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
+      breaks = seq(-1, 1, length.out = 102),
+      na_col = "grey90",
+      clustering_distance_rows = as.dist(1 - rho),
+      clustering_distance_cols = as.dist(1 - rho),
+      clustering_method = "ward.D2",
+      show_rownames = TRUE,
+      show_colnames = TRUE,
+      use_raster = FALSE,
+      annotation_col = annotation_df,
+      annotation_row = annotation_df,
+      annotation_colors = ann_colors,
+      angle_col = "90",
+      main = "KO × KO similarity of lost PPIs (HeLa)",
+      fontsize = 6,
+      border_color = NA,
+      cellheight = 6,
+      cellwidth = 6,
+      filename = file.path(out_dir, "plots/global", "heatmap_lost_corr_hela.pdf"), 
+      width = 10, height = 8
+    )
+  }
+  
+  # ----- PER-KO ORGANELLE HEATMAPS -----
+  if ("organelle" %in% plot_set) {
+    org1_cols <- grep("_prot1$", names(df_edges), value = TRUE)
+    org2_cols <- grep("_prot2$", names(df_edges), value = TRUE)
+    
+    if (length(org1_cols) == 0 || length(org2_cols) == 0) {
+      message("No organelle flags found; skipping organelle heatmaps.")
+    } else {
+      organelle_flags <- sub("_prot1$", "", org1_cols)
+      
+      # Per-edge organelle membership
+      edges_org_flags <- df_edges %>%
+        dplyr::select(key, dplyr::all_of(org1_cols), dplyr::all_of(org2_cols))
+      
+      m1 <- as.data.frame(edges_org_flags[, org1_cols, drop = FALSE])
+      m2 <- as.data.frame(edges_org_flags[, org2_cols, drop = FALSE])
+      m1[] <- lapply(m1, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+      m2[] <- lapply(m2, function(x) ifelse(is.na(x), FALSE, as.logical(x)))
+      shared_mat <- as.matrix(m1) & as.matrix(m2)
+      
+      shared_long <- lapply(seq_len(nrow(shared_mat)), function(i) {
+        idx <- which(shared_mat[i, ])
+        if (length(idx) == 0) return(NULL)
+        data.frame(key = edges_org_flags$key[i],
+                  organelle = organelle_flags[idx],
+                  stringsAsFactors = FALSE)
+      })
+      shared_long <- dplyr::bind_rows(shared_long)
+      
+      # Skip organelle analysis if no shared organelles found
+      if (is.null(shared_long) || nrow(shared_long) == 0) {
+        message("No shared organelles found; skipping organelle heatmap.")
+        return(invisible(NULL))
+      }
+      
+      # Deduplicate shared_long
+      shared_long <- shared_long %>% dplyr::distinct(key, organelle)
+      
+      # Fraction lost per KO × organelle
+      frac_by_ko_org <- df_states %>%
+        dplyr::select(key, genotype, state) %>%
+        dplyr::inner_join(shared_long, by = "key", relationship = "many-to-many") %>%
+        dplyr::group_by(genotype, organelle) %>%
+        dplyr::summarise(
+          n_tot = dplyr::n(),
+          n_lost = sum(state == "lost", na.rm = TRUE),
+          fraction_lost = ifelse(n_tot > 0, n_lost / n_tot, NA_real_),
+          .groups = "drop"
+        ) %>%
+        dplyr::filter(n_tot >= 5)  # Minimum edge count
+      
+      if (nrow(frac_by_ko_org) > 0) {
+        # **COMPLETE ALTERNATIVE: Build matrix manually without pivot_wider**
+        frac_by_ko_org_clean <- frac_by_ko_org %>%
+          dplyr::ungroup() %>%
+          dplyr::mutate(
+            genotype = as.character(genotype),
+            organelle = as.character(organelle),
+            fraction_lost = as.numeric(fraction_lost)
+          ) %>%
+          dplyr::group_by(genotype, organelle) %>%
+          dplyr::summarise(
+            fraction_lost = mean(fraction_lost, na.rm = TRUE),
+            .groups = "drop"
+          ) %>%
+          dplyr::filter(!is.na(fraction_lost))
+        
+        message("Rows after cleaning: ", nrow(frac_by_ko_org_clean))
+        
+        # Build matrix manually
+        all_genotypes <- unique(frac_by_ko_org_clean$genotype)
+        all_organelles <- unique(frac_by_ko_org_clean$organelle)
+        
+        # Initialize matrix with zeros
+        hm_mat <- matrix(0, 
+                         nrow = length(all_genotypes), 
+                         ncol = length(all_organelles),
+                         dimnames = list(all_genotypes, all_organelles))
+        
+        # Fill matrix
+        for (i in seq_len(nrow(frac_by_ko_org_clean))) {
+          row_idx <- frac_by_ko_org_clean$genotype[i]
+          col_idx <- frac_by_ko_org_clean$organelle[i]
+          hm_mat[row_idx, col_idx] <- frac_by_ko_org_clean$fraction_lost[i]
+        }
+        
+        # Only create heatmap if we have enough data
+        if (nrow(hm_mat) >= 2 && ncol(hm_mat) >= 2) {
+          pheatmap::pheatmap(
+            mat = hm_mat,
+            scale = "none",
+            color = colorRampPalette(c("white", "#C51B7D"))(100),
+            breaks = seq(0, 1, length.out = 101),
+            na_col = "grey90",
+            cluster_rows = TRUE,
+            cluster_cols = TRUE,
+            show_rownames = TRUE,
+            show_colnames = TRUE,
+            use_raster = FALSE,
+            angle_col = "90",
+            main = "Fraction lost by organelle (HeLa)",
+            fontsize = 6,
+            cellwidth = 8,
+            cellheight = 8,
+            border_color = NA,
+            filename = file.path(out_dir, "plots/global", "heatmap_organelle_fraction_lost_hela.pdf"), 
+            width = 12, height = 10
+          )
+        } else {
+          message("Insufficient dimensions for heatmap (need >= 2 rows and cols); skipping.")
+        }
+      } else {
+        message("No organelle data with sufficient edges found; skipping organelle heatmap.")
+      }
+    }
+  }
+}
+
+
+# ---------------------------------------------------
+# --- Step 9: Run visualizations ---
+message("\n=== Creating visualizations ===")
+
+plot_hela_ppi_vulnerability(
+  df_edges = baseline_edges_hela_annotated,
+  df_states = hela_edge_states,
+  out_dir = out_dir_hela_ppi,
+  plot_set = c("global_bar", "global_corr", "organelle"),
+  disease_class_df = disease_classes_dataframe
+)
+
+
+## test single function for trial and error 
+# # Test with just the bar plot to isolate the issue
+# plot_hela_ppi_vulnerability(
+#   df_edges = baseline_edges_hela_annotated,
+#   df_states = hela_edge_states,
+#   out_dir = out_dir_hela_ppi,
+#   plot_set = c("global_bar"),  # Only bar plot
+#   disease_class_df = disease_classes_dataframe
+# )
+
+
+
+# ---------------------------------------------------
+# --- Step 10: Trimer Analysis for HeLa ---
+message("\n=== Trimer analysis for HeLa ===")
+
+if (exists("trimers_baseline")) {
+  # Convert HeLa edge states to gene-based keys
+  hela_edge_genes <- hela_edge_states %>%
+    dplyr::select(key, Gene1, Gene2, genotype, state) %>%
+    dplyr::mutate(key_gene = .make_undirected_key(Gene1, Gene2))
+  
+  # Assess trimer states
+  assess_hela_trimers <- function(baseline_trimers, edge_states) {
+    trimers_with_keys <- baseline_trimers %>%
+      dplyr::mutate(
+        key_AB = .make_undirected_key(GeneA, GeneB),
+        key_BC = .make_undirected_key(GeneB, GeneC),
+        key_AC = .make_undirected_key(GeneA, GeneC)
+      )
+    
+    # Expand to all KOs
+    ko_combos <- edge_states %>% dplyr::distinct(genotype)
+    trimers_expanded <- trimers_with_keys %>% tidyr::crossing(ko_combos)
+    
+    # Join edge states
+    trimers_states <- trimers_expanded %>%
+      dplyr::left_join(
+        edge_states %>% dplyr::select(key_gene, genotype, state),
+        by = c("key_AB" = "key_gene", "genotype")
+      ) %>%
+      dplyr::rename(state_AB = state) %>%
+      dplyr::left_join(
+        edge_states %>% dplyr::select(key_gene, genotype, state),
+        by = c("key_BC" = "key_gene", "genotype")
+      ) %>%
+      dplyr::rename(state_BC = state) %>%
+      dplyr::left_join(
+        edge_states %>% dplyr::select(key_gene, genotype, state),
+        by = c("key_AC" = "key_gene", "genotype")
+      ) %>%
+      dplyr::rename(state_AC = state) %>%
+      dplyr::mutate(
+        state_AB = tidyr::replace_na(state_AB, "retained"),
+        state_BC = tidyr::replace_na(state_BC, "retained"),
+        state_AC = tidyr::replace_na(state_AC, "retained"),
+        n_lost = (state_AB == "lost") + (state_BC == "lost") + (state_AC == "lost"),
+        trimer_state = dplyr::case_when(
+          n_lost >= 2 ~ "broken",
+          n_lost == 1 ~ "partial",
+          n_lost == 0 ~ "intact",
+          TRUE ~ "unknown"
+        )
+      )
+    
+    return(trimers_states)
+  }
+  
+  hela_trimer_states <- assess_hela_trimers(
+    baseline_trimers = trimers_baseline,
+    edge_states = hela_edge_genes
+  )
+  
+  # Save trimer states
+  write_csv(hela_trimer_states, file.path(out_dir_hela_ppi, "tables/multimer", "hela_trimer_states.csv"))
+  
+  # Summary
+  hela_trimer_summary <- hela_trimer_states %>%
+    dplyr::group_by(genotype) %>%
+    dplyr::summarise(
+      n_total = n(),
+      n_intact = sum(trimer_state == "intact", na.rm = TRUE),
+      n_broken = sum(trimer_state == "broken", na.rm = TRUE),
+      n_partial = sum(trimer_state == "partial", na.rm = TRUE),
+      frac_broken = n_broken / n_total,
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(desc(frac_broken))
+  
+  # Save trimer summary
+  write_csv(hela_trimer_summary, file.path(out_dir_hela_ppi, "tables/multimer", "hela_trimer_summary.csv"))
+  
+  message("Trimer breakage summary (top 10):")
+  print(head(hela_trimer_summary, 10))
+  
+  # Barplot - broken trimers per KO
+  p_trimer_bar <- ggplot(hela_trimer_summary, 
+                        aes(x = reorder(genotype, -n_broken), y = n_broken)) +
+    geom_col(fill = "#C51B7D", color = "black", linewidth = 0.2) +
+    geom_text(aes(label = n_broken), vjust = -0.5, size = 2) +
+    labs(
+      title = "Broken trimers per KO (HeLa)",
+      x = NULL,
+      y = "Number of broken trimers"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    )
+  
+  ggsave(file.path(out_dir_hela_ppi, "plots/multimer", "bars_broken_trimers_hela.pdf"), p_trimer_bar, width = 8, height = 5, device = cairo_pdf)
+  
+  # Affected trimers by organelle
+  trimer_affected_org <- hela_trimer_states %>%
+    dplyr::filter(trimer_state %in% c("broken", "partial")) %>%
+    dplyr::left_join(shared_long_hela, by = c("key_AB" = "key")) %>%
+    dplyr::rename(tag_AB = tag) %>%
+    dplyr::left_join(shared_long_hela, by = c("key_BC" = "key")) %>%
+    dplyr::rename(tag_BC = tag) %>%
+    dplyr::left_join(shared_long_hela, by = c("key_AC" = "key")) %>%
+    dplyr::rename(tag_AC = tag) %>%
+    tidyr::pivot_longer(
+      cols = c(tag_AB, tag_BC, tag_AC),
+      names_to = "edge_type",
+      values_to = "tag"
+    ) %>%
+    dplyr::filter(!is.na(tag)) %>%
+    dplyr::distinct(genotype, trimer_id, tag, trimer_state) %>%
+    dplyr::group_by(genotype, tag) %>%
+    dplyr::summarise(
+      n_affected = n(),
+      n_broken = sum(trimer_state == "broken"),
+      n_partial = sum(trimer_state == "partial"),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(desc(n_affected))
+  
+  # Save organelle-specific trimer results
+  write_csv(trimer_affected_org, file.path(out_dir_hela_ppi, "tables/multimer", "hela_trimers_by_organelle.csv"))
+}
+
+
+
+# ---------------------------------------------------
+# --- Step 11: Complex Analysis for HeLa ---
+message("\n=== Complex analysis for HeLa ===")
+
+if (exists("complexes_summary") && exists("complex_edges_df")) {
+  
+  # Expand complexes to all KOs
+  ko_combos <- hela_edge_genes %>% dplyr::distinct(genotype)
+  
+  complexes_expanded_hela <- complex_edges_df %>%
+    dplyr::select(complex_id, community_id, key_gene) %>%
+    tidyr::crossing(ko_combos)
+  
+  # Join edge states
+  complexes_hela_states <- complexes_expanded_hela %>%
+    dplyr::left_join(
+      hela_edge_genes %>% dplyr::select(key_gene, genotype, state),
+      by = c("key_gene", "genotype")
+    ) %>%
+    dplyr::mutate(
+      state = tidyr::replace_na(state, "retained"),
+      edge_lost = state == "lost"
+    )
+  
+  # Aggregate per complex × KO
+  complex_hela_summary <- complexes_hela_states %>%
+    dplyr::group_by(complex_id, genotype) %>%
+    dplyr::summarise(
+      n_edges_total = n(),
+      n_edges_lost = sum(edge_lost, na.rm = TRUE),
+      frac_edges_lost = n_edges_lost / n_edges_total,
+      .groups = "drop"
+    ) %>%
+    dplyr::left_join(
+      complexes_summary %>% dplyr::select(complex_id, n_proteins, organelle),
+      by = "complex_id"
+    ) %>%
+    dplyr::mutate(
+      complex_state = dplyr::case_when(
+        frac_edges_lost >= 0.75 ~ "disrupted",
+        frac_edges_lost >= 0.25 ~ "partial",
+        TRUE ~ "intact"
+      )
+    )
+  
+  # Save complex states
+  write_csv(complex_hela_summary, file.path(out_dir_hela_ppi, "tables/multimer", "hela_complex_states.csv"))
+  
+  # Summary statistics
+  complex_disruption_hela <- complex_hela_summary %>%
+    dplyr::group_by(genotype) %>%
+    dplyr::summarise(
+      n_complexes = n(),
+      n_intact = sum(complex_state == "intact"),
+      n_disrupted = sum(complex_state == "disrupted"),
+      n_partial = sum(complex_state == "partial"),
+      frac_disrupted = n_disrupted / n_complexes,
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(desc(frac_disrupted))
+  
+  # Save disruption summary
+  write_csv(complex_disruption_hela, file.path(out_dir_hela_ppi, "tables/multimer", "hela_complex_disruption_summary.csv"))
+  
+  message("Complex disruption summary (top 10):")
+  print(head(complex_disruption_hela, 10))
+  
+  # Barplot - disrupted complexes per KO
+  p_complex_bar <- ggplot(complex_disruption_hela, 
+                         aes(x = reorder(genotype, -n_disrupted), y = n_disrupted)) +
+    geom_col(fill = "#C51B7D", color = "black", linewidth = 0.2) +
+    geom_text(aes(label = n_disrupted), vjust = -0.5, size = 2) +
+    labs(
+      title = "Disrupted complexes per KO (HeLa)",
+      x = NULL,
+      y = "Number of disrupted complexes"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    )
+  
+  ggsave(file.path(out_dir_hela_ppi, "plots/multimer", "bars_disrupted_complexes_hela.pdf"), 
+         p_complex_bar, width = 8, height = 5, device = cairo_pdf)
+  
+  # Per organelle analysis
+  complex_org_hela <- complex_hela_summary %>%
+    dplyr::filter(complex_state == "disrupted", organelle != "Other") %>%
+    dplyr::group_by(genotype, organelle) %>%
+    dplyr::summarise(n_disrupted = n(), .groups = "drop") %>%
+    dplyr::arrange(desc(n_disrupted))
+  
+  # Save organelle-specific complex results
+  write_csv(complex_org_hela, file.path(out_dir_hela_ppi, "tables/multimer", "hela_complexes_by_organelle.csv"))
+  
+  # Heatmap - disrupted complexes by organelle × KO
+  if (nrow(complex_org_hela) > 0) {
+    complex_org_wide <- complex_org_hela %>%
+      tidyr::pivot_wider(
+        names_from = organelle,
+        values_from = n_disrupted,
+        values_fill = 0
+      )
+    
+    if (nrow(complex_org_wide) >= 2 && ncol(complex_org_wide) >= 3) {
+      complex_org_mat <- as.matrix(complex_org_wide[, -1])
+      rownames(complex_org_mat) <- complex_org_wide$genotype
+      
+      pheatmap::pheatmap(
+        complex_org_mat,
+        scale = "none",
+        color = colorRampPalette(c("white", "#C51B7D"))(100),
+        cluster_rows = TRUE,
+        cluster_cols = TRUE,
+        show_rownames = TRUE,
+        show_colnames = TRUE,
+        border_color = NA,
+        fontsize = 6,
+        cellwidth = 10,
+        cellheight = 10,
+        main = "Disrupted complexes by organelle (HeLa)",
+        filename = file.path(out_dir_hela_ppi, "plots/multimer", "heatmap_disrupted_complexes_by_organelle_hela.pdf"),
+        width = 12, height = 10
+      )
+    }
+  }
+}
+
+
+
+# ---------------------------------------------------
+# --- Step 12: Organelle-specific stacked bars ---
+message("\n=== Creating organelle-specific stacked bars ===")
+
+# Plot organelle stacked bars for HeLa
+plot_hela_organelle_bars <- function(df_states, shared_long, annotation_classes, 
+                                    annotation_colors, out_dir) {
+  
+  if (is.null(shared_long) || nrow(shared_long) == 0) {
+    message("No shared organelle tags found; skipping organelle stacked bars.")
+    return(invisible(NULL))
+  }
+  
+  # Tag -> class map
+  tag_map <- lapply(names(annotation_classes), function(cls) {
+    tags <- annotation_classes[[cls]]
+    data.frame(tag = tags, class = cls, stringsAsFactors = FALSE)
+  }) %>% dplyr::bind_rows()
+  
+  # Map tags -> classes and summarize per genotype/class
+  shared_class <- shared_long %>%
+    dplyr::inner_join(tag_map, by = "tag") %>%
+    dplyr::distinct(key, class)
+  
+  loss_by_class <- df_states %>%
+    dplyr::filter(OrgPair == "same") %>%
+    dplyr::select(key, genotype, state) %>%
+    dplyr::inner_join(shared_class, by = "key") %>%
+    dplyr::group_by(genotype, class) %>%
+    dplyr::summarise(
+      n_tot = dplyr::n(),
+      n_lost = sum(state == "lost", na.rm = TRUE),
+      frac_lost = ifelse(n_tot > 0, n_lost / n_tot, NA_real_),
+      .groups = "drop"
+    )
+  
+  # Restrict palette to present classes
+  present_classes <- unique(loss_by_class$class)
+  class_cols <- annotation_colors[names(annotation_colors) %in% present_classes]
+  class_cols <- class_cols[present_classes]
+  
+  # Plot counts: stacked by organelle class
+  p_counts <- ggplot(loss_by_class, aes(x = reorder(genotype, -n_lost), y = n_lost, fill = class)) +
+    geom_col(width = 0.7, position = "stack", color = "black", linewidth = 0.2) +
+    scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
+    labs(x = NULL, y = "Lost PPIs (count)", title = "Lost PPIs by organelle (HeLa)") +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    )
+  
+  ggsave(file.path(out_dir, "plots/global", "bars_organelle_lost_counts_hela.pdf"), p_counts, width = 8, height = 5, device = cairo_pdf)
+  
+  # Plot fractions: composition across organelle classes per genotype
+  p_frac <- ggplot(loss_by_class, aes(x = reorder(genotype, -n_lost), y = n_lost, fill = class)) +
+    geom_col(width = 0.7, position = "fill", color = "black", linewidth = 0.2) +
+    scale_y_continuous(labels = scales::percent) +
+    scale_fill_manual(values = class_cols, drop = FALSE, name = "Organelle") +
+    labs(x = NULL, y = "Fraction of lost PPIs", title = "Composition of lost PPIs by organelle (HeLa)") +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    )
+  
+  ggsave(file.path(out_dir, "plots/global", "bars_organelle_lost_fraction_hela.pdf"), p_frac, width = 8, height = 5, device = cairo_pdf)
+}
+
+# Call organelle plotting function if annotation classes are available
+if (exists("annotation_classes_corrgeno") && exists("annotation_class_colors_corrgeno")) {
+  plot_hela_organelle_bars(
+    df_states = hela_edge_states,
+    shared_long = shared_long_hela,
+    annotation_classes = annotation_classes_corrgeno,
+    annotation_colors = annotation_class_colors_corrgeno,
+    out_dir = out_dir_hela_ppi
+  )
+}
+
+
+
+
+# ---------------------------------------------------
+# --- Step 13: Per-KO detailed analysis ---
+message("\n=== Creating per-KO detailed analysis ===")
+
+# Create plots for all most affected KOs
+top_affected_kos <- hela_summary_global %>%
+  dplyr::slice_head(n = 34) %>%
+  dplyr::pull(genotype)
+
+for (ko in top_affected_kos) {
+  message("Processing detailed analysis for ", ko)
+  
+  # KO-specific edge states
+  ko_edges <- hela_edge_states %>%
+    dplyr::filter(genotype == ko)
+  
+  # By organelle breakdown
+  ko_by_organelle <- ko_edges %>%
+    dplyr::filter(OrgPair == "same") %>%
+    dplyr::left_join(shared_long_hela, by = "key") %>%
+    dplyr::filter(!is.na(tag)) %>%
+    dplyr::group_by(tag, state) %>%
+    dplyr::summarise(n = n(), .groups = "drop") %>%
+    dplyr::filter(state %in% c("lost", "retained"))
+  
+  if (nrow(ko_by_organelle) > 0) {
+    # Stacked bar for this KO
+    p_ko_organelle <- ggplot(ko_by_organelle, aes(x = reorder(tag, -n), y = n, fill = state)) +
+      geom_col(position = "stack", color = "black", linewidth = 0.2) +
+      scale_fill_manual(values = c(retained = "grey70", lost = "#C51B7D"), name = "State") +
+      labs(
+        title = paste("PPI state per organelle –", ko),
+        x = NULL,
+        y = "Number of PPIs"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top"
+      )
+    
+    ggsave(file.path(out_dir_hela_ppi, "plots/by_ko", paste0(ko, "_bars_organelle_state.pdf")), p_ko_organelle, width = 6, height = 5, device = cairo_pdf)
+  }
+}
+
+
+
+# ---------------------------------------------------
+# --- Step 14: QC plots for PPI confidence by organelle ---
+message("\n=== Creating QC plots for PPI confidence by organelle ===")
+
+# QC plots similar to neuronal analysis
+ppi_qc_hela <- baseline_edges_hela_annotated %>%
+  dplyr::select(key, RFprob, AFprob, AFMprob, Predictome_conf) %>%
+  dplyr::left_join(shared_long_hela, by = "key") %>%
+  dplyr::filter(!is.na(tag))
+
+message("PPI QC data prepared: ", nrow(ppi_qc_hela), " rows")
+
+# Generate organelle colors
+n_tags_hela <- length(unique(ppi_qc_hela$tag))
+organelle_colors_hela <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(n_tags_hela)
+names(organelle_colors_hela) <- sort(unique(ppi_qc_hela$tag))
+
+# Plotting function for confidence distributions
+plot_hela_confidence_distribution <- function(df, score_col, out_dir, org_colors) {
+  
+  df_plot <- df %>% dplyr::filter(!is.na(!!sym(score_col)))
+  
+  if (nrow(df_plot) == 0) {
+    message("No data for ", score_col, "; skipping.")
+    return(invisible(NULL))
+  }
+  
+  # Density plot by organelle
+  p_density <- ggplot(df_plot, aes(x = !!sym(score_col), fill = tag)) +
+    geom_density(alpha = 0.6) +
+    scale_fill_manual(values = org_colors, name = "Organelle") +
+    labs(
+      title = paste(score_col, "distribution by organelle (HeLa)"),
+      x = score_col,
+      y = "Density"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "right",
+      legend.key.size = unit(0.3, "cm")
+    )
+  
+  ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle_hela.pdf")), p_density, width = 8, height = 4, device = cairo_pdf)
+  
+  # Box plot by organelle
+  p_box <- ggplot(df_plot, aes(x = reorder(tag, !!sym(score_col), median), 
+                               y = !!sym(score_col), fill = tag)) +
+    geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.5) +
+    scale_fill_manual(values = org_colors, guide = "none") +
+    labs(
+      title = paste(score_col, "by organelle (HeLa, ordered by median)"),
+      x = NULL,
+      y = score_col
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  
+  ggsave(file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle_hela.pdf")), p_box, width = 8, height = 4.5, device = cairo_pdf)
+}
+
+# Apply to all prediction scores
+for (score in c("RFprob", "AFprob", "AFMprob", "Predictome_conf")) {
+  plot_hela_confidence_distribution(
+    ppi_qc_hela, 
+    score, 
+    file.path(out_dir_hela_ppi, "plots/qc"),
+    organelle_colors_hela
+  )
+}
+
+# ---------------------------------------------------
+# --- Bubble plot for AFMprob vs Predictome_conf by organelle ---
+message("\n=== Creating bubble plot: AFMprob vs Predictome_conf by organelle ===")
+
+if (nrow(ppi_qc_hela) > 0) {
+  # Aggregate by organelle tag
+  qc_tag_summary_hela <- ppi_qc_hela %>%
+    dplyr::group_by(tag) %>%
+    dplyr::summarise(
+      AFMprob_mean = mean(AFMprob, na.rm = TRUE),
+      Predictome_conf_mean = mean(Predictome_conf, na.rm = TRUE),
+      AFprob_mean = mean(AFprob, na.rm = TRUE),
+      RFprob_mean = mean(RFprob, na.rm = TRUE),
+      n_edges = dplyr::n(),
+      .groups = "drop"
+    ) %>%
+    dplyr::filter(!is.na(AFMprob_mean), !is.na(Predictome_conf_mean))
+  
+  if (nrow(qc_tag_summary_hela) > 0) {
+    # Bubble plot: AFMprob vs Predictome_conf
+    p_qc_bubble_hela <- ggplot(qc_tag_summary_hela,
+      aes(x = Predictome_conf_mean, y = AFMprob_mean, size = n_edges, fill = tag)) +
+      geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.15) +
+      ggrepel::geom_text_repel(
+        aes(label = tag),
+        size = 2.3,
+        max.overlaps = 50,
+        seed = 42,
+        color = "black"
+      ) +
+      scale_fill_manual(values = organelle_colors_hela, drop = FALSE, name = "Organelle") +
+      scale_size_continuous(range = c(2, 8), name = "Edge count") +
+      geom_smooth(method = "lm", se = FALSE, color = "grey50", linetype = "dashed", linewidth = 0.3) +
+      labs(
+        title = "PPI confidence relationship by organelle (HeLa)",
+        x = "Mean Predictome confidence",
+        y = "Mean AFM probability"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.key.size = unit(0.3, "cm")
+      )
+    
+    ggsave(file.path(out_dir_hela_ppi, "plots/qc", "bubble_AFMprob_vs_PredictomeConf_byOrganelle_hela.pdf"), p_qc_bubble_hela, width = 7, height = 5, device = cairo_pdf)
+    
+    # Alternative bubble plot: AFprob vs Predictome_conf
+    p_qc_bubble_af_hela <- ggplot(qc_tag_summary_hela,
+      aes(x = Predictome_conf_mean, y = AFprob_mean, size = n_edges, fill = tag)) +
+      geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.15) +
+      ggrepel::geom_text_repel(
+        aes(label = tag),
+        size = 2.3,
+        max.overlaps = 50,
+        seed = 42,
+        color = "black"
+      ) +
+      scale_fill_manual(values = organelle_colors_hela, drop = FALSE, name = "Organelle") +
+      scale_size_continuous(range = c(2, 8), name = "Edge count") +
+      geom_smooth(method = "lm", se = FALSE, color = "grey50", linetype = "dashed", linewidth = 0.3) +
+      labs(
+        title = "PPI confidence relationship by organelle (HeLa)",
+        x = "Mean Predictome confidence",
+        y = "Mean AF probability"
+      ) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.key.size = unit(0.3, "cm")
+      )
+    
+    ggsave(file.path(out_dir_hela_ppi, "plots/qc", "bubble_AFprob_vs_PredictomeConf_byOrganelle_hela.pdf"), p_qc_bubble_af_hela, width = 7, height = 5, device = cairo_pdf)
+    
+    # Save summary statistics
+    write_csv(qc_tag_summary_hela, file.path(out_dir_hela_ppi, "tables", "qc_confidence_by_organelle_summary.csv"))
+    
+    message("Created bubble plots for PPI confidence by organelle")
+  } else {
+    message("No valid data for bubble plot after filtering NAs")
+  }
+} else {
+  message("No PPI QC data available; skipping bubble plot")
+}
+
+
+
+# ---------------------------------------------------
+# --- Step 15: Final summary and reports ---
+message("\n=== Creating final summary ===")
+
+# Create comprehensive summary report
+summary_report <- list(
+  total_stable_proteins = length(stable_hela_proteins),
+  total_baseline_edges = nrow(baseline_edges_hela),
+  total_kos_analyzed = length(ko_list),
+  most_affected_ko = hela_summary_global$genotype[1],
+  max_ppis_lost = hela_summary_global$n_lost[1],
+  max_fraction_lost = hela_summary_global$fraction_lost[1]
+)
+
+if (exists("hela_trimer_summary")) {
+  summary_report$most_trimer_affected_ko <- hela_trimer_summary$genotype[1]
+  summary_report$max_trimers_broken <- hela_trimer_summary$n_broken[1]
+}
+
+if (exists("complex_disruption_hela")) {
+  summary_report$most_complex_affected_ko <- complex_disruption_hela$genotype[1]
+  summary_report$max_complexes_disrupted <- complex_disruption_hela$n_disrupted[1]
+}
+
+# Save summary report
+jsonlite::write_json(summary_report, 
+                    file.path(out_dir_hela_ppi, "tables", "summary_report.json"), 
+                    pretty = TRUE)
+
+# Print final summary
+message("\n=== HeLa PPI Analysis Complete ===")
+message("Results saved to: ", out_dir_hela_ppi)
+message("Key findings:")
+message("  - Stable proteins for baseline: ", summary_report$total_stable_proteins)
+message("  - Baseline PPI edges: ", summary_report$total_baseline_edges)
+message("  - KOs analyzed: ", summary_report$total_kos_analyzed)
+message("  - Most affected KO: ", summary_report$most_affected_ko, 
+        " (", summary_report$max_ppis_lost, " PPIs lost)")
+message("  - Maximum fraction lost: ", round(summary_report$max_fraction_lost * 100, 1), "%")
+
+if (exists("hela_trimer_summary")) {
+  message("  - Most trimer-affected KO: ", summary_report$most_trimer_affected_ko, 
+          " (", summary_report$max_trimers_broken, " trimers broken)")
+}
+
+if (exists("complex_disruption_hela")) {
+  message("  - Most complex-affected KO: ", summary_report$most_complex_affected_ko, 
+          " (", summary_report$max_complexes_disrupted, " complexes disrupted)")
+}
+
+message("\nOutput structure:")
+message("  - plots/global/: Cross-KO comparison plots")
+message("  - plots/by_ko/: Individual KO detailed plots") 
+message("  - plots/multimer/: Trimer and complex analysis plots")
+message("  - plots/qc/: Quality control and baseline validation plots")
+message("  - tables/: All summary statistics and detailed results")
+message("  - tables/multimer/: Trimer and complex analysis results")
+```
+
+
+
+
+# XX. PPI vulnerbaility matches between HeLa <=> Neuron
+```{r}
+# =========================================================================
+# PPI Vulnerability Comparison Across Cell Types (HeLa, iN, iDA)
+# Analyze dimers, trimers, and complexes across all three cell types
+# =========================================================================
+
+# --- Step 0: Setup ---
+#remotes::install_github("davidsjoberg/ggstream")
+library(ggstream)
+#library(pheatmap)
+#library(RColorBrewer)
+
+out_dir_ppi_comp <- file.path(out_dir_PPI, "PPIcomp")
+dir.create(file.path(out_dir_ppi_comp, "plots/dimers"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_comp, "plots/trimers"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_comp, "plots/complexes"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_comp, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+# Color palettes
+streamgraph_palette <- c(iN = "grey60", iDA = "grey80", HeLa = "dodgerblue4")
+organelle_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(50)
+
+
+# --- Step 1: Load and harmonize PPI data from all cell types ---
+message("\n=== Loading PPI data from all cell types ===")
+
+# Load iN/iDA edge states (from neuronal analysis)
+neuronal_edge_states <- ko_edge_states %>%
+  dplyr::select(key, Gene1, Gene2, genotype, neuron, state, OrgPair) %>%
+  dplyr::mutate(cell_type = neuron) %>%
+  dplyr::select(-neuron)
+
+# Load HeLa edge states
+hela_edge_states_comp <- hela_edge_states %>%
+  dplyr::select(key, Gene1, Gene2, genotype, state, OrgPair) %>%
+  dplyr::mutate(cell_type = "HeLa")
+
+# Combine all edge states
+all_edge_states <- dplyr::bind_rows(neuronal_edge_states, hela_edge_states_comp) %>%
+  dplyr::filter(!is.na(cell_type), !is.na(genotype))
+
+# save combined edge state df
+write_csv(all_edge_states, file.path(out_dir_ppi_comp, "tables", "iN_iDA_Hela_combined_edges.csv"))
+
+message("Combined edge states: ", nrow(all_edge_states), " rows")
+message("Cell types: ", paste(unique(all_edge_states$cell_type), collapse = ", "))
+message("Genotypes: ", paste(unique(all_edge_states$genotype), collapse = ", "))
+
+# Find common genotypes across all cell types
+common_genotypes <- all_edge_states %>%
+  dplyr::distinct(genotype, cell_type) %>%
+  dplyr::count(genotype) %>%
+  dplyr::filter(n == 3) %>%  # Present in all 3 cell types
+  dplyr::pull(genotype)
+
+message("Common genotypes across all cell types: ", length(common_genotypes))
+message("Genotypes: ", paste(common_genotypes, collapse = ", "))
+
+
+
+# --- Step 2: Global PPI loss comparison ---
+message("\n=== Computing global PPI loss per KO × cell type ===")
+
+global_ppi_loss <- all_edge_states %>%
+  dplyr::group_by(genotype, cell_type) %>%
+  dplyr::summarise(
+    total_edges = n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    n_retained = sum(state == "retained", na.rm = TRUE),
+    frac_lost = n_lost / total_edges,
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    cell_type = factor(cell_type, levels = c("iN", "iDA", "HeLa"))
+  )
+
+# save csv file of lossed PPIs across matched KOs 
+write_csv(global_ppi_loss, file.path(out_dir_ppi_comp, "tables", "global_ppi_loss_all_celltypes.csv"))
+
+message("Global PPI loss summary (top 10 by total lost):")
+global_ppi_loss %>%
+  dplyr::group_by(genotype) %>%
+  dplyr::summarise(total_lost = sum(n_lost), .groups = "drop") %>%
+  dplyr::arrange(desc(total_lost)) %>%
+  head(10) %>%
+  print()
+
+
+
+# --- Step 3: Streamgraph - iN, iDA (above) and HeLa (below) - THREE TYPES ---
+message("\n=== Creating streamgraphs: Lost PPIs for all cell types ===")
+
+# All three cell types
+stream_data_all <- global_ppi_loss %>%
+  dplyr::filter(genotype %in% common_genotypes) %>%
+  dplyr::mutate(
+    cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa"))
+  ) %>%
+  dplyr::arrange(genotype, cell_type)
+
+# Create function for streamgraph with different types
+create_streamgraph <- function(data, stream_type, filename) {
+  p <- ggplot(data, aes(x = genotype, y = n_lost, fill = cell_type)) +
+    geom_stream(type = stream_type, sorting = "inside_out", lwd = 0.25) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    scale_y_continuous(labels = abs) +
+    labs(
+      title = paste0("Lost PPIs per KO across cell types (", stream_type, ")"),
+      subtitle = "Neurons vs HeLa",
+      x = "Genotype",
+      y = "Number of lost PPIs"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", filename), p, width = 5, height = 5, device = cairo_pdf)
+}
+
+# Create all three types
+create_streamgraph(stream_data_all, "ridge", "streamgraph_lost_ppis_per_ko_ridge.pdf")
+create_streamgraph(stream_data_all, "mirror", "streamgraph_lost_ppis_per_ko_mirror.pdf")
+create_streamgraph(stream_data_all, "proportional", "streamgraph_lost_ppis_per_ko_proportional.pdf")
+
+
+
+# --- Step 4: Add organelle annotations ---
+message("\n=== Adding organelle annotations ===")
+
+# Create unified organelle mapping
+all_edge_states_annotated <- all_edge_states %>%
+  dplyr::left_join(
+    dplyr::bind_rows(
+      shared_long %>% dplyr::mutate(source = "neuronal"),
+      shared_long_hela %>% dplyr::mutate(source = "hela")
+    ) %>%
+    dplyr::distinct(key, tag),
+    by = "key"
+  )
+
+
+
+# --- Step 5: PPI loss by organelle per KO × cell type ---
+message("\n=== Computing PPI loss by organelle ===")
+
+ppi_loss_by_organelle <- all_edge_states_annotated %>%
+  dplyr::filter(!is.na(tag), state == "lost") %>%
+  dplyr::group_by(genotype, cell_type, tag) %>%
+  dplyr::summarise(n_lost = n(), .groups = "drop")
+
+# save csv of annotation level mapped lost PPIs
+write_csv(ppi_loss_by_organelle, file.path(out_dir_ppi_comp, "tables", "ppi_loss_by_organelle_all_celltypes.csv"))
+
+
+
+# --- Step 6: Per-KO streamgraphs by organelle - THREE TYPES ---
+message("\n=== Creating per-KO organelle streamgraphs ===")
+
+# Select top affected KOs by total loss
+top_kos <- global_ppi_loss %>%
+  dplyr::group_by(genotype) %>%
+  dplyr::summarise(total_lost = sum(n_lost), .groups = "drop") %>%
+  dplyr::arrange(desc(total_lost)) %>%
+  dplyr::slice_head(n = 23) %>%
+  dplyr::pull(genotype)
+
+# Function to create organelle streamgraph
+create_organelle_streamgraph <- function(ko_data, ko_name, stream_type, filename) {
+  p <- ggplot(ko_data, aes(x = tag, y = n_lost, fill = cell_type)) +
+    geom_stream(type = stream_type, sorting = "inside_out", lwd = 0.25) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    scale_y_continuous(labels = abs) +
+    labs(
+      title = paste0("Lost PPIs by organelle – ", ko_name, " (", stream_type, ")"),
+      subtitle = "Neurons vs HeLa",
+      x = "Organelle",
+      y = "Number of lost PPIs"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", filename), p, width = 8, height = 5, device = cairo_pdf)
+}
+
+for (ko in top_kos) {
+  
+  ko_org_data <- ppi_loss_by_organelle %>%
+    dplyr::filter(genotype == ko) %>%
+    dplyr::mutate(
+      cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa"))
+    ) %>%
+    dplyr::group_by(tag) %>%
+    dplyr::mutate(mean_lost = mean(n_lost)) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(desc(mean_lost))
+  
+  if (nrow(ko_org_data) == 0) next
+  
+  # Create all three types for this KO
+  create_organelle_streamgraph(ko_org_data, ko, "ridge", paste0("streamgraph_organelle_", ko, "_ridge.pdf"))
+  create_organelle_streamgraph(ko_org_data, ko, "mirror", paste0("streamgraph_organelle_", ko, "_mirror.pdf"))
+  create_organelle_streamgraph(ko_org_data, ko, "proportional", paste0("streamgraph_organelle_", ko, "_proportional.pdf"))
+}
+
+message("\n=== Streamgraph creation complete ===")
+
+
+
+# --- Step 7: Matched vs unique lost PPIs ---
+message("\n=== Computing matched vs unique lost PPIs ===")
+
+# Create PPI × cell_type matrix for each genotype
+compute_ppi_matching <- function(edges_df, genotype_name) {
+  
+  ko_edges <- edges_df %>%
+    dplyr::filter(genotype == genotype_name, state == "lost") %>%
+    dplyr::select(key, cell_type) %>%
+    dplyr::distinct()
+  
+  if (nrow(ko_edges) == 0) return(NULL)
+  
+  # Pivot to wide format
+  ppi_matrix <- ko_edges %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(
+      names_from = cell_type,
+      values_from = present,
+      values_fill = 0
+    )
+  
+  # Classify PPIs
+  ppi_classified <- ppi_matrix %>%
+    dplyr::mutate(
+      n_celltypes = iN + iDA + HeLa,
+      pattern = dplyr::case_when(
+        n_celltypes == 3 ~ "All_three",
+        n_celltypes == 2 & iN == 1 & iDA == 1 ~ "iN_iDA",
+        n_celltypes == 2 & iN == 1 & HeLa == 1 ~ "iN_HeLa",
+        n_celltypes == 2 & iDA == 1 & HeLa == 1 ~ "iDA_HeLa",
+        n_celltypes == 1 & iN == 1 ~ "iN_only",
+        n_celltypes == 1 & iDA == 1 ~ "iDA_only",
+        n_celltypes == 1 & HeLa == 1 ~ "HeLa_only",
+        TRUE ~ "Unknown"
+      ),
+      genotype = genotype_name
+    )
+  
+  return(ppi_classified)
+}
+
+# Apply to all common genotypes
+ppi_matching_all <- lapply(common_genotypes, function(ko) {
+  compute_ppi_matching(all_edge_states, ko)
+}) %>%
+  dplyr::bind_rows()
+
+# save csv file of matching genotypes
+write_csv(ppi_matching_all, file.path(out_dir_ppi_comp, "tables", "ppi_matching_all_genotypes.csv"))
+
+# Summary statistics
+ppi_matching_summary <- ppi_matching_all %>%
+  dplyr::group_by(genotype, pattern) %>%
+  dplyr::summarise(n_ppis = n(), .groups = "drop")
+
+# save summary csv
+write_csv(ppi_matching_summary, file.path(out_dir_ppi_comp, "tables", "ppi_matching_summary.csv"))
+
+
+# --- Step 8: Visualize PPI matching patterns ---
+message("\n=== Visualizing PPI matching patterns ===")
+
+# Stacked bar plot
+pattern_colors <- c(
+  All_three = "#D53E4F",
+  iN_iDA = "#F46D43",
+  iN_HeLa = "#FDAE61",
+  iDA_HeLa = "#FEE08B",
+  iN_only = "#E6F598",
+  iDA_only = "#ABDDA4",
+  HeLa_only = "#66C2A5"
+)
+
+p_matching <- ggplot(ppi_matching_summary, aes(x = reorder(genotype, -n_ppis), y = n_ppis, fill = pattern)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = pattern_colors, name = "Loss Pattern") +
+  labs(
+    title = "PPI loss patterns across cell types",
+    x = "Genotype",
+    y = "Number of lost PPIs"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "right"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/dimers", "bars_ppi_matching_patterns.pdf"), p_matching, width = 10, height = 5, device = cairo_pdf)
+
+
+
+# --- Step 9: Trimer analysis across cell types ---
+message("\n=== Trimer analysis across cell types ===")
+
+# Load trimer data from all cell types
+trimer_states_all <- dplyr::bind_rows(
+  timecourse_multi_trimer_states %>%
+    dplyr::filter(Day == "d50") %>%
+    dplyr::mutate(cell_type = Neuron) %>%
+    dplyr::select(trimer_id, genotype = Genotype, cell_type, trimer_state),
+  hela_trimer_states %>%
+    dplyr::mutate(cell_type = "HeLa") %>%
+    dplyr::select(trimer_id, genotype, cell_type, trimer_state)
+) %>%
+  dplyr::filter(genotype %in% common_genotypes)
+
+# Summary of broken trimers
+trimer_loss_summary <- trimer_states_all %>%
+  dplyr::filter(trimer_state == "broken") %>%
+  dplyr::group_by(genotype, cell_type) %>%
+  dplyr::summarise(n_broken = n(), .groups = "drop") %>%
+  dplyr::mutate(cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa")))
+
+# save csv of lost ppis in trimeric form
+write_csv(trimer_loss_summary, file.path(out_dir_ppi_comp, "tables", "trimer_loss_summary.csv"))
+
+# Function to create trimer streamgraph
+create_trimer_streamgraph <- function(data, stream_type, filename) {
+  p <- ggplot(data, aes(x = genotype, y = n_broken, fill = cell_type)) +
+    geom_stream(type = stream_type, sorting = "inside_out", lwd = 0.25) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    scale_y_continuous(labels = abs) +
+    labs(
+      title = paste0("Broken trimers per KO across cell types (", stream_type, ")"),
+      subtitle = "Neurons vs HeLa",
+      x = "Genotype",
+      y = "Number of broken trimers"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/trimers", filename), p, width = 5, height = 5, device = cairo_pdf)
+}
+
+# Create all three types
+create_trimer_streamgraph(trimer_loss_summary, "ridge", "streamgraph_broken_trimers_per_ko_ridge.pdf")
+create_trimer_streamgraph(trimer_loss_summary, "mirror", "streamgraph_broken_trimers_per_ko_mirror.pdf")
+create_trimer_streamgraph(trimer_loss_summary, "proportional", "streamgraph_broken_trimers_per_ko_proportional.pdf")
+
+
+
+# --- Step 10: Trimer matching analysis ---
+message("\n=== Computing trimer matching patterns ===")
+
+compute_trimer_matching <- function(trimer_df, genotype_name) {
+  
+  ko_trimers <- trimer_df %>%
+    dplyr::filter(genotype == genotype_name, trimer_state == "broken") %>%
+    dplyr::select(trimer_id, cell_type) %>%
+    dplyr::distinct()
+  
+  if (nrow(ko_trimers) == 0) return(NULL)
+  
+  trimer_matrix <- ko_trimers %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(
+      names_from = cell_type,
+      values_from = present,
+      values_fill = 0
+    )
+  
+  # Check which columns actually exist before referencing them
+  has_iN <- "iN" %in% colnames(trimer_matrix)
+  has_iDA <- "iDA" %in% colnames(trimer_matrix)
+  has_HeLa <- "HeLa" %in% colnames(trimer_matrix)
+  
+  # Add missing columns as 0
+  if (!has_iN) trimer_matrix$iN <- 0
+  if (!has_iDA) trimer_matrix$iDA <- 0
+  if (!has_HeLa) trimer_matrix$HeLa <- 0
+  
+  trimer_classified <- trimer_matrix %>%
+    dplyr::mutate(
+      n_celltypes = iN + iDA + HeLa,
+      pattern = dplyr::case_when(
+        n_celltypes == 3 ~ "All_three",
+        n_celltypes == 2 & iN == 1 & iDA == 1 ~ "iN_iDA",
+        n_celltypes == 2 & iN == 1 & HeLa == 1 ~ "iN_HeLa",
+        n_celltypes == 2 & iDA == 1 & HeLa == 1 ~ "iDA_HeLa",
+        n_celltypes == 1 & iN == 1 ~ "iN_only",
+        n_celltypes == 1 & iDA == 1 ~ "iDA_only",
+        n_celltypes == 1 & HeLa == 1 ~ "HeLa_only",
+        TRUE ~ "Unknown"
+      ),
+      genotype = genotype_name
+    )
+  
+  return(trimer_classified)
+}
+
+trimer_matching_all <- lapply(common_genotypes, function(ko) {
+  compute_trimer_matching(trimer_states_all, ko)
+}) %>%
+  dplyr::bind_rows()
+
+# save csv file of matching PPI trimers 
+write_csv(trimer_matching_all, file.path(out_dir_ppi_comp, "tables", "trimer_matching_all_genotypes.csv"))
+
+# Summary
+trimer_matching_summary <- trimer_matching_all %>%
+  dplyr::group_by(genotype, pattern) %>%
+  dplyr::summarise(n_trimers = n(), .groups = "drop")
+
+write_csv(trimer_matching_summary, file.path(out_dir_ppi_comp, "tables", "trimer_matching_summary.csv"))
+
+# Stacked bar plot
+p_trimer_matching <- ggplot(trimer_matching_summary, aes(x = reorder(genotype, -n_trimers), y = n_trimers, fill = pattern)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = pattern_colors, name = "Breakage Pattern") +
+  labs(
+    title = "Trimer breakage patterns across cell types",
+    x = "Genotype",
+    y = "Number of broken trimers"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "right"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/trimers", "bars_trimer_matching_patterns.pdf"), p_trimer_matching, width = 10, height = 5, device = cairo_pdf)
+
+
+
+# --- Step 11: Complex analysis across cell types ---
+message("\n=== Complex analysis across cell types ===")
+
+# Load complex data from all cell types
+complex_states_all <- dplyr::bind_rows(
+  complex_multi_timecourse_summary %>%
+    dplyr::filter(Day == "d50") %>%
+    dplyr::mutate(cell_type = Neuron) %>%
+    dplyr::select(complex_id, genotype = Genotype, cell_type, complex_state),
+  complex_hela_summary %>%
+    dplyr::mutate(cell_type = "HeLa") %>%
+    dplyr::select(complex_id, genotype, cell_type, complex_state)
+) %>%
+  dplyr::filter(genotype %in% common_genotypes)
+
+# Summary of disrupted complexes
+complex_loss_summary <- complex_states_all %>%
+  dplyr::filter(complex_state == "disrupted") %>%
+  dplyr::group_by(genotype, cell_type) %>%
+  dplyr::summarise(n_disrupted = n(), .groups = "drop") %>%
+  dplyr::mutate(cell_type = factor(cell_type, levels = c("iDA", "iN", "HeLa")))
+
+# Save summary table
+write_csv(complex_loss_summary, file.path(out_dir_ppi_comp, "tables", "complex_loss_summary.csv"))
+
+# Function to create complex streamgraph
+create_complex_streamgraph <- function(data, stream_type, filename) {
+  p <- ggplot(data, aes(x = genotype, y = n_disrupted, fill = cell_type)) +
+    geom_stream(type = stream_type, sorting = "inside_out", lwd = 0.25) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    scale_y_continuous(labels = abs) +
+    labs(
+      title = paste0("Disrupted complexes per KO across cell types (", stream_type, ")"),
+      subtitle = "Neurons vs HeLa",
+      x = "Genotype",
+      y = "Number of disrupted complexes"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/complexes", filename), p, width = 5, height = 5, device = cairo_pdf)
+}
+
+# Create all three streamgraph types
+create_complex_streamgraph(complex_loss_summary, "ridge", "streamgraph_disrupted_complexes_per_ko_ridge.pdf")
+create_complex_streamgraph(complex_loss_summary, "mirror", "streamgraph_disrupted_complexes_per_ko_mirror.pdf")
+create_complex_streamgraph(complex_loss_summary, "proportional", "streamgraph_disrupted_complexes_per_ko_proportional.pdf")
+
+
+
+# --- Step 12: Complex matching analysis ---
+message("\n=== Computing complex matching patterns ===")
+
+compute_complex_matching <- function(complex_df, genotype_name) {
+  
+  ko_complexes <- complex_df %>%
+    dplyr::filter(genotype == genotype_name, complex_state == "disrupted") %>%
+    dplyr::select(complex_id, cell_type) %>%
+    dplyr::distinct()
+  
+  if (nrow(ko_complexes) == 0) return(NULL)
+  
+  complex_matrix <- ko_complexes %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(
+      names_from = cell_type,
+      values_from = present,
+      values_fill = 0
+    )
+  
+  # Check which columns actually exist before referencing them
+  has_iN <- "iN" %in% colnames(complex_matrix)
+  has_iDA <- "iDA" %in% colnames(complex_matrix)
+  has_HeLa <- "HeLa" %in% colnames(complex_matrix)
+  
+  # Add missing columns as 0
+  if (!has_iN) complex_matrix$iN <- 0
+  if (!has_iDA) complex_matrix$iDA <- 0
+  if (!has_HeLa) complex_matrix$HeLa <- 0
+  
+  complex_classified <- complex_matrix %>%
+    dplyr::mutate(
+      n_celltypes = iN + iDA + HeLa,
+      pattern = dplyr::case_when(
+        n_celltypes == 3 ~ "All_three",
+        n_celltypes == 2 & iN == 1 & iDA == 1 ~ "iN_iDA",
+        n_celltypes == 2 & iN == 1 & HeLa == 1 ~ "iN_HeLa",
+        n_celltypes == 2 & iDA == 1 & HeLa == 1 ~ "iDA_HeLa",
+        n_celltypes == 1 & iN == 1 ~ "iN_only",
+        n_celltypes == 1 & iDA == 1 ~ "iDA_only",
+        n_celltypes == 1 & HeLa == 1 ~ "HeLa_only",
+        TRUE ~ "Unknown"
+      ),
+      genotype = genotype_name
+    )
+  
+  return(complex_classified)
+}
+
+complex_matching_all <- lapply(common_genotypes, function(ko) {
+  compute_complex_matching(complex_states_all, ko)
+}) %>%
+  dplyr::bind_rows()
+
+# save csv file of matching complexes by genotype 
+write_csv(complex_matching_all, file.path(out_dir_ppi_comp, "tables", "complex_matching_all_genotypes.csv"))
+
+complex_matching_summary <- complex_matching_all %>%
+  dplyr::group_by(genotype, pattern) %>%
+  dplyr::summarise(n_complexes = n(), .groups = "drop")
+
+# save summary csv for top level summary 
+write_csv(complex_matching_summary, file.path(out_dir_ppi_comp, "tables", "complex_matching_summary.csv"))
+
+# Stacked bar plot of disruption patterns
+p_complex_matching <- ggplot(complex_matching_summary, aes(x = reorder(genotype, -n_complexes), y = n_complexes, fill = pattern)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = pattern_colors, name = "Disruption Pattern") +
+  labs(
+    title = "Complex disruption patterns across cell types",
+    x = "Genotype",
+    y = "Number of disrupted complexes"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "right"
+  )
+
+ggsave(file.path(out_dir_ppi_comp, "plots/complexes", "bars_complex_matching_patterns.pdf"), p_complex_matching, width = 5, height = 5, device = cairo_pdf)
+
+
+
+# --- Step 13: Mean organelle loss plots per KO ---
+message("\n=== Creating mean organelle loss plots per KO ===")
+
+# Compute mean loss per organelle across cell types
+mean_org_loss <- ppi_loss_by_organelle %>%
+  dplyr::group_by(genotype, tag) %>%
+  dplyr::summarise(
+    mean_lost = mean(n_lost, na.rm = TRUE),
+    sd_lost = sd(n_lost, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create plots for top KOs
+for (ko in top_kos) {
+  
+  ko_data <- ppi_loss_by_organelle %>%
+    dplyr::filter(genotype == ko)
+  
+  ko_mean_data <- mean_org_loss %>%
+    dplyr::filter(genotype == ko) %>%
+    dplyr::arrange(desc(mean_lost)) %>%
+    dplyr::slice_head(n = 20)
+  
+  if (nrow(ko_data) == 0) next
+  
+  # Individual cell type bars with mean overlay
+  p_org_mean <- ggplot() +
+    geom_col(data = ko_data, aes(x = reorder(tag, -n_lost), y = n_lost, fill = cell_type),
+             position = position_dodge(0.8), width = 0.7, color = "black", linewidth = 0.2) +
+    geom_point(data = ko_mean_data, aes(x = tag, y = mean_lost),
+               shape = 23, size = 1.5, fill = "firebrick", color = "black", stroke = 0.5) +
+    geom_errorbar(data = ko_mean_data, aes(x = tag, ymin = mean_lost - sd_lost, ymax = mean_lost + sd_lost),
+                  width = 0.2, color = "firebrick", linewidth = 0.3) +
+    scale_fill_manual(values = streamgraph_palette, name = "Cell Type") +
+    labs(
+      title = paste("Mean PPI loss per organelle –", ko),
+      subtitle = "Red diamonds show mean ± SD across cell types",
+      x = "Organelle",
+      y = "Number of lost PPIs"
+    ) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "top"
+    )
+  
+  ggsave(file.path(out_dir_ppi_comp, "plots/dimers", paste0("bars_mean_organelle_loss_", ko, ".pdf")), p_org_mean, width = 10, height = 5, device = cairo_pdf)
+}
+
+
+# --- Step 14: Correlation heatmaps across cell types ---
+message("\n=== Creating correlation heatmaps ===")
+
+# PPI loss correlation
+ppi_loss_wide <- global_ppi_loss %>%
+  dplyr::select(genotype, cell_type, n_lost) %>%
+  tidyr::pivot_wider(names_from = cell_type, values_from = n_lost, values_fill = 0)
+
+ppi_cor_mat <- cor(ppi_loss_wide[, -1], method = "spearman")
+
+pheatmap::pheatmap(
+  ppi_cor_mat,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
+  breaks = seq(-1, 1, length.out = 102),
+  main = "PPI loss correlation across cell types",
+  fontsize = 6,
+  cellwidth = 20,
+  cellheight = 20,
+  border_color = NA,
+  filename = file.path(out_dir_ppi_comp, "plots/dimers", "heatmap_ppi_loss_correlation.pdf"),
+  width = 4, height = 3.5
+)
+
+
+
+# --- Step 15: Summary statistics ---
+message("\n=== Creating summary statistics ===")
+
+# Overall matching statistics
+overall_matching <- dplyr::bind_rows(
+  ppi_matching_summary %>% dplyr::mutate(type = "PPIs"),
+  trimer_matching_summary %>% dplyr::mutate(type = "Trimers") %>% dplyr::rename(n_ppis = n_trimers),
+  complex_matching_summary %>% dplyr::mutate(type = "Complexes") %>% dplyr::rename(n_ppis = n_complexes)
+)
+
+# save matching stats csv for overall inter-cell type PPI loss matching 
+write_csv(overall_matching, file.path(out_dir_ppi_comp, "tables", "overall_matching_statistics.csv"))
+
+# Summary by pattern
+pattern_summary <- overall_matching %>%
+  dplyr::group_by(type, pattern) %>%
+  dplyr::summarise(
+    total = sum(n_ppis),
+    mean = mean(n_ppis),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(type, desc(total))
+
+# save summary csv for overall inter-cell type PPI loss matching 
+write_csv(pattern_summary, file.path(out_dir_ppi_comp, "tables", "pattern_summary_statistics.csv"))
+
+message("\nPattern summary:")
+print(pattern_summary)
+
+
+# --- Final summary ---
+message("\n=== PPI comparison analysis complete")
+```
+
+
+
+
+# XXI. XL-MS proteome validation
+use Zhu et al., 2019 (https://www.nature.com/articles/s41467-024-47569-x) for XL-MS data of mitochondria (DSSO and ?DSBSO?) to check which structures are found in both prediction and XL-MS
+Use DSSO-CLASP annotated PPIs from Supplementary Data Table 11
+
+### XXIa. mtXL-MS CLASP Data comparison 
+```{r}
+# --- Step 0: Setup ---
+out_dir_xlms_validationCLASP <- file.path(out_dir_PPI, "validation_mito_clasp")
+dir.create(out_dir_xlms_validationCLASP, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_xlms_validationCLASP, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_xlms_validationCLASP, "plots"), recursive = TRUE, showWarnings = FALSE)
+message("\n=== XL-MS CLASP UniProt Matching ===")
+
+# Load XL-MS data
+mt_XL_DSSO_CLASP <- read.csv("/Users/felix/Desktop/ppi/mt_XL_DSSO_CLASP.csv")
+message("Loaded DSSO-CLASP XL-MS data: ", nrow(mt_XL_DSSO_CLASP), " interactions")
+
+mito_tags <- c("Mito")
+#mito_tags <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+
+
+# --- Step 1: Create gene-to-UniProt mapping ---
+message("\nCreating gene-to-UniProt mapping...")
+gene_to_uniprot <- rbind(
+  baseline_edges_union[, c("Gene1", "Protein1")] |> setnames(c("Gene", "UniProt")),
+  baseline_edges_union[, c("Gene2", "Protein2")] |> setnames(c("Gene", "UniProt")),
+  baseline_edges_hela_annotated[, c("Gene1", "Protein1")] |> setnames(c("Gene", "UniProt")),
+  baseline_edges_hela_annotated[, c("Gene2", "Protein2")] |> setnames(c("Gene", "UniProt"))
+) |> unique()
+message("Gene-to-UniProt mapping: ", nrow(gene_to_uniprot), " unique mappings")
+
+
+
+# --- Step 2: Map CLASP to UniProt IDs ---
+message("\nMapping CLASP genes to UniProt IDs...")
+mt_clasp_mapped <- mt_XL_DSSO_CLASP |>
+  left_join(gene_to_uniprot, by = c("predicted_gene" = "Gene")) |>
+  rename(predicted_uniprot = UniProt) |>
+  left_join(gene_to_uniprot, by = c("predicting_gene" = "Gene")) |>
+  rename(predicting_uniprot = UniProt)
+
+clasp_both_mapped <- mt_clasp_mapped |> filter(!is.na(predicted_uniprot) & !is.na(predicting_uniprot))
+message("CLASP PPIs with both proteins mapped: ", nrow(clasp_both_mapped), " / ", nrow(mt_XL_DSSO_CLASP))
+
+# Create standardized edge keys (sorted so direction doesn't matter)
+mt_clasp_mapped$edge_key <- apply(mt_clasp_mapped[, c("predicted_uniprot", "predicting_uniprot")], 1, function(x) paste(sort(na.omit(x)), collapse = "::"))
+baseline_edges_union$edge_key <- apply(baseline_edges_union[, c("Protein1", "Protein2")], 1, function(x) paste(sort(x), collapse = "::"))
+baseline_edges_hela_annotated$edge_key <- apply(baseline_edges_hela_annotated[, c("Protein1", "Protein2")], 1, function(x) paste(sort(x), collapse = "::"))
+
+
+
+# --- Step 3: Find overlaps ---
+message("\nFinding overlaps...")
+overlap_neuro <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key)
+overlap_hela <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key)
+message("Overlap with Neuronal baseline_edges_union: ", nrow(overlap_neuro))
+message("Overlap with HeLa baseline_edges_hela_annotated: ", nrow(overlap_hela))
+
+
+
+# --- Step 4: Create detailed overlap tables ---
+message("\nCreating detailed overlap tables...")
+overlap_neuro_detail <- mt_clasp_mapped |>
+  filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key) |>
+  left_join(baseline_edges_union |> select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
+  select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
+
+overlap_hela_detail <- mt_clasp_mapped |>
+  filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key) |>
+  left_join(baseline_edges_hela_annotated |> select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
+  select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
+
+# Save tables
+write.csv(overlap_neuro_detail, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_CLASP_vs_neuro.csv"), row.names = FALSE)
+write.csv(overlap_hela_detail, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_CLASP_vs_hela.csv"), row.names = FALSE)
+message("Saved overlap tables")
+
+
+
+# --- Step 5: Matching statistics ---
+message("\nComputing matching statistics...")
+matching_stats <- data.frame(
+  Dataset = c("CLASP", "CLASP", "CLASP"),
+  Comparison = c("vs Neuro (baseline_edges_union)", "vs HeLa (baseline_edges_hela_annotated)", "Union (either cell type)"),
+  Total_CLASP_PPIs = c(nrow(clasp_both_mapped), nrow(clasp_both_mapped), nrow(clasp_both_mapped)),
+  Matched_PPIs = c(nrow(overlap_neuro), nrow(overlap_hela), nrow(rbind(overlap_neuro, overlap_hela) |> distinct(edge_key))),
+  Percent_Matched = c(nrow(overlap_neuro) / nrow(clasp_both_mapped) * 100, nrow(overlap_hela) / nrow(clasp_both_mapped) * 100, nrow(rbind(overlap_neuro, overlap_hela) |> distinct(edge_key)) / nrow(clasp_both_mapped) * 100)
+)
+
+# save csv file of matching PPI stats
+write.csv(matching_stats, file.path(out_dir_xlms_validationCLASP, "tables", "matching_statistics.csv"), row.names = FALSE)
+print(matching_stats)
+
+
+
+
+# --- Step 6: Plots ---
+message("\nGenerating plots...")
+library(ggplot2)
+library(scales)
+
+# Prepare data for stacked percentage plot
+matching_long <- data.frame(
+  cell_type = rep(c("Neuro", "HeLa"), each = 2),
+  status = rep(c("matched", "unmatched"), 2),
+  count = c(nrow(overlap_neuro), nrow(clasp_both_mapped) - nrow(overlap_neuro), nrow(overlap_hela), nrow(clasp_both_mapped) - nrow(overlap_hela))
+)
+
+matching_summary <- data.frame(
+  cell_type = c("Neuro", "HeLa"),
+  pct_matched = round(c(nrow(overlap_neuro) / nrow(clasp_both_mapped) * 100, nrow(overlap_hela) / nrow(clasp_both_mapped) * 100), 1)
+)
+
+## Plot 1: Stacked percentage plot
+p1 <- ggplot(matching_long, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "fill", color = "black", linewidth = 0.3, width = 0.7) +
+  geom_text(data = matching_summary, aes(x = cell_type, y = 0.5, label = paste0(pct_matched, "%"), fill = NULL), size = 2, fontface = "plain") +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
+  labs(title = "XL-MS CLASP Validation Rate", subtitle = "Percentage of CLASP PPIs matching baseline networks", x = "Cell Type", y = "Percentage") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top")
+
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "01_validation_rate_stacked.pdf"), p1, width = 4, height = 4)
+
+## Plot 2: Absolute numbers for reference
+matching_abs <- data.frame(
+  cell_type = c("Neuro", "HeLa"),
+  matched = c(nrow(overlap_neuro), nrow(overlap_hela)),
+  unmatched = c(nrow(clasp_both_mapped) - nrow(overlap_neuro), nrow(clasp_both_mapped) - nrow(overlap_hela))
+) |> tidyr::pivot_longer(-cell_type, names_to = "status", values_to = "count")
+
+p2 <- ggplot(matching_abs, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = count), position = position_dodge(0.6), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c(matched = "#66C2A5", unmatched = "grey70"), labels = c("Matched", "Not Matched"), name = "Status") +
+  labs(title = "XL-MS CLASP Validation Counts", subtitle = paste0("Total CLASP PPIs mapped: ", nrow(clasp_both_mapped)), x = "Cell Type", y = "Number of PPIs") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top")
+
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "02_validation_counts.pdf"), p2, width = 4, height = 4)
+
+message("\n=== Mitochondrial Annotation Analysis ===")
+
+
+
+# Extract mitochondrial gene lists from baseline networks
+message("Extracting mitochondrial genes from baseline networks...")
+get_mito_genes <- function(df, mito_tags_vec) {
+  mito_genes <- character()
+  for (tag in mito_tags_vec) {
+    prot1_col <- paste0(tag, "_prot1")
+    prot2_col <- paste0(tag, "_prot2")
+    if (prot1_col %in% colnames(df)) mito_genes <- c(mito_genes, df$Gene1[df[[prot1_col]] == TRUE])
+    if (prot2_col %in% colnames(df)) mito_genes <- c(mito_genes, df$Gene2[df[[prot2_col]] == TRUE])
+  }
+  return(unique(na.omit(mito_genes)))
+}
+
+mito_genes_neuro <- get_mito_genes(baseline_edges_union, mito_tags)
+mito_genes_hela <- get_mito_genes(baseline_edges_hela_annotated, mito_tags)
+mito_genes_combined <- union(mito_genes_neuro, mito_genes_hela)
+
+message("Mitochondrial genes in Neuro: ", length(mito_genes_neuro))
+message("Mitochondrial genes in HeLa: ", length(mito_genes_hela))
+message("Combined mitochondrial genes: ", length(mito_genes_combined))
+
+# Check CLASP overlaps for mitochondrial proteins
+overlap_neuro_detail$clasp_prot1_mito <- overlap_neuro_detail$predicted_gene %in% mito_genes_neuro
+overlap_neuro_detail$clasp_prot2_mito <- overlap_neuro_detail$predicting_gene %in% mito_genes_neuro
+overlap_neuro_detail$clasp_both_mito <- overlap_neuro_detail$clasp_prot1_mito & overlap_neuro_detail$clasp_prot2_mito
+
+overlap_hela_detail$clasp_prot1_mito <- overlap_hela_detail$predicted_gene %in% mito_genes_hela
+overlap_hela_detail$clasp_prot2_mito <- overlap_hela_detail$predicting_gene %in% mito_genes_hela
+overlap_hela_detail$clasp_both_mito <- overlap_hela_detail$clasp_prot1_mito & overlap_hela_detail$clasp_prot2_mito
+
+# Summary statistics for mitochondrial matches
+mito_match_stats <- data.frame(
+  CellType = c("Neuro", "HeLa"),
+  Total_Matched_PPIs = c(nrow(overlap_neuro_detail), nrow(overlap_hela_detail)),
+  Both_Proteins_Mito = c(sum(overlap_neuro_detail$clasp_both_mito), sum(overlap_hela_detail$clasp_both_mito)),
+  At_Least_One_Mito = c(sum(overlap_neuro_detail$clasp_prot1_mito | overlap_neuro_detail$clasp_prot2_mito), sum(overlap_hela_detail$clasp_prot1_mito | overlap_hela_detail$clasp_prot2_mito)),
+  No_Mito_Annotation = c(sum(!overlap_neuro_detail$clasp_prot1_mito & !overlap_neuro_detail$clasp_prot2_mito), sum(!overlap_hela_detail$clasp_prot1_mito & !overlap_hela_detail$clasp_prot2_mito))
+)
+mito_match_stats$Pct_Both_Mito <- round(mito_match_stats$Both_Proteins_Mito / mito_match_stats$Total_Matched_PPIs * 100, 1)
+mito_match_stats$Pct_At_Least_One <- round(mito_match_stats$At_Least_One_Mito / mito_match_stats$Total_Matched_PPIs * 100, 1)
+
+write.csv(mito_match_stats, file.path(out_dir_xlms_validationCLASP, "tables", "mito_match_stats.csv"), row.names = FALSE)
+message("Mitochondrial protein statistics in matched CLASP PPIs:")
+print(mito_match_stats)
+
+# Prepare data for mito annotation stacked plot
+mito_match_long <- data.frame(
+  cell_type = rep(c("Neuro", "HeLa"), each = 3),
+  annotation = rep(c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"), 2),
+  count = c(mito_match_stats$Both_Proteins_Mito[1], mito_match_stats$At_Least_One_Mito[1] - mito_match_stats$Both_Proteins_Mito[1], mito_match_stats$No_Mito_Annotation[1],
+            mito_match_stats$Both_Proteins_Mito[2], mito_match_stats$At_Least_One_Mito[2] - mito_match_stats$Both_Proteins_Mito[2], mito_match_stats$No_Mito_Annotation[2])
+)
+mito_match_long$annotation <- factor(mito_match_long$annotation, levels = c("Both Proteins Mito", "At Least One Mito", "No Mito Annotation"))
+
+## Plot 3: Mitochondrial protein composition in matched PPIs
+p3 <- ggplot(mito_match_long, aes(x = cell_type, y = count, fill = annotation)) +
+  geom_col(position = "stack", color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), size = 2) +
+  scale_fill_manual(values = c("Both Proteins Mito" = "#1B9E77", "At Least One Mito" = "#D95F02", "No Mito Annotation" = "grey70"), name = "Mito Annotation") +
+  labs(title = "Matched CLASP PPIs - Mitochondrial Composition", subtitle = "Mitochondrial protein content in validated interactions", x = "Cell Type", y = "Number of PPIs") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.position = "top")
+
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "03_mito_match_composition.pdf"), p3, width = 4, height = 4)
+
+
+
+# --- Step 7: Reverse analysis - Mito PPIs NOT in CLASP ---
+message("\n=== Reverse Analysis: Mito PPIs Not in CLASP ===")
+
+# Get all mito-tagged PPIs from baseline networks
+get_mito_ppis <- function(df, mito_tags_vec) {
+  mito_ppi_mask <- rep(FALSE, nrow(df))
+  for (tag in mito_tags_vec) {
+    prot1_col <- paste0(tag, "_prot1")
+    prot2_col <- paste0(tag, "_prot2")
+    if (prot1_col %in% colnames(df) && prot2_col %in% colnames(df)) {
+      mito_ppi_mask <- mito_ppi_mask | (df[[prot1_col]] == TRUE | df[[prot2_col]] == TRUE)
+    }
+  }
+  return(df[mito_ppi_mask, ])
+}
+
+mito_ppis_neuro <- get_mito_ppis(baseline_edges_union, mito_tags)
+mito_ppis_hela <- get_mito_ppis(baseline_edges_hela_annotated, mito_tags)
+
+message("Total mito-tagged PPIs in Neuro: ", nrow(mito_ppis_neuro))
+message("Total mito-tagged PPIs in HeLa: ", nrow(mito_ppis_hela))
+
+# Find mito PPIs IN CLASP
+mito_ppis_neuro_in_clasp <- mito_ppis_neuro |> filter(edge_key %in% mt_clasp_mapped$edge_key)
+mito_ppis_hela_in_clasp <- mito_ppis_hela |> filter(edge_key %in% mt_clasp_mapped$edge_key)
+
+message("Mito PPIs in Neuro that ARE in CLASP: ", nrow(mito_ppis_neuro_in_clasp))
+message("Mito PPIs in HeLa that ARE in CLASP: ", nrow(mito_ppis_hela_in_clasp))
+
+# Summary statistics for reverse analysis
+reverse_stats <- data.frame(
+  CellType = c("Neuro", "HeLa"),
+  Total_Mito_PPIs = c(nrow(mito_ppis_neuro), nrow(mito_ppis_hela)),
+  In_CLASP = c(nrow(mito_ppis_neuro_in_clasp), nrow(mito_ppis_hela_in_clasp)),
+  Not_In_CLASP = c(nrow(mito_ppis_neuro) - nrow(mito_ppis_neuro_in_clasp), nrow(mito_ppis_hela) - nrow(mito_ppis_hela_in_clasp))
+)
+reverse_stats$Pct_In_CLASP <- round(reverse_stats$In_CLASP / reverse_stats$Total_Mito_PPIs * 100, 1)
+
+write.csv(reverse_stats, file.path(out_dir_xlms_validationCLASP, "tables", "reverse_analysis_stats.csv"), row.names = FALSE)
+message("Reverse analysis statistics:")
+print(reverse_stats)
+
+# Prepare data for reverse analysis plot
+reverse_long <- data.frame(
+  cell_type = rep(c("Neuro", "HeLa"), each = 2),
+  status = rep(c("In CLASP", "Not in CLASP"), 2),
+  count = c(reverse_stats$In_CLASP[1], reverse_stats$Not_In_CLASP[1], reverse_stats$In_CLASP[2], reverse_stats$Not_In_CLASP[2])
+)
+
+# Plot 4: Mitochondrial PPIs - CLASP coverage
+p4 <- ggplot(reverse_long, aes(x = cell_type, y = count, fill = status)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.6) +
+  geom_text(aes(label = count), position = position_dodge(0.6), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("In CLASP" = "#66C2A5", "Not in CLASP" = "grey70"), name = "Status") +
+  labs(title = "CLASP Coverage of Mitochondrial PPIs", subtitle = "Baseline mito-tagged PPIs found in XL-MS data", x = "Cell Type", y = "Number of PPIs") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+ggsave(file.path(out_dir_xlms_validationCLASP, "plots", "04_clasp_coverage_mito_ppis.pdf"), p4, width = 4, height = 4)
+
+message("\n=== XL-MS CLASP Matching Complete ===")
+message("Output directory: ", out_dir_xlms_validationCLASP)
+
+
+```
+
+
 # to do
 - by_ko heatmap correlations: 
 should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
@@ -15773,16 +18279,25 @@ should calculate to the baseline, not across all the genotypes. since it should 
 - have to make do the PCA or umap plot on a organelle level to get more clustering etc
 
 
-3. HeLa nMOST PPI
-- calculate PPI based on the average Control consenus 
-- then calculate PPI based on KO and also based on disease group 
-- can we match which trimers and complexes match between neurons and hela? have iN and iDa on x y axis and bubble size of hela correlation. based by organelle
 
-4. HeLa LysoIP PPIs
-- calculate PPIs based on control and ASAH1 PPI
-==> should be able to see both loss of edges and also gain of edges. Maybe there should be more edges in KO to ER?
-- can we map Lyso Membrane vs lumenal protein PPIs? see if there are differences
+check ASAH1 d5070 mito complexes? are they cI also what about CHCHD2
+d70 mito disrupted
+Complex_0067: AIFM1;CHCHD4;NEBL
+Complex_0188: COA3;COA5;SMIM20
+Complex_0304: ALDH1A1;ALDH1B1;ALDH2
+Complex_0448: ME1;ME2;ME3
+Complex_0139: ARL16;PRDX1;PRDX2;PRDX3;PRDX4;SRXN1
+Complex_0055: IDH1;IDH2;IDH3A;IDH3B;IDH3G
 
+d70 mito partial:
+Complex_0137: ACADM;C8orf82;D2HGDH;ETFA;ETFB;ETFDH;IVD
+Complex_0193: CHCHD10;CHCHD2;CHCHD5;MCL1
+Complex_0287: SUCLA2;SUCLG1;SUCLG2
+Complex_0067: AIFM1;CHCHD4;NEBL
+Complex_0125: GADD45A;PCBD1;PCBD2
+Complex_0154: ANKIB1;PPA1;PPA2;WDR73
+Complex_0369: ICA1;ICA1L;PICK1
+Complex_0200: CKB;CKM;CKMT1A
 
 X. Misc
 - change color scheme for AFpob ascending boxplots. 
