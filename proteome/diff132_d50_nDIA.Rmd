@@ -10627,6 +10627,41 @@ ko_summary_by_organelle <- ko_edge_states %>%
 # save as csv
 write_csv(ko_summary_by_organelle, file.path(out_dir_ppi_vuln, "tables", "ko_summary_by_organelle.csv"))
 
+
+# ---------------------------------------------------
+# --- 11. Create shared_long dataframe: PPI edges with shared organelle localization (long format, one row per key-organelle pair)
+# Get organelle columns
+org1_cols <- paste0(organelle_tags, "_prot1")
+org2_cols <- paste0(organelle_tags, "_prot2")
+
+# Filter to columns that actually exist
+existing_org1_cols <- intersect(org1_cols, colnames(baseline_edges_union))
+existing_org2_cols <- intersect(org2_cols, colnames(baseline_edges_union))
+
+shared_long <- {
+  if (length(existing_org1_cols) == 0 || length(existing_org2_cols) == 0) {
+    message("No organelle columns found, creating empty shared_long")
+    data.frame(key = character(0), tag = character(0), stringsAsFactors = FALSE)
+  } else {
+    m1 <- baseline_edges_union[, existing_org1_cols, drop = FALSE] %>% 
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
+      as.data.frame()
+    m2 <- baseline_edges_union[, existing_org2_cols, drop = FALSE] %>% 
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% 
+      as.data.frame()
+    
+    shared_mat <- as.matrix(m1) & as.matrix(m2)
+    existing_tags <- sub("_prot1$", "", existing_org1_cols)
+    
+    bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
+      idx <- which(shared_mat[i, ])
+      if (!length(idx)) return(NULL)
+      data.frame(key = baseline_edges_union$key[i], tag = existing_tags[idx], stringsAsFactors = FALSE)
+    }))
+  }
+}
+message("Created shared_long with ", nrow(shared_long), " rows")
+
 ```
 
 
