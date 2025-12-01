@@ -18305,5 +18305,5 @@ X. Misc
 
 - timecourse d30/50 add lillipop for each KO?
 
-
+- triangel plot
 
