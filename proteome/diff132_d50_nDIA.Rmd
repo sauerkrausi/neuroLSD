@@ -10896,6 +10896,19 @@ if (exists("ppi_qc_df")) {
 ### XVIIIc. Vizualiztion of PPI loss
 ##### Plotting function for correlation heatmaps and summary stacked bar for PPI impact
 ```{r}
+
+## set global disease class color maps
+disease_class_palette <- c(
+  Sphigolipidoses = "#D53E4F",
+  Mucopolysaccharidoses = "#F46D43",
+  Glycoproteinoses = "#FDAE61",
+  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Integral.membrane.protein.disorders = "#E6F598",
+  PTM.defects = "#ABDDA4",
+  Lipid.storage.diseases = "#66C2A5"
+)
+
+
 # ---------------------------------------------------
 # Plotting: global bars, KO×KO correlations (iN/iDA + combined), per-KO organelle heatmaps
 plot_ppi_vulnerability <- function(df_edges,
@@ -11576,7 +11589,7 @@ plot_ppi_diseaseclass_impact(
 
 ```
 
-# Ternary plots of PPI loss by organelle class and disease class ---
+#### Ternary plots of PPI loss by organelle class and disease class ---
 ```{r}
 # --- Ternary plots of PPI loss by organelle class and disease class ---
 #install.packages("Ternary")
