@@ -18308,3 +18308,4 @@ X. Misc
 >> to add for disaese classes
 - triangle plot lost PPIs
 - circos plot half
+- also check other things
