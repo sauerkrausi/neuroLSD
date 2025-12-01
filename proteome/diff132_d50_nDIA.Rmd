@@ -10376,14 +10376,26 @@ use select experimental evidence and larger than 0.5 as threshold
 ```{r}
 # ---------------------------------------------------
 # --- Step 4. Load IntAct (already filtered by your MI methods and MIscore >= 0.5 when exporting)
-intact_edges <- intact_raw %>%
+interact_raw <- data.table::fread(
+  path_intact_tsv,
+  sep = "\t",
+  header = TRUE,
+  fill = TRUE,          # tolerate irregular number of fields
+  quote = "",           # ignore quoted entries
+  data.table = FALSE
+)
+
+
+colnames(interact_raw) <- trimws(gsub("^#", "", colnames(interact_raw)))
+
+intact_edges <- interact_raw %>%
   transmute(
     Protein1 = sub("^uniprotkb:", "", sub("\\|.*$", "", `ID(s) interactor A`)),
     Protein2 = sub("^uniprotkb:", "", sub("\\|.*$", "", `ID(s) interactor B`)),
     DetectionMethod = gsub('psi-mi:|"', "", `Interaction detection method(s)`),
     IntAct_MIscore = {
       x <- `Confidence value(s)`
-      x <- sub("^.*miscore:", "", x, ignore.case = TRUE)    # drop 'intact-miscore:' prefix
+      x <- sub("^.*miscore:", "", x, ignore.case = TRUE)
       suppressWarnings(as.numeric(x))
     }
   ) %>%
@@ -11527,6 +11539,138 @@ plot_ppi_diseaseclass_impact(
 )
 
 
+```
+
+# Ternary plots of PPI loss by organelle class and disease class ---
+```{r}
+# --- Ternary plots of PPI loss by organelle class and disease class ---
+#install.packages("Ternary")
+
+plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
+                                   annotation_classes_corrgeno, out_dir,
+                                   disease_class_palette) {
+  library(Ternary)
+  
+  # Define the three organelle classes for triangle vertices
+  tern_classes <- c("SynGO", "Mito", "EndoLyso")
+  
+	# Build tag -> class map (restrict to ternary classes)
+  tag_map <- lapply(names(annotation_classes_corrgeno), function(cls) {
+    data.frame(tag = annotation_classes_corrgeno[[cls]], class = cls, stringsAsFactors = FALSE)
+  }) |> dplyr::bind_rows() |> dplyr::filter(class %in% tern_classes)
+  
+  # Prepare disease class mapping
+  disease_map <- disease_class_df |>
+    dplyr::mutate(sample = toupper(sample)) |>
+    dplyr::select(sample, DiseaseClass) |>
+    dplyr::distinct()
+  
+  # Merge tags and disease info
+  shared_class <- shared_long |>
+    dplyr::inner_join(tag_map, by = "tag") |>
+    dplyr::distinct(key, class)
+  
+  df_tagged <- df_states |>
+    dplyr::filter(OrgPair == "same", state == "lost") |>
+    dplyr::mutate(KO = toupper(gsub("(_.*)$", "", genotype))) |>
+    dplyr::inner_join(shared_class, by = "key") |>
+    dplyr::left_join(disease_map, by = c("KO" = "sample"))
+  
+  # Handle DiseaseClass column naming
+  if ("DiseaseClass.x" %in% names(df_tagged)) {
+    df_tagged <- df_tagged |>
+      dplyr::mutate(DiseaseClass = dplyr::coalesce(DiseaseClass.x, DiseaseClass.y)) |>
+      dplyr::select(-DiseaseClass.x, -DiseaseClass.y)
+  }
+  
+  # Aggregate: count lost PPIs per genotype/neuron/class
+  loss_counts <- df_tagged |>
+    dplyr::group_by(genotype, neuron, KO, DiseaseClass, class) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop")
+  
+  # Pivot to wide format with columns for each ternary class
+  loss_wide <- loss_counts |>
+    tidyr::pivot_wider(names_from = class, values_from = n, values_fill = 0) |>
+    dplyr::filter(if_all(all_of(tern_classes), ~ !is.na(.)))
+  
+  # Ensure all three columns exist
+  for (tc in tern_classes) {
+    if (!tc %in% names(loss_wide)) loss_wide[[tc]] <- 0
+  }
+  
+  # Compute proportions
+  loss_wide <- loss_wide |>
+    dplyr::mutate(
+      total = SynGO + Mito + EndoLyso,
+      p_SynGO = SynGO / total,
+      p_Mito = Mito / total,
+      p_EndoLyso = EndoLyso / total
+    ) |>
+    dplyr::filter(total > 0)
+  
+  # --- Plot function for one neuron ---
+  plot_ternary_neuron <- function(nt) {
+    dd <- loss_wide |> dplyr::filter(neuron == nt)
+    if (nrow(dd) < 2) return(invisible(NULL))
+    
+    # Plot 1: All KOs colored by disease class
+    pdf(file.path(out_dir, "plots/global", paste0("ternary_diseaseclass_", nt, ".pdf")), width = 5, height = 5)
+    TernaryPlot(alab = "SynGO", blab = "Mito", clab = "EndoLyso",
+                lab.cex = 0.8, grid.lines = 5, grid.minor.lines = 0,
+                axis.cex = 0.6, main = paste("PPI loss composition -", nt))
+    cols <- disease_class_palette[as.character(dd$DiseaseClass)]
+    TernaryPoints(dd[, c("p_SynGO", "p_Mito", "p_EndoLyso")], col = cols, pch = 19, cex = 1.2)
+    legend("topright", legend = names(disease_class_palette), fill = disease_class_palette,
+           cex = 0.6, bty = "n", title = "Disease Class")
+    dev.off()
+    
+    # Plot 2: Faceted by disease class with density contours
+    disease_classes <- unique(dd$DiseaseClass[!is.na(dd$DiseaseClass)])
+    
+    for (dc in disease_classes) {
+      dd_dc <- dd |> dplyr::filter(DiseaseClass == dc)
+      if (nrow(dd_dc) < 3) next
+      
+      pdf(file.path(out_dir, "plots/global", paste0("ternary_contour_", dc, "_", nt, ".pdf")), width = 5, height = 5)
+      TernaryPlot(alab = "SynGO", blab = "Mito", clab = "EndoLyso",
+                  lab.cex = 0.8, grid.lines = 5, grid.minor.lines = 0,
+                  axis.cex = 0.6, main = paste(dc, "-", nt))
+      
+      # Density estimation on ternary coordinates
+      coords <- as.matrix(dd_dc[, c("p_SynGO", "p_Mito", "p_EndoLyso")])
+      
+      if (nrow(coords) >= 5) {
+        # Use TernaryDensityContour for density visualization
+        tryCatch({
+          TernaryDensityContour(coords, resolution = 50, col = viridisLite::viridis, nlevels = 10)
+        }, error = function(e) message("Contour failed for ", dc, " ", nt))
+      }
+      
+      # Overlay individual points
+      TernaryPoints(coords, pch = 21, cex = 0.8, bg = adjustcolor("white", 0.7), col = "black", lwd = 0.5)
+      
+      # Add genotype labels
+      TernaryText(coords, labels = dd_dc$KO, cex = 0.35, pos = 3, offset = 0.3)
+      dev.off()
+    }
+  }
+  
+  plot_ternary_neuron("iN")
+  plot_ternary_neuron("iDA")
+  
+  invisible(loss_wide)
+}
+
+
+# ---- Call ternary plotting ----
+plot_ternary_ppi_loss(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  annotation_classes_corrgeno = annotation_classes_corrgeno,
+  out_dir = out_dir_ppi_vuln,
+  disease_class_palette = disease_class_palette
+)
 ```
 
 
