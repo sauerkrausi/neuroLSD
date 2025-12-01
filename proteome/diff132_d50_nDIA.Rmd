@@ -11593,11 +11593,12 @@ plot_ppi_diseaseclass_impact(
 ```{r}
 # --- Ternary plots of PPI loss by organelle class and disease class ---
 #install.packages("Ternary")
+library(Ternary)
 
 plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
                                    annotation_classes_corrgeno, out_dir,
                                    disease_class_palette) {
-  library(Ternary)
+  
   
   # Define the three organelle classes for triangle vertices
   tern_classes <- c("SynGO", "Mito", "EndoLyso")
