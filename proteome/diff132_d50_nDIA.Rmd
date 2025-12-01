@@ -18305,5 +18305,6 @@ X. Misc
 
 - timecourse d30/50 add lillipop for each KO?
 
-- triangel plot
-
+>> to add for disaese classes
+- triangle plot lost PPIs
+- circos plot half
