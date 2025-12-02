@@ -12213,6 +12213,9 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
   tern_out_dir <- file.path(out_dir, "plots/ternary")
   dir.create(tern_out_dir, recursive = TRUE, showWarnings = FALSE)
   
+  # Create filename suffix from tern_classes
+  tern_suffix <- paste(tern_classes, collapse = "_")
+  
   # Prepare disease class mapping
   disease_map <- disease_class_df |>
     dplyr::mutate(sample = toupper(sample)) |>
@@ -12259,12 +12262,14 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
   message("Ternary data: ", nrow(loss_wide), " KO x neuron combinations")
   message("Disease classes: ", paste(unique(loss_wide$DiseaseClass), collapse = ", "))
   
+  # White to red color palette for contours
+  contour_cols <- colorRampPalette(c("white", "red"))(100)
   
   # --- Plot 1: Combined ternary ---
-  pdf(file.path(tern_out_dir, "ternary_combined_all.pdf"), width = 6, height = 6)
+  pdf(file.path(tern_out_dir, paste0("ternary_combined_", tern_suffix, ".pdf")), width = 6, height = 6)
   TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
               lab.cex = 0.8, grid.lines = 5, grid.minor.lines = 0,
-              axis.cex = 0.6, main = "PPI loss - all neurons")
+              axis.cex = 0.6, main = "PPI loss composition - all neurons")
   cols <- disease_class_palette[as.character(loss_wide$DiseaseClass)]
   pch_vec <- ifelse(loss_wide$neuron == "iN", 19, 17)  
   TernaryPoints(loss_wide[, c("p_1", "p_2", "p_3")], col = cols, pch = pch_vec, cex = 1.2)
@@ -12272,13 +12277,14 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
   legend("bottomright", legend = c("iN", "iDA"), pch = c(19, 17), cex = 0.6, bty = "n", title = "Neuron")
   dev.off()
   
+  
   # --- Plot 2: Faceted grid ---
   disease_classes <- unique(loss_wide$DiseaseClass)
   neuron_types <- c("iN", "iDA")
   n_dc <- length(disease_classes)
   
   if (n_dc > 0) {
-    pdf(file.path(tern_out_dir, "ternary_faceted_diseaseclass_neuron.pdf"), width = 3 * n_dc, height = 6)
+    pdf(file.path(tern_out_dir, paste0("ternary_faceted_", tern_suffix, ".pdf")), width = 3 * n_dc, height = 6)
     par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1))
     
     for (nt in neuron_types) {
@@ -12289,17 +12295,19 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
                     lab.cex = 0.6, grid.lines = 5, grid.minor.lines = 0,
                     axis.cex = 0.5, main = paste0(dc, "\n(", nt, ")"))
         
-        if (nrow(dd) >= 2) {
+        if (nrow(dd) >= 3) {
           coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
           
+          # Density contour if enough points
           if (nrow(coords) >= 5) {
-            tryCatch({
-              TernaryDensityContour(coords, resolution = 50, col = viridisLite::viridis, nlevels = 10)
-            }, error = function(e) NULL)
-          }
+              tryCatch({
+                TernaryDensityContour(coords, resolution = 50, col = viridisLite::viridis, nlevels = 10, lwd = 0.25, labcex = 0.2)
+              }, error = function(e) NULL)
+            }
           
-          TernaryPoints(coords, pch = 21, cex = 0.8, bg = adjustcolor(disease_class_palette[dc], 0.7), col = "black", lwd = 0.5)
-          TernaryText(coords, labels = dd$genotype, cex = 0.3, pos = 3, offset = 0.3)
+          # Red dots and labels
+          TernaryPoints(coords, pch = 19, cex = 0.8, col = "red")
+          TernaryText(coords, labels = dd$genotype, cex = 0.2, pos = 3, offset = 0.3)
         }
       }
     }
@@ -12307,7 +12315,7 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
   }
   
   # Save summary
-  write_csv(loss_wide, file.path(tern_out_dir, "ternary_loss_summary.csv"))
+  write_csv(loss_wide, file.path(tern_out_dir, paste0("ternary_loss_summary_", tern_suffix, ".csv")))
   
   invisible(loss_wide)
 }
