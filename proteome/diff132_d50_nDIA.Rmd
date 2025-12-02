@@ -12199,13 +12199,22 @@ print(head(genotype_summary, 20))
 
 
 #### Ternary plots of PPI loss by organelle class and disease class
-###### for select 3 annotations
+###### Ternary / Triangle Plots for user-given select 3 annotations
 ```{r}
 # --- Ternary plots of PPI loss by organelle class and disease class ---
-#install.packages("Ternary")
+
+# Generates ternary plots showing PPI loss composition ACROSS THREE ANNOTATIONS
+# 3-way combinations of specified annotation tags 
+# Each plot shows how lost PPIs
+# Plots are distributed among three annotation categories, faceted by disease class and neuron type.
+
+# --------- For select 3 annotations --------- 
+
+# --- Step 0: load R libraray for ternary graph plotting
+# https://cran.r-project.org/web/packages/Ternary/vignettes/Ternary.html
 library(Ternary)
 
-
+# --- Step 1: define function that plots for any given three annotations the ternary plot.  
 plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
                                    out_dir, disease_class_palette,
                                    tern_classes = c("SynGO", "Mito", "EndoLyso")) {
@@ -12352,9 +12361,18 @@ plot_ternary_ppi_loss(
 ```
 
 
-###### For all Annotations
+###### Ternary / Triangle Plots across all annotations
 ```{r}
+# --- Ternary plots of PPI loss by organelle class and disease class ---
 
+# Generates ternary plots showing PPI loss composition ALL ANNOTATIONS / SELECT PLURALITY
+# 3-way combinations of specified annotation tags. 
+# Each plot shows how lost PPIs
+# Plots are distributed among three annotation categories, faceted by disease class and neuron type.
+
+# --------- Across all possible annotations combinations / plurality --------- 
+
+# --- Step 1: define function that plots for any given annotations the ternary plot.  
 plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_df,
                                            out_dir, disease_class_palette,
                                            tags = NULL) {
