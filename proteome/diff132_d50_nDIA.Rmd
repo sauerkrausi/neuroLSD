@@ -12268,8 +12268,13 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
   
   # --- Plot 1: Combined ternary ---
   pdf(file.path(tern_out_dir, paste0("ternary_combined_", tern_suffix, ".pdf")), width = 6, height = 6)
-  TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
-              lab.cex = 0.8, grid.lines = 5, grid.minor.lines = 0,
+  TernaryPlot(alab = tern_classes[1], 
+              blab = tern_classes[2], 
+              clab = tern_classes[3],
+              lab.cex = 0.8, 
+              grid.lines = 5, 
+              grid.lty = "dashed",
+              grid.minor.lines = 0,
               axis.cex = 0.6, main = "PPI loss composition - all neurons")
   cols <- disease_class_palette[as.character(loss_wide$DiseaseClass)]
   pch_vec <- ifelse(loss_wide$neuron == "iN", 19, 17)  
@@ -12280,7 +12285,15 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
   
   
   # --- Plot 2: Faceted grid ---
-  disease_classes <- unique(loss_wide$DiseaseClass)
+  # Only include disease classes with >= 3 genotypes per neuron
+  disease_class_counts <- loss_wide |>
+    dplyr::group_by(DiseaseClass, neuron) |>
+    dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") |>
+    dplyr::filter(n_geno >= 3) |>
+    dplyr::distinct(DiseaseClass) |>
+    dplyr::pull(DiseaseClass)
+  
+  disease_classes <- intersect(unique(loss_wide$DiseaseClass), disease_class_counts)
   neuron_types <- c("iN", "iDA")
   n_dc <- length(disease_classes)
   
@@ -12418,7 +12431,15 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
       }
       
       # --- Faceted grid only ---
-      disease_classes <- unique(loss_wide$DiseaseClass)
+      # Only include disease classes with >= 3 genotypes per neuron
+      disease_class_counts <- loss_wide |>
+        dplyr::group_by(DiseaseClass, neuron) |>
+        dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") |>
+        dplyr::filter(n_geno >= 3) |>
+        dplyr::distinct(DiseaseClass) |>
+        dplyr::pull(DiseaseClass)
+      
+      disease_classes <- intersect(unique(loss_wide$DiseaseClass), disease_class_counts)
       neuron_types <- c("iN", "iDA")
       n_dc <- length(disease_classes)
       
@@ -12465,7 +12486,7 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
   message("Done. ", n_combos, " combinations processed. Output: ", combo_out_dir)
 }
 
-# # All combinations from all tags
+# # All combinations from all tags ==> do not do that. will be 25^3 ==> 2300 plots
 # plot_all_ternary_combinations(
 #   df_states = ko_edge_states,
 #   shared_long = shared_long,
@@ -12474,7 +12495,7 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
 #   disease_class_palette = disease_class_palette
 # )
 
-# Or specify subset of tags
+# Run only on specified subset of tags
 plot_all_ternary_combinations(
   df_states = ko_edge_states,
   shared_long = shared_long,
