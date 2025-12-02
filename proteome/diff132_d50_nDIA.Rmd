@@ -12372,6 +12372,11 @@ plot_ternary_ppi_loss(
 # Each plot shows how lost PPIs
 # Plots are distributed among three annotation categories, faceted by disease class and neuron type.
 
+# The contour numbers (1, 2, 3...) are just relative density units - higher = more KOs in that region.
+# The dark contours at top show that multiple KOs in this disease class cluster together with similar loss profiles (high EarlyEndosome, low SVfusion/MitoIMS)
+# So essentially calculate the relative skew per annotation for the disease class genotypes between the three annotations. and then this is expressed as the density contours
+
+
 # --------- Across all possible annotations combinations / plurality --------- 
 
 # --- Step 1: define function that plots for any given annotations the ternary plot.  
@@ -12482,8 +12487,8 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
       
       # --- Generate faceted ternary plot ---
       # Layout: rows = neuron types (iN, iDA), columns = disease classes
-      pdf(file.path(combo_out_dir, paste0("ternary_", tern_suffix, ".pdf")), width = 3 * n_dc, height = 6)
-      par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1))
+      pdf(file.path(combo_out_dir, paste0("ternary_", tern_suffix, ".pdf")), width = 3 * n_dc, height = 7)
+      par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1), oma = c(0, 0, 3, 0))
       
       for (nt in neuron_types) {
         for (dc in disease_classes) {
@@ -12516,7 +12521,7 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
                                       filled = TRUE,
                                       nlevels = 10, 
                                       lwd = 0.25, 
-                                      labcex = 0.4)
+                                      labcex = 0.3)
               }, error = function(e) NULL)
             }
             
@@ -12526,6 +12531,10 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
           }
         }
       }
+      
+      # Add overall title
+      mtext("Each KO positioned by its % lost PPIs in each annotation. Darker regions = more KOs with similar loss profiles.", 
+      outer = TRUE, cex = 0.6, line = 0.5)
       dev.off()
       
     }, error = function(e) {
