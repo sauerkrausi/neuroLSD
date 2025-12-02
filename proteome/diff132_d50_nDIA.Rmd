@@ -12199,6 +12199,7 @@ print(head(genotype_summary, 20))
 
 
 #### Ternary plots of PPI loss by organelle class and disease class
+###### for select 3 annotations
 ```{r}
 # --- Ternary plots of PPI loss by organelle class and disease class ---
 #install.packages("Ternary")
@@ -12291,8 +12292,13 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
       for (dc in disease_classes) {
         dd <- loss_wide |> dplyr::filter(neuron == nt, DiseaseClass == dc)
         
-        TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
-                    lab.cex = 0.6, grid.lines = 5, grid.minor.lines = 0,
+        TernaryPlot(alab = tern_classes[1], 
+                    blab = tern_classes[2], 
+                    clab = tern_classes[3],
+                    lab.cex = 0.5, 
+                    grid.lines = 4, # number of gridlines 
+                    grid.lty = "dashed",
+                    grid.minor.lines = 0,
                     axis.cex = 0.5, main = paste0(dc, "\n(", nt, ")"))
         
         if (nrow(dd) >= 3) {
@@ -12301,13 +12307,13 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
           # Density contour if enough points
           if (nrow(coords) >= 5) {
               tryCatch({
-                TernaryDensityContour(coords, resolution = 50, col = viridisLite::viridis, nlevels = 10, lwd = 0.25, labcex = 0.2)
+                TernaryDensityContour(coords, resolution = 50, col = viridisLite::viridis, nlevels = 10, lwd = 0.25, labcex = 0.4)
               }, error = function(e) NULL)
             }
           
           # Red dots and labels
           TernaryPoints(coords, pch = 19, cex = 0.8, col = "red")
-          TernaryText(coords, labels = dd$genotype, cex = 0.2, pos = 3, offset = 0.3)
+          TernaryText(coords, labels = dd$genotype, cex = 0.5, pos = 3, offset = 0.3)
         }
       }
     }
@@ -12320,14 +12326,162 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
   invisible(loss_wide)
 }
 
-# call function
+# call function and plot
 plot_ternary_ppi_loss(
   df_states = ko_edge_states,
   shared_long = shared_long,
   disease_class_df = disease_class_df,
   out_dir = out_dir_ppi_vuln,
   disease_class_palette = disease_class_palette,
-  tern_classes = c("SynapseSVs", "OXPHOS", "EndoLyso")
+  tern_classes = c("Svexocytosis", "OXPHOS", "mtComplexI")
+)
+
+```
+
+
+###### For all Annotations
+```{r}
+
+plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_df,
+                                           out_dir, disease_class_palette,
+                                           tags = NULL) {
+  
+  # Get available tags from shared_long if not specified
+  if (is.null(tags)) {
+    tags <- unique(shared_long$tag)
+  }
+  
+  # Create subfolder for all combinations
+  combo_out_dir <- file.path(out_dir, "plots/ternary/all_combinations")
+  dir.create(combo_out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # Generate all 3-way combinations
+  combos <- combn(tags, 3, simplify = FALSE)
+  n_combos <- length(combos)
+  
+  message("Generating ", n_combos, " ternary plots from ", length(tags), " tags...")
+  
+  for (i in seq_along(combos)) {
+    tern_classes <- combos[[i]]
+    tern_suffix <- paste(tern_classes, collapse = "_")
+    
+    message("[", i, "/", n_combos, "] ", tern_suffix)
+    
+    tryCatch({
+      # Filter shared_long directly by ternary tags
+      shared_class <- shared_long |>
+        dplyr::filter(tag %in% tern_classes) |>
+        dplyr::rename(class = tag) |>
+        dplyr::distinct(key, class)
+      
+      if (nrow(shared_class) == 0) {
+        message("  Skipped: no matching edges")
+        next
+      }
+      
+      # Prepare disease class mapping
+      disease_map <- disease_class_df |>
+        dplyr::mutate(sample = toupper(sample)) |>
+        dplyr::select(sample, DiseaseClass) |>
+        dplyr::distinct()
+      
+      # Count lost PPIs per KO x neuron x ternary class
+      lost_edges <- df_states |>
+        dplyr::filter(state == "lost") |>
+        dplyr::select(key, genotype, neuron, DiseaseClass) |>
+        dplyr::distinct()
+      
+      lost_by_class <- lost_edges |>
+        dplyr::inner_join(shared_class, by = "key", relationship = "many-to-many") |>
+        dplyr::group_by(genotype, neuron, DiseaseClass, class) |>
+        dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
+      
+      loss_wide <- lost_by_class |>
+        tidyr::pivot_wider(names_from = class, values_from = n_lost, values_fill = 0)
+      
+      for (tc in tern_classes) {
+        if (!tc %in% names(loss_wide)) loss_wide[[tc]] <- 0
+      }
+      
+      loss_wide <- loss_wide |>
+        dplyr::mutate(
+          total = .data[[tern_classes[1]]] + .data[[tern_classes[2]]] + .data[[tern_classes[3]]],
+          p_1 = .data[[tern_classes[1]]] / total,
+          p_2 = .data[[tern_classes[2]]] / total,
+          p_3 = .data[[tern_classes[3]]] / total
+        ) |>
+        dplyr::filter(total > 0, !is.na(DiseaseClass))
+      
+      if (nrow(loss_wide) < 3) {
+        message("  Skipped: insufficient data")
+        next
+      }
+      
+      # --- Faceted grid only ---
+      disease_classes <- unique(loss_wide$DiseaseClass)
+      neuron_types <- c("iN", "iDA")
+      n_dc <- length(disease_classes)
+      
+      if (n_dc > 0) {
+        pdf(file.path(combo_out_dir, paste0("ternary_", tern_suffix, ".pdf")), width = 3 * n_dc, height = 6)
+        par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1))
+        
+        for (nt in neuron_types) {
+          for (dc in disease_classes) {
+            dd <- loss_wide |> dplyr::filter(neuron == nt, DiseaseClass == dc)
+            
+            TernaryPlot(alab = tern_classes[1], 
+                        blab = tern_classes[2], 
+                        clab = tern_classes[3],
+                        lab.cex = 0.5, 
+                        grid.lines = 4,
+                        grid.lty = "dashed",
+                        grid.minor.lines = 0,
+                        axis.cex = 0.5, 
+                        main = paste0(dc, "\n(", nt, ")"))
+            
+            if (nrow(dd) >= 3) {
+              coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
+              
+              if (nrow(coords) >= 5) {
+                tryCatch({
+                  TernaryDensityContour(coords, resolution = 50, col = viridisLite::viridis, nlevels = 10, lwd = 0.25, labcex = 0.4)
+                }, error = function(e) NULL)
+              }
+              
+              TernaryPoints(coords, pch = 19, cex = 0.8, col = "red")
+              TernaryText(coords, labels = dd$genotype, cex = 0.5, pos = 3, offset = 0.3)
+            }
+          }
+        }
+        dev.off()
+      }
+      
+    }, error = function(e) {
+      message("  Error: ", e$message)
+    })
+  }
+  
+  message("Done. ", n_combos, " combinations processed. Output: ", combo_out_dir)
+}
+
+# # All combinations from all tags
+# plot_all_ternary_combinations(
+#   df_states = ko_edge_states,
+#   shared_long = shared_long,
+#   disease_class_df = disease_class_df,
+#   out_dir = out_dir_ppi_vuln,
+#   disease_class_palette = disease_class_palette
+# )
+
+# Or specify subset of tags
+plot_all_ternary_combinations(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_ppi_vuln,
+  disease_class_palette = disease_class_palette,
+  tags = c("Golgi", "EarlyEndosome","RecyclingEndosome", "Endo_iN_curated_Hundley", "OXPHOS","MitoIMS", "MitoMatrix", "MitoMIM", "mtComplexI", "Lysosome", "Presynaptic", "Postsynaptic", "SynapseSVs", "Svendocytosis", "Svexocytosis", "SVfusion")
 )
 
 ```
