@@ -12507,11 +12507,12 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
             coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
             
             # Add density contours if >= 3 points
+            # add genotype dots in red and also a heatmap (white to dark grey under it)
             if (nrow(coords) >= 3) {
               tryCatch({
                 TernaryDensityContour(coords, 
                                       resolution = 50, 
-                                      col = function(n) viridisLite::viridis(n),
+                                      col = function(n) grey.colors(n, start = 1, end = 0.1),
                                       filled = TRUE,
                                       nlevels = 10, 
                                       lwd = 0.25, 
@@ -12521,7 +12522,7 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
             
             # Overlay KO points and labels
             TernaryPoints(coords, pch = 19, cex = 0.8, col = "red")
-            TernaryText(coords, labels = dd$genotype, cex = 0.5, pos = 3, offset = 0.3)
+            TernaryText(coords, labels = dd$genotype, cex = 0.5, pos = 3, offset = 0.3, col = "red")
           }
         }
       }
