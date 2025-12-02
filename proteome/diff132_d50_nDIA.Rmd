@@ -12496,6 +12496,8 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
                       lab.cex = 0.5, 
                       grid.lines = 4,
                       grid.lty = "dashed",
+                      grid.col = "skyblue",
+                      grid.lwd = 0.25,
                       grid.minor.lines = 0,
                       axis.cex = 0.5, 
                       main = paste0(dc, "\n(", nt, ")"))
@@ -12504,11 +12506,16 @@ plot_all_ternary_combinations <- function(df_states, shared_long, disease_class_
           if (nrow(dd) >= 3) {
             coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
             
-            # Add density contours if >= 5 points
-            if (nrow(coords) >= 5) {
+            # Add density contours if >= 3 points
+            if (nrow(coords) >= 3) {
               tryCatch({
-                TernaryDensityContour(coords, resolution = 50, col = viridisLite::viridis, 
-                                      nlevels = 10, lwd = 0.25, labcex = 0.4)
+                TernaryDensityContour(coords, 
+                                      resolution = 50, 
+                                      col = function(n) viridisLite::viridis(n),
+                                      filled = TRUE,
+                                      nlevels = 10, 
+                                      lwd = 0.25, 
+                                      labcex = 0.4)
               }, error = function(e) NULL)
             }
             
