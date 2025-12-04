@@ -6156,6 +6156,188 @@ plot_corr_iN_vs_iDA_by_genotype(
 ```
 
 
+### XIi. Ternary plots from log2FC values per annotation
+```{r}
+# Uses mean log2FC of genes in each annotation category per KO/neuron
+# White-to-blue contour fill to distinguish from PPI loss plots
+
+plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_class_palette,
+                                 tern_classes = c("SynGO", "Mito", "EndoLyso")) {
+  
+  library(Ternary)
+  
+  # Create output directory
+  tern_out_dir <- file.path(out_dir, "plots/ternary_log2fc")
+  dir.create(tern_out_dir, recursive = TRUE, showWarnings = FALSE)
+  tern_suffix <- paste(tern_classes, collapse = "_")
+  
+  # Identify KO columns (format: GENE_neuron, exclude annotation cols and _mean_ctrl)
+  ko_cols <- grep("^[A-Z0-9]+_(iN|iDA)$", colnames(log2fc_mat), value = TRUE)
+  ko_cols <- ko_cols[!grepl("_mean_ctrl", ko_cols)]
+  
+  # Check that all tern_classes exist as columns
+  missing <- setdiff(tern_classes, colnames(log2fc_mat))
+  if (length(missing) > 0) stop("Missing annotation columns: ", paste(missing, collapse = ", "))
+  
+  # Prepare disease class mapping
+  disease_map <- disease_class_df |>
+    dplyr::mutate(sample = toupper(sample)) |>
+    dplyr::select(sample, DiseaseClass) |>
+    dplyr::distinct()
+  
+  # For each KO column, compute mean log2FC for genes in each annotation
+  results <- lapply(ko_cols, function(ko_col) {
+    parts <- strsplit(ko_col, "_")[[1]]
+    ko_gene <- parts[1]
+    neuron <- parts[2]
+    
+    # Get log2FC values and annotation membership
+    df_sub <- log2fc_mat[, c("Genes", ko_col, tern_classes), drop = FALSE]
+    colnames(df_sub)[2] <- "log2fc"
+    
+    # Compute mean |log2FC| for genes in each annotation (use absolute value for magnitude)
+    means <- sapply(tern_classes, function(tc) {
+      in_annot <- df_sub[[tc]] == TRUE | df_sub[[tc]] == 1
+      if (sum(in_annot, na.rm = TRUE) == 0) return(NA_real_)
+      mean(abs(df_sub$log2fc[in_annot]), na.rm = TRUE)
+    })
+    
+    data.frame(genotype = ko_col, KO = ko_gene, neuron = neuron,
+               v1 = means[1], v2 = means[2], v3 = means[3], stringsAsFactors = FALSE)
+  }) |> dplyr::bind_rows()
+  
+  # Add disease class
+  results <- results |>
+    dplyr::left_join(disease_map, by = c("KO" = "sample")) |>
+    dplyr::filter(!is.na(DiseaseClass), !is.na(v1), !is.na(v2), !is.na(v3))
+  
+  # Compute proportions (normalize to sum = 1)
+  results <- results |>
+    dplyr::mutate(
+      total = v1 + v2 + v3,
+      p_1 = v1 / total,
+      p_2 = v2 / total,
+      p_3 = v3 / total
+    ) |>
+    dplyr::filter(total > 0)
+  
+  message("log2FC ternary data: ", nrow(results), " KO x neuron combinations")
+  
+  # White-to-blue color palette
+  blue_contour <- function(n) colorRampPalette(c("white", "steelblue", "darkblue"))(n)
+  
+  # --- Plot 1: Combined overview ---
+  pdf(file.path(tern_out_dir, paste0("ternary_log2fc_combined_", tern_suffix, ".pdf")), width = 6, height = 6)
+  TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
+              lab.cex = 0.8, grid.lines = 5, grid.lty = "dashed", grid.minor.lines = 0,
+              axis.cex = 0.6, main = "log2FC magnitude composition - all neurons")
+  cols <- disease_class_palette[as.character(results$DiseaseClass)]
+  pch_vec <- ifelse(results$neuron == "iN", 19, 17)
+  TernaryPoints(results[, c("p_1", "p_2", "p_3")], col = cols, pch = pch_vec, cex = 1.2)
+  legend("topright", legend = names(disease_class_palette), fill = disease_class_palette, cex = 0.5, bty = "n", title = "Disease Class")
+  legend("bottomright", legend = c("iN", "iDA"), pch = c(19, 17), cex = 0.6, bty = "n", title = "Neuron")
+  dev.off()
+  
+  # --- Plot 2: Faceted by disease class and neuron ---
+  disease_class_counts <- results |>
+    dplyr::group_by(DiseaseClass, neuron) |>
+    dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") |>
+    dplyr::filter(n_geno >= 3) |>
+    dplyr::distinct(DiseaseClass) |>
+    dplyr::pull(DiseaseClass)
+  
+  disease_classes <- intersect(unique(results$DiseaseClass), disease_class_counts)
+  neuron_types <- c("iN", "iDA")
+  n_dc <- length(disease_classes)
+  
+  if (n_dc > 0) {
+    pdf(file.path(tern_out_dir, paste0("ternary_log2fc_faceted_", tern_suffix, ".pdf")), width = 3 * n_dc, height = 6)
+    par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1))
+    
+    for (nt in neuron_types) {
+      for (dc in disease_classes) {
+        dd <- results |> dplyr::filter(neuron == nt, DiseaseClass == dc)
+        
+        TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
+                    lab.cex = 0.5, grid.lines = 4, grid.lty = "dashed", grid.minor.lines = 0,
+                    axis.cex = 0.5, main = paste0(dc, "\n(", nt, ")"))
+        
+        if (nrow(dd) >= 3) {
+          coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
+          
+          if (nrow(coords) >= 3) {
+            tryCatch({
+              TernaryDensityContour(coords, resolution = 50, col = blue_contour, filled = TRUE,
+                                    nlevels = 10, lwd = 0.25, labcex = 0.3)
+            }, error = function(e) NULL)
+          }
+          
+          TernaryPoints(coords, pch = 19, cex = 0.8, col = "darkred")
+          TernaryText(coords, labels = dd$KO, cex = 0.5, pos = 3, offset = 0.3, col = "darkred")
+        }
+      }
+    }
+    dev.off()
+  }
+  
+  # --- Plot 3: Summary by disease class (aggregated across KOs) ---
+  # Mean position per disease class x neuron
+  dc_summary <- results |>
+    dplyr::group_by(DiseaseClass, neuron) |>
+    dplyr::summarise(
+      n_KOs = dplyr::n(),
+      mean_p1 = mean(p_1), sd_p1 = sd(p_1),
+      mean_p2 = mean(p_2), sd_p2 = sd(p_2),
+      mean_p3 = mean(p_3), sd_p3 = sd(p_3),
+      .groups = "drop"
+    )
+  
+  pdf(file.path(tern_out_dir, paste0("ternary_log2fc_diseaseclass_summary_", tern_suffix, ".pdf")), width = 8, height = 4)
+  par(mfrow = c(1, 2), mar = c(1, 1, 2, 1))
+  
+  for (nt in neuron_types) {
+    dd <- dc_summary |> dplyr::filter(neuron == nt)
+    
+    TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
+                lab.cex = 0.7, grid.lines = 5, grid.lty = "dashed", grid.minor.lines = 0,
+                axis.cex = 0.5, main = paste0("Disease class centroids (", nt, ")"))
+    
+    if (nrow(dd) > 0) {
+      coords <- as.matrix(dd[, c("mean_p1", "mean_p2", "mean_p3")])
+      cols <- disease_class_palette[as.character(dd$DiseaseClass)]
+      TernaryPoints(coords, pch = 19, cex = 2, col = cols)
+      TernaryText(coords, labels = dd$DiseaseClass, cex = 0.5, pos = 3, offset = 0.5)
+    }
+  }
+  dev.off()
+  
+  # Save summary table
+  write.csv(results, file.path(tern_out_dir, paste0("ternary_log2fc_summary_", tern_suffix, ".csv")), row.names = FALSE)
+  write.csv(dc_summary, file.path(tern_out_dir, paste0("ternary_log2fc_diseaseclass_means_", tern_suffix, ".csv")), row.names = FALSE)
+  
+  invisible(list(ko_data = results, dc_summary = dc_summary))
+}
+
+
+# --- Call for main annotation triplet ---
+plot_ternary_log2fc(
+  log2fc_mat = log2FC_d50_annotated,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_ppi_vuln,
+  disease_class_palette = disease_class_palette,
+  tern_classes = c("SynGO", "Mito", "EndoLyso")
+)
+
+# --- Optional: run on other annotation triplets ---
+plot_ternary_log2fc(
+  log2fc_mat = log2FC_d50_annotated,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_ppi_vuln,
+  disease_class_palette = disease_class_palette,
+  tern_classes = c("SynapseSVs", "OXPHOS", "Lysosome")
+)
+```
+
 
 ### ?? VIIIh. Pairwise protein–protein correlations
 ```{r}
