@@ -6161,11 +6161,16 @@ plot_corr_iN_vs_iDA_by_genotype(
 # Uses mean log2FC of genes in each annotation category per KO/neuron
 # White-to-blue contour fill to distinguish from PPI loss plots
 
+# --- Step 1: create out dir for function call
+out_dir_d50_ternaryplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/TernaryPlots_log2fc"
+dir.create(out_dir_d50_ternaryplots, recursive = TRUE, showWarnings = FALSE)
+
+
+# --- Step 2: Define function to loop over log2Fc and calculate ternary plots
 plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_class_palette,
                                  tern_classes = c("SynGO", "Mito", "EndoLyso")) {
   
-  library(Ternary)
-  
+
   # Create output directory
   tern_out_dir <- file.path(out_dir, "plots/ternary_log2fc")
   dir.create(tern_out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -6224,13 +6229,13 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
   message("log2FC ternary data: ", nrow(results), " KO x neuron combinations")
   
   # White-to-blue color palette
-  blue_contour <- function(n) colorRampPalette(c("white", "steelblue", "darkblue"))(n)
+  blue_contour <- function(n) colorRampPalette(c("white", "dodgerblue", "dodgerblue3"))(n)
   
-  # --- Plot 1: Combined overview ---
+  # --- Plot 1: All genotypes, colored by disease class, dots only ---
   pdf(file.path(tern_out_dir, paste0("ternary_log2fc_combined_", tern_suffix, ".pdf")), width = 6, height = 6)
   TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
               lab.cex = 0.8, grid.lines = 5, grid.lty = "dashed", grid.minor.lines = 0,
-              axis.cex = 0.6, main = "log2FC magnitude composition - all neurons")
+              axis.cex = 0.6, main = "log2FC magnitude composition - all genotypes")
   cols <- disease_class_palette[as.character(results$DiseaseClass)]
   pch_vec <- ifelse(results$neuron == "iN", 19, 17)
   TernaryPoints(results[, c("p_1", "p_2", "p_3")], col = cols, pch = pch_vec, cex = 1.2)
@@ -6238,7 +6243,7 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
   legend("bottomright", legend = c("iN", "iDA"), pch = c(19, 17), cex = 0.6, bty = "n", title = "Neuron")
   dev.off()
   
-  # --- Plot 2: Faceted by disease class and neuron ---
+  # --- Plot 2: Faceted by neuron (rows) and disease class (cols), with contours and colored dots ---
   disease_class_counts <- results |>
     dplyr::group_by(DiseaseClass, neuron) |>
     dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") |>
@@ -6260,20 +6265,20 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
         
         TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
                     lab.cex = 0.5, grid.lines = 4, grid.lty = "dashed", grid.minor.lines = 0,
-                    axis.cex = 0.5, main = paste0(dc, "\n(", nt, ")"))
+                    axis.cex = 0.5, main = paste0(dc, " (", nt, ")"))
         
         if (nrow(dd) >= 3) {
           coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
           
-          if (nrow(coords) >= 3) {
-            tryCatch({
-              TernaryDensityContour(coords, resolution = 50, col = blue_contour, filled = TRUE,
-                                    nlevels = 10, lwd = 0.25, labcex = 0.3)
-            }, error = function(e) NULL)
-          }
+          # Contour
+          tryCatch({
+            TernaryDensityContour(coords, resolution = 50, col = blue_contour, filled = TRUE, nlevels = 10, lwd = 0.25, labcex = 0.3)
+          }, error = function(e) NULL)
           
-          TernaryPoints(coords, pch = 19, cex = 0.8, col = "darkred")
-          TernaryText(coords, labels = dd$KO, cex = 0.5, pos = 3, offset = 0.3, col = "darkred")
+          # Points colored by disease class
+          pt_col <- disease_class_palette[dc]
+          TernaryPoints(coords, pch = 19, cex = 0.8, col = pt_col)
+          TernaryText(coords, labels = dd$KO, cex = 0.5, pos = 3, offset = 0.3, col = pt_col)
         }
       }
     }
@@ -6319,23 +6324,23 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
 }
 
 
-# --- Call for main annotation triplet ---
+# --- Setp 3:  Call for main annotation triplet
 plot_ternary_log2fc(
   log2fc_mat = log2FC_d50_annotated,
   disease_class_df = disease_class_df,
-  out_dir = out_dir_ppi_vuln,
-  disease_class_palette = disease_class_palette,
-  tern_classes = c("SynGO", "Mito", "EndoLyso")
-)
-
-# --- Optional: run on other annotation triplets ---
-plot_ternary_log2fc(
-  log2fc_mat = log2FC_d50_annotated,
-  disease_class_df = disease_class_df,
-  out_dir = out_dir_ppi_vuln,
+  out_dir = out_dir_d50_ternaryplots,
   disease_class_palette = disease_class_palette,
   tern_classes = c("SynapseSVs", "OXPHOS", "Lysosome")
 )
+
+# --- Setp 4:  Optional: run on other annotation triplets ---
+plot_ternary_log2fc(
+  log2fc_mat = log2FC_d50_annotated,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_d50_ternaryplots,
+  disease_class_palette = disease_class_palette,
+  tern_classes = c("Golgi", "EarlyEndosome","RecyclingEndosome", "Endo_iN_curated_Hundley", "OXPHOS","MitoIMS", "MitoMatrix", "MitoMIM", "mtComplexI", "Lysosome", "Presynaptic", "Postsynaptic", "SynapseSVs", "Svendocytosis", "Svexocytosis", "SVfusion")
+
 ```
 
 
