@@ -6167,7 +6167,6 @@ dir.create(out_dir_d50_ternaryplots, recursive = TRUE, showWarnings = FALSE)
 plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_class_palette,
                                  tern_classes = c("SynGO", "Mito", "EndoLyso")) {
   
-
   # Create output directory
   tern_out_dir <- file.path(out_dir, "plots")
   dir.create(tern_out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -6206,7 +6205,7 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
     means_neg <- sapply(tern_classes, function(tc) {
       in_annot <- (df_sub[[tc]] == TRUE | df_sub[[tc]] == 1) & df_sub$log2fc < 0
       if (sum(in_annot, na.rm = TRUE) == 0) return(NA_real_)
-      mean(abs(df_sub$log2fc[in_annot]), na.rm = TRUE)  # abs so we can use proportions
+      mean(abs(df_sub$log2fc[in_annot]), na.rm = TRUE)
     })
     
     data.frame(genotype = ko_col, KO = ko_gene, neuron = neuron,
@@ -6224,32 +6223,23 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
   # Compute proportions for positive log2FC (accumulation)
   results_pos <- results |>
     dplyr::filter(!is.na(v1_pos), !is.na(v2_pos), !is.na(v3_pos)) |>
-    dplyr::mutate(
-      total = v1_pos + v2_pos + v3_pos,
-      p_1 = v1_pos / total,
-      p_2 = v2_pos / total,
-      p_3 = v3_pos / total
-    ) |>
+    dplyr::mutate(total = v1_pos + v2_pos + v3_pos, p_1 = v1_pos / total, p_2 = v2_pos / total, p_3 = v3_pos / total) |>
     dplyr::filter(total > 0)
   
   # Compute proportions for negative log2FC (vulnerability)
   results_neg <- results |>
     dplyr::filter(!is.na(v1_neg), !is.na(v2_neg), !is.na(v3_neg)) |>
-    dplyr::mutate(
-      total = v1_neg + v2_neg + v3_neg,
-      p_1 = v1_neg / total,
-      p_2 = v2_neg / total,
-      p_3 = v3_neg / total
-    ) |>
+    dplyr::mutate(total = v1_neg + v2_neg + v3_neg, p_1 = v1_neg / total, p_2 = v2_neg / total, p_3 = v3_neg / total) |>
     dplyr::filter(total > 0)
   
   message("log2FC ternary data: ", nrow(results_pos), " pos, ", nrow(results_neg), " neg KO x neuron combinations")
   
-  # White-to-blue color palette
+  # Color palettes for contours
   blue_contour <- function(n) colorRampPalette(c("grey90", "dodgerblue", "dodgerblue3"))(n)
-
+  red_contour <- function(n) colorRampPalette(c("grey90", "salmon", "firebrick"))(n)
+  
   # --- Helper function to plot one ternary ---
-  plot_ternary_single <- function(dat, suffix, title_extra) {
+  plot_ternary_single <- function(dat, suffix, title_extra, contour_col) {
     if (nrow(dat) < 3) return(invisible(NULL))
     
     # Plot 1: All genotypes, colored by disease class, dots + labels
@@ -6293,7 +6283,7 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
             coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
             
             tryCatch({
-              TernaryDensityContour(coords, resolution = 50, col = blue_contour, filled = TRUE, nlevels = 10, lwd = 0.25, labcex = 0.3)
+              TernaryDensityContour(coords, resolution = 50, col = contour_col, filled = TRUE, nlevels = 10, lwd = 0.25, labcex = 0.3)
             }, error = function(e) NULL)
             
             pt_col <- disease_class_palette[dc]
@@ -6307,8 +6297,8 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
   }
   
   # Generate plots for positive (accumulation) and negative (vulnerability)
-  plot_ternary_single(results_pos, "pos", "Accumulation (pos log2FC)")
-  plot_ternary_single(results_neg, "neg", "Vulnerability (neg log2FC)")
+  plot_ternary_single(results_pos, "pos", "Accumulation (pos log2FC)", red_contour)
+  plot_ternary_single(results_neg, "neg", "Vulnerability (neg log2FC)", blue_contour)
   
   # Save summary tables
   write.csv(results_pos, file.path(tern_out_dir, paste0("ternary_log2fc_pos_summary_", tern_suffix, ".csv")), row.names = FALSE)
@@ -6318,7 +6308,7 @@ plot_ternary_log2fc <- function(log2fc_mat, disease_class_df, out_dir, disease_c
 }
 
 
-# --- Setp 3:  Call for main annotation triplet
+# --- Step 3: Call for main annotation triplet
 plot_ternary_log2fc(
   log2fc_mat = log2FC_d50_annotated,
   disease_class_df = disease_class_df,
@@ -6331,14 +6321,12 @@ plot_ternary_log2fc(
 ###### Ternary / Triangle Plots across all annotations (log2FC)
 # Generates ternary plots showing log2FC composition across ALL ANNOTATIONS / SELECT PLURALITY
 # 3-way combinations of specified annotation tags.
-# Each plot shows how |log2FC| is distributed among three annotation categories, 
-# faceted by disease class and neuron type.
+# Split by positive (accumulation) and negative (vulnerability) log2FC
 
 # --- Step 4: Define function that plots for any given annotations the ternary plot
 plot_all_ternary_log2fc_combinations <- function(log2fc_mat, disease_class_df, out_dir, disease_class_palette, tags = NULL) {
   
   # --- Setup ---
-  # Get available tags from log2fc_mat columns if not specified
   if (is.null(tags)) {
     ko_cols <- grep("^[A-Z0-9]+_(iN|iDA)$", colnames(log2fc_mat), value = TRUE)
     tags <- setdiff(colnames(log2fc_mat), c("Genes", ko_cols))
@@ -6349,7 +6337,7 @@ plot_all_ternary_log2fc_combinations <- function(log2fc_mat, disease_class_df, o
   combo_out_dir <- file.path(out_dir, "plots/all_combinations")
   dir.create(combo_out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # Generate all 3-way combinations: choose(n_tags, 3)
+  # Generate all 3-way combinations
   combos <- combn(tags, 3, simplify = FALSE)
   n_combos <- length(combos)
   
@@ -6365,8 +6353,9 @@ plot_all_ternary_log2fc_combinations <- function(log2fc_mat, disease_class_df, o
     dplyr::select(sample, DiseaseClass) |>
     dplyr::distinct()
   
-  # White-to-blue color palette
+  # Color palettes
   blue_contour <- function(n) colorRampPalette(c("grey90", "dodgerblue", "dodgerblue3"))(n)
+  red_contour <- function(n) colorRampPalette(c("grey90", "salmon", "firebrick"))(n)
   
   # --- Loop through each 3-way combination ---
   for (i in seq_along(combos)) {
@@ -6377,7 +6366,6 @@ plot_all_ternary_log2fc_combinations <- function(log2fc_mat, disease_class_df, o
     
     tryCatch({
       
-      # --- Data preparation ---
       # Check that all tern_classes exist as columns
       missing <- setdiff(tern_classes, colnames(log2fc_mat))
       if (length(missing) > 0) {
@@ -6385,7 +6373,7 @@ plot_all_ternary_log2fc_combinations <- function(log2fc_mat, disease_class_df, o
         next
       }
       
-      # For each KO column, compute mean |log2FC| for genes in each annotation
+      # For each KO column, compute mean log2FC for genes in each annotation
       results <- lapply(ko_cols, function(ko_col) {
         parts <- strsplit(ko_col, "_")[[1]]
         ko_gene <- parts[1]
@@ -6394,105 +6382,96 @@ plot_all_ternary_log2fc_combinations <- function(log2fc_mat, disease_class_df, o
         df_sub <- log2fc_mat[, c("Genes", ko_col, tern_classes), drop = FALSE]
         colnames(df_sub)[2] <- "log2fc"
         
-        means <- sapply(tern_classes, function(tc) {
-          in_annot <- df_sub[[tc]] == TRUE | df_sub[[tc]] == 1
+        means_pos <- sapply(tern_classes, function(tc) {
+          in_annot <- (df_sub[[tc]] == TRUE | df_sub[[tc]] == 1) & df_sub$log2fc > 0
+          if (sum(in_annot, na.rm = TRUE) == 0) return(NA_real_)
+          mean(df_sub$log2fc[in_annot], na.rm = TRUE)
+        })
+        means_neg <- sapply(tern_classes, function(tc) {
+          in_annot <- (df_sub[[tc]] == TRUE | df_sub[[tc]] == 1) & df_sub$log2fc < 0
           if (sum(in_annot, na.rm = TRUE) == 0) return(NA_real_)
           mean(abs(df_sub$log2fc[in_annot]), na.rm = TRUE)
         })
         
-        data.frame(genotype = ko_col, KO = ko_gene, neuron = neuron, v1 = means[1], v2 = means[2], v3 = means[3], stringsAsFactors = FALSE)
+        data.frame(genotype = ko_col, KO = ko_gene, neuron = neuron,
+                   v1_pos = means_pos[1], v2_pos = means_pos[2], v3_pos = means_pos[3],
+                   v1_neg = means_neg[1], v2_neg = means_neg[2], v3_neg = means_neg[3],
+                   stringsAsFactors = FALSE)
       }) |> dplyr::bind_rows()
       
       # Add disease class
       results <- results |>
         dplyr::left_join(disease_map, by = c("KO" = "sample"), relationship = "many-to-many") |>
-        dplyr::filter(!is.na(DiseaseClass), !is.na(v1), !is.na(v2), !is.na(v3)) |>
-        dplyr::distinct(genotype, KO, neuron, v1, v2, v3, DiseaseClass)
+        dplyr::filter(!is.na(DiseaseClass)) |>
+        dplyr::distinct(genotype, KO, neuron, v1_pos, v2_pos, v3_pos, v1_neg, v2_neg, v3_neg, DiseaseClass)
       
-      # Compute ternary proportions (must sum to 1)
-      results <- results |>
-        dplyr::mutate(
-          total = v1 + v2 + v3,
-          p_1 = v1 / total,
-          p_2 = v2 / total,
-          p_3 = v3 / total
-        ) |>
+      # Compute proportions for pos and neg
+      results_pos <- results |>
+        dplyr::filter(!is.na(v1_pos), !is.na(v2_pos), !is.na(v3_pos)) |>
+        dplyr::mutate(total = v1_pos + v2_pos + v3_pos, p_1 = v1_pos / total, p_2 = v2_pos / total, p_3 = v3_pos / total) |>
         dplyr::filter(total > 0)
       
-      # Skip if insufficient data points
-      if (nrow(results) < 3) {
+      results_neg <- results |>
+        dplyr::filter(!is.na(v1_neg), !is.na(v2_neg), !is.na(v3_neg)) |>
+        dplyr::mutate(total = v1_neg + v2_neg + v3_neg, p_1 = v1_neg / total, p_2 = v2_neg / total, p_3 = v3_neg / total) |>
+        dplyr::filter(total > 0)
+      
+      # Skip if insufficient data
+      if (nrow(results_pos) < 3 && nrow(results_neg) < 3) {
         message("  Skipped: insufficient data")
         next
       }
       
-      # --- Filter disease classes ---
-      # Only include disease classes with >= 3 genotypes in at least one neuron type
-      disease_class_counts <- results |>
-        dplyr::group_by(DiseaseClass, neuron) |>
-        dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") |>
-        dplyr::filter(n_geno >= 3) |>
-        dplyr::distinct(DiseaseClass) |>
-        dplyr::pull(DiseaseClass)
-      
-      disease_classes <- intersect(unique(results$DiseaseClass), disease_class_counts)
-      neuron_types <- c("iN", "iDA")
-      n_dc <- length(disease_classes)
-      
-      # Skip if no disease classes pass filter
-      if (n_dc == 0) {
-        message("  Skipped: no disease classes with >= 3 genotypes")
-        next
-      }
-      
-      # --- Generate faceted ternary plot ---
-      # Layout: rows = neuron types (iN, iDA), columns = disease classes
-      pdf(file.path(combo_out_dir, paste0("ternary_log2fc_", tern_suffix, ".pdf")), width = 3 * n_dc, height = 7)
-      par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1), oma = c(0, 0, 3, 0))
-      
-      for (nt in neuron_types) {
-        for (dc in disease_classes) {
-          dd <- results |> dplyr::filter(neuron == nt, DiseaseClass == dc)
-          
-          # Draw ternary axes
-          TernaryPlot(alab = tern_classes[1], 
-                      blab = tern_classes[2], 
-                      clab = tern_classes[3],
-                      lab.cex = 0.5, 
-                      grid.lines = 4,
-                      grid.lty = "dashed",
-                      grid.col = "skyblue",
-                      grid.lwd = 0.25,
-                      grid.minor.lines = 0,
-                      axis.cex = 0.5, 
-                      main = paste0(dc, " (", nt, ")"))
-          
-          # Plot data if >= 3 points
-          if (nrow(dd) >= 3) {
-            coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
+      # --- Helper to generate one faceted plot ---
+      plot_faceted <- function(dat, suffix, title_extra, contour_col) {
+        if (nrow(dat) < 3) return(invisible(NULL))
+        
+        disease_class_counts <- dat |>
+          dplyr::group_by(DiseaseClass, neuron) |>
+          dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") |>
+          dplyr::filter(n_geno >= 3) |>
+          dplyr::distinct(DiseaseClass) |>
+          dplyr::pull(DiseaseClass)
+        
+        disease_classes <- intersect(unique(dat$DiseaseClass), disease_class_counts)
+        neuron_types <- c("iN", "iDA")
+        n_dc <- length(disease_classes)
+        
+        if (n_dc == 0) return(invisible(NULL))
+        
+        pdf(file.path(combo_out_dir, paste0("ternary_log2fc_", suffix, "_", tern_suffix, ".pdf")), width = 3 * n_dc, height = 7)
+        par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1), oma = c(0, 0, 3, 0))
+        
+        for (nt in neuron_types) {
+          for (dc in disease_classes) {
+            dd <- dat |> dplyr::filter(neuron == nt, DiseaseClass == dc)
             
-            # Add density contours if >= 3 points
-            tryCatch({
-              TernaryDensityContour(coords, 
-                                    resolution = 50, 
-                                    col = blue_contour,
-                                    filled = TRUE,
-                                    nlevels = 10, 
-                                    lwd = 0.25, 
-                                    labcex = 0.3)
-            }, error = function(e) NULL)
+            TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
+                        lab.cex = 0.5, grid.lines = 4, grid.lty = "dashed", grid.col = "skyblue",
+                        grid.lwd = 0.25, grid.minor.lines = 0, axis.cex = 0.5, 
+                        main = paste0(dc, " (", nt, ")"))
             
-            # Overlay KO points colored by disease class, labels in black
-            pt_col <- disease_class_palette[dc]
-            TernaryPoints(coords, pch = 19, cex = 0.8, col = pt_col)
-            TernaryText(coords, labels = dd$genotype, cex = 0.5, pos = 3, offset = 0.3, col = "black")
+            if (nrow(dd) >= 3) {
+              coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
+              
+              tryCatch({
+                TernaryDensityContour(coords, resolution = 50, col = contour_col, filled = TRUE, nlevels = 10, lwd = 0.25, labcex = 0.3)
+              }, error = function(e) NULL)
+              
+              pt_col <- disease_class_palette[dc]
+              TernaryPoints(coords, pch = 19, cex = 0.8, col = pt_col)
+              TernaryText(coords, labels = dd$genotype, cex = 0.5, pos = 3, offset = 0.3, col = "black")
+            }
           }
         }
+        
+        mtext(paste0("Each KO positioned by % |log2FC| - ", title_extra), outer = TRUE, cex = 0.6, line = 0.5)
+        dev.off()
       }
       
-      # Add overall title
-      mtext("Each KO positioned by its % |log2FC| in each annotation. Darker regions = more KOs with similar profiles.", 
-      outer = TRUE, cex = 0.6, line = 0.5)
-      dev.off()
+      # Generate both pos and neg plots
+      plot_faceted(results_pos, "pos", "Accumulation (pos log2FC)", red_contour)
+      plot_faceted(results_neg, "neg", "Vulnerability (neg log2FC)", blue_contour)
       
     }, error = function(e) {
       message("  Error: ", e$message)
