@@ -12287,7 +12287,10 @@ plot_ternary_ppi_loss <- function(df_states, shared_long, disease_class_df,
               axis.cex = 0.6, main = "PPI loss composition - all neurons")
   cols <- disease_class_palette[as.character(loss_wide$DiseaseClass)]
   pch_vec <- ifelse(loss_wide$neuron == "iN", 19, 17)  
-  TernaryPoints(loss_wide[, c("p_1", "p_2", "p_3")], col = cols, pch = pch_vec, cex = 1.2)
+  TernaryPoints(loss_wide[, c("p_1", "p_2", "p_3")], 
+                col = cols, 
+                pch = pch_vec, 
+                cex = 1.2)
   legend("topright", legend = names(disease_class_palette), fill = disease_class_palette, cex = 0.5, bty = "n", title = "Disease Class")
   legend("bottomright", legend = c("iN", "iDA"), pch = c(19, 17), cex = 0.6, bty = "n", title = "Neuron")
   dev.off()
@@ -12357,9 +12360,12 @@ plot_ternary_ppi_loss(
   disease_class_df = disease_class_df,
   out_dir = out_dir_ppi_vuln,
   disease_class_palette = disease_class_palette,
-  tern_classes = c("Svexocytosis", "OXPHOS", "mtComplexI")
+  tern_classes = c("SynapseSVs", "OXPHOS", "Lysosome")
 )
 
+
+# c("SynapseSVs", "OXPHOS", "Lysosome")
+# c("Svexocytosis", "OXPHOS", "mtComplexI")
 ```
 
 
