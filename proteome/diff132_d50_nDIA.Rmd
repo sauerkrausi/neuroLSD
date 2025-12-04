@@ -2136,6 +2136,179 @@ plot_all_ternary_log2fc_combinations(
 
 
 
+#####  Half-circos plot showing mean log2FC per annotation for each KO
+```{r}
+# Split by neuron type (iN left, iDA right), sorted by overall mean log2FC
+
+library(circlize)
+
+# --- Step 1: create out dir
+out_dir_d50_semicircos <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/halfcircos_log2fc"
+dir.create(out_dir_d50_semicircos, recursive = TRUE, showWarnings = FALSE)
+
+
+# --- Step 2: Define function
+plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir, 
+                                    disease_class_palette,
+                                    celltype_colors = c(iDA = "grey80", iN = "grey40"),
+                                    annotations = c("Lysosome", "Mito", "OXPHOS", "Golgi", 
+                                                   "Endo_iN_curated_Hundley", "EarlyEndosome", 
+                                                   "RecyclingEndosome", "SynapseSVs", "ER", "Autophagy")) {
+  
+  # Identify KO columns
+  ko_cols <- grep("^[A-Z0-9]+_(iN|iDA)$", colnames(log2fc_mat), value = TRUE)
+  ko_cols <- ko_cols[!grepl("_mean_ctrl", ko_cols)]
+  
+  # Check annotations exist
+  missing <- setdiff(annotations, colnames(log2fc_mat))
+  if (length(missing) > 0) stop("Missing annotation columns: ", paste(missing, collapse = ", "))
+  
+  # Prepare disease class mapping
+  disease_map <- disease_class_df |>
+    dplyr::mutate(sample = toupper(sample)) |>
+    dplyr::select(sample, DiseaseClass) |>
+    dplyr::distinct()
+  
+  # Compute mean log2FC per KO per annotation
+  summary_list <- lapply(ko_cols, function(ko_col) {
+    parts <- strsplit(ko_col, "_")[[1]]
+    ko_gene <- parts[1]
+    neuron <- parts[2]
+    
+    means <- sapply(annotations, function(ann) {
+      in_annot <- log2fc_mat[[ann]] == TRUE
+      if (sum(in_annot, na.rm = TRUE) == 0) return(NA_real_)
+      mean(log2fc_mat[[ko_col]][in_annot], na.rm = TRUE)
+    })
+    
+    data.frame(KO = ko_gene, neuron = neuron, sample_id = ko_col, t(means), stringsAsFactors = FALSE)
+  })
+  
+  summary_df <- dplyr::bind_rows(summary_list)
+  
+  # Add disease class
+  summary_df <- summary_df |>
+    dplyr::left_join(disease_map, by = c("KO" = "sample")) |>
+    dplyr::filter(!is.na(DiseaseClass))
+  
+  # Compute overall mean for sorting
+  summary_df$overall_mean <- rowMeans(summary_df[, annotations], na.rm = TRUE)
+  
+  # Sort: within each neuron type, sort by overall_mean
+  summary_df <- summary_df |>
+    dplyr::arrange(neuron, overall_mean)
+  
+  # Save summary
+  write.csv(summary_df, file.path(out_dir, "halfcircos_log2fc_summary.csv"), row.names = FALSE)
+  message("Summary saved: ", nrow(summary_df), " KO x neuron combinations")
+  
+  # Split by neuron
+  df_iN <- summary_df |> dplyr::filter(neuron == "iN")
+  df_iDA <- summary_df |> dplyr::filter(neuron == "iDA")
+  
+  # Create sector data: iN on left (180-360), iDA on right (0-180)
+  n_iN <- nrow(df_iN)
+  n_iDA <- nrow(df_iDA)
+  
+  # Assign angular positions
+  df_iN$start <- seq(180, 360 - (180/n_iN), length.out = n_iN)
+  df_iN$end <- df_iN$start + (180/n_iN) - 0.5
+  
+  df_iDA$start <- seq(0, 180 - (180/n_iDA), length.out = n_iDA)
+  df_iDA$end <- df_iDA$start + (180/n_iDA) - 0.5
+  
+  # Combine
+  plot_df <- rbind(df_iN, df_iDA)
+  
+  # Color scale for log2FC (spectral)
+  log2fc_range <- range(unlist(plot_df[, annotations]), na.rm = TRUE)
+  log2fc_max <- max(abs(log2fc_range))
+  spectral_cols <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "Spectral")))(100)
+  
+  get_color <- function(val) {
+    if (is.na(val)) return("white")
+    idx <- round((val + log2fc_max) / (2 * log2fc_max) * 99) + 1
+    idx <- max(1, min(100, idx))
+    spectral_cols[idx]
+  }
+  
+  # --- Plot ---
+  pdf(file.path(out_dir, "halfcircos_log2fc.pdf"), width = 12, height = 8)
+  
+  circos.clear()
+  circos.par(start.degree = 90, gap.degree = 2, cell.padding = c(0, 0, 0, 0))
+  
+  # Initialize sectors - one per KO
+  sector_names <- plot_df$sample_id
+  circos.initialize(factors = factor(sector_names, levels = sector_names), xlim = c(0, 1))
+  
+  # Track 1: KO labels (outermost)
+  circos.track(ylim = c(0, 1), track.height = 0.05, bg.border = NA, panel.fun = function(x, y) {
+    sector.index <- CELL_META$sector.index
+    circos.text(0.5, 0.5, gsub("_(iN|iDA)$", "", sector.index), facing = "clockwise", niceFacing = TRUE, cex = 0.4)
+  })
+  
+  # Track 2: Neuron type
+  circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = "black", panel.fun = function(x, y) {
+    sector.index <- CELL_META$sector.index
+    neuron <- plot_df$neuron[plot_df$sample_id == sector.index]
+    circos.rect(0, 0, 1, 1, col = celltype_colors[neuron], border = NA)
+  })
+  
+  # Track 3: Disease class
+  circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = "black", panel.fun = function(x, y) {
+    sector.index <- CELL_META$sector.index
+    dc <- plot_df$DiseaseClass[plot_df$sample_id == sector.index]
+    circos.rect(0, 0, 1, 1, col = disease_class_palette[dc], border = NA)
+  })
+  
+  # Tracks 4+: Annotation heatmaps
+  for (ann in annotations) {
+    circos.track(ylim = c(0, 1), track.height = 0.05, bg.border = "black", panel.fun = function(x, y) {
+      sector.index <- CELL_META$sector.index
+      val <- plot_df[[ann]][plot_df$sample_id == sector.index]
+      circos.rect(0, 0, 1, 1, col = get_color(val), border = NA)
+    })
+  }
+  
+  # Add legends
+  circos.clear()
+  
+  # Neuron legend
+  legend("topleft", legend = names(celltype_colors), fill = celltype_colors, title = "Neuron", cex = 0.6, bty = "n")
+  
+  # Disease class legend
+  legend("topright", legend = names(disease_class_palette), fill = disease_class_palette, title = "Disease Class", cex = 0.5, bty = "n")
+  
+  # Annotation labels on the side
+  legend("bottomleft", legend = c("Tracks (outside to in):", "Neuron type", "Disease class", annotations), 
+         cex = 0.5, bty = "n")
+  
+  # Color scale legend
+  legend("bottomright", legend = c(sprintf("%.1f", log2fc_max), "0", sprintf("%.1f", -log2fc_max)),
+         fill = spectral_cols[c(100, 50, 1)], title = "log2FC", cex = 0.5, bty = "n")
+  
+  dev.off()
+  
+  message("Plot saved: ", file.path(out_dir, "halfcircos_log2fc.pdf"))
+  invisible(summary_df)
+}
+
+
+# --- Step 3: Call function
+plot_halfcircos_log2fc(
+  log2fc_mat = log2FC_d50_annotated,
+  disease_class_df = disease_class_df,
+  out_dir = out_dir_d50_semicircos,
+  disease_class_palette = disease_class_palette,
+  celltype_colors = c(iDA = "grey80", iN = "grey40"),
+  annotations = c("Lysosome", "Mito", "OXPHOS", "Golgi", "Endo_iN_curated_Hundley", 
+                  "EarlyEndosome", "RecyclingEndosome", "SynapseSVs", "ER", "Autophagy")
+)
+```
+
+
+
 
 ### VIe. Sorted lineplots of average neuro-releated annotations
 ```{r}
@@ -2634,6 +2807,8 @@ write_csv(top_gba1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_dr
 ```
 
 
+
+
 # VII. Neuro QC plots
 Aimed to plot neuro markers to plot differences between neuron types
 
@@ -2808,6 +2983,9 @@ d50_ascd_ann_plot_top6 <- ggplot(ascd_top6_summary, aes(x = group, y = avg_log2F
 ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_Svexocytosis.pdf"), d50_ascd_ann_plot_top6, width = 2, height = 3, device = cairo_pdf)
 
 ```
+
+
+
 
 #### VIIb1. Plot vATPase by neuon x genotype; ascending order 
 ```{r}
