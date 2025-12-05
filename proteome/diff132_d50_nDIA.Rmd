@@ -2139,6 +2139,8 @@ plot_all_ternary_log2fc_combinations(
 #####  Half-circos plot showing mean log2FC per annotation for each KO
 ```{r}
 # Split by neuron type (iN left, iDA right), sorted by overall mean log2FC
+# Approach: duplicate data to fill full circle, then only render real sectors in top half
+
 
 library(circlize)
 
@@ -2201,16 +2203,26 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   message("Summary saved: ", nrow(summary_df), " KO x neuron combinations")
   
   # Sort: within each neuron type, sort by overall_mean
-  # iN on left side, iDA on right side
   df_iN <- summary_df |> dplyr::filter(neuron == "iN") |> dplyr::arrange(desc(overall_mean))
   df_iDA <- summary_df |> dplyr::filter(neuron == "iDA") |> dplyr::arrange(overall_mean)
   
-  # Combine - iN first (left side), then iDA (right side)
-  plot_df <- rbind(df_iN, df_iDA)
-  plot_df$sector_id <- paste0(plot_df$sample_id, "_", seq_len(nrow(plot_df)))
+  # Combine real data - iN first (left side), then iDA (right side)
+  plot_df_real <- rbind(df_iN, df_iDA)
+  plot_df_real$sector_id <- paste0(plot_df_real$sample_id, "_", seq_len(nrow(plot_df_real)))
+  plot_df_real$is_dummy <- FALSE
+  
+  # Create dummy data (same number of sectors, will be in bottom half - not visible)
+  plot_df_dummy <- plot_df_real
+  plot_df_dummy$sector_id <- paste0("dummy_", seq_len(nrow(plot_df_dummy)))
+  plot_df_dummy$is_dummy <- TRUE
+  
+  # Combine: real data first (top half), then dummy (bottom half)
+  plot_df <- rbind(plot_df_real, plot_df_dummy)
   
   n_iN <- nrow(df_iN)
   n_iDA <- nrow(df_iDA)
+  n_real <- nrow(plot_df_real)
+  n_total <- nrow(plot_df)
   
   # Color scale for log2FC (spectral)
   log2fc_range <- range(unlist(plot_df[, annotations]), na.rm = TRUE)
@@ -2224,19 +2236,31 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
     spectral_cols[idx]
   }
   
+  
+  
   # --- Plot ---
-  pdf(file.path(out_dir, "halfcircos_log2fc.pdf"), width = 14, height = 8)
+  pdf(file.path(out_dir, "halfcircos_log2fc.pdf"), width = 14, height = 20)
   
   circos.clear()
   
-  # Set up for half circle: only show top half by adjusting canvas
+  # gap.after: one value per sector
+  # Structure: [iN real] gap [iDA real] gap [iN dummy] [iDA dummy]
+  gap_after <- c(
+    rep(0, n_iN - 1), 5,
+    rep(0, n_iDA - 1), 5,
+    rep(0, n_iN - 1), 0,
+    rep(0, n_iDA - 1), 0
+  )
+  
   circos.par(
     canvas.xlim = c(-1, 1), 
-    canvas.ylim = c(0, 1),  # only top half
-    start.degree = 0,      # start from left
-    gap.after = c(rep(0, nrow(df_iN) - 1), 10, rep(0, nrow(df_iDA) - 1), 10),  # gap between iN and iDA
+    canvas.ylim = c(-1, 0),  # show bottom half (which contains our real data)
+    start.degree = 180,       # flip so real data appears at top visually
+    gap.after = gap_after,
     cell.padding = c(0, 0, 0, 0)
   )
+  
+  message("Total sectors: ", n_total, ", gap.after length: ", length(gap_after))
   
   # Initialize sectors
   circos.initialize(
@@ -2244,35 +2268,44 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
     xlim = c(0, 1)
   )
   
-  # Add "iN" and "iDA" labels at the sides
-  text(-1.1, 0.5, "iN", cex = 1.2, font = 2)
-  text(1.1, 0.5, "iDA", cex = 1.2, font = 2)
+  # Helper to check if sector is real (not dummy)
+  is_real_sector <- function(sector.index) {
+    !grepl("^dummy_", sector.index)
+  }
   
-  # Track 1: KO labels (outermost)
+  # Add "iN" and "iDA" labels at the sides
+  text(-1.05, -0.5, "iN", cex = 1.2, font = 2)
+  text(1.05, -0.5, "iDA", cex = 1.2, font = 2)
+  
+  # Track 1: KO labels (outermost) - only for real sectors
   circos.track(ylim = c(0, 1), track.height = 0.05, bg.border = NA, panel.fun = function(x, y) {
     sector.index <- CELL_META$sector.index
+    if (!is_real_sector(sector.index)) return()
     ko_name <- plot_df$KO[plot_df$sector_id == sector.index]
     circos.text(0.5, 0.5, ko_name, facing = "clockwise", niceFacing = TRUE, cex = 0.4)
   })
   
-  # Track 2: Neuron type
-  circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = "black", panel.fun = function(x, y) {
+  # Track 2: Neuron type - only for real sectors
+  circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = NA, panel.fun = function(x, y) {
     sector.index <- CELL_META$sector.index
+    if (!is_real_sector(sector.index)) return()
     neuron <- plot_df$neuron[plot_df$sector_id == sector.index]
     circos.rect(0, 0, 1, 1, col = celltype_colors[neuron], border = NA)
   })
   
-  # Track 3: Disease class
-  circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = "black", panel.fun = function(x, y) {
+  # Track 3: Disease class - only for real sectors
+  circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = NA, panel.fun = function(x, y) {
     sector.index <- CELL_META$sector.index
+    if (!is_real_sector(sector.index)) return()
     dc <- plot_df$DiseaseClass[plot_df$sector_id == sector.index]
     circos.rect(0, 0, 1, 1, col = disease_class_palette[dc], border = NA)
   })
   
-  # Tracks 4+: Annotation heatmaps
+  # Tracks 4+: Annotation heatmaps - only for real sectors
   for (ann in annotations) {
-    circos.track(ylim = c(0, 1), track.height = 0.05, bg.border = "black", panel.fun = function(x, y) {
+    circos.track(ylim = c(0, 1), track.height = 0.05, bg.border = NA, panel.fun = function(x, y) {
       sector.index <- CELL_META$sector.index
+      if (!is_real_sector(sector.index)) return()
       val <- plot_df[[ann]][plot_df$sector_id == sector.index]
       circos.rect(0, 0, 1, 1, col = get_color(val), border = NA)
     })
