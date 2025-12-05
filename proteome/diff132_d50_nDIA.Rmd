@@ -2147,6 +2147,7 @@ out_dir_d50_semicircos <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Prot
 dir.create(out_dir_d50_semicircos, recursive = TRUE, showWarnings = FALSE)
 
 
+
 # --- Step 2: Define function
 plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir, 
                                     disease_class_palette,
@@ -2188,37 +2189,28 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   
   # Add disease class
   summary_df <- summary_df |>
-    dplyr::left_join(disease_map, by = c("KO" = "sample")) |>
-    dplyr::filter(!is.na(DiseaseClass))
+    dplyr::left_join(disease_map, by = c("KO" = "sample"), relationship = "many-to-many") |>
+    dplyr::filter(!is.na(DiseaseClass)) |>
+    dplyr::distinct(sample_id, .keep_all = TRUE)
   
   # Compute overall mean for sorting
   summary_df$overall_mean <- rowMeans(summary_df[, annotations], na.rm = TRUE)
-  
-  # Sort: within each neuron type, sort by overall_mean
-  summary_df <- summary_df |>
-    dplyr::arrange(neuron, overall_mean)
   
   # Save summary
   write.csv(summary_df, file.path(out_dir, "halfcircos_log2fc_summary.csv"), row.names = FALSE)
   message("Summary saved: ", nrow(summary_df), " KO x neuron combinations")
   
-  # Split by neuron
-  df_iN <- summary_df |> dplyr::filter(neuron == "iN")
-  df_iDA <- summary_df |> dplyr::filter(neuron == "iDA")
+  # Sort: within each neuron type, sort by overall_mean
+  # iN on left side, iDA on right side
+  df_iN <- summary_df |> dplyr::filter(neuron == "iN") |> dplyr::arrange(desc(overall_mean))
+  df_iDA <- summary_df |> dplyr::filter(neuron == "iDA") |> dplyr::arrange(overall_mean)
   
-  # Create sector data: iN on left (180-360), iDA on right (0-180)
+  # Combine - iN first (left side), then iDA (right side)
+  plot_df <- rbind(df_iN, df_iDA)
+  plot_df$sector_id <- paste0(plot_df$sample_id, "_", seq_len(nrow(plot_df)))
+  
   n_iN <- nrow(df_iN)
   n_iDA <- nrow(df_iDA)
-  
-  # Assign angular positions
-  df_iN$start <- seq(180, 360 - (180/n_iN), length.out = n_iN)
-  df_iN$end <- df_iN$start + (180/n_iN) - 0.5
-  
-  df_iDA$start <- seq(0, 180 - (180/n_iDA), length.out = n_iDA)
-  df_iDA$end <- df_iDA$start + (180/n_iDA) - 0.5
-  
-  # Combine
-  plot_df <- rbind(df_iN, df_iDA)
   
   # Color scale for log2FC (spectral)
   log2fc_range <- range(unlist(plot_df[, annotations]), na.rm = TRUE)
@@ -2233,32 +2225,47 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   }
   
   # --- Plot ---
-  pdf(file.path(out_dir, "halfcircos_log2fc.pdf"), width = 12, height = 8)
+  pdf(file.path(out_dir, "halfcircos_log2fc.pdf"), width = 14, height = 8)
   
   circos.clear()
-  circos.par(start.degree = 90, gap.degree = 2, cell.padding = c(0, 0, 0, 0))
   
-  # Initialize sectors - one per KO
-  sector_names <- plot_df$sample_id
-  circos.initialize(factors = factor(sector_names, levels = sector_names), xlim = c(0, 1))
+  # Set up for half circle: only show top half by adjusting canvas
+  circos.par(
+    canvas.xlim = c(-1, 1), 
+    canvas.ylim = c(0, 1),  # only top half
+    start.degree = 0,      # start from left
+    gap.after = c(rep(0, nrow(df_iN) - 1), 10, rep(0, nrow(df_iDA) - 1), 10),  # gap between iN and iDA
+    cell.padding = c(0, 0, 0, 0)
+  )
+  
+  # Initialize sectors
+  circos.initialize(
+    factors = factor(plot_df$sector_id, levels = plot_df$sector_id),
+    xlim = c(0, 1)
+  )
+  
+  # Add "iN" and "iDA" labels at the sides
+  text(-1.1, 0.5, "iN", cex = 1.2, font = 2)
+  text(1.1, 0.5, "iDA", cex = 1.2, font = 2)
   
   # Track 1: KO labels (outermost)
   circos.track(ylim = c(0, 1), track.height = 0.05, bg.border = NA, panel.fun = function(x, y) {
     sector.index <- CELL_META$sector.index
-    circos.text(0.5, 0.5, gsub("_(iN|iDA)$", "", sector.index), facing = "clockwise", niceFacing = TRUE, cex = 0.4)
+    ko_name <- plot_df$KO[plot_df$sector_id == sector.index]
+    circos.text(0.5, 0.5, ko_name, facing = "clockwise", niceFacing = TRUE, cex = 0.4)
   })
   
   # Track 2: Neuron type
   circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = "black", panel.fun = function(x, y) {
     sector.index <- CELL_META$sector.index
-    neuron <- plot_df$neuron[plot_df$sample_id == sector.index]
+    neuron <- plot_df$neuron[plot_df$sector_id == sector.index]
     circos.rect(0, 0, 1, 1, col = celltype_colors[neuron], border = NA)
   })
   
   # Track 3: Disease class
   circos.track(ylim = c(0, 1), track.height = 0.04, bg.border = "black", panel.fun = function(x, y) {
     sector.index <- CELL_META$sector.index
-    dc <- plot_df$DiseaseClass[plot_df$sample_id == sector.index]
+    dc <- plot_df$DiseaseClass[plot_df$sector_id == sector.index]
     circos.rect(0, 0, 1, 1, col = disease_class_palette[dc], border = NA)
   })
   
@@ -2266,7 +2273,7 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   for (ann in annotations) {
     circos.track(ylim = c(0, 1), track.height = 0.05, bg.border = "black", panel.fun = function(x, y) {
       sector.index <- CELL_META$sector.index
-      val <- plot_df[[ann]][plot_df$sample_id == sector.index]
+      val <- plot_df[[ann]][plot_df$sector_id == sector.index]
       circos.rect(0, 0, 1, 1, col = get_color(val), border = NA)
     })
   }
@@ -2274,15 +2281,18 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   # Add legends
   circos.clear()
   
+  # Add track labels on the right side
+  track_labels <- c("Neuron", "Disease", annotations)
+  track_y <- seq(0.95, 0.95 - 0.07 * length(track_labels), length.out = length(track_labels))
+  for (i in seq_along(track_labels)) {
+    text(1.15, track_y[i], track_labels[i], adj = 0, cex = 0.5)
+  }
+  
   # Neuron legend
   legend("topleft", legend = names(celltype_colors), fill = celltype_colors, title = "Neuron", cex = 0.6, bty = "n")
   
   # Disease class legend
   legend("topright", legend = names(disease_class_palette), fill = disease_class_palette, title = "Disease Class", cex = 0.5, bty = "n")
-  
-  # Annotation labels on the side
-  legend("bottomleft", legend = c("Tracks (outside to in):", "Neuron type", "Disease class", annotations), 
-         cex = 0.5, bty = "n")
   
   # Color scale legend
   legend("bottomright", legend = c(sprintf("%.1f", log2fc_max), "0", sprintf("%.1f", -log2fc_max)),
