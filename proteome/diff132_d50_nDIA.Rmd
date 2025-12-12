@@ -17388,13 +17388,13 @@ pheatmap::pheatmap(
 )
 }
 
-# Per-KO heatmaps for selected KOs (top 5 most disruptive)
+# Per-KO heatmaps for selected KOs (top 10 most disruptive)
 top_disruptive_kos <- fragmentation_all %>%
 dplyr::arrange(desc(fragmentation_score)) %>%
 dplyr::slice_head(n = 10) %>%
 dplyr::pull(genotype) %>%
 unique() %>%
-head(5)
+head(10)
 
 for (geno in top_disruptive_kos) {
 for (nt in c("iN", "iDA")) {
