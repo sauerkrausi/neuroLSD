@@ -17005,7 +17005,7 @@ if (nrow(inter_matrix_filtered) >= 2) {
 pheatmap::pheatmap(
   inter_matrix_filtered,
   scale = "none",
-  color = colorRampPalette(c("white", "steelblue", "darkblue"))(100),
+  color = colorRampPalette(c("white", "dodgerblue", "dodgerblue4"))(100),
   cluster_rows = TRUE,
   cluster_cols = TRUE,
   display_numbers = TRUE,
@@ -17030,6 +17030,83 @@ dplyr::slice_head(n = 50)
 write_csv(top_hubs, file.path(out_dir_network, "Step0_baseline", "top_hubs_baseline.csv"))
 
 message("Step 0 complete. Baseline network built with ", vcount(baseline_net), " nodes and ", ecount(baseline_net), " edges.")
+
+
+# --- 0.9 Annotation-level summary network ---
+# Collapse proteins to annotation nodes, edge width = number of PPIs
+message("Building annotation-level summary network...")
+
+# Count edges between annotation pairs (including intra)
+annotation_edge_counts <- edge_df %>%
+  dplyr::filter(annotation_from != "Unannotated", annotation_to != "Unannotated") %>%
+  dplyr::group_by(annotation_from, annotation_to) %>%
+  dplyr::summarise(n_edges = dplyr::n(), .groups = "drop") %>%
+  dplyr::filter(n_edges >= 10)  # minimum threshold for visibility
+
+# Count proteins per annotation
+annotation_node_sizes <- gene_primary_annotation %>%
+  dplyr::filter(primary_annotation != "Unannotated") %>%
+  dplyr::count(primary_annotation, name = "n_proteins")
+
+# Build annotation-level graph
+annot_net <- igraph::graph_from_data_frame(
+  d = annotation_edge_counts,
+  directed = FALSE,
+  vertices = annotation_node_sizes
+)
+
+# Remove self-loops for cleaner visualization (keep intra-organelle as node attribute)
+intra_edges <- annotation_edge_counts %>% dplyr::filter(annotation_from == annotation_to)
+annot_net_no_loops <- igraph::simplify(annot_net, remove.multiple = TRUE, remove.loops = TRUE)
+
+# Set visual attributes
+V(annot_net_no_loops)$size <- sqrt(V(annot_net_no_loops)$n_proteins) * 2
+V(annot_net_no_loops)$color <- organelle_colors[V(annot_net_no_loops)$name]
+V(annot_net_no_loops)$color[is.na(V(annot_net_no_loops)$color)] <- "grey70"
+V(annot_net_no_loops)$label <- V(annot_net_no_loops)$name
+V(annot_net_no_loops)$label.cex <- 0.5
+V(annot_net_no_loops)$label.color <- "black"
+
+# Edge width proportional to number of PPIs
+E(annot_net_no_loops)$width <- log10(E(annot_net_no_loops)$n_edges + 1) * 1.5
+E(annot_net_no_loops)$color <- "grey60"
+
+# Plot annotation network
+pdf(file.path(out_dir_network, "Step0_baseline", "network_annotation_level.pdf"), width = 10, height = 10)
+set.seed(42)
+layout_fr <- igraph::layout_with_fr(annot_net_no_loops)
+plot(annot_net_no_loops,
+     layout = layout_fr,
+     vertex.frame.color = "black",
+     vertex.frame.width = 0.5,
+     edge.curved = 0.1,
+     main = "Annotation-level PPI network\n(node size = # proteins, edge width = # PPIs)")
+dev.off()
+
+# Also create a cleaner circular layout version
+pdf(file.path(out_dir_network, "Step0_baseline", "network_annotation_circular.pdf"), width = 10, height = 10)
+layout_circle <- igraph::layout_in_circle(annot_net_no_loops)
+plot(annot_net_no_loops,
+     layout = layout_circle,
+     vertex.frame.color = "black",
+     vertex.frame.width = 0.5,
+     edge.curved = 0.2,
+     main = "Annotation-level PPI network (circular)\n(node size = # proteins, edge width = # PPIs)")
+dev.off()
+
+# Save annotation network summary
+annotation_network_summary <- data.frame(
+  annotation = V(annot_net_no_loops)$name,
+  n_proteins = V(annot_net_no_loops)$n_proteins,
+  degree_in_annot_net = igraph::degree(annot_net_no_loops),
+  stringsAsFactors = FALSE
+) %>% dplyr::arrange(desc(n_proteins))
+
+write_csv(annotation_network_summary, file.path(out_dir_network, "Step0_baseline", "annotation_network_summary.csv"))
+
+message("  Annotation network: ", vcount(annot_net_no_loops), " annotation nodes, ", ecount(annot_net_no_loops), " inter-annotation edges")
+
+
 
 
 # =========================================================================
@@ -17293,6 +17370,9 @@ message("Module 2 complete.")
 # =========================================================================
 # MODULE 3: INTER-ORGANELLE BRIDGE DISRUPTION
 # =========================================================================
+
+#n_KOs_gt30pct_lost == number of KO × neuron combinations where >30% of that annotation pair's edges were lost. It's a count of "how many genotypes severely disrupt this connection."
+
 message("\n", strrep("=", 70))
 message("MODULE 3: Inter-organelle Bridge Analysis")
 message(strrep("=", 70))
@@ -17737,6 +17817,8 @@ message("  - Top hubs (5%): ", baseline_summary$n_hubs_top5, " proteins with deg
 message("  - Baseline components: ", baseline_summary$n_components, " (largest: ", baseline_summary$largest_component_pct, "%)")
 message("  - Inter-organelle edges: ", baseline_summary$n_inter_edges)
 ```
+
+
 
 
 # ----------------------------
