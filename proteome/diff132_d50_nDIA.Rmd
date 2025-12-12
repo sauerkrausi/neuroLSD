@@ -17141,10 +17141,12 @@ geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
 geom_point(shape = 21, size = 3, stroke = 0.3) +
 ggrepel::geom_text_repel(aes(label = genotype), size = 2, max.overlaps = 20) +
 scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
-coord_fixed(ratio = 1) +
+coord_fixed(ratio = 2) +
 labs(title = "Hub vulnerability: iN vs iDA", x = "Mean % degree lost (iN)", y = "Mean % degree lost (iDA)") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+theme(panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", 
+      fill = NA))
 
 ggsave(file.path(out_dir_network, "M1_hub_vulnerability", "scatter_hub_vuln_iN_vs_iDA.pdf"), p_hub_scatter, width = 5, height = 4.5, device = cairo_pdf)
 
