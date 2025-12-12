@@ -17393,10 +17393,10 @@ pheatmap::pheatmap(
 # Per-KO heatmaps for selected KOs (top 10 most disruptive)
 top_disruptive_kos <- fragmentation_all %>%
 dplyr::arrange(desc(fragmentation_score)) %>%
-dplyr::slice_head(n = 10) %>%
+dplyr::slice_head(n = 15) %>%
 dplyr::pull(genotype) %>%
 unique() %>%
-head(10)
+head(15)
 
 for (geno in top_disruptive_kos) {
 for (nt in c("iN", "iDA")) {
@@ -17443,6 +17443,69 @@ theme_bw(base_size = 6) +
 theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_top_disrupted_pairs.pdf"), p_top_pairs, width = 5, height = 5, device = cairo_pdf)
+
+# Barplot: total inter-organelle disruption per KO × neuron (ranked)
+inter_organelle_total <- inter_organelle_ko_all %>%
+  dplyr::group_by(genotype, neuron, DiseaseClass) %>%
+  dplyr::summarise(
+    total_baseline_inter = sum(n_baseline, na.rm = TRUE),
+    total_lost_inter = sum(n_lost, na.rm = TRUE),
+    total_retained_inter = sum(n_retained, na.rm = TRUE),
+    mean_frac_lost = mean(frac_lost, na.rm = TRUE),
+    weighted_frac_lost = total_lost_inter / total_baseline_inter,
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(weighted_frac_lost))
+
+write_csv(inter_organelle_total, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_total_per_KO.csv"))
+
+# Ranked barplot by weighted fraction lost
+p_inter_ranked <- ggplot(inter_organelle_total, aes(x = reorder(genotype, -weighted_frac_lost), y = weighted_frac_lost, fill = neuron)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
+  scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Inter-organelle bridge disruption per KO", subtitle = "Ranked by % of cross-compartment edges lost", x = NULL, y = "% inter-organelle edges lost") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_inter_organelle_ranked.pdf"), p_inter_ranked, width = 6, height = 4, device = cairo_pdf)
+
+# Same plot but colored by disease class (separate iN and iDA)
+for (nt in c("iN", "iDA")) {
+  plot_data <- inter_organelle_total %>% dplyr::filter(neuron == nt)
+  
+  p_inter_disease <- ggplot(plot_data, aes(x = reorder(genotype, -weighted_frac_lost), y = weighted_frac_lost, fill = DiseaseClass)) +
+    geom_col(color = "black", linewidth = 0.2, width = 0.7) +
+    scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = paste0("Inter-organelle bridge disruption (", nt, ")"), subtitle = "Ranked by % cross-compartment edges lost", x = NULL, y = "% inter-organelle edges lost") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  
+  ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", paste0("barplot_inter_organelle_ranked_", nt, ".pdf")), p_inter_disease, width = 6, height = 4, device = cairo_pdf)
+}
+
+# Dumbbell plot: iN vs iDA inter-organelle disruption
+inter_organelle_wide <- inter_organelle_total %>%
+  dplyr::select(genotype, neuron, weighted_frac_lost, DiseaseClass) %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = weighted_frac_lost) %>%
+  dplyr::mutate(diff = iN - iDA, max_val = pmax(iN, iDA, na.rm = TRUE)) %>%
+  dplyr::arrange(max_val)
+
+p_inter_dumbbell <- ggplot(inter_organelle_wide) +
+  geom_segment(aes(x = iN, xend = iDA, y = reorder(genotype, max_val), yend = reorder(genotype, max_val)), color = "grey80", linewidth = 2) +
+  geom_point(aes(x = iN, y = reorder(genotype, max_val)), color = "dodgerblue", size = 2.5) +
+  geom_point(aes(x = iDA, y = reorder(genotype, max_val)), color = "dodgerblue4", size = 2.5) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(title = "Inter-organelle disruption: iN vs iDA", x = "% inter-organelle edges lost", y = NULL) +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA)) +
+  annotate("point", x = 0.01, y = 1.5, color = "dodgerblue", size = 2.5) +
+  annotate("text", x = 0.02, y = 1.5, label = "iN", hjust = 0, size = 2.5) +
+  annotate("point", x = 0.01, y = 0.5, color = "dodgerblue4", size = 2.5) +
+  annotate("text", x = 0.02, y = 0.5, label = "iDA", hjust = 0, size = 2.5)
+
+ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "dumbbell_inter_organelle_iN_vs_iDA.pdf"), p_inter_dumbbell, width = 4, height = 5, device = cairo_pdf)
 
 message("Module 3 complete.")
 
