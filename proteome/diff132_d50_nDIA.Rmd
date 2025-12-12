@@ -17055,9 +17055,17 @@ annot_net <- igraph::graph_from_data_frame(
   vertices = annotation_node_sizes
 )
 
-# Remove self-loops for cleaner visualization (keep intra-organelle as node attribute)
-intra_edges <- annotation_edge_counts %>% dplyr::filter(annotation_from == annotation_to)
-annot_net_no_loops <- igraph::simplify(annot_net, remove.multiple = TRUE, remove.loops = TRUE)
+# Remove self-loops for cleaner visualization
+# First, keep track of inter-annotation edges only (no self-loops)
+inter_annotation_edges <- annotation_edge_counts %>%
+  dplyr::filter(annotation_from != annotation_to)
+
+# Rebuild graph without self-loops
+annot_net_no_loops <- igraph::graph_from_data_frame(
+  d = inter_annotation_edges,
+  directed = FALSE,
+  vertices = annotation_node_sizes
+)
 
 # Set visual attributes
 V(annot_net_no_loops)$size <- sqrt(V(annot_net_no_loops)$n_proteins) * 2
@@ -17067,7 +17075,7 @@ V(annot_net_no_loops)$label <- V(annot_net_no_loops)$name
 V(annot_net_no_loops)$label.cex <- 0.5
 V(annot_net_no_loops)$label.color <- "black"
 
-# Edge width proportional to number of PPIs
+# Edge width proportional to number of PPIs (n_edges is preserved from edge list)
 E(annot_net_no_loops)$width <- log10(E(annot_net_no_loops)$n_edges + 1) * 1.5
 E(annot_net_no_loops)$color <- "grey60"
 
@@ -17105,6 +17113,7 @@ annotation_network_summary <- data.frame(
 write_csv(annotation_network_summary, file.path(out_dir_network, "Step0_baseline", "annotation_network_summary.csv"))
 
 message("  Annotation network: ", vcount(annot_net_no_loops), " annotation nodes, ", ecount(annot_net_no_loops), " inter-annotation edges")
+
 
 
 
@@ -17456,6 +17465,7 @@ annots_for_matrix <- unique(c(inter_organelle_ko_all$annot_A, inter_organelle_ko
 annots_for_matrix <- annots_for_matrix[!is.na(annots_for_matrix) & annots_for_matrix != "Unannotated"]
 
 
+
 # --- 3.4 Visualizations ---
 # Heatmap: mean % lost per annotation pair (across all KOs)
 mean_loss_matrix <- matrix(0, nrow = length(annots_for_matrix), ncol = length(annots_for_matrix), dimnames = list(annots_for_matrix, annots_for_matrix))
@@ -17476,6 +17486,36 @@ annots_with_edges <- unique(c(inter_organelle_summary$annot_A[inter_organelle_su
 mean_loss_matrix_filtered <- mean_loss_matrix[annots_with_edges, annots_with_edges]
 
 if (nrow(mean_loss_matrix_filtered) >= 2) {
+# Custom heatmap: lower triangle = color, upper triangle = numbers
+# Use corrplot-style or manual approach
+library(corrplot)
+
+pdf(file.path(out_dir_network, "M3_interorganelle_bridges", "heatmap_mean_inter_organelle_loss.pdf"), width = 5, height = 5)
+corrplot(mean_loss_matrix_filtered,
+         method = "color",
+         type = "lower",
+         col = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+         is.corr = FALSE,
+         cl.lim = c(0, max(mean_loss_matrix_filtered, na.rm = TRUE)),
+         tl.col = "black",
+         tl.cex = 0.6,
+         cl.cex = 0.6,
+         addCoef.col = NULL,
+         title = "Mean fraction inter-organelle edges lost (all KOs)",
+         mar = c(0, 0, 2, 0))
+# Add numbers to upper triangle
+corrplot(mean_loss_matrix_filtered,
+         method = "number",
+         type = "upper",
+         col = "black",
+         is.corr = FALSE,
+         number.cex = 0.5,
+         tl.pos = "n",
+         cl.pos = "n",
+         add = TRUE)
+dev.off()
+
+# Also save standard pheatmap version with clustering
 pheatmap::pheatmap(
   mean_loss_matrix_filtered,
   scale = "none",
@@ -17490,8 +17530,8 @@ pheatmap::pheatmap(
   cellwidth = 12,
   cellheight = 12,
   border_color = NA,
-  main = "Mean fraction inter-organelle edges lost (all KOs)",
-  filename = file.path(out_dir_network, "M3_interorganelle_bridges", "heatmap_mean_inter_organelle_loss.pdf"),
+  main = "Mean fraction inter-organelle edges lost (clustered)",
+  filename = file.path(out_dir_network, "M3_interorganelle_bridges", "heatmap_mean_inter_organelle_loss_clustered.pdf"),
   width = 10, height = 9
 )
 }
@@ -17499,10 +17539,10 @@ pheatmap::pheatmap(
 # Per-KO heatmaps for selected KOs (top 10 most disruptive)
 top_disruptive_kos <- fragmentation_all %>%
 dplyr::arrange(desc(fragmentation_score)) %>%
-dplyr::slice_head(n = 15) %>%
+dplyr::slice_head(n = 10) %>%
 dplyr::pull(genotype) %>%
 unique() %>%
-head(15)
+head(10)
 
 for (geno in top_disruptive_kos) {
 for (nt in c("iN", "iDA")) {
@@ -17513,24 +17553,45 @@ for (nt in c("iN", "iDA")) {
   
   mat_ko <- build_inter_matrix_ko(inter_ko_df, annots_with_edges)
   
-  pheatmap::pheatmap(
-    mat_ko,
-    scale = "none",
-    color = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
-    breaks = seq(0, 1, length.out = 101),
-    cluster_rows = FALSE,
-    cluster_cols = FALSE,
-    display_numbers = TRUE,
-    number_format = "%.2f",
-    fontsize = 6,
-    fontsize_number = 5,
-    cellwidth = 12,
-    cellheight = 12,
-    border_color = NA,
-    main = paste0("Inter-organelle edge loss: ", geno, " ", nt),
-    filename = file.path(out_dir_network, "M3_interorganelle_bridges", paste0("heatmap_", geno, "_", nt, ".pdf")),
-    width = 10, height = 9
-  )
+  # Check if matrix has enough non-zero values for clustering
+  n_nonzero_rows <- sum(rowSums(mat_ko, na.rm = TRUE) > 0)
+  do_cluster <- n_nonzero_rows >= 3
+  
+  # Custom heatmap: lower triangle = color, upper triangle = numbers
+  pdf(file.path(out_dir_network, "M3_interorganelle_bridges", paste0("heatmap_", geno, "_", nt, ".pdf")), width = 5, height = 5)
+  
+  # Reorder matrix if clustering is desired
+  if (do_cluster && nrow(mat_ko) >= 3) {
+    # Hierarchical clustering for ordering
+    hc <- hclust(as.dist(1 - mat_ko), method = "ward.D2")
+    mat_ko_ordered <- mat_ko[hc$order, hc$order]
+  } else {
+    mat_ko_ordered <- mat_ko
+  }
+  
+  corrplot(mat_ko_ordered,
+           method = "color",
+           type = "lower",
+           col = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+           is.corr = FALSE,
+           cl.lim = c(0, 1),
+           tl.col = "black",
+           tl.cex = 0.6,
+           cl.cex = 0.6,
+           addCoef.col = NULL,
+           title = paste0("Inter-organelle edge loss: ", geno, " ", nt, ifelse(!do_cluster, " (no clustering)", "")),
+           mar = c(0, 0, 2, 0))
+  # Add numbers to upper triangle
+  corrplot(mat_ko_ordered,
+           method = "number",
+           type = "upper",
+           col = "black",
+           is.corr = FALSE,
+           number.cex = 0.5,
+           tl.pos = "n",
+           cl.pos = "n",
+           add = TRUE)
+  dev.off()
 }
 }
 
@@ -17572,9 +17633,7 @@ p_inter_ranked <- ggplot(inter_organelle_total, aes(x = reorder(genotype, -weigh
   scale_y_continuous(labels = scales::percent) +
   labs(title = "Inter-organelle bridge disruption per KO", subtitle = "Ranked by % of cross-compartment edges lost", x = NULL, y = "% inter-organelle edges lost") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA), 
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
 ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_inter_organelle_ranked.pdf"), p_inter_ranked, width = 6, height = 4, device = cairo_pdf)
 
@@ -17588,11 +17647,7 @@ for (nt in c("iN", "iDA")) {
     scale_y_continuous(labels = scales::percent) +
     labs(title = paste0("Inter-organelle bridge disruption (", nt, ")"), subtitle = "Ranked by % cross-compartment edges lost", x = NULL, y = "% inter-organelle edges lost") +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), 
-          panel.border = element_rect(color = "black", fill = NA), 
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
-          legend.position = "right", 
-          legend.key.size = unit(0.3, "cm"))
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "right", legend.key.size = unit(0.3, "cm"))
   
   ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", paste0("barplot_inter_organelle_ranked_", nt, ".pdf")), p_inter_disease, width = 6, height = 4, device = cairo_pdf)
 }
