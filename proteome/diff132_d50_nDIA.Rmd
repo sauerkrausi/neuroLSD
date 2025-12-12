@@ -16961,7 +16961,7 @@ mean_degree = mean(V(baseline_net)$degree),
 median_degree = median(V(baseline_net)$degree),
 max_degree = max(V(baseline_net)$degree)
 )
-
+# save database as rds file
 saveRDS(baseline_summary, file.path(out_dir_network, "Step0_baseline", "baseline_summary.rds"))
 
 
@@ -16974,10 +16974,12 @@ geom_histogram(bins = 50, fill = "steelblue", color = "black", linewidth = 0.2) 
 geom_vline(xintercept = degree_threshold_top10, linetype = "dashed", color = "red", linewidth = 0.5) +
 annotate("text", x = degree_threshold_top10 + 5, y = Inf, label = "Top 10%", vjust = 2, hjust = 0, size = 2.5, color = "red") +
 scale_x_log10() +
-labs(title = "Baseline degree distribution", x = "Degree (log10)", y = "Count") +
+labs(title = "Baseline degree distribution", x = "Degree (log10) | Number of Interaction per hub", y = "Count") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+theme(panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA))
 
+# save as pdf
 ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 4, height = 3, device = cairo_pdf)
 
 # Degree by annotation
@@ -16986,10 +16988,12 @@ geom_boxplot(outlier.size = 0.3, linewidth = 0.3) +
 scale_y_log10() +
 scale_fill_manual(values = organelle_colors, guide = "none") +
 coord_flip() +
-labs(title = "Degree distribution by annotation", x = NULL, y = "Degree (log10)") +
+labs(title = "Degree distribution (Number of interactions) by annotation", x = NULL, y = "Degree (log10) | Number of Interaction per hub") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+theme(panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA))
 
+# save as pdf
 ggsave(file.path(out_dir_network, "Step0_baseline", "degree_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 6, device = cairo_pdf)
 
 # Inter-organelle heatmap
