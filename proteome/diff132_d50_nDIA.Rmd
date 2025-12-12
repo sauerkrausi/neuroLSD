@@ -17527,8 +17527,8 @@ pheatmap::pheatmap(
   number_format = "%.2f",
   fontsize = 6,
   fontsize_number = 5,
-  cellwidth = 12,
-  cellheight = 12,
+  cellwidth = 8,
+  cellheight = 8,
   border_color = NA,
   main = "Mean fraction inter-organelle edges lost (clustered)",
   filename = file.path(out_dir_network, "M3_interorganelle_bridges", "heatmap_mean_inter_organelle_loss_clustered.pdf"),
@@ -17607,7 +17607,9 @@ coord_flip() +
 scale_y_continuous(labels = scales::percent, expand = expansion(mult = c(0, 0.15))) +
 labs(title = "Most disrupted inter-organelle connections", subtitle = "Mean % edges lost across all KOs", x = NULL, y = "Mean % edges lost") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+theme(
+  panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_top_disrupted_pairs.pdf"), p_top_pairs, width = 5, height = 5, device = cairo_pdf)
 
@@ -17624,7 +17626,9 @@ inter_organelle_total <- inter_organelle_ko_all %>%
   ) %>%
   dplyr::arrange(desc(weighted_frac_lost))
 
+# save lost bridges by KO as csv file
 write_csv(inter_organelle_total, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_total_per_KO.csv"))
+
 
 # Ranked barplot by weighted fraction lost
 p_inter_ranked <- ggplot(inter_organelle_total, aes(x = reorder(genotype, -weighted_frac_lost), y = weighted_frac_lost, fill = neuron)) +
@@ -17633,9 +17637,13 @@ p_inter_ranked <- ggplot(inter_organelle_total, aes(x = reorder(genotype, -weigh
   scale_y_continuous(labels = scales::percent) +
   labs(title = "Inter-organelle bridge disruption per KO", subtitle = "Ranked by % of cross-compartment edges lost", x = NULL, y = "% inter-organelle edges lost") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA), 
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
 ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_inter_organelle_ranked.pdf"), p_inter_ranked, width = 6, height = 4, device = cairo_pdf)
+
 
 # Same plot but colored by disease class (separate iN and iDA)
 for (nt in c("iN", "iDA")) {
@@ -17647,10 +17655,16 @@ for (nt in c("iN", "iDA")) {
     scale_y_continuous(labels = scales::percent) +
     labs(title = paste0("Inter-organelle bridge disruption (", nt, ")"), subtitle = "Ranked by % cross-compartment edges lost", x = NULL, y = "% inter-organelle edges lost") +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+    theme(
+      panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA), 
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+      legend.position = "right", 
+      legend.key.size = unit(0.3, "cm"))
   
   ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", paste0("barplot_inter_organelle_ranked_", nt, ".pdf")), p_inter_disease, width = 6, height = 4, device = cairo_pdf)
 }
+
 
 # Dumbbell plot: iN vs iDA inter-organelle disruption
 inter_organelle_wide <- inter_organelle_total %>%
@@ -17666,7 +17680,8 @@ p_inter_dumbbell <- ggplot(inter_organelle_wide) +
   scale_x_continuous(labels = scales::percent) +
   labs(title = "Inter-organelle disruption: iN vs iDA", x = "% inter-organelle edges lost", y = NULL) +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA)) +
+  theme(
+    panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA)) +
   annotate("point", x = 0.01, y = 1.5, color = "dodgerblue", size = 2.5) +
   annotate("text", x = 0.02, y = 1.5, label = "iN", hjust = 0, size = 2.5) +
   annotate("point", x = 0.01, y = 0.5, color = "dodgerblue4", size = 2.5) +
@@ -17732,6 +17747,7 @@ dplyr::filter(!is.na(DiseaseClass))
 write_csv(disease_convergence, file.path(out_dir_network, "M4_disease_convergence", "disease_class_metrics.csv"))
 
 
+
 # --- 4.2 Visualizations ---
 # Grouped barplot: all metrics by disease class
 disease_long <- disease_convergence %>%
@@ -17753,7 +17769,7 @@ theme(panel.grid = element_blank(), panel.border = element_rect(color = "black",
 
 ggsave(file.path(out_dir_network, "M4_disease_convergence", "barplot_disease_metrics.pdf"), p_disease_bar, width = 8, height = 4, device = cairo_pdf)
 
-# Heatmap: disease class × metric for iN
+# Heatmap: disease class × metric
 disease_matrix <- disease_convergence %>%
 dplyr::filter(neuron == "iN") %>%
 dplyr::select(DiseaseClass, mean_hub_vuln, mean_frag_score, mean_inter_loss) %>%
@@ -17769,38 +17785,12 @@ pheatmap::pheatmap(
   cluster_cols = FALSE,
   display_numbers = TRUE,
   number_format = "%.2f",
-  fontsize = 8,
-  cellwidth = 25,
-  cellheight = 20,
+  fontsize = 6,
+  cellwidth = 8,
+  cellheight = 8,
   border_color = NA,
   main = "Disease class network disruption profiles (iN, z-scored)",
   filename = file.path(out_dir_network, "M4_disease_convergence", "heatmap_disease_profiles_iN.pdf"),
-  width = 5, height = 4
-)
-}
-
-# Heatmap: disease class × metric for iDA
-disease_matrix <- disease_convergence %>%
-dplyr::filter(neuron == "iDA") %>%
-dplyr::select(DiseaseClass, mean_hub_vuln, mean_frag_score, mean_inter_loss) %>%
-tibble::column_to_rownames("DiseaseClass") %>%
-as.matrix()
-
-if (nrow(disease_matrix) >= 2) {
-pheatmap::pheatmap(
-  scale(disease_matrix),
-  scale = "none",
-  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
-  cluster_rows = TRUE,
-  cluster_cols = FALSE,
-  display_numbers = TRUE,
-  number_format = "%.2f",
-  fontsize = 8,
-  cellwidth = 25,
-  cellheight = 20,
-  border_color = NA,
-  main = "Disease class network disruption profiles (iDA, z-scored)",
-  filename = file.path(out_dir_network, "M4_disease_convergence", "heatmap_disease_profiles_iDA.pdf"),
   width = 5, height = 4
 )
 }
@@ -17812,9 +17802,68 @@ scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
 scale_shape_manual(values = c(iN = 21, iDA = 24), name = "Neuron") +
 labs(title = "Disease class profiles: Hub vulnerability vs Fragmentation", x = "Mean hub vulnerability", y = "Mean fragmentation score") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+theme(
+  panel.grid = element_blank(), 
+  panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_network, "M4_disease_convergence", "scatter_hubvuln_vs_frag.pdf"), p_disease_scatter, width = 5, height = 4, device = cairo_pdf)
+
+# Scatter with individual genotypes (colored by disease class, shaped by neuron)
+genotype_metrics <- hub_vuln_summary %>%
+  dplyr::select(genotype, neuron, mean_frac_lost, DiseaseClass) %>%
+  dplyr::rename(hub_vuln = mean_frac_lost) %>%
+  dplyr::left_join(
+    fragmentation_all %>% dplyr::select(genotype, neuron, fragmentation_score),
+    by = c("genotype", "neuron")
+  ) %>%
+  dplyr::left_join(
+    inter_organelle_total %>% dplyr::select(genotype, neuron, weighted_frac_lost) %>% dplyr::rename(inter_loss = weighted_frac_lost),
+    by = c("genotype", "neuron")
+  )
+
+# Hub vulnerability vs Fragmentation (by genotype)
+p_geno_scatter_hf <- ggplot(genotype_metrics, aes(x = hub_vuln, y = fragmentation_score, fill = DiseaseClass, shape = neuron)) +
+  geom_point(size = 3, stroke = 0.3, alpha = 0.8) +
+  ggrepel::geom_text_repel(aes(label = genotype), size = 2, max.overlaps = 25, seed = 42) +
+  scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  scale_shape_manual(values = c(iN = 21, iDA = 24), name = "Neuron") +
+  labs(title = "Hub vulnerability vs Fragmentation (by genotype)", x = "Mean hub vulnerability (% degree lost)", y = "Fragmentation score") +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_network, "M4_disease_convergence", "scatter_hubvuln_vs_frag_genotypes.pdf"), p_geno_scatter_hf, width = 6, height = 5, device = cairo_pdf)
+
+# Hub vulnerability vs Inter-organelle loss (by genotype)
+p_geno_scatter_hi <- ggplot(genotype_metrics, aes(x = hub_vuln, y = inter_loss, fill = DiseaseClass, shape = neuron)) +
+  geom_point(size = 3, stroke = 0.3, alpha = 0.8) +
+  ggrepel::geom_text_repel(aes(label = genotype), size = 2, max.overlaps = 25, seed = 42) +
+  scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  scale_shape_manual(values = c(iN = 21, iDA = 24), name = "Neuron") +
+  labs(title = "Hub vulnerability vs Inter-organelle loss (by genotype)", x = "Mean hub vulnerability (% degree lost)", y = "% inter-organelle edges lost") +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_network, "M4_disease_convergence", "scatter_hubvuln_vs_inter_genotypes.pdf"), p_geno_scatter_hi, width = 6, height = 5, device = cairo_pdf)
+
+# Fragmentation vs Inter-organelle loss (by genotype)
+p_geno_scatter_fi <- ggplot(genotype_metrics, aes(x = fragmentation_score, y = inter_loss, fill = DiseaseClass, shape = neuron)) +
+  geom_point(size = 3, stroke = 0.3, alpha = 0.8) +
+  ggrepel::geom_text_repel(aes(label = genotype), size = 2, max.overlaps = 25, seed = 42) +
+  scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  scale_shape_manual(values = c(iN = 21, iDA = 24), name = "Neuron") +
+  labs(title = "Fragmentation vs Inter-organelle loss (by genotype)", x = "Fragmentation score", y = "% inter-organelle edges lost") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_network, "M4_disease_convergence", "scatter_frag_vs_inter_genotypes.pdf"), p_geno_scatter_fi, width = 6, height = 5, device = cairo_pdf)
+
+# Save combined genotype metrics table
+write_csv(genotype_metrics, file.path(out_dir_network, "M4_disease_convergence", "genotype_all_metrics.csv"))
+
 
 
 # --- 4.3 Disease-specific inter-organelle vulnerability ---
