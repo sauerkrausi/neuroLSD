@@ -17193,7 +17193,7 @@ if (nrow(retained_edges) > 0) {
   # Calculate components
   comp <- igraph::components(retained_net)
   
-  # Orphans = degree 0
+  # Orphans = degree 0, since has no interaction partners in structure prediction
   orphans <- sum(igraph::degree(retained_net) == 0)
   
   frag_metrics <- data.frame(
@@ -17237,7 +17237,9 @@ dplyr::mutate(
 dplyr::left_join(disease_classes_dataframe, by = c("genotype" = "sample")) %>%
 dplyr::arrange(desc(fragmentation_score))
 
+# save general network fragmentation list as csv
 write_csv(fragmentation_all, file.path(out_dir_network, "M2_fragmentation", "fragmentation_metrics.csv"))
+
 
 # --- 2.2 Visualizations ---
 # Barplot: fragmentation score per KO
@@ -17246,7 +17248,9 @@ geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
 scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
 labs(title = "Network fragmentation per KO", x = NULL, y = "Fragmentation score") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+theme(panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA), 
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
 ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_fragmentation_per_KO.pdf"), p_frag_bar, width = 6, height = 4, device = cairo_pdf)
 
@@ -17258,7 +17262,8 @@ scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
 facet_wrap(~ neuron) +
 labs(title = "Network fragmentation: orphans vs new components", x = "Number of orphaned proteins", y = "Δ Components (vs baseline)") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+theme(panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_network, "M2_fragmentation", "scatter_orphans_vs_components.pdf"), p_frag_scatter, width = 7, height = 3.5, device = cairo_pdf)
 
@@ -17267,9 +17272,11 @@ p_lcc <- ggplot(fragmentation_all, aes(x = reorder(genotype, largest_component_p
 geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
 geom_hline(yintercept = baseline_summary$largest_component_pct, linetype = "dashed", color = "red", linewidth = 0.5) +
 scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
-labs(title = "Largest connected component after KO", subtitle = paste0("Baseline: ", round(baseline_summary$largest_component_pct, 1), "%"), x = NULL, y = "% of network in largest component") +
+labs(title = "Largest connected component after KO", subtitle = paste0("Baseline in Controls: ", round(baseline_summary$largest_component_pct, 1), "%"), x = NULL, y = "% of network in largest component") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+theme(panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA), 
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
 ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_largest_component.pdf"), p_lcc, width = 6, height = 4, device = cairo_pdf)
 
