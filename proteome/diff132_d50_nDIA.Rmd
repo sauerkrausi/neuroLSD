@@ -19306,7 +19306,55 @@ X. Misc
 
 - timecourse d30/50 add lillipop for each KO?
 
->> to add for disaese classes
+to add for disaese classes
 - triangle plot lost PPIs
 - circos plot half
 - also check other things
+
+
+PPI Network Connectivity Analysis Plan
+Rationale
+Current analysis counts lost edges and broken trimers/complexes, but doesn't capture network topology effects. A hub protein losing 20 partners is more disruptive than 20 peripheral proteins each losing 1 partner. We need to quantify how KOs fragment the interactome architecture.
+Baseline Network Construction
+
+Build control network from high-confidence edges (Predictome ≥0.85 + neuronal proteome filter)
+Annotate each protein with organelle membership
+Classify edges as intra-organelle (both partners same annotation) or inter-organelle (cross-compartment)
+Identify connected components in baseline - expect one giant component plus small isolates
+
+Analysis Modules
+Module 1: Hub vulnerability
+
+Calculate degree centrality for each protein in baseline
+Track which high-degree hubs (top 10%, top 5%) lose partners per KO
+Normalize by baseline degree (% partners lost, not absolute count)
+Question answered: Do KOs preferentially hit hub proteins or periphery?
+
+Module 2: Network fragmentation
+
+For each KO × neuron: remove lost edges, recalculate connected components
+Metrics: number of components, size of largest component, number of orphaned proteins
+Question answered: Which KOs most severely fragment the network?
+
+Module 3: Inter-organelle bridge disruption
+
+Subset to cross-compartment edges only (e.g., Mito-Lyso, Mito-ER, Lyso-Golgi)
+Calculate fraction of inter-organelle edges lost per KO
+Identify specific bridge proteins (high betweenness centrality between modules)
+Question answered: Are organelle communication channels selectively vulnerable?
+
+Module 4: Disease class patterns
+
+Aggregate metrics by disease class (sphingolipidoses, NCL, membrane disorders)
+Test for shared vulnerability signatures within classes
+Question answered: Do disease classes show convergent network disruption patterns?
+
+Key Outputs
+
+Ranked KO list by fragmentation severity (overall + per annotation)
+Inter-organelle connectivity matrix (which compartment pairs lose most links)
+Hub proteins recurrently lost across multiple KOs (candidate shared mechanisms)
+Disease class heatmaps showing network topology phenotypes
+
+Size normalization note
+Larger complexes have more edges to lose by chance. Will normalize fragmentation metrics by baseline module size or use fraction-based metrics throughout.
