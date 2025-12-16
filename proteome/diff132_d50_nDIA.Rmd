@@ -20420,6 +20420,8 @@ message("Output directory: ", out_dir_xlms_validationCLASP)
 
 
 # to do
+-- run through all code and check there are no errors
+- delete lin models?
 - by_ko heatmap correlations: 
 should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
 ==> check how that is implemented and then see if we can replot that. 
@@ -20512,3 +20514,5 @@ Disease class heatmaps showing network topology phenotypes
 
 Size normalization note
 Larger complexes have more edges to lose by chance. Will normalize fragmentation metrics by baseline module size or use fraction-based metrics throughout.
+
+
