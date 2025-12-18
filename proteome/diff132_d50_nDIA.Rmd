@@ -849,7 +849,8 @@ diff132_d50_df <- diff132_d50_df[, -c(1, 2, 4,14,15,16,17,18,19,21)]
 
 # Filter out rows with missing or empty 'Genes' entries
 clean_d50_df <- diff132_d50_df %>%
-  filter(!is.na(Genes) & Genes != "")
+  filter(!is.na(Genes) & Genes != "") %>% 
+  mutate(Genes = sub(";.*", "", Genes))  # Keep first gene symbol only
 
 
 # --- Step 3. Prepare Data for Heatmap
@@ -1091,6 +1092,28 @@ complete_data_annotated_day50 <- process_day_data(
   file.path(out_dir_d50_dataframes, "diff132_complete_annotated_day50.csv")
 )
 
+
+# --- Step 5: count sig values
+diff132_log2fc_df %>%
+  group_by(sample_id, day, neuron, genotype) %>%
+  summarise(
+    total = n(), 
+    n_na = sum(is.na(p_value)), 
+    p001 = sum(p_value < 0.001, na.rm = TRUE), 
+    p01 = sum(p_value < 0.01 & p_value >= 0.001, na.rm = TRUE), 
+    p05 = sum(p_value < 0.05 & p_value >= 0.01, na.rm = TRUE),
+    ns = sum(p_value >= 0.05, na.rm = TRUE),
+    q001 = sum(q_value < 0.001, na.rm = TRUE), 
+    q01 = sum(q_value < 0.01 & q_value >= 0.001, na.rm = TRUE), 
+    q05 = sum(q_value < 0.05 & q_value >= 0.01, na.rm = TRUE),
+    q_ns = sum(q_value >= 0.05, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(day, neuron, genotype) %>%
+  print(n = Inf)
+
+# save as csv
+write.csv(diff132_log2fc_df, file.path(out_dir_d50_dataframes, "diff132_log2fc_stats.csv"), row.names = FALSE)
 ```
 
 
@@ -20422,6 +20445,7 @@ message("Output directory: ", out_dir_xlms_validationCLASP)
 # to do
 -- run through all code and check there are no errors
 - delete lin models?
+
 - by_ko heatmap correlations: 
 should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
 ==> check how that is implemented and then see if we can replot that. 
