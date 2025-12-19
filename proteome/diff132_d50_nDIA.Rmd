@@ -401,60 +401,51 @@ pheatmap(
 dev.off()
 
 
-# --- Step 4c: comparison Within-genotype SD vs Between-genotype SD
-# Within-genotype SD: average of SDs across replicates within each genotype
-# Between-genotype SD: SD of the genotype means
-# Line plot with organelles on x-axis, SD on y-axis. Light blue for within, dark blue for between. If dark is consistently above light, signal is real.
+# --- Step 4c: F-ratio approach per annotation
+# F-ratio = between-genotype variance / within-genotype variance
+# MSbetween: variance between genotypes (based on all replicates)
+# MSwithin: variance within genotypes (across replicates)
 
-# Per-replicate log2FC
-rep_fc <- cleaned_df %>%
-  filter(neuron != "QC", genotype != "ctrl", !is.na(genotype)) %>%
-  group_by(Genes, day, neuron, genotype, replicate) %>%
-  summarise(ko_quan = sum(quan), .groups = "drop") %>%
-  inner_join(
-    cleaned_df %>%
-      filter(genotype == "ctrl") %>%
-      group_by(Genes, day, neuron, replicate) %>%
-      summarise(ctrl_quan = sum(quan), .groups = "drop"),
-    by = c("Genes", "day", "neuron", "replicate")
+# If F > 1: biological signal is larger than technical noise = real differences
+# If F < 1: technical noise is larger than biological signal = can't trust the differences
+
+f_ratio_df <- rep_fc_organelle %>%
+  group_by(Localization, day, neuron, genotype, Genes) %>%
+  filter(n() == 3) %>%
+  ungroup() %>%
+  group_by(Localization, day, neuron, Genes) %>%
+  summarise(
+    # Within-genotype variance: mean of variances across replicates per genotype
+    ms_within = mean(tapply(log2fc, genotype, var, na.rm = TRUE), na.rm = TRUE),
+    # Between-genotype variance: total variance across all replicates from all genotypes
+    ms_between = var(log2fc, na.rm = TRUE),
+    .groups = "drop"
   ) %>%
-  mutate(log2fc = log2(ko_quan / ctrl_quan)) %>%
-  filter(is.finite(log2fc))
-
-# Join with organelle annotations
-rep_fc_organelle <- rep_fc %>%
-  inner_join(long_subcell_df, by = "Genes")
-
-# Within-genotype SD
-within_sd <- rep_fc_organelle %>%
-  group_by(Localization, day, neuron, genotype) %>%
-  summarise(sd_within = sd(log2fc, na.rm = TRUE), .groups = "drop") %>%
   group_by(Localization, day, neuron) %>%
-  summarise(mean_within_sd = mean(sd_within, na.rm = TRUE), .groups = "drop")
+  summarise(
+    mean_ms_within = mean(ms_within, na.rm = TRUE),
+    mean_ms_between = mean(ms_between, na.rm = TRUE),
+    f_ratio = mean_ms_between / mean_ms_within,
+    .groups = "drop"
+  )
 
-# Between-genotype SD
-between_sd <- rep_fc_organelle %>%
-  group_by(Localization, day, neuron, genotype) %>%
-  summarise(mean_log2fc = mean(log2fc, na.rm = TRUE), .groups = "drop") %>%
-  group_by(Localization, day, neuron) %>%
-  summarise(between_sd = sd(mean_log2fc, na.rm = TRUE), .groups = "drop")
-
-# Combine
-variance_df <- within_sd %>%
-  inner_join(between_sd, by = c("Localization", "day", "neuron")) %>%
-  pivot_longer(cols = c(mean_within_sd, between_sd), names_to = "type", values_to = "sd")
-
-# Plot
-variance_plot <- ggplot(variance_df, aes(x = Localization, y = sd, color = type, group = type)) +
+# Plot F-ratio line plot
+f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = f_ratio, color = neuron, group = neuron)) +
   geom_line() +
   geom_point(size = 1) +
-  scale_color_manual(values = c("mean_within_sd" = "lightblue", "between_sd" = "dodgerblue4"), labels = c("Between genotype", "Within genotype")) +
-  facet_grid(neuron ~ day) +
-  labs(x = NULL, y = "SD of log2FC", color = NULL) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey30") +
+  scale_color_manual(values = c("iN" = "dodgerblue4", "iDA" = "darkred")) +
+  facet_wrap(~ day, ncol = 2) +
+  labs(
+    x = NULL, 
+    y = "F-ratio (between / within genotype variance)",
+    color = NULL,
+    caption = "F > 1: biological signal > technical noise\nF < 1: technical noise > biological signal"
+  ) +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "bottom")
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "bottom", plot.caption = element_text(hjust = 0))
 
-ggsave(file.path(out_dir_d50_QC, "diff132_within_vs_between_variance.pdf"), variance_plot, width = 6, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, width = 6, height = 4, device = cairo_pdf)
 
 
 # --- Step 5: Reshape the data from long to wide format
