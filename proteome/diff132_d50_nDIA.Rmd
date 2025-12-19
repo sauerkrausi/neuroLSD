@@ -3140,7 +3140,7 @@ write_csv(top_gba1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_dr
 # =================================================
 Aimed to plot neuro markers to plot differences between neuron types
 
-### VIIa. Plot pre / post synaptic marker
+# Plot pre/post synaptic marker
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3200,8 +3200,8 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_
 
 ```
 
-
-### VIIb. Neuro annotation plot by neuon x genotype; ascending order 
+# Neuro annotation plot by neuron x genotype
+Plotted in ascending order 
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3315,7 +3315,8 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_Svexocytosis.pdf"),
 
 
 
-#### VIIb1. Plot vATPase by neuon x genotype; ascending order 
+# vATPase by neuron x genotype
+Plotted in ascending order 
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3542,7 +3543,8 @@ make_vatpase_color_table("MCOLN1")
 
 ```
 
-#### VIIb2. SV & SNARE plot by neuon x genotype; ascending order 
+# SV & SNARE plot by neuron x genotype
+Plotted in ascending order 
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3599,7 +3601,9 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_sv
 
 ```
 
-#### VIIb3. SV docking plot by neuon x genotype; ascending order 
+
+# SV docking plot by neuron x genotype
+Plotted in ascending order 
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3661,8 +3665,10 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_s
 
 
 
-# VIII. Time course evaluations
-### VIIIa. day 30 vs 50: Abundance of neuromarkers in Ctrl iN/iDA 
+# =================================================
+# Module 4: Time Course Analysis (d30 vs d50)
+# =================================================
+#  Abundance of neuromarkers in Ctrl iN/iDA
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3779,7 +3785,7 @@ Neuro_QC_Lineplot_norm <- plot_ctrl_markers_norm(cleaned_df, out_dir_d50_timecou
 ```
 
 
-### VIIIb. day 30 vs 50: Pre/Post Synaptic Markers in Ctrl iN/iDA
+# Pre/Post Synaptic Markers in Ctrl iN/iDA
 ``` {r}
 # --------------------------------------------------- #dev_plot_line_df
 # neuro QC plots
@@ -3877,7 +3883,7 @@ ggsave(file.path(out_dir_d50_timecourse,"diff132_SynapticMarkers_ctrl_d30_d50.pd
 ```
 
 
-### VIIIc. day 30 vs 50: "NeuroDev" protein-list trajectory for select genotypes
+# NeuroDev protein-list trajectory d30 to d50
 ```{r}
 # --------------------------------------------------- #
 # neuro QC plots
@@ -3980,7 +3986,7 @@ ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd3
 ```
 
 
-### VIIId. day 30 vs 50:  GBA1 - ASAH1 time course comparison
+# GBA1 - ASAH1 time course comparison
 ```{r}
 # --------------------------------------------------- #
 # Section here is for analysis of ASAH1 and GBA1 proteome across timecourse (dayp30,50)
@@ -4437,7 +4443,7 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
 
 
-### VIIIe. day 30 vs 50: statistical tests on the violin plots
+# Statistical tests on violin plots
 ```{r}
 # --- 1. helper: comparisons
 .timecourse_comparisons <- list(
@@ -4524,7 +4530,7 @@ gba1_stats  <- .compute_and_save_tests(gba1_timecourse_log2_df, "GBA1",out_dir_d
 
 
 
-### VIIIf. day 30 vs 50: Barplot for select proteins
+# Barplot function for select proteins
 ```{r}
 # --------------------------------------------------- #
 # Function for creating barplot of seleced protein ID across day 30 and day 50
@@ -4603,7 +4609,8 @@ plot_gene_bar_log2fc("SYP", "ASAH1")
 ```
 
 
-### VIIIg. Correlation heatmap across annotations (ASAH1 and GBA1, day30 + day50, iN + iDA)
+# Correlation heatmap across annotations (ASAH1 and GBA1)
+ASAH1 and GBA1, day30 + day50, iN + iDA
 ```{r}
 # --------------------------------------------------- #
 # Annotation × KO heatmap (ASAH1 + GBA1, iN/iDA, d30+d50)
@@ -4680,7 +4687,9 @@ write.csv(
 
 
 
-# IX. Long diff: d30-50-70
+# =================================================
+# Module 5: Long Diff Analysis ASAH1 (d30-50-70)
+# =================================================
 #### IXa. read in df, log2fc, add annotations and make combined day30-50-70 df 
 ```{r}
 # --------------------------------------------------- #
@@ -5582,8 +5591,10 @@ write.csv(mtci_colors_per_condition,"/Users/felix/Documents/PostDoc/Harvard/03_L
 ```
 
 
-
-# X. Violin / Volcano plots select annotations / genotypes
+# =================================================
+# Module 6: Violin & Volcano Plots
+# =================================================
+Functions for plotting Violin / Volcano plots for user-select annotations / genotypes
 ### Xa. Violin Plot Function for LSD Organelle Proteomics
 ``` {r}
 # --------------------------------------------------- #
@@ -5825,9 +5836,8 @@ plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols
 
 
 # =================================================
-# -------- Organelle Correlations Analysis
+# Module 7: Organelle Correlations Analysis
 # =================================================
-
 
 # XI. Organelle Cross-DF correlations
 have now complete_data_annotated_day50, which contains all the organelle annotations across all genotypes
@@ -7423,7 +7433,7 @@ ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
 
 
 # =================================================
-# -------- Disease Class Analysis Neuron
+# Module 8: Disease Class Analysis - Neuron
 # =================================================
 
 
@@ -9089,8 +9099,10 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 
 
 
-
-# XV Linear regression on neuro nDIA dataset
+# =================================================
+# Module 9: Linear Regression & Modeling
+# =================================================
+Linear regression on neuro nDIA dataset
 ### XVa. Linear regression on gene level across neurontypes
 ```{r}
 # --------------------------------------------------- #
