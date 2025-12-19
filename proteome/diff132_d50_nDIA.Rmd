@@ -266,7 +266,7 @@ dev.off()
 
 
 # IV. Based checks on data 
-### IVa. PCA plots of data
+### basic data cleaning of replicate data 
 plot PCA plots to check data landscape on top level 
 Have following genotypes and cells in there
 iN, DA, pool (== QC mmaker)
@@ -274,13 +274,12 @@ iN, DA, pool (== QC mmaker)
 
 ```{r}
 # --------------------------------------------------- #
-# PCA plots for supplements  
+# Data cleaning and preparation
 # --------------------------------------------------- #
 
 # --- Step 1: Read in the data from the CSV file
 # The CSV file has been pre-processed in Excel to replace all NA values with 0.
-diff132_d50_PCA_df_full <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/lsd_pro_long.csv', 
-                                    header = TRUE, sep = ',', stringsAsFactors = FALSE)
+diff132_d50_PCA_df_full <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/lsd_pro_long.csv', header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
 # --- Step 1.5: Fill NA or empty values in 'neuron' and 'replicate' with QC info
 diff132_d50_PCA_df_full <- diff132_d50_PCA_df_full %>%
@@ -307,10 +306,80 @@ diff132_d50_PCA_df <- diff132_d50_PCA_df_full[, -c(1,2,4,6,7,13,14)]
 problematic_rows <- diff132_d50_PCA_df %>%
   filter(is.na(Genes) | Genes == "")
 
+# --- Step 4b: Replicate correlation summary
+rep_corr <- cleaned_df %>%
+  filter(neuron != "QC", !is.na(genotype)) %>%
+  group_by(Genes, day, neuron, genotype, replicate) %>%
+  summarise(quan = sum(quan), .groups = "drop") %>%
+  pivot_wider(names_from = replicate, values_from = quan, names_prefix = "rep") %>%
+  group_by(day, neuron, genotype) %>%
+  summarise(
+    r12 = cor(rep1, rep2, use = "complete.obs"),
+    r13 = cor(rep1, rep3, use = "complete.obs"),
+    r23 = cor(rep2, rep3, use = "complete.obs"),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(cols = c(r12, r13, r23), names_to = "pair", values_to = "correlation")
+
+summary(rep_corr$correlation)
+
+# Distribution plot
+ReplicateDist <- ggplot(rep_corr, aes(x = correlation)) +
+  geom_histogram(bins = 30, fill = "dodgerblue4", color = "white") +
+  geom_vline(xintercept = 0.95, linetype = "dashed", color = "red") +
+  labs(x = "Pairwise replicate correlation (Pearson)", y = "Count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank())
+
+
+# Save Plot of replcitae distribution
+ggsave(file.path(out_dir_d50_QC,"diff132_replicateDataDistribution.pdf"), ReplicateDist, width = 4, height = 4, device = cairo_pdf)
+
+
+# Create wide matrix of all samples
+rep_wide_df <- cleaned_df %>%
+  filter(neuron != "QC", !is.na(genotype)) %>%
+  group_by(Genes, day, neuron, genotype, replicate) %>%
+  summarise(quan = sum(quan), .groups = "drop") %>%
+  mutate(sample_id = paste(genotype, neuron, day, replicate, sep = "_")) %>%
+  arrange(day, neuron, genotype, replicate) %>%
+  select(Genes, sample_id, quan) %>%
+  pivot_wider(names_from = sample_id, values_from = quan)
+
+# Reorder columns to match sorted order
+sample_order <- cleaned_df %>%
+  filter(neuron != "QC", !is.na(genotype)) %>%
+  distinct(day, neuron, genotype, replicate) %>%
+  arrange(day, neuron, genotype, replicate) %>%
+  mutate(sample_id = paste(genotype, neuron, day, replicate, sep = "_")) %>%
+  pull(sample_id)
+
+# create correlation matrix
+rep_corr_matrix <- cor(rep_wide_df[, sample_order], use = "pairwise.complete.obs")
+
+# plot and save heatmap
+pdf(file.path(out_dir_d50_QC, "diff132_replicate_correlation_heatmap.pdf"), width = 12, height = 12)
+pheatmap(
+  rep_corr_matrix,
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  breaks = seq(0.5, 1, length.out = 101),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  cellheight = 4,
+  cellwidth = 4,
+  border_color = NA,
+  fontsize = 4,
+  main = "Sample-wise Pearson Correlation"
+)
+dev.off()
+
+
+
 # Remove these problematic rows from the dataset
 cleaned_df <- diff132_d50_PCA_df %>%
   filter(!is.na(Genes) & Genes != "") %>%       # remove empty gene names
   filter(!is.na(quan))                          # remove missing values in quan
+
 
 
 # --- Step 5: Reshape the data from long to wide format
@@ -327,6 +396,13 @@ d50_df_wide <- cleaned_df %>%
   )
 
 
+
+
+```
+
+
+### IVa. PCA plots of data
+```{r}
 # --- Step 6: Select only numeric columns for PCA
 # Keep sample-level metadata
 sample_metadata <- d50_df_wide %>%
@@ -1392,10 +1468,7 @@ heatmap_matrix_log2 <- all_rows %>%
   as.matrix()
 
 # --- 9. Save CSV
-readr::write_csv(
-  heatmap_matrix_log2 %>% as.data.frame() %>% rownames_to_column("RowID"),
-  file.path(out_dir_d50_QC, "LSDgene_Abundance_log2_matrix.csv")
-)
+readr::write_csv(heatmap_matrix_log2 %>% as.data.frame() %>% rownames_to_column("RowID"), file.path(out_dir_d50_QC,"LSDgene_Abundance_log2_matrix.csv"))
 
 # --- 10. Determine breaks for color scale
 min_val_log2 <- suppressWarnings(min(heatmap_matrix_log2, na.rm = TRUE))
