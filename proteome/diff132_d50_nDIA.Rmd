@@ -268,11 +268,10 @@ dev.off()
 
 
 # =================================================
-# Module 1: Data Import, QC & Dataset Overview (Replicate-level)
+# Module 1: Data Import, QC (Replicate-level)
 # =================================================
 
-# IV. Based checks on data 
-### basic data cleaning of replicate data 
+# Data cleaning of replicate data
 plot PCA plots to check data landscape on top level 
 Have following genotypes and cells in there
 iN, DA, pool (== QC mmaker)
@@ -328,8 +327,10 @@ long_subcell_df <- subcell_df %>%
   filter(!is.na(Genes) & Genes != "") %>%
   mutate(Genes = trimws(Genes)) %>%
   distinct()
+```
 
-
+# Replicate correlation analysis
+```{r}
 # --- Step 4b: Replicate correlation summary
 rep_corr <- cleaned_df %>%
   filter(neuron != "QC", !is.na(genotype)) %>%
@@ -369,6 +370,8 @@ ReplicateDist2 <- ggplot(rep_corr, aes(x = correlation, fill = neuron, color = n
 ggsave(file.path(out_dir_d50_QC,"diff132_replicateDataDistribution.pdf"), ReplicateDist, width = 4, height = 4, device = cairo_pdf)
 ggsave(file.path(out_dir_d50_QC,"diff132_replicateDataDistributionDensity.pdf"), ReplicateDist2, width = 4, height = 4, device = cairo_pdf)
 
+
+# --- correlation matrix of samples 
 # Create wide matrix of all samples
 rep_wide_df <- cleaned_df %>%
   filter(neuron != "QC", !is.na(genotype)) %>%
@@ -407,8 +410,7 @@ pheatmap(
 dev.off()
 
 
-
-
+# --- Within vs between replicate variance plots
 # Within-replicate variance per protein per sample_id
 rep_variance_per_gene <- cleaned_df %>%
   filter(neuron != "QC", genotype != "ctrl", !is.na(genotype)) %>%
@@ -435,8 +437,11 @@ rep_variance_scatter <- ggplot(rep_variance_per_gene, aes(x = Genes, y = log2(va
   )
 
 ggsave(file.path(out_dir_d50_QC, "diff132_within_replicate_variance_scatter.pdf"), rep_variance_scatter, width = 8, height = 4, device = cairo_pdf)
+```
 
 
+# F-ratio variance analysis
+```{r}
 # --- Step 4c: F-ratio approach per annotation
 # F-ratio = between-genotype variance / within-genotype variance
 # MSbetween: variance between genotypes (based on all replicates)
@@ -445,30 +450,43 @@ ggsave(file.path(out_dir_d50_QC, "diff132_within_replicate_variance_scatter.pdf"
 # If F > 1: biological signal is larger than technical noise = real differences
 # If F < 1: technical noise is larger than biological signal = can't trust the differences
 
+# --- Create replicate-level fold changes per organelle annotation
+rep_fc_organelle <- cleaned_df %>%
+  filter(neuron != "QC", !is.na(genotype)) %>%
+  group_by(Genes, day, neuron, genotype, replicate) %>%
+  summarise(quan = sum(quan), .groups = "drop") %>%
+  # pivot to get ctrl and KO quantities side by side
+  pivot_wider(names_from = genotype, values_from = quan) %>%
+  # reshape back to long, keeping ctrl as reference
+  pivot_longer(cols = -c(Genes, day, neuron, replicate, ctrl), names_to = "genotype", values_to = "ko_quan") %>%
+  rename(ctrl_quan = ctrl) %>%
+  filter(!is.na(ko_quan), !is.na(ctrl_quan)) %>%
+  # calculate log2 fold change vs ctrl
+  mutate(log2fc = log2(ko_quan / ctrl_quan)) %>%
+  # add subcellular localization annotation
+  left_join(long_subcell_df, by = "Genes") %>%
+  filter(!is.na(Localization))
+
+# --- Calculate F-ratio per gene per annotation
 f_ratio_per_gene <- rep_fc_organelle %>%
   group_by(Localization, day, neuron, genotype, Genes) %>%
   filter(n() == 3) %>%
   ungroup() %>%
   group_by(Localization, day, neuron, Genes) %>%
   summarise(
-    # Within-genotype variance: mean of variances across replicates per genotype
     ms_within = mean(tapply(log2fc, genotype, var, na.rm = TRUE), na.rm = TRUE),
-    # Between-genotype variance: total variance across all replicates from all genotypes
     ms_between = var(log2fc, na.rm = TRUE),
     f_ratio = ms_between / ms_within,
     .groups = "drop"
   ) %>%
   filter(is.finite(f_ratio))
 
+# --- Summarize F-ratio per annotation x day x neuron
 f_ratio_df <- f_ratio_per_gene %>%
   group_by(Localization, day, neuron) %>%
-  summarise(
-    mean_f = mean(f_ratio, na.rm = TRUE),
-    sd_f = sd(f_ratio, na.rm = TRUE),
-    se_f = sd_f / sqrt(n()),
-    .groups = "drop"
-  )
+  summarise(mean_f = mean(f_ratio, na.rm = TRUE), sd_f = sd(f_ratio, na.rm = TRUE), se_f = sd_f / sqrt(n()), .groups = "drop")
 
+# --- Plot F-ratio across annotations
 f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neuron, fill = neuron, group = neuron)) +
   geom_ribbon(aes(ymin = mean_f - se_f, ymax = mean_f + se_f), alpha = 0.2, color = NA) +
   geom_line() +
@@ -477,22 +495,22 @@ f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neu
   scale_color_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
   scale_fill_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
   facet_wrap(~ day, ncol = 2) +
-  labs(
-    x = NULL, 
-    y = "F-ratio (between / within genotype variance)",
-    color = NULL, fill = NULL,
-    caption = "F > 1: biological signal > technical noise\nF < 1: technical noise > biological signal"
-  ) +
+  labs(x = NULL, y = "F-ratio (between / within genotype variance)", color = NULL, fill = NULL, caption = "F > 1: biological signal > technical noise\nF < 1: technical noise > biological signal") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
         axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), 
         legend.position = "bottom", 
         plot.caption = element_text(hjust = 0))
 
+
 ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, width = 6, height = 4, device = cairo_pdf)
 
 
+```
 
+
+#  PCA plots of data
+```{r}
 # --- Step 5: Reshape the data from long to wide format
 # Each gene will become a separate column, with 'quan' values as the data points.
 # Missing values are filled with 0, and duplicate entries are summed.
@@ -508,11 +526,6 @@ d50_df_wide <- cleaned_df %>%
 
 
 
-```
-
-
-### IVa. PCA plots of data
-```{r}
 # --- Step 6: Select only numeric columns for PCA
 # Keep sample-level metadata
 sample_metadata <- d50_df_wide %>%
@@ -747,7 +760,7 @@ ggsave(file.path(out_dir_d50_QC,"diff132_d50_noQC_PCA_byDay.pdf"), d50plot3_noQC
 
 
 
-### IVb. QC plot - Protein ID per sample x neuron 
+# QC plot: Protein ID per sample x neuron
 ``` {r}
 # --------------------------------------------------- #
 # QC plot - Protein ID per sample x neuron 
@@ -930,7 +943,7 @@ ggsave(file.path(out_dir_d50_QC,"diff132_d50_combined_plot.pdf"), combined_plot,
 ```
 
 
-### IVc. QC plot - RSD plot 
+# QC plot: RSD plot
 ```{r}
 # --------------------------------------------------- #
 # QC plot - RSD plot 
@@ -1004,6 +1017,9 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_combined_plot.pdf"), combined_p
 ```
 
 
+# =================================================
+# Module 2: Summarized Data & Subcellular Analysis
+# =================================================
 
 # V. Read in main df & Heatmaps of data day 30 & day 50
 use the full dataset for plotting volcano and heatmaps etc 
