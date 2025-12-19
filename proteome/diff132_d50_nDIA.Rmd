@@ -351,9 +351,9 @@ ReplicateDist <- ggplot(rep_corr, aes(x = correlation)) +
 
 ReplicateDist2 <- ggplot(rep_corr, aes(x = correlation, fill = neuron, color = neuron)) +
   geom_density(alpha = 0.5) +
-  scale_fill_manual(values = c("iN" = "dodgerblue4", "iDA" = "darkred")) +
-  scale_color_manual(values = c("iN" = "dodgerblue4", "iDA" = "darkred")) +
-  geom_vline(xintercept = 0.95, linetype = "dashed", color = "grey30") +
+  scale_fill_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
+  scale_color_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", color = "firebrick") +
   labs(x = "Pairwise replicate correlation (Pearson)", y = "Density", fill = NULL, color = NULL) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), legend.position = "bottom")
@@ -409,7 +409,7 @@ dev.off()
 # If F > 1: biological signal is larger than technical noise = real differences
 # If F < 1: technical noise is larger than biological signal = can't trust the differences
 
-f_ratio_df <- rep_fc_organelle %>%
+f_ratio_per_gene <- rep_fc_organelle %>%
   group_by(Localization, day, neuron, genotype, Genes) %>%
   filter(n() == 3) %>%
   ungroup() %>%
@@ -419,33 +419,42 @@ f_ratio_df <- rep_fc_organelle %>%
     ms_within = mean(tapply(log2fc, genotype, var, na.rm = TRUE), na.rm = TRUE),
     # Between-genotype variance: total variance across all replicates from all genotypes
     ms_between = var(log2fc, na.rm = TRUE),
+    f_ratio = ms_between / ms_within,
     .groups = "drop"
   ) %>%
+  filter(is.finite(f_ratio))
+
+f_ratio_df <- f_ratio_per_gene %>%
   group_by(Localization, day, neuron) %>%
   summarise(
-    mean_ms_within = mean(ms_within, na.rm = TRUE),
-    mean_ms_between = mean(ms_between, na.rm = TRUE),
-    f_ratio = mean_ms_between / mean_ms_within,
+    mean_f = mean(f_ratio, na.rm = TRUE),
+    sd_f = sd(f_ratio, na.rm = TRUE),
+    se_f = sd_f / sqrt(n()),
     .groups = "drop"
   )
 
-# Plot F-ratio line plot
-f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = f_ratio, color = neuron, group = neuron)) +
+f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neuron, fill = neuron, group = neuron)) +
+  geom_ribbon(aes(ymin = mean_f - se_f, ymax = mean_f + se_f), alpha = 0.2, color = NA) +
   geom_line() +
-  geom_point(size = 1) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "grey30") +
-  scale_color_manual(values = c("iN" = "dodgerblue4", "iDA" = "darkred")) +
+  geom_point(size = 0) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "firebrick") +
+  scale_color_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
+  scale_fill_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
   facet_wrap(~ day, ncol = 2) +
   labs(
     x = NULL, 
     y = "F-ratio (between / within genotype variance)",
-    color = NULL,
+    color = NULL, fill = NULL,
     caption = "F > 1: biological signal > technical noise\nF < 1: technical noise > biological signal"
   ) +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "bottom", plot.caption = element_text(hjust = 0))
+  theme(panel.grid = element_blank(), 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), 
+        legend.position = "bottom", 
+        plot.caption = element_text(hjust = 0))
 
 ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, width = 6, height = 4, device = cairo_pdf)
+
 
 
 # --- Step 5: Reshape the data from long to wide format
