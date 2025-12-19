@@ -1222,9 +1222,7 @@ plan is to plot a heatmap of all LSD proteins of interest across the dataset -> 
 
 # ---- Define LSD Gene List ----
 LSDgenes <- c(
-  "ASAH1", "ATP13A2", "CLN3", "CLN5", "CLN6", "CLN8", "CTSD", "CTSF",
-  "DNAJC5", "GAA", "GBA1", "GRN", "HEXA", "HEXB", "LIPA", "MCOLN1",
-  "MFSD8", "NPC1", "NPC2", "PPT1", "PSAP", "SMPD1", "TPP1"
+"AGA", "ARSA", "ARSB", "ASAH1", "ATP13A2", "CLN3", "CLN5", "CLN6", "CLN8", "CTNS", "CTSA", "CTSD", "CTSF", "DNAJC5", "FUCA", "GAA", "GALC", "GALNS", "GBA1", "GLA", "GLB1", "GM2A", "GNPTAB", "GNPTG", "GNS", "GRN", "GUSB", "HEXA", "HEXB", "HGSNAT", "HYAL1", "IDS", "IDUA", "KCTD7", "LAMP2", "LIPA", "MAN2B1", "MANBA", "MCOLN1", "MFSD8", "NAGA", "NAGLU", "NEU1", "NPC1", "NPC2", "PPT1", "PSAP", "SCARB2", "SGSH", "SLC17A5", "SMPD1", "SUMF1", "TPP1"
 )
 
 # ---- Prepare Long Format Data ----
@@ -1281,21 +1279,34 @@ LSDgene_Abundance <- ggplot(plot_df, aes(x = neuron, y = value, fill = condition
     panel.grid = element_blank()
   )
 
+
+# ---- Plot LSD gene abundance in control background ----
+plot_df_ctrl <- df_clean_heatmap %>%
+  filter(condition == "mean_ctrl", day == 50) %>%
+  distinct(Genes, neuron, value) %>%
+  mutate(value = ifelse(is.na(value), 0, value))
+
+LSDgene_Abundance_ctrl <- ggplot(plot_df_ctrl, aes(x = reorder(Genes, -value), y = value, fill = neuron)) +
+  geom_bar(stat = "summary", fun = mean, position = position_dodge(width = 0.7), width = 0.7) +
+  scale_fill_manual(values = c("iN" = "grey70", "iDA" = "steelblue")) +
+  labs(title = "LSD Protein Abundance in Control Neurons", x = "LSD Gene", y = "Abundance (raw)", fill = "Neuron Type") +
+  theme_bw() +
+  theme(legend.position = "bottom", 
+        panel.grid = element_blank(), 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6))
+
+
+
+
 # ---- Display Plot ----
 LSDgene_Abundance
+LSDgene_Abundance_ctrl
 
 # ---- Save Plot and Data ----
-ggsave( file.path(out_dir_d50_QC,
-  "diff132_LSDgene_Abundance.pdf"),
-  LSDgene_Abundance,
-  width = 12, height = 12, device = cairo_pdf
-)
+ggsave(file.path(out_dir_d50_QC,"diff132_LSDgene_Abundance.pdf"), LSDgene_Abundance, width = 12, height = 12, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC,"diff132_LSDgeneAll_Abundance_inCtrl.pdf"), LSDgene_Abundance_ctrl, width = 4, height = 4, device = cairo_pdf)
 
-write.csv(
-  df_clean_heatmap, file = file.path(out_dir_d50_QC,
-  "LSD_sorted.csv"),
-  row.names = FALSE
-)
+write.csv(df_clean_heatmap, file = file.path(out_dir_d50_QC, "LSD_sorted.csv"), row.names = FALSE)
 
 
 
