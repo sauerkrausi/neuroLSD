@@ -4690,7 +4690,8 @@ write.csv(
 # =================================================
 # Module 5: Long Diff Analysis ASAH1 (d30-50-70)
 # =================================================
-#### IXa. read in df, log2fc, add annotations and make combined day30-50-70 df 
+
+# Read df, log2fc, add annotations, make combined timecourse-df
 ```{r}
 # --------------------------------------------------- #
 # Day 70 integration + ASAH1 timecourse (d30, d50, d70)
@@ -4952,7 +4953,7 @@ write.csv(asah1_timecourse_annotated,file.path(out_dir_d70_dataframes, "ASAH1_ti
 
 ```
 
-#### IXb. plot heatmap and save matrix as csv
+# Plot heatmap and save matrix as csv
 ```{r}
 # --- 8. Heatmap of timecourse (pheatmap style)
 # 8.1 Pick the six ASAH1 timecourse columns that exist in the combined table
@@ -5022,7 +5023,7 @@ write.csv(as.data.frame(timecourse_mat),file.path(out_dir_d70_heatmap, "ASAH1_ti
 
 
 
-### IXc. PCA plots
+# PCA plots
 ```{r}
 # --- 9. PCA analysis for ASAH1 vs Ctrl across day30, day50, day70
 # day 30 + 50 (already long in cleaned_df)
@@ -5213,7 +5214,7 @@ write.csv(pca_input_transposed_annot, out_file_transposed, row.names = FALSE)
 ```
 
 
-### IXd. Violinplots for selected annotations across timecourse 
+# Violinplots for selected annotations across timecourse
 ```{r}
 # --- Step 1. annotations of choice (as specified)
 ann_vec <- c(
@@ -5354,9 +5355,7 @@ p_asah1_both <- plot_violin_asah1_timecourse_both()
 ```
 
 
-
-
-### IXe. Pairwise correlations of annotations
+# Pairwise correlations of annotations
 ```{r}
 # --------------------------------------------------- #
 # Pairwise correlations of annotations for day30-d50-d70
@@ -5519,7 +5518,7 @@ write.csv(corr_mat,file.path(out_dir_d70_corr, "ASAH1_annotation_vs_effect_corre
 
 
 
-### IXf. ChimeraX helper function for mapping abundnace on structure 
+# ChimeraX helper function for mapping abundance on structure
 ```{r}
 # --------------------------------------------------- #
 # creates hexvalues for mapping on structure of C1 in chimeara
@@ -5592,10 +5591,11 @@ write.csv(mtci_colors_per_condition,"/Users/felix/Documents/PostDoc/Harvard/03_L
 
 
 # =================================================
-# Module 6: Violin & Volcano Plots
+# Module 6: Violin & Volcano Plots (annotation / genotypes)
 # =================================================
 Functions for plotting Violin / Volcano plots for user-select annotations / genotypes
-### Xa. Violin Plot Function for LSD Organelle Proteomics
+
+# Violin Plot Function for LSD Organelle Proteomics
 ``` {r}
 # --------------------------------------------------- #
 # Violin Plot Function for LSD Organelle Proteomics 
@@ -5692,7 +5692,7 @@ ggsave(file.path(out_dir_d50_violins,
 
 
 
-### Xb. Volcano plot of select genotype w/ annotation hiighlights 
+# Volcano plot of select genotype w/ annotation highlights 
 ```{r}
 # --------------------------------------------------- #
 # Volcano Plot Function for LSD Organelle Proteomics 
