@@ -1021,7 +1021,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_combined_plot.pdf"), combined_p
 # Module 2: Summarized Data & Subcellular Analysis
 # =================================================
 
-# V. Read in main df & Heatmaps of data day 30 & day 50
+# Read fold-change data (day 30 & day 50)
 use the full dataset for plotting volcano and heatmaps etc 
 each measured protein has mean ctrl, mean ko and fold-change and p/q value associated with it
 probably makes sense to have it in tibble for easy data manipulation 
@@ -1198,8 +1198,7 @@ dev.off()
 ```
 
 
-# VI. Day 30 & Day 50 base eval
-### VIa. Add Subcell annotation to dataset
+# Add subcell annotation
 add subcell annotation to df and save
 sub sub-matrix for d30 and d50
 export heatmap as csv file
@@ -1366,7 +1365,7 @@ dev.off()
 ```
 
 
-### VIb. Euler plots for overlap annotation 
+# Euler plots for overlap annotation
 ```{r}
 # --------------------------------------------------- #
 #  Euler plots of Subcellular Annotation Overlap 
@@ -1460,8 +1459,10 @@ dev.off()
 
 
 
-### VIc. Plot LSD protein abundnace across genotypes
-plan is to plot a heatmap of all LSD proteins of interest across the dataset -> check that these are KOs
+# LSD protein abundance across genotypes
+plot bar graph of abundance of all LSDs found in the dataset
+plot a bar graph of all LSD-KO matched pairs in the dataset (iN and iDA)
+plot a heatmap of all LSD proteins of interest across the dataset -> check that these are KOs
 ```{r}
 # --------------------------------------------------- #
 # Plot LSD protein abundance in their respective KOs
@@ -1669,7 +1670,7 @@ dev.off()
 
 
 
-### VId. Sorted Heatmap of average neuro-releated annotations
+# Sorted heatmap of neuro-related annotations
 ```{r}
 # --------------------------------------------------- #
 # Heatmap of neuro-related annotations
@@ -1753,7 +1754,8 @@ row_order_iDA <- make_ann_heatmap(
 
 ```
 
-##### Plot heatmaps of pvalues for annotation KO vs Control comparison. Keep same clustering / order from mean Log2FC heatmap in VId.  
+# Pvalue heatmaps for annotation KO vs Control
+Keep same clustering / order from mean Log2FC heatmap
 ```{r}
 # --------------------------------------------------- #
 # Heatmap of neuro-related annotations (p-values)
@@ -1904,11 +1906,9 @@ make_ann_heatmap_pvals(
 
 ```
 
-##### Stouffer's method correction for sample size s z (accounts for per-gene information via weights)
+# Stouffer's method correction
 ```{r}
-
 # Weighted Stouffer’s method (combine z scores with weights like √n or 1/SE). This balances smaller and larger sets.
-
 
 
 ### Plot heatmaps of pvalues for annotation KO vs Control comparison. Keep same clustering / order from mean Log2FC heatmap in VId.  
@@ -2077,7 +2077,7 @@ make_ann_heatmap_pvals(
 ```
 
 
-#####  Ternary plots from log2FC values per annotation
+# Ternary plots from log2FC per annotation
 ```{r}
 # --- Step 1: create out dir for function call
 out_dir_d50_ternaryplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/TernaryPlots_log2fc"
@@ -2419,7 +2419,7 @@ plot_all_ternary_log2fc_combinations(
 
 
 
-#####  Half-circos plot showing mean log2FC per annotation for each KO
+# Half-circos plot of mean log2FC per annotation per KO
 ```{r}
 # Split by neuron type (iN left, iDA right), sorted by overall mean log2FC
 # Approach: duplicate data to fill full circle, then only render real sectors in top half
@@ -2636,7 +2636,7 @@ plot_halfcircos_log2fc(
 
 
 
-### VIe. Sorted lineplots of average neuro-releated annotations
+# Sorted lineplots of neuro-related annotations
 ```{r}
 # --------------------------------------------------- #
 # Line plots of Sph mutants of interest 
@@ -2730,7 +2730,7 @@ p_iDA <- make_lineplot_all(
 ```
 
 
-### VIf. Key driver of SVfusion & exocytosis in iDA
+# Key driver of SVfusion & exocytosis in iDA
 ```{r}
 # --------------------------------------------------- #
 # Heatmap of keydrivers of synaptic anotations in iDA neurons 
@@ -2879,8 +2879,8 @@ make_topvar_heatmap_iDA(
 ```
 
 
-
-#### VIg. PCA on iDA Svendocytosis","vATPase","SVfusion","Svexocytosis" in separate iterations 
+# PCA on iDA annotation subsets
+#### PCA on iDA Svendocytosis","vATPase","SVfusion","Svexocytosis" in separate iterations 
 ```{r}
 # --------------------------------------------------- #
 # --- PCA drivers for synaptic-angle annotations in iDA
@@ -3010,7 +3010,7 @@ walk(annotations_to_run, ~ run_synaptic_pca_iDA(.x, n_pcs = n_pcs_plot))
 
 
 
-#### VIh. PCA on iDA union annotation 
+#### PCA on iDA union annotation 
 ```{r}
 highlight_genos <- c("ASAH1","CLN8","GBA1","ATP13A2","PSAP","SMPD1","HEXA","HEXB")
 
@@ -3135,7 +3135,9 @@ write_csv(top_gba1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_dr
 
 
 
-# VII. Neuro QC plots
+# =================================================
+# Module 3: Neuro QC & Synaptic Markers
+# =================================================
 Aimed to plot neuro markers to plot differences between neuron types
 
 ### VIIa. Plot pre / post synaptic marker
