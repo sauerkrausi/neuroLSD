@@ -9,7 +9,11 @@ date: "`r Sys.Date()`"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# I. load packackes & set project directory
+# =================================================
+# Module 0: Setup & Configuration & Experimental Background
+# =================================================
+
+# Load packackes & set project directory
 ```{r setup, include=FALSE}
 # install.packages(c(
 #   "plyr", "ggrepel", "ggpubr", "ggpmisc", "patchwork", "gghighlight", 
@@ -74,7 +78,7 @@ library(lintr)
 ```
 
 
-# output dirs overview:
+# Output dirs overview
 ```{r}
 out_dir_d50_QC <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/QC"
 dir.create(out_dir_d50_QC, recursive = TRUE, showWarnings = FALSE)
@@ -197,9 +201,7 @@ dir.create(out_dir_PPI, recursive = TRUE, showWarnings = FALSE)
 
 ```
 
-
-
-# II. Experimental Background: nDIA proteomics iN & iDA d30+d50
+# Experimental Background: nDIA proteomics iN & iDA d30+d50
 - Samples are in triplicates whole-cell samples from 12-well dishes.
 - day 30 of in vitro differentiation of iN and iDA:
 Genotypes: Ctrl, ASAH1, CLN11.GRN, GBA1, SMPD1
@@ -208,9 +210,8 @@ Genotypes: Ctrl, ASAH1, CLN11.GRN, GBA1, SMPD1
 Genotypes: Ctrl, ASAH1, CLN1.PPT1, CLN3, CLN4.DNAJC5, CLN5, CLN6, CLN7.MFSD8, CLN8, CLN10.CTSD, CLN11.GRN, CLN12.ATP13A2, CLN13.CTSF, CTNS, GAA, GBA1, GLB1, HEXA, HEXB, LIPA, MCOLN1.TRPML1, NPC1, NPC2, PSAP, SMPD1
 
 run on Thermo Orbitrap Astral, nDIA, hrMS2 
-        
 
-# III. Circos plot for neuroLSD 
+# Circos plot for neuroLSD 
 ```{r}
 #read the csv file
 #read in first column (==gene) as row title
@@ -264,6 +265,11 @@ dev.off()
 
 ```
 
+
+
+# =================================================
+# Module 1: Data Import, QC & Dataset Overview (Replicate-level)
+# =================================================
 
 # IV. Based checks on data 
 ### basic data cleaning of replicate data 
@@ -419,16 +425,16 @@ sample_colors <- setNames(colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length
 rep_variance_scatter <- ggplot(rep_variance_per_gene, aes(x = Genes, y = log2(var_within), color = sample_id)) +
   geom_point(size = 0.1, alpha = 0.3) +
   scale_color_manual(values = sample_colors) +
-  labs(x = "Proteins", y = "Within-replicate variance", color = NULL) +
+  labs(x = "Proteins", y = "Within-replicate variance [log2]", color = NULL) +
   theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(), 
     axis.text.x = element_blank(), 
     axis.ticks.x = element_blank(),
-    legend.position = "none"
+    legend.position = "right"
   )
 
-ggsave(file.path(out_dir_d50_QC, "diff132_within_replicate_variance_scatter.pdf"), rep_variance_scatter, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_within_replicate_variance_scatter.pdf"), rep_variance_scatter, width = 8, height = 4, device = cairo_pdf)
 
 
 # --- Step 4c: F-ratio approach per annotation
@@ -10160,10 +10166,8 @@ ggsave("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/
 
     
 # =================================================
-# -------- nDIA-nMOST comparative analysis
+# Module 10: nDIA-nMOST Comparative Analysis
 # =================================================
-
-
 
 # XVI. nMOST whole cell plot correlcation matrix per genotype cluster
 ### XVIa. nMOST LSD GO signatures of select Clusters for all genotypes
@@ -11087,13 +11091,8 @@ pheatmap::pheatmap(
 
 
 # =================================================
-# ---- Protein Protein Interaction / Multimer Evaluation 
+# Module 11: PPI Vulnerability Analysis - Neuronal nDIA
 # =================================================
-
-
-# ----------------------------
-# ----- Neuronal iN iDA nDIA Dataset ----- 
-# ----------------------------
 
 # XVIII. PPI vulnerability pipeline in iN and iDA LSD mutants
 Build a Protein–Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. The goal is to integrate experimental proteome shifts with predicted and experimentally validated interaction data (Predictome 80% and IntAct) to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type–specific effects.
@@ -18183,9 +18182,9 @@ message("  - Inter-organelle edges: ", baseline_summary$n_inter_edges)
 
 
 
-# ----------------------------
-# ----- HeLa nMOST Dataset ----- 
-# ---------------------------
+# =================================================
+# Module 12: PPI Vulnerability Analysis - HeLa nMOST
+# =================================================
 
 # XiX. PPI vulnerability pipeline in HeLa Whole cell proteomic data 
 ```{r}
