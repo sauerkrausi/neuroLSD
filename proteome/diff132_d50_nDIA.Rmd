@@ -5839,13 +5839,13 @@ plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols
 # Module 7: Organelle Correlations Analysis
 # =================================================
 
-# XI. Organelle Cross-DF correlations
+# Organelle Cross-DF correlations overview
 have now complete_data_annotated_day50, which contains all the organelle annotations across all genotypes
 easiest way now is to calculate the correlations of log2fc across all organelles across all genotypes
 maybe get a heatmap for each organelle? Strategy is to get a function that asks for the organelle / annotation to correlate across the whole set of genotypes. 
 
 
-### XI. Correlation: User-Select organelle annotation  
+# Correlation: User-select organelle annotation
 ```{r}
 # Load required libraries
 library(dplyr)
@@ -5978,7 +5978,7 @@ correlate_log2fc_annotations(
 ```
 
 
-### XIb. Organelle Impact Scoring from Correlation Analysis
+# Organelle Impact Scoring from Correlation Analysis
 ```{r}
 ###########################################################
 # Organelle Impact Scoring from Correlation Analysis
@@ -6079,7 +6079,7 @@ dev.off()
 ```
 
 
-### XIc. Correlation: All organelle annotations
+# Correlation: All organelle annotations
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -6247,7 +6247,7 @@ dev.off()
 
 
 
-### XId. Avg. correlation per annotation across genotypes
+## Avg. correlation per annotation across genotypes
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -6318,7 +6318,7 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 ```
 
 
-### XIe. Avg. correlation per annotation across genotypes (disease class color)
+## Avg. correlation per annotation across genotypes (disease class)
 ```{r}
 # --------------------------------------------------- #
 # Organelle Cross-DF correlations 
@@ -6449,7 +6449,7 @@ plots <- plot_bar_corr_split_neurons(
 ```
 
 
-### XIf. Avg. correlation per nMOST GO cluster across genotypes (disease class color)
+## Avg. correlation per nMOST GO cluster across genotypes
 ```{r}
 # --------------------------------------------------- #
 # nMOST LSD GO signatures of select Clusters (Neurons)
@@ -6573,8 +6573,7 @@ NeuroClusterBarplot(log2FC_iDA_df, cluster_name = plot_cluster, cell_type = "iDA
 
 
 
-
-### XIg. Avg. correlation per genotype across annotation (disease class color)
+## Avg. correlation per genotype across annotation
 ```{r}
 # --------------------------------------------------- #
 # For a selected genotype (e.g. GBA1_iN), plot mean 
@@ -6672,7 +6671,7 @@ plot_bar_corr_per_annotation_multi(
 ```
 
 
-### XIh. Bubble plot of annotation corr of iN vs iDA neuron by genotype or annotation
+# Bubble plot of annotation corr of iN vs iDA neuron by genotype
 ```{r}
 # --------------------------------------------------- #
 # Scatter plot by disease class 
@@ -7013,280 +7012,7 @@ plot_corr_iN_vs_iDA_by_genotype(
 
 
 
-### ?? VIIIh. Pairwise protein–protein correlations
-```{r}
-# ─────────────────────────────────────────────
-# 1. Load required packages
-# ─────────────────────────────────────────────
-library(tidyverse)
-library(furrr)
-library(qs)
-library(pheatmap)
-
-#log2FC_d50_annotated <- read.csv("/Users/felix/HMS Dropbox/Felix Kraus/Felix/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/dataframes/log2FC_d50_annotated.csv")
-
-# ─────────────────────────────────────────────
-# 2. Define disease class mapping (used for metadata)
-# ─────────────────────────────────────────────
-disease_classes <- list(
-  Sphigolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
-  Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
-  Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
-  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
-  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
-  PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
-  Lipid.storage.diseases = c("GAA", "LIPA")
-)
-
-# ─────────────────────────────────────────────
-# 3. Prepare annotation and log2FC matrix
-# ─────────────────────────────────────────────
-annotation_meta <- log2FC_d50_annotated %>%
-  select(Genes, all_of(annotation_cols))
-
-log2fc_protcorr <- log2FC_d50_annotated %>%
-  select(-any_of(annotation_cols)) %>%
-  column_to_rownames("Genes")
-
-# Filter out flat genes (zero variance)
-gene_sds <- apply(log2fc_protcorr, 1, sd, na.rm = TRUE)
-log2fc_protcorr_filtered <- log2fc_protcorr[gene_sds > 0, ]
-
-# Subset full matrix
-log2fc_subset <- log2fc_protcorr_filtered[, colnames(log2fc_protcorr_filtered)]
-
-# ─────────────────────────────────────────────
-# 4. Create metadata for plotting and downstream grouping
-# ─────────────────────────────────────────────
-genotype_metadata <- tibble(sample = colnames(log2fc_subset)) %>%
-  mutate(
-    KO = str_extract(sample, "^[^_]+"),
-    Neuron = str_extract(sample, "iN|iDA"),
-    DiseaseClass = map_chr(KO, function(ko) {
-      matched <- names(disease_classes)[map_lgl(disease_classes, ~ ko %in% .x)]
-      ifelse(length(matched) > 0, matched[1], NA_character_)
-    })
-  )
-
-# Save metadata
-write_csv(genotype_metadata, file.path(out_dir_d50_corrProtein, "genotype_metadata.csv"))
-write_csv(annotation_meta, file.path(out_dir_d50_corrProtein, "annotation_meta.csv"))
-qs::qsave(annotation_meta, file.path(out_dir_d50_corrProtein, "annotation_meta.qs"))
-qs::qsave(genotype_metadata, file.path(out_dir_d50_corrProtein, "genotype_metadata.qs"))
-
-
-
-# ─────────────────────────────────────────────
-# 5. Compute all pairwise protein–protein correlations ==> write as blocks on HDD
-# ─────────────────────────────────────────────
-plan(multisession, workers = 8)
-
-gene_combinations <- combn(rownames(log2fc_subset), 2, simplify = FALSE)
-block_size <- 750000
-blocks <- split(gene_combinations, ceiling(seq_along(gene_combinations) / block_size))
-
-stream_dir <- file.path(out_dir_d50_corrProtein, "streamed_blocks")
-dir.create(stream_dir, showWarnings = FALSE, recursive = TRUE)
-
-# Compute and stream correlation blocks
-future_walk2(
-  blocks,
-  seq_along(blocks),
-  .f = function(pair_block, block_idx) {
-    block_results <- map_dfr(pair_block, function(pair) {
-      g1 <- pair[1]; g2 <- pair[2]
-      v1 <- as.numeric(log2fc_subset[g1, ])
-      v2 <- as.numeric(log2fc_subset[g2, ])
-      if (all(is.na(v1)) | all(is.na(v2))) {
-        return(tibble(Gene1 = g1, Gene2 = g2, Correlation = NA_real_))
-      }
-      r <- cor(v1, v2, use = "pairwise.complete.obs")
-      tibble(Gene1 = g1, Gene2 = g2, Correlation = r)
-    })
-
-    qs::qsave(block_results, file.path(stream_dir, paste0("block_", block_idx, ".qs")))
-  },
-  .progress = TRUE
-)
-
-
-# # ─────────────────────────────────────────────────────────────
-# # RAM-based pairwise protein correlation (no disk I/O)
-# # ─────────────────────────────────────────────────────────────
-# # Set up parallel workers
-# plan(multisession, workers = 8)
-# 
-# # Create gene pairs
-# gene_combinations <- combn(rownames(log2fc_subset), 2, simplify = FALSE)
-# 
-# # Run all correlations and store in memory
-# results_all <- future_map_dfr(
-#   gene_combinations,
-#   function(pair) {
-#     g1 <- pair[1]; g2 <- pair[2]
-#     v1 <- as.numeric(log2fc_subset[g1, ])
-#     v2 <- as.numeric(log2fc_subset[g2, ])
-#     if (all(is.na(v1)) | all(is.na(v2))) {
-#       return(tibble(Gene1 = g1, Gene2 = g2, Correlation = NA_real_))
-#     }
-#     r <- cor(v1, v2, use = "pairwise.complete.obs")
-#     tibble(Gene1 = g1, Gene2 = g2, Correlation = r)
-#   },
-#   .progress = TRUE
-# )
-# 
-# # Optional: Save to disk once after all blocks are complete
-# qs::qsave(results_all, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.qs"))
-# write_csv(results_all, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.csv"))
-
-
-
-
-# --------------------==========
-#  Protein–Protein Correlation Analysis and Heatmap Visualization
-# --------------------==========
-
-# --- Define paths
-stream_dir <- file.path(out_dir_d50_corrProtein, "streamed_blocks")
-annotation_meta <- qs::qread(file.path(out_dir_d50_corrProtein, "annotation_meta.qs"))
-
-# ----------------------------------------------------------------------
-# 1. Combine all correlation blocks
-# ----------------------------------------------------------------------
-corr_files <- list.files(stream_dir, full.names = TRUE, pattern = "\\.qs$")
-results <- map_dfr(corr_files, qs::qread)
-
-# Save full result
-qs::qsave(results, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.qs"))
-write_csv(results, file.path(out_dir_d50_corrProtein, "pairwise_corr_results.csv"))
-
-# ----------------------------------------------------------------------
-# 2. Quick QC: Correlation density plot
-# ----------------------------------------------------------------------
-results_clean <- results %>% filter(!is.na(Correlation))
-
-qc_plot <- ggplot(results_clean, aes(x = Correlation)) +
-  geom_density(adjust = 1.2) +
-  labs(title = "Correlation density (all gene pairs)",
-       x = "Pearson correlation", y = "Density") +
-  theme_minimal()
-
-ggsave(file.path(out_dir_d50_corrProtein, "correlation_density_plot.pdf"),
-       plot = qc_plot, width = 6, height = 4)
-
-
-dev.off()
-
-# ----------------------------------------------------------------------
-# Filter, Cluster, Plot, and Save Correlation Heatmap by Annotation
-# ----------------------------------------------------------------------
-
-plot_corr_heatmap_by_annotation <- function(
-    results_df,
-    annotation_df,
-    annot_name,
-    save_dir = ".",
-    show_all = TRUE,
-    top_n = 50,
-    annotation_metadata = NULL
-) {
-  message("Filtering correlations where both genes are annotated as: ", annot_name)
-
-  # Step 1: Filter for both genes being annotated
-  filtered <- results_df %>%
-    left_join(annotation_df, by = c("Gene1" = "Genes")) %>%
-    filter(.data[[annot_name]] == 1) %>%
-    left_join(annotation_df, by = c("Gene2" = "Genes"), suffix = c("_G1", "_G2")) %>%
-    filter(.data[[paste0(annot_name, "_G2")]] == 1)
-
-  if (nrow(filtered) == 0) {
-    warning("No valid gene pairs for annotation: ", annot_name)
-    return(NULL)
-  }
-
-  # Step 2: Create symmetric correlation matrix (deduplicated)
-  filtered_unique <- filtered %>%
-    filter(!is.na(Correlation)) %>%
-    distinct(Gene1, Gene2, .keep_all = TRUE)
-
-  mat_df <- filtered_unique %>%
-    pivot_wider(names_from = Gene2, values_from = Correlation)
-
-  rownames(mat_df) <- make.unique(mat_df$Gene1)  # avoid duplicate rownames
-  mat <- as.matrix(mat_df[,-1])  # drop Gene1 column after rownames
-
-  # Step 3: Symmetrize if needed
-  if (!isSymmetric(mat)) {
-    mat[lower.tri(mat)] <- t(mat)[lower.tri(mat)]
-  }
-
-  # Step 4: Optionally subset to top N genes by avg abs correlation
-  if (!show_all) {
-    gene_scores <- rowMeans(abs(mat), na.rm = TRUE)
-    top_genes <- names(sort(gene_scores, decreasing = TRUE))[1:min(top_n, length(gene_scores))]
-    mat <- mat[top_genes, top_genes, drop = FALSE]
-  }
-
-  # Step 5: Add KO / neuron / disease annotations (columns only)
-  ann_col <- NULL
-  if (!is.null(annotation_metadata)) {
-    overlapping <- intersect(colnames(mat), annotation_metadata$sample)
-    ann_col <- annotation_metadata %>%
-      filter(sample %in% overlapping) %>%
-      column_to_rownames("sample") %>%
-      select(KO, Neuron, DiseaseClass)
-  }
-
-  # Step 6: Save heatmap
-  out_file <- file.path(save_dir, paste0("corr_heatmap_", annot_name, ".pdf"))
-  pheatmap::pheatmap(
-    mat,
-    scale = "none",
-    color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100),
-    annotation_col = ann_col,
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    show_rownames = FALSE,
-    show_colnames = TRUE,
-    use_raster = TRUE,
-    angle_col = 90,
-    main = paste("Correlation Heatmap:", annot_name),
-    fontsize = 10,
-    border_color = NA,
-    filename = out_file
-  )
-
-  # Step 7: Save filtered correlation table
-  write_csv(filtered_unique, file.path(save_dir, paste0("correlations_", annot_name, ".csv")))
-}
-
-
-
-
-## call function 
-plot_corr_heatmap_by_annotation(
-  results_df = results,
-  annotation_df = annotation_meta,
-  annot_name = "SynapseSVs",
-  save_dir = out_dir_d50_corrProtein,
-  show_all = TRUE,  # or FALSE
-  top_n = 50,
-  annotation_metadata = genotype_metadata
-)
-
-
-
- # all_ann <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
- #                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
- #                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
- #                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
- #                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
-
-
-```
-
-
-# ??? IX. PRM of synaptic annotatons
+# ?PRM of synaptic annotations?
 ```{r}
 # --------------------------------------------------- #
 # PRM on select synaptic / endolyso annotation list 
