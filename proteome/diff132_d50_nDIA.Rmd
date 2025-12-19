@@ -401,6 +401,36 @@ pheatmap(
 dev.off()
 
 
+
+
+# Within-replicate variance per protein per sample_id
+rep_variance_per_gene <- cleaned_df %>%
+  filter(neuron != "QC", genotype != "ctrl", !is.na(genotype)) %>%
+  group_by(Genes, day, neuron, genotype) %>%
+  filter(n() == 3) %>%
+  summarise(var_within = var(quan, na.rm = TRUE), .groups = "drop") %>%
+  mutate(sample_id = paste(genotype, neuron, day, sep = "_"))
+
+# Create color palette for all sample_ids
+sample_ids <- unique(rep_variance_per_gene$sample_id)
+sample_colors <- setNames(colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(sample_ids)), sample_ids)
+
+# Scatter plot
+rep_variance_scatter <- ggplot(rep_variance_per_gene, aes(x = Genes, y = log2(var_within), color = sample_id)) +
+  geom_point(size = 0.1, alpha = 0.3) +
+  scale_color_manual(values = sample_colors) +
+  labs(x = "Proteins", y = "Within-replicate variance", color = NULL) +
+  theme_bw(base_size = 6) +
+  theme(
+    panel.grid = element_blank(), 
+    axis.text.x = element_blank(), 
+    axis.ticks.x = element_blank(),
+    legend.position = "none"
+  )
+
+ggsave(file.path(out_dir_d50_QC, "diff132_within_replicate_variance_scatter.pdf"), rep_variance_scatter, width = 4, height = 4, device = cairo_pdf)
+
+
 # --- Step 4c: F-ratio approach per annotation
 # F-ratio = between-genotype variance / within-genotype variance
 # MSbetween: variance between genotypes (based on all replicates)
