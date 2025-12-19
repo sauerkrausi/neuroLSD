@@ -1265,6 +1265,48 @@ diff132_log2fc_df %>%
 # save as csv
 write.csv(diff132_log2fc_df, file.path(out_dir_d50_dataframes, "diff132_log2fc_stats.csv"), row.names = FALSE)
 
+
+
+# Join diff132_log2fc_df with annotations
+log2fc_annotated <- diff132_log2fc_df %>%
+  inner_join(long_subcell_df, by = "Genes")
+
+# Filter significant (p < 0.05), summarize mean log2fc per annotation x sample_id
+sig_annotation_heatmap <- log2fc_annotated %>%
+  filter(p_value < 0.05) %>%
+  group_by(Localization, sample_id, day, neuron) %>%
+  summarise(mean_log2fc = mean(log2fc, na.rm = TRUE), .groups = "drop")
+
+# Pivot to matrix: rows = annotations, columns = sample_id
+sig_heatmap_matrix <- sig_annotation_heatmap %>%
+  select(Localization, sample_id, mean_log2fc) %>%
+  pivot_wider(names_from = sample_id, values_from = mean_log2fc) %>%
+  column_to_rownames("Localization") %>%
+  as.matrix()
+
+# Order columns by day and neuron
+sample_order <- sig_annotation_heatmap %>%
+  distinct(sample_id, day, neuron) %>%
+  arrange(day, neuron, sample_id) %>%
+  pull(sample_id)
+
+sig_heatmap_matrix <- sig_heatmap_matrix[, sample_order]
+
+# Plot
+pdf(file.path(out_dir_d50_QC, "diff132_sig_annotation_heatmap.pdf"), width = 10, height = 6)
+pheatmap(
+  sig_heatmap_matrix,
+  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  breaks = seq(-0.5, 0.5, length.out = 101),
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  cellheight = 12,
+  cellwidth = 8,
+  border_color = NA,
+  fontsize = 6,
+  main = "Mean log2FC of significant proteins (p < 0.05) per annotation"
+)
+dev.off()
 ```
 
 
