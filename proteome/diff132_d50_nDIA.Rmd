@@ -1290,7 +1290,11 @@ sample_order <- sig_annotation_heatmap %>%
   arrange(day, neuron, sample_id) %>%
   pull(sample_id)
 
-sig_heatmap_matrix <- sig_heatmap_matrix[, sample_order]
+sig_heatmap_matrix <- sig_annotation_heatmap %>%
+  select(Localization, sample_id, mean_log2fc) %>%
+  pivot_wider(names_from = sample_id, values_from = mean_log2fc, values_fn = mean) %>%
+  column_to_rownames("Localization") %>%
+  as.matrix()
 
 # Plot
 pdf(file.path(out_dir_d50_QC, "diff132_sig_annotation_heatmap.pdf"), width = 10, height = 6)
@@ -1299,8 +1303,8 @@ pheatmap(
   color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
   breaks = seq(-0.5, 0.5, length.out = 101),
   cluster_rows = TRUE,
-  cluster_cols = FALSE,
-  cellheight = 12,
+  cluster_cols = TRUE,
+  cellheight = 8,
   cellwidth = 8,
   border_color = NA,
   fontsize = 6,
