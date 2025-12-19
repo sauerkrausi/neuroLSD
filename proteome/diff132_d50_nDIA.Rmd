@@ -1114,6 +1114,35 @@ diff132_log2fc_df %>%
 
 # save as csv
 write.csv(diff132_log2fc_df, file.path(out_dir_d50_dataframes, "diff132_log2fc_stats.csv"), row.names = FALSE)
+
+
+# From original CSV
+old_pvals <- clean_d50_df %>% 
+  select(Genes, day, neuron, genotype, p_value_old = p_value, q_value_old = q_value)
+
+# From replicate calculation
+new_pvals <- pval_df %>% 
+  select(Genes, day, neuron, genotype, p_value_new = p_value, q_value_new = q_value)
+
+comparison <- inner_join(old_pvals, new_pvals, by = c("Genes", "day", "neuron", "genotype"))
+
+# Check correlation
+cor(comparison$p_value_old, comparison$p_value_new, use = "complete.obs")
+
+# Check how many match closely
+comparison %>% 
+  filter(!is.na(p_value_old) & !is.na(p_value_new)) %>%
+  mutate(diff = abs(p_value_old - p_value_new)) %>%
+  summary()
+
+
+# Old
+clean_d50_df %>% summarise(p05 = sum(p_value < 0.05, na.rm = TRUE), q05 = sum(q_value < 0.05, na.rm = TRUE))
+
+# New
+pval_df %>% summarise(p05 = sum(p_value < 0.05, na.rm = TRUE), q05 = sum(q_value < 0.05, na.rm = TRUE))
+
+
 ```
 
 
