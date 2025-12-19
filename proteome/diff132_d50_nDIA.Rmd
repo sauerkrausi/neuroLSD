@@ -331,10 +331,19 @@ ReplicateDist <- ggplot(rep_corr, aes(x = correlation)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
+ReplicateDist2 <- ggplot(rep_corr, aes(x = correlation, fill = neuron, color = neuron)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("iN" = "dodgerblue4", "iDA" = "darkred")) +
+  scale_color_manual(values = c("iN" = "dodgerblue4", "iDA" = "darkred")) +
+  geom_vline(xintercept = 0.95, linetype = "dashed", color = "grey30") +
+  labs(x = "Pairwise replicate correlation (Pearson)", y = "Density", fill = NULL, color = NULL) +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), legend.position = "bottom")
+
 
 # Save Plot of replcitae distribution
 ggsave(file.path(out_dir_d50_QC,"diff132_replicateDataDistribution.pdf"), ReplicateDist, width = 4, height = 4, device = cairo_pdf)
-
+ggsave(file.path(out_dir_d50_QC,"diff132_replicateDataDistributionDensity.pdf"), ReplicateDist2, width = 4, height = 4, device = cairo_pdf)
 
 # Create wide matrix of all samples
 rep_wide_df <- cleaned_df %>%
