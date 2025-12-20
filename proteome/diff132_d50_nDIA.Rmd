@@ -6076,6 +6076,38 @@ plot_impact_heatmap(impact_scores, "iDA", out_dir_d50_CrossCorr)
 
 dev.off()
 dev.off()
+
+
+
+# --- Step 4: Calculate for all annotations --------
+all_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic","EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+# --- Loop over each annotation and collect impact scores ---
+all_impact_scores <- map_dfr(all_annotations, function(annot) {
+  corr_mat <- correlate_log2fc_annotations(data = log2FC_d50_annotated, annotations = annot, basedir = out_dir_d50_CrossCorr)
+  
+  impact_iN <- impact_score_from_corr(corr_mat, "iN") %>% mutate(Annotation = annot)
+  impact_iDA <- impact_score_from_corr(corr_mat, "iDA") %>% mutate(Annotation = annot)
+  
+  bind_rows(impact_iN, impact_iDA)
+})
+
+# --- Reshape to matrix ---
+impact_matrix <- all_impact_scores %>%
+  mutate(Sample = paste0(Genotype, "_", Neuron)) %>%
+  select(Annotation, Sample, Rank) %>%
+  pivot_wider(names_from = Sample, values_from = Rank) %>%
+  column_to_rownames("Annotation") %>%
+  as.matrix()
+
+# --- Plot ---
+pdf(file.path(out_dir_d50_CrossCorr, "all_annotation_impact_heatmap.pdf"), width = 12, height = 8)
+pheatmap(impact_matrix, color = colorRampPalette(c("firebrick", "white"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, border_color = NA, display_numbers = TRUE, number_format = "%.0f", number_color = "grey30", cellwidth = 12, cellheight = 12)
+dev.off()
 ```
 
 
@@ -20433,7 +20465,7 @@ message("Output directory: ", out_dir_xlms_validationCLASP)
 # Module 14: MISC / TO DO 
 # =================================================
 -- run through all code and check there are no errors
-- delete lin models?
+- work over Module 9
 
 - by_ko heatmap correlations: 
 should calculate to the baseline, not across all the genotypes. since it should represent the difference to the control.
