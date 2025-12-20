@@ -8827,7 +8827,8 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 # Module 9: Linear Regression & Modeling
 # =================================================
 Linear regression on neuro nDIA dataset
-### XVa. Linear regression on gene level across neurontypes
+
+# Linear regression on gene level across neurontypes
 ```{r}
 # --------------------------------------------------- #
 # Linear regression on neuro nDIA dataset
@@ -8923,7 +8924,7 @@ write_csv(sig_genes_df, file=file.path(out_dir_d50_LinReg, "diff132_d50_LinReg_s
 ```
 
 
-### XVb. Stratified linear modeling of genotype effects by neuron type
+## Stratified linear modeling of genotype effects by neuron type
 ```{r}
 # --------------------------------------------------- #
 # Linear regression on neuro nDIA dataset
@@ -9026,7 +9027,7 @@ write_csv(top_ko_hits, file=file.path(out_dir_d50_LinReg, "diff132_d50_LinReg_si
 ```
 
 
-### XVc. Limma linear modeling
+# Limma linear modeling
 Use-Case for limma (Linear Models for Microarray/omics Data)
 
 limma is highly optimized for large-scale omics data where:
@@ -9388,7 +9389,7 @@ ggsave(file.path(out_dir_d50_LinReg_limma,"MAplot_SelectGenotype.pdf"),
 ```
 
 
-#### XV --- umap attempt of lin model results
+## UMAP attempt of lin model results
 ```{r}
 # UMAP Parameters Explained
 # metric (default: “euclidean”)
@@ -9497,7 +9498,7 @@ write.csv(umap_df, file.path(output_dir_umap , "umap_results_genes.csv"), row.na
 
 
 
-#### XV --- UMAP embedding of combined features 
+## UMAP embedding of combined features
 ```{r}
 library(uwot)
 
@@ -9612,7 +9613,8 @@ ggplot(umap_df, aes(V1, V2, color = KOeffect)) +
 ```
 
 
-#### XV --- Cross correlation of gene abunace per annotation for UMAP
+
+## Cross correlation of gene abundance per annotation for UMAP
 https://embed.tidymodels.org/reference/step_umap.html
 
 - do not have organelle IP data, but have very rich proteinIDs from the nDIA
