@@ -9924,9 +9924,9 @@ ggsave("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/
 # =================================================
 # Module 10: nDIA-nMOST Comparative Analysis
 # =================================================
+nMOST whole cell plot correlation matrix per genotype cluster
 
-# XVI. nMOST whole cell plot correlcation matrix per genotype cluster
-### XVIa. nMOST LSD GO signatures of select Clusters for all genotypes
+# nMOST LSD GO signatures of select Clusters for all genotypes
 ```{r}
 # --------------------------------------------------- #
 # HeLa nMOST whole cell correlations
@@ -10051,7 +10051,7 @@ ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation,"nMOST_LSD_Corr_GOCluster8.pd
 
 ```
 
-### XVIb. nMOST GO Signatures of select genotype over all GO classes
+## nMOST GO Signatures of select genotype over all GO classes
 ``` {r}
 # --------------------------------------------------- #
 # HeLa nMOST whole cell correlations
@@ -10095,7 +10095,7 @@ ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation, "nMOST_LSD_CorrGenotype_GBA.
 
 
 
-# XVII. Neuron - Hela Proteome Correlations 
+# Neuron - HeLa Proteome Correlations
 use complete_data_annotated_day50 and group into iN and iDA
 read in HeLa nMOST file
 - match KOs and only use the ones found in all df
@@ -10103,7 +10103,7 @@ read in HeLa nMOST file
 - plot corr across genotypes in crircos plot (color based on R corr)
 - also plot heatmaps of pairwise comparisons 
 
-### XVIIa. Neuron–HeLa Proteome Correlation Analysis
+## Neuron-HeLa Proteome Correlation Analysis
 ```{r}
 # --------------------------------------------------- #
 # iNeuron - Hela Proteome Correlations 
@@ -10337,7 +10337,7 @@ detach("package:ComplexHeatmap", unload = TRUE)
 
 
 
-### XVIIb. nMOST-nDIA correlation of select genotype 
+## nMOST-nDIA correlation of select genotype
 ```{r}
 # --------------------------------------------------- #
 # iNeuron - Hela Proteome Correlations 
@@ -10444,8 +10444,8 @@ circos_by_genotype("ASAH1", pos_cut = 0.05, neg_cut = -0.05)
 ```
 
 
-### XVIIc. HeLa-nMOST - neuron-nDIA organelle correlation
-##### XVIIc1. User-select annotations
+# HeLa-nMOST - neuron-nDIA organelle correlation
+## User-select annotations
 ```{r}
 # --------------------------------------------------- #
 # iNeuron,iDA  - Hela Proteome Correlations 
@@ -10761,7 +10761,7 @@ all_corrs <- lapply(selected_annotations, function(ann) {
 ```
 
 
-##### XVIIc2. Eval of combined annotations
+## Eval of combined annotations
 ```{r}
 # --------------------------------------------------- #
 # iNeuron,iDA - Hela Proteome Correlations 
@@ -10850,7 +10850,7 @@ pheatmap::pheatmap(
 # Module 11: PPI Vulnerability Analysis - Neuronal nDIA
 # =================================================
 
-# XVIII. PPI vulnerability pipeline in iN and iDA LSD mutants
+# PPI vulnerability pipeline in iN and iDA LSD mutants
 Build a Protein–Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. The goal is to integrate experimental proteome shifts with predicted and experimentally validated interaction data (Predictome 80% and IntAct) to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type–specific effects.
 
 use of the Baker lab's Human interactome
