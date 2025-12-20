@@ -10857,8 +10857,8 @@ use of the Baker lab's Human interactome
 https://www.biorxiv.org/content/10.1101/2024.10.01.615885v1.full
 and InterAct Database
 
-### XVIIIa.PPI input and merging of evidence 
-##### Load Human Interactome & parse 
+# PPI input and merging of evidence
+## Load Human Interactome & parse
 ```{r}
 # ---------------------------------------------------
 # --- Step 1.  Define Paths and input tables 
@@ -10948,7 +10948,7 @@ predictome_edges <- predictome_raw %>%
 ```
 
 
-##### Load InterAct & parse 
+## Load InterAct & parse
 use select experimental evidence and larger than 0.5 as threshold 
 ```{r}
 # ---------------------------------------------------
@@ -10985,7 +10985,7 @@ intact_edges <- interact_raw %>%
 ```
 
 
-##### Merge PPIs and add subcell annotations
+## Merge PPIs and add subcell annotations
 ```{r}
 # ---------------------------------------------------
 # --- Step 5. Merge Predictome + IntAct into PPI_evidence dataframe
@@ -11242,7 +11242,7 @@ message("Created shared_long with ", nrow(shared_long), " rows")
 ```
 
 
-### XVIIIb. QC Vizualization of prediction mapping based on organelles and annotations
+# QC Visualization of prediction mapping based on organelle
 ```{r}
 # --------- PPI QC Scatterplots: Confidence score distributions by organelle ---------
 
@@ -11470,8 +11470,8 @@ if (exists("ppi_qc_df")) {
 
 
 
-### XVIIIc. Vizualiztion of PPI loss
-##### Plotting function for correlation heatmaps and summary stacked bar for PPI impact
+# Visualization of PPI loss
+## Plotting function for correlation heatmaps and summary stacked
 ```{r}
 
 ## set global disease class color maps
@@ -11895,7 +11895,7 @@ plot_ppi_vulnerability(
 ```
 
 
-##### Plotting function for stacked bargraphs for organelle PPI impact
+## Plotting function for stacked bargraphs for organelle PPI impact
 ```{r}
 # --- Prepare shared_long and correctly named disease_class_df ---
 shared_long <- {
@@ -12167,7 +12167,7 @@ plot_ppi_diseaseclass_impact(
 ```
 
 
-### XVIIId. Vizualiztion of KO x Neuron x Annotation effect on PPIs
+# Visualization of KO x Neuron x Annotation effect on PPIs
 ##### Per-KO PPI vulnerability profiles by confidence scores
 ```{r}
 ### Per-KO PPI vulnerability profiles by confidence scores
