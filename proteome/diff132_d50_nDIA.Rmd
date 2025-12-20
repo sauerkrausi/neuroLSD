@@ -12168,7 +12168,7 @@ plot_ppi_diseaseclass_impact(
 
 
 # Visualization of KO x Neuron x Annotation effect on PPIs
-##### Per-KO PPI vulnerability profiles by confidence scores
+## Per-KO PPI vulnerability profiles by confidence scores
 ```{r}
 ### Per-KO PPI vulnerability profiles by confidence scores
 # --------- Per-KO PPI loss profiles: confidence score distributions for lost vs retained edges ---------
@@ -12339,9 +12339,7 @@ write_csv(ko_neuron_score_summary,file.path(out_dir_ppi_vuln, "tables", "ko_neur
 
 
 
-
-
-##### Per-KO × Neuron organelle-specific PPI state
+## Per-KO x Neuron organelle-specific PPI state
 ```{r}
 # --------- Stacked bars: lost vs retained PPIs per organelle for each KO × neuron ---------
 
@@ -12545,7 +12543,7 @@ plot_ko_bubble_in_vs_ida(
 ```
 
 
-##### Sankey plot of lost PPIs per KO x neuron compared to baseline 
+## Sankey plot of lost PPIs per KO x neuron compared to baseline
 ```{r}
 # --------- Sankey plot: Lost PPIs per genotype (one plot per KO) ---------
 
@@ -12775,8 +12773,8 @@ print(head(genotype_summary, 20))
 ```
 
 
-#### Ternary plots of PPI loss by organelle class and disease class
-###### Ternary / Triangle Plots for user-given select 3 annotations
+# Ternary plots of PPI loss by organelle class and disease class
+## Triangle Plots for user-given select 3 annotations
 ```{r}
 # --- Ternary plots of PPI loss by organelle class and disease class ---
 
@@ -12946,7 +12944,7 @@ plot_ternary_ppi_loss(
 ```
 
 
-###### Ternary / Triangle Plots across all annotations
+## Triangle Plots across all annotations
 ```{r}
 # --- Ternary plots of PPI loss by organelle class and disease class ---
 
@@ -13154,7 +13152,7 @@ plot_all_ternary_combinations(
 
 
 
-### XVIIIe. GO functional enrichment of lost PPIs on a KO x neuron level
+# GO functional enrichment of lost PPIs on a KO x neuron level
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # GO term enrichment on proteins involved in lost PPIs per KO × neuron
@@ -13466,8 +13464,8 @@ message("Disease class-specific GO enrichment complete!")
 ```
 
 
-### XVIIIf. Multimer PPI Analysis
-###### Trimer PPI complex analysis 
+# Trimer & Multimer PPI Analysis
+## Trimer PPI complex analysis
 ```{r}
 # --------- Trimer identification and vulnerability analysis ---------
 # --- Step 0: Create output directories ---
@@ -13948,7 +13946,7 @@ for (nt in c("iN", "iDA")) {
 
 
 
-##### Multimer Analysis: Dense Subgraph Detection 
+## Multimer Analysis: Dense Subgraph Detection 
 ```{r}
 # --------- Identify protein complexes via community detection ---------
 # Find highly interconnected modules using:
@@ -14296,7 +14294,7 @@ message("Complex analysis complete!")
 
 
 
-##### Prepare Protein Complexes for Structure Prediction AF3
+## Prepare Protein Complexes for Structure Prediction AF3
 ```{r}
 # =========================================================================
 # Prepare Protein Complex Data for AlphaFold Structure Prediction
@@ -14729,7 +14727,7 @@ message("  4. Use *_chimerax_colors.cxc to color structures")
 
 
 
-##### Dumbbell-Plot of broken PPIs on edge, trimer and complex level 
+## Dumbbell-Plot of broken PPIs on edge, trimer and complex level
 ```{r}
 # --------- Dumbbell plots for trimers and complexes ---------
 
@@ -14903,8 +14901,8 @@ message("Dumbbell plots saved successfully!")
 ```
 
 
-
-### XVIIIg. Loss of PPIs timecourse evaluation ASAH1 d30,d50,d70 (with d70 baseline correction)
+# Loss of PPIs timecourse evaluation ASAH1 d30,d50,d70
+(with d70 baseline correction)
 ```{r}
 # =========================================================================
 # PPI Loss Analysis: ASAH1 Timecourse (d30, d50, d70)
@@ -15854,8 +15852,7 @@ message("Results saved to: ", out_dir_timecourse)
 ```
 
 
-
-### XVIIIh. Loss of PPIs timecourse evaluation d30 & d50 of ASAH1, SMPD1, GBA1, GRN
+# Loss of PPIs timecourse evaluation d30 & d50 of ASAH1, SMPD1, GBA1, GRN
 ```{r}
 # =========================================================================
 # PPI Loss Analysis: Multi-genotype Timecourse (ASAH1, SMPD1, GBA1, GRN)
@@ -16784,7 +16781,7 @@ message("  - Summary tables in: tables/")
 
 
 
-### PPI Network Connectivity Analysis
+# PPI Network Connectivity Analysis
 ```{r}
 # =========================================================================
 # PPI Network Connectivity Analysis
@@ -17942,7 +17939,7 @@ message("  - Inter-organelle edges: ", baseline_summary$n_inter_edges)
 # Module 12: PPI Vulnerability Analysis - HeLa nMOST
 # =================================================
 
-# XiX. PPI vulnerability pipeline in HeLa Whole cell proteomic data 
+# PPI vulnerability pipeline in HeLa Whole cell proteomic data
 ```{r}
 # Data from nMOST proteomics 
 # DOI: 10.1126/sciadv.adu5787
@@ -19437,8 +19434,7 @@ message("  - tables/multimer/: Trimer and complex analysis results")
 
 
 
-
-# XX. PPI vulnerbaility matches between HeLa <=> Neuron
+# PPI vulnerability matches between HeLa <=> Neuron
 ```{r}
 # =========================================================================
 # PPI Vulnerability Comparison Across Cell Types (HeLa, iN, iDA)
@@ -20145,12 +20141,13 @@ message("\n=== PPI comparison analysis complete")
 
 
 
-
-# XXI. XL-MS proteome validation
+# =================================================
+# Module 13: XL-MS Proteome Validation
+# =================================================
 use Zhu et al., 2019 (https://www.nature.com/articles/s41467-024-47569-x) for XL-MS data of mitochondria (DSSO and ?DSBSO?) to check which structures are found in both prediction and XL-MS
 Use DSSO-CLASP annotated PPIs from Supplementary Data Table 11
 
-### XXIa. mtXL-MS CLASP Data comparison 
+## mtXL-MS CLASP Data comparison
 ```{r}
 # --- Step 0: Setup ---
 out_dir_xlms_validationCLASP <- file.path(out_dir_PPI, "validation_mito_clasp")
