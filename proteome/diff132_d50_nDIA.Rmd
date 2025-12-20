@@ -7162,8 +7162,6 @@ ggplot(SynPRM_pval_df, aes(x = log2FC, y = -log10(FDR), color = FDR < 0.05)) +
 # Module 8: Disease Class Analysis - Neuron
 # =================================================
 
-
-# XII. Sph mutant investigation
 To achieve in this section:
 make subset of only Sph mutant in day50 dataframe
 plot heatmap w/ z-score norm of genotypes
@@ -7172,7 +7170,7 @@ save the subset with annotation as csv file
 save plots as pdfs 
 use unique variables, so I can calculate the correlation between neurons and nMOST hela later down in the script
 
-### XIIa. Make df, add annotations & heatmap & save csv
+# Sph mutant investigation (df, heatmap, csv)
 ```{r}
 # --------------------------------------------------- #
 # Sph mutant investigation  
@@ -7281,7 +7279,7 @@ dev.off()
 
 
 
-### XIIb. Correlation: User-selected organelle annotations 
+## Correlation: User-Select organelle annotations
 ```{r}
 # --------------------------------------------------- #
 # Sph mutant investigation  
@@ -7397,7 +7395,7 @@ dev.off()
 ```
 
 
-### XIIc. Correlation: All organelle annotations 
+## Correlation: All organelle annotations
 ```{r}
 # --------------------------------------------------- #
 # Sph mutant investigation  
@@ -7469,7 +7467,7 @@ dev.off()
 
 
 
-### XIIc. diff118 (d23) to diff132 (d50) comparison of ASAH1
+# diff118 (d23) to diff132 (d50) comparison of ASAH1
 ```{r}
 # --- Step 1. Load and Inspect Data
 # Define the path to the input CSV file
@@ -7639,7 +7637,7 @@ ggsave(file.path(out_dir_d50_CrossCorr_bubble_ASAH1, "diff118_132_ASAH1vsCtrl_d2
 ```
 
 
-### XIIe. Euler plot for overlap of annotations of genotypes  
+# Euler plot for overlap of annotations of genotypes
 ```{r}
 # --------------------------------------------------------- #
 # Euler plot of downregulated genes across genotypes
@@ -7752,8 +7750,7 @@ write_csv(overlap_df, file.path(out_dir_d50_SphMuteuler, "Pairwise_overlap_count
 
 
 
-
-### XIIe. linear model for deciphering drivers of GBA1 / ASAH1 differences in iDA to the rest of the Sph cohort
+# Linear model for deciphering drivers of GBA1/ASAH1 differences
 ```{r}
 # ------------------
 # PCA plot of Sph mutants
@@ -8010,7 +8007,7 @@ all_pairwise_df <- bind_rows(pairwise_results)
 
 
 
-# XIII. GRN d30/50 DA neuron investigation
+# GRN d30/50 DA neuron investigation
 we see that the DA neurons of GRN in both day 30 and day50 have differences in their proteome compared to the other genotypes or the iN of the same genotype
 
 - make dataframe of only Ctrl, GRN, GBA1, ASAH1, SMPD1 for day30 and day 50; both iN and iDA
@@ -8021,6 +8018,7 @@ we see that the DA neurons of GRN in both day 30 and day50 have differences in t
 - make heatmap containing both timepoints => gene.rows are matched
 - plot corr of GRN/Ctrl day30 (x) and GRN/Ctrl day50 (y)
 - plot outliers of this corr and see what is different? 
+
 ```{r}
 # --------------------------------------------------- #
 # GRN d30/50 DA neuron investigation  
@@ -8294,14 +8292,14 @@ ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_topHits.pdf"),  day305
 
 
 
-# XIV. Disease-class-based comparison day50
+# Disease-class-based comparison day50
 Focus on disease classes with good coverage 
 1. Sphigolipidoses
 2. Neuronal.ceroid.lipofucinoses
 3. Integral.membrane.protein.disorders
 
 
-### XIVa. Annotation-based corr heatmaps
+## Annotation-based corr heatmaps
 ```{r}
 # --------------------------------------------------- #
 # Disease-class-based comparison day50  
@@ -8416,7 +8414,7 @@ plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir
 
 ```
 
-### XIVb.  Annotation-based Circos of correlations
+## Annotation-based Circos of correlations
 ```{r}
 # --------------------------------------------------- #
 # Disease-class-based comparison day50  
@@ -8658,7 +8656,7 @@ plot_annotation_genotype_circos(
 ```
 
 
-### XIVc. Split Annotation-based Circos of correlations
+## Split Annotation-based Circos of correlations
 ```{r}
 # --------------------------------------------------- #
 # Disease-class-based comparison day50  
