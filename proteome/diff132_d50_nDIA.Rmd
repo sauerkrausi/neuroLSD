@@ -22,9 +22,14 @@ Module 3: Validates neuronal identity through pre/postsynaptic and dopaminergic 
 
 Module 4: Compares day 30 versus day 50 proteomes through neuronal maturation marker trajectories, pre/postsynaptic protein dynamics, and annotation-level log2FC violin plots with Wilcoxon statistics for ASAH1 and GBA1 knockouts across differentiation timepoints.
 
-Module 5:
+Module 5: Integrates day 70 ASAH1 knockout data with day 30/50 to build a three-timepoint longitudinal analysis, including PCA trajectories, annotation-level violin plots across differentiation, pairwise annotation correlations, and ChimeraX color-mapping commands for mitochondrial Complex I structure visualization.
 
-Module 6:
+Module 6: Provides reusable functions for generating annotation-stratified violin plots of log2FC across genotypes and volcano plots with customizable annotation highlights, plus iN-vs-iDA correlation scatter plots preserving top hits from both neuron types.
+
+Module 7:
+
+Module 8:
+
 
 
 # Load packackes & set project directory
@@ -1245,6 +1250,7 @@ dev.off()
 ```
 
 
+
 # Add subcell annotation
 add subcell annotation to df and save
 sub sub-matrix for d30 and d50
@@ -1428,6 +1434,7 @@ pheatmap(
 )
 dev.off()
 ```
+
 
 
 # Euler plots for overlap annotation
@@ -1820,6 +1827,7 @@ row_order_iDA <- make_ann_heatmap(
 ```
 
 
+
 # Pvalue heatmaps for annotation KO vs Control
 Keep same clustering / order from mean Log2FC heatmap
 ```{r}
@@ -1971,6 +1979,8 @@ make_ann_heatmap_pvals(
 )
 
 ```
+
+
 
 # Stouffer's method correction
 ```{r}
@@ -2141,6 +2151,7 @@ make_ann_heatmap_pvals(
 )
 
 ```
+
 
 
 # Ternary plots from log2FC per annotation
@@ -2702,7 +2713,6 @@ plot_halfcircos_log2fc(
 
 
 
-
 # Sorted lineplots of neuro-related annotations
 ```{r}
 # --------------------------------------------------- #
@@ -2944,6 +2954,7 @@ make_topvar_heatmap_iDA(
   out_prefix = "SVfusion"
 )
 ```
+
 
 
 # PCA on iDA annotation subsets
@@ -3268,6 +3279,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_
 ```
 
 
+
 # Neuro annotation plot by neuron x genotype
 Plotted in ascending order 
 ```{r}
@@ -3379,7 +3391,6 @@ d50_ascd_ann_plot_top6 <- ggplot(ascd_top6_summary, aes(x = group, y = avg_log2F
 ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_Svexocytosis.pdf"), d50_ascd_ann_plot_top6, width = 2, height = 3, device = cairo_pdf)
 
 ```
-
 
 
 
@@ -3611,6 +3622,8 @@ make_vatpase_color_table("MCOLN1")
 
 ```
 
+
+
 # SV & SNARE plot by neuron x genotype
 Plotted in ascending order 
 ```{r}
@@ -3668,6 +3681,7 @@ d50_svsnare_plot
 ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVSNSARE.pdf"), d50_svsnare_plot, width = 4, height = 3, device = cairo_pdf)
 
 ```
+
 
 
 # SV docking plot by neuron x genotype
@@ -5019,6 +5033,8 @@ write.csv(asah1_timecourse_annotated,file.path(out_dir_d70_dataframes, "ASAH1_ti
 
 ```
 
+
+
 # Plot heatmap and save matrix as csv
 ```{r}
 # --- 8. Heatmap of timecourse (pheatmap style)
@@ -5280,6 +5296,7 @@ write.csv(pca_input_transposed_annot, out_file_transposed, row.names = FALSE)
 ```
 
 
+
 # Violinplots for selected annotations across timecourse
 ```{r}
 # --- Step 1. annotations of choice (as specified)
@@ -5419,6 +5436,7 @@ p_asah1_iDA <- plot_violin_asah1_timecourse("iDA")
 p_asah1_both <- plot_violin_asah1_timecourse_both()
 
 ```
+
 
 
 # Pairwise correlations of annotations
@@ -5654,6 +5672,9 @@ write.csv(mtci_colors_per_condition,"/Users/felix/Documents/PostDoc/Harvard/03_L
 
 
 ```
+
+
+
 
 
 # =================================================
