@@ -53,6 +53,7 @@ library(ggVennDiagram)
 library(UpSetR)
 library(ComplexUpset)
 library(eulerr)
+library(Ternary)
 
 # Heatmaps & Clustering
 library(pheatmap)
@@ -278,6 +279,37 @@ dev.off()
 # =================================================
 # Module 1: Data Import, QC (Replicate-level)
 # =================================================
+
+# top level disese-class annotation
+```{r}
+disease_classes <- list(
+  Sphigolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
+  Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
+  Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
+  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
+  PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
+  Lipid.storage.diseases = c("GAA", "LIPA")
+)
+
+
+# convert into df
+disease_class_df <- stack(disease_classes) %>%
+  rename(sample = values, DiseaseClass = ind)
+
+
+# give it a color
+disease_class_palette <- c(
+  Sphigolipidoses = "#D53E4F",
+  Mucopolysaccharidoses = "#F46D43",
+  Glycoproteinoses = "#FDAE61",
+  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Integral.membrane.protein.disorders = "#E6F598",
+  PTM.defects = "#ABDDA4",
+  Lipid.storage.diseases = "#66C2A5"
+)
+```
+
 
 # Data cleaning of replicate data
 plot PCA plots to check data landscape on top level 
@@ -1303,7 +1335,22 @@ complete_data_annotated_day50 <- process_day_data(
 )
 
 
-# --- Step 5: count sig values
+
+# --- Step 5: Create log2FC_d50_annotated for downstream analysis (ternary, correlation, etc.)
+# Reshape to have simple KO_neuron column names with log2fc values
+log2fc_cols <- grep("_log2_fold_change$", colnames(complete_data_annotated_day50), value = TRUE)
+annotation_cols <- colnames(binary_matrix)[-1]  # exclude "Genes"
+
+log2FC_d50_annotated <- complete_data_annotated_day50 %>%
+  select(Genes, all_of(log2fc_cols), all_of(annotation_cols))
+
+# Rename columns: remove "_log2_fold_change" suffix
+colnames(log2FC_d50_annotated) <- gsub("_log2_fold_change$", "", colnames(log2FC_d50_annotated))
+
+
+
+
+# --- Step 6: count sig values
 diff132_log2fc_df <- clean_d50_df %>%
   mutate(log2fc = ifelse(fold_change > 0, log2(fold_change), NA))
 
@@ -1766,6 +1813,7 @@ row_order_iDA <- make_ann_heatmap(
 
 ```
 
+
 # Pvalue heatmaps for annotation KO vs Control
 Keep same clustering / order from mean Log2FC heatmap
 ```{r}
@@ -2091,6 +2139,7 @@ make_ann_heatmap_pvals(
 
 # Ternary plots from log2FC per annotation
 ```{r}
+# library(Ternary)
 # --- Step 1: create out dir for function call
 out_dir_d50_ternaryplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/TernaryPlots_log2fc"
 dir.create(out_dir_d50_ternaryplots, recursive = TRUE, showWarnings = FALSE)
