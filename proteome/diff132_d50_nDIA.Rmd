@@ -14,11 +14,17 @@ knitr::opts_chunk$set(echo = TRUE)
 # =================================================
 
 # Module overview & aims 
-> Module 1: Imports replicate-level proteomics data, performs quality control through replicate correlation analysis, F-ratio variance testing (biological vs. technical noise), and PCA visualization across genotypes, neuron types, and differentiation timepoints.
+Module 1: Imports replicate-level proteomics data, performs quality control through replicate correlation analysis, F-ratio variance testing (biological vs. technical noise), and PCA visualization across genotypes, neuron types, and differentiation timepoints.
 
-> Module 2: Processes summarized fold-change data with subcellular annotations, generates global heatmaps, validates LSD knockout efficiency, and visualizes organelle-level proteome changes using ternary plots, half-circos plots, and annotation-specific PCA for synaptic compartments.
+Module 2: Processes summarized fold-change data with subcellular annotations, generates global heatmaps, validates LSD knockout efficiency, and visualizes organelle-level proteome changes using ternary plots, half-circos plots, and annotation-specific PCA for synaptic compartments.
 
-> Modul 3:
+Module 3: Validates neuronal identity through pre/postsynaptic and dopaminergic marker expression, then profiles synaptic machinery (v-ATPase, SNARE, SV docking complexes) across genotypes with ranked log2FC plots and ChimeraX-compatible color tables for structure mapping.
+
+Module 4: Compares day 30 versus day 50 proteomes through neuronal maturation marker trajectories, pre/postsynaptic protein dynamics, and annotation-level log2FC violin plots with Wilcoxon statistics for ASAH1 and GBA1 knockouts across differentiation timepoints.
+
+Module 5:
+
+Module 6:
 
 
 # Load packackes & set project directory
@@ -3730,6 +3736,7 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Neuro_SVdocking.pdf"), d50_s
 # =================================================
 # Module 4: Time Course Analysis (d30 vs d50)
 # =================================================
+
 #  Abundance of neuromarkers in Ctrl iN/iDA
 ```{r}
 # --------------------------------------------------- #
@@ -3938,9 +3945,6 @@ Synaptic_Marker_Abundance <- SynapseTrajectoryPlot(long_with_direction)
 Synaptic_Marker_Abundance
 
 ggsave(file.path(out_dir_d50_timecourse,"diff132_SynapticMarkers_ctrl_d30_d50.pdf"), Synaptic_Marker_Abundance, width = 4, height = 5, device = cairo_pdf)
-
-
-
 
 ```
 
@@ -4504,7 +4508,6 @@ p_lines <- plot_lines_from_heatmap_order(heatmap_res)
 
 
 
-
 # Statistical tests on violin plots
 ```{r}
 # --- 1. helper: comparisons
@@ -4669,6 +4672,7 @@ dev.off()
 plot_gene_bar_log2fc("SYP", "ASAH1")
 # plot_gene_bar_log2fc("SYN1", "GBA1")
 ```
+
 
 
 # Correlation heatmap across annotations (ASAH1 and GBA1)
