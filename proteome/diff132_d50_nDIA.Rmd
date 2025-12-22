@@ -1304,6 +1304,9 @@ complete_data_annotated_day50 <- process_day_data(
 
 
 # --- Step 5: count sig values
+diff132_log2fc_df <- clean_d50_df %>%
+  mutate(log2fc = ifelse(fold_change > 0, log2(fold_change), NA))
+
 diff132_log2fc_df %>%
   group_by(sample_id, day, neuron, genotype) %>%
   summarise(
