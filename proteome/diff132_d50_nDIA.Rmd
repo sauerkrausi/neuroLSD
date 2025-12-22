@@ -6219,7 +6219,6 @@ dev.off()
 compute_all_annotation_impacts <- function(data, annotations, basedir) {
   
   results <- map_dfr(annotations, function(annot_set_name) {
-    # For single annotation, wrap in list
     corr_mat <- correlate_log2fc_annotations(data = data, annotations = annot_set_name, basedir = basedir)
     
     impact_iN <- impact_score_from_corr(corr_mat, "iN") %>% mutate(Annotation = annot_set_name)
@@ -6241,33 +6240,42 @@ all_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXP
 # --- Compute for all ---
 all_impacts <- compute_all_annotation_impacts(data = log2FC_d50_annotated, annotations = all_annotations, basedir = out_dir_d50_CrossCorr)
 
-# --- Reshape to matrix: rows = annotations, cols = KO_Neuron ---
-impact_matrix <- all_impacts %>%
-  mutate(Sample = paste0(Genotype, "_", Neuron)) %>%
-  select(Annotation, Sample, Rank) %>%
-  pivot_wider(names_from = Sample, values_from = Rank) %>%
-  column_to_rownames("Annotation") %>%
-  as.matrix()
+# --- Reshape to matrix: rows = Genotype, cols = Annotation (transposed) ---
+# --- Split by neuron type ---
 
-# --- Plot clustered heatmap ---
-pdf(file.path(out_dir_d50_CrossCorr, "all_annotation_impact_heatmap_clustered.pdf"), width = 12, height = 8)
-pheatmap(
-  mat = impact_matrix,
-  color = colorRampPalette(c("firebrick", "white"))(100),
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
-  main = "Annotation Impact Ranking by Genotype x Neuron",
-  fontsize = 6,
-  fontsize_row = 6,
-  fontsize_col = 6,
-  border_color = NA,
-  display_numbers = TRUE,
-  number_format = "%.0f",
-  number_color = "grey30",
-  cellwidth = 12,
-  cellheight = 12
-)
-dev.off()
+plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
+  
+  impact_sub <- impacts_df %>% filter(Neuron == neuron_type)
+  
+  impact_matrix <- impact_sub %>%
+    select(Genotype, Annotation, Rank) %>%
+    pivot_wider(names_from = Annotation, values_from = Rank) %>%
+    column_to_rownames("Genotype") %>%
+    as.matrix()
+  
+  pdf(file.path(out_dir, paste0("all_annotation_impact_heatmap_", neuron_type, ".pdf")), width = 14, height = 10)
+  pheatmap(
+    mat = impact_matrix,
+    color = colorRampPalette(c("firebrick", "white"))(100),
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    main = paste0("Annotation Impact Ranking - ", neuron_type),
+    fontsize = 6,
+    fontsize_row = 6,
+    fontsize_col = 6,
+    border_color = NA,
+    display_numbers = TRUE,
+    number_format = "%.0f",
+    number_color = "grey30",
+    cellwidth = 12,
+    cellheight = 12
+  )
+  dev.off()
+}
+
+# --- Plot for iN and iDA separately ---
+plot_impact_heatmap_by_neuron(all_impacts, "iN", out_dir_d50_CrossCorr)
+plot_impact_heatmap_by_neuron(all_impacts, "iDA", out_dir_d50_CrossCorr)
 ```
 
 
