@@ -14,6 +14,12 @@ knitr::opts_chunk$set(echo = TRUE)
 # =================================================
 
 # Module overview & aims 
+> Module 1: Imports replicate-level proteomics data, performs quality control through replicate correlation analysis, F-ratio variance testing (biological vs. technical noise), and PCA visualization across genotypes, neuron types, and differentiation timepoints.
+
+> Module 2: Processes summarized fold-change data with subcellular annotations, generates global heatmaps, validates LSD knockout efficiency, and visualizes organelle-level proteome changes using ternary plots, half-circos plots, and annotation-specific PCA for synaptic compartments.
+
+> Modul 3:
+
 
 # Load packackes & set project directory
 ```{r setup, include=FALSE}
@@ -1017,6 +1023,7 @@ combined_plot_QC <- plot_grid(plot_iN, plot_iDA, ncol = 1, labels = c("iN", "iDA
 ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_combined_plot.pdf"), combined_plot_QC, width = 12, height = 4, device = cairo_pdf)
 
 ```
+
 
 
 # =================================================
