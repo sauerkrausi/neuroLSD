@@ -6231,18 +6231,20 @@ compute_all_annotation_impacts <- function(data, annotations, basedir) {
 }
 
 # --- All annotations ---
-all_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
-                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
-                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
-                     "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
-                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+all_annotations <- c("Mito", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic", "Postsynaptic", "EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis")
 
+# all_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic", "Postsynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 # --- Compute for all ---
 all_impacts <- compute_all_annotation_impacts(data = log2FC_d50_annotated, annotations = all_annotations, basedir = out_dir_d50_CrossCorr)
 
-# --- Reshape to matrix: rows = Genotype, cols = Annotation (transposed) ---
-# --- Split by neuron type ---
-
+# --- Plot function: rows = Genotype sorted by sum of ranks (lowest = most impact = top) ---
 plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
   
   impact_sub <- impacts_df %>% filter(Neuron == neuron_type)
@@ -6253,13 +6255,17 @@ plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
     column_to_rownames("Genotype") %>%
     as.matrix()
   
+  # Sort rows by sum of ranks (smallest sum = most impact = top)
+  row_order <- order(rowSums(impact_matrix, na.rm = TRUE))
+  impact_matrix <- impact_matrix[row_order, ]
+  
   pdf(file.path(out_dir, paste0("all_annotation_impact_heatmap_", neuron_type, ".pdf")), width = 14, height = 10)
   pheatmap(
     mat = impact_matrix,
     color = colorRampPalette(c("firebrick", "white"))(100),
-    cluster_rows = TRUE,
+    cluster_rows = FALSE,
     cluster_cols = TRUE,
-    main = paste0("Annotation Impact Ranking - ", neuron_type),
+    main = paste0("Annotation Impact Ranking - ", neuron_type, " (sorted by total impact)"),
     fontsize = 6,
     fontsize_row = 6,
     fontsize_col = 6,
@@ -6267,8 +6273,8 @@ plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
     display_numbers = TRUE,
     number_format = "%.0f",
     number_color = "grey30",
-    cellwidth = 12,
-    cellheight = 12
+    cellwidth = 8,
+    cellheight = 8
   )
   dev.off()
 }
@@ -6276,6 +6282,7 @@ plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
 # --- Plot for iN and iDA separately ---
 plot_impact_heatmap_by_neuron(all_impacts, "iN", out_dir_d50_CrossCorr)
 plot_impact_heatmap_by_neuron(all_impacts, "iDA", out_dir_d50_CrossCorr)
+
 ```
 
 
