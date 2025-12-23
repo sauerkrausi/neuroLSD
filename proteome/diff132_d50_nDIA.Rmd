@@ -10673,6 +10673,7 @@ detach("package:ComplexHeatmap", unload = TRUE)
 ```
 
 
+
 # HeLa-nMOST - neuron-nDIA organelle correlation
 ## User-select annotations
 ```{r}
@@ -10683,6 +10684,7 @@ detach("package:ComplexHeatmap", unload = TRUE)
 
 #call pheatmap again, since compelxheatmap did mask it in call chunk before 
 library(pheatmap)
+library(ComplexHeatmap)
 
 ## ─────────────────────────────────────────────────────────────
 ## 1.   Add annotations to HeLa-nMOST dataframe & save
@@ -10988,6 +10990,7 @@ all_corrs <- lapply(selected_annotations, function(ann) {
 
 
 ```
+
 
 
 ## Eval of combined annotations
@@ -12775,6 +12778,7 @@ plot_ko_bubble_in_vs_ida(
 ## Sankey plot of lost PPIs per KO x neuron compared to baseline
 ```{r}
 # --------- Sankey plot: Lost PPIs per genotype (one plot per KO) ---------
+library(ggsankey)
 
 # --- Step 1: Create Sankey plot for a single genotype ---
 plot_ppi_loss_sankey_per_genotype <- function(df_states, shared_long, genotype_name, 
