@@ -13399,17 +13399,17 @@ dir.create(file.path(out_dir_ppi_vuln, "plots/GO"), recursive = TRUE, showWarnin
 dir.create(file.path(out_dir_ppi_vuln, "tables/GO"), recursive = TRUE, showWarnings = FALSE)
 
 # Load required packages
-# if (!requireNamespace("topGO", quietly = TRUE)) {
-#   stop("Package 'topGO' is required. Install from Bioconductor:\n",
-#        "BiocManager::install('topGO')")
-# }
-# if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
-#   stop("Package 'org.Hs.eg.db' is required. Install from Bioconductor:\n",
-#        "BiocManager::install('org.Hs.eg.db')")
-# }
-# 
-# library(topGO)
-# library(org.Hs.eg.db)
+if (!requireNamespace("topGO", quietly = TRUE)) {
+  stop("Package 'topGO' is required. Install from Bioconductor:\n",
+       "BiocManager::install('topGO')")
+}
+if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+  stop("Package 'org.Hs.eg.db' is required. Install from Bioconductor:\n",
+       "BiocManager::install('org.Hs.eg.db')")
+}
+
+library(topGO)
+library(org.Hs.eg.db)
 
 
 # --- Step 1: Define GO enrichment function ---
@@ -18176,7 +18176,7 @@ message("  - Inter-organelle edges: ", baseline_summary$n_inter_edges)
 ```{r}
 # Data from nMOST proteomics 
 # DOI: 10.1126/sciadv.adu5787
-1
+
 # --- Step 0: create outdirs and setup of environment 
 # Setup output directories
 out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/HeLaPPI"
