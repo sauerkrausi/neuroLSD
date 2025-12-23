@@ -73,6 +73,7 @@ library(UpSetR)
 library(ComplexUpset)
 library(eulerr)
 library(Ternary)
+library(ggsankey)
 
 # Heatmaps & Clustering
 library(pheatmap)
@@ -457,7 +458,7 @@ rep_corr_matrix <- cor(rep_wide_df[, sample_order], use = "pairwise.complete.obs
 
 # plot and save heatmap
 pdf(file.path(out_dir_d50_QC, "diff132_replicate_correlation_heatmap.pdf"), width = 12, height = 12)
-pheatmap(
+pheatmap::pheatmap(
   rep_corr_matrix,
   color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
   breaks = seq(0.5, 1, length.out = 101),
@@ -1202,7 +1203,7 @@ generate_heatmap <- function(df, day_label) {
     Neuron = setNames(colorRampPalette(c("grey30", "grey60", "grey80"))(length(neurons)), neurons)
   )
 
-  pheatmap(
+  pheatmap::pheatmap(
     mat = mat,
     scale = "row",
     color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdYlBu")))(100),
@@ -1431,7 +1432,7 @@ sig_heatmap_matrix <- sig_annotation_heatmap %>%
 
 # Plot
 pdf(file.path(out_dir_d50_QC, "diff132_sig_annotation_heatmap.pdf"), width = 10, height = 6)
-pheatmap(
+pheatmap::pheatmap(
   sig_heatmap_matrix,
   color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
   breaks = seq(-0.5, 0.5, length.out = 101),
@@ -1697,7 +1698,7 @@ bk <- seq(min_val, cap_value, length.out = 100)
 
 pdf(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_RdYlBu_capped.pdf"),
     width = 8, height = 6)
-pheatmap(
+pheatmap::pheatmap(
   heatmap_matrix_capped,
   color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(bk) - 1),
   breaks = bk,
@@ -1734,7 +1735,7 @@ bk_log2 <- seq(min_val_log2, max_val_log2, length.out = 100)
 # --- 11. Plot heatmap log2 scaled
 pdf(file.path(out_dir_d50_QC, "LSDgene_Abundance_Heatmap_RdYlBu_log2.pdf"),
     width = 8, height = 6)
-pheatmap(
+pheatmap::pheatmap(
   heatmap_matrix_log2,
   color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(bk_log2) - 1),
   breaks = bk_log2,
@@ -1789,7 +1790,7 @@ make_ann_heatmap <- function(df, neuron_type, loc_ann, out_file) {
   ann_mat <- ann_mat[rowSums(!is.na(ann_mat)) > 0, ]
   
   # call heatmap function and save row order from pheatmap object
-  sorted_heatmap_iNiDA <- pheatmap(
+  sorted_heatmap_iNiDA <- pheatmap::pheatmap(
     mat = ann_mat,
     scale = "row",
     color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
@@ -1949,7 +1950,7 @@ make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, o
 
   # 1.10 plot (no clustering to preserve order)
   piyg_cols <- colorRampPalette(brewer.pal(11, "PiYG"))(201)
-  pheatmap(
+  pheatmap::pheatmap(
     mat = score_mat,
     color = piyg_cols,
     na_col = "grey70",
@@ -2121,7 +2122,7 @@ make_ann_heatmap_pvals <- function(df_day50, annot_wide, neuron_type, loc_ann, o
 
   # 1.10 plot (no clustering to preserve order)
   piyg_cols <- colorRampPalette(brewer.pal(11, "PiYG"))(201)
-  pheatmap(
+  pheatmap::pheatmap(
     mat = score_mat,
     color = piyg_cols,
     na_col = "grey70",
@@ -2914,7 +2915,7 @@ write.csv(mat_vals,
 
   # 3.6 plot heatmap
   pdf(file.path(out_dir_key, paste0(out_prefix, "_top_variable_genes_iDA_heatmap.pdf")), width = 6, height = 8)
-  pheatmap(
+  pheatmap::pheatmap(
     mat_vals,
     color = pal,
     breaks = bk,
@@ -5090,7 +5091,7 @@ ann_colors <- list(
 )
 
 pdf(file.path(out_dir_d70_heatmap, "ASAH1_timecourse_heatmap.pdf"), width = 5, height = 6)
-pheatmap(
+pheatmap::pheatmap(
   mat = timecourse_mat,
   scale = "row",
   color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
@@ -6031,7 +6032,7 @@ correlate_log2fc_annotations <- function(data, annotations, basedir, prefix = "d
 
   # Step 8: Plot heatmap and save as PDF
   pdf(pdf_path, width = 8, height = 7)  
-  pheatmap(
+  pheatmap::pheatmap(
     mat = correlation_matrix,
     color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
     annotation_col = annotation_df,
@@ -6153,7 +6154,7 @@ plot_impact_heatmap <- function(impact_scores, neuron_type, out_dir) {
   # 4. Save heatmap as PDF
   pdf(file.path(out_dir, paste0("organelle_impact_scoring_", neuron_type, ".pdf")), 
       width = 4, height = 5)
-  pheatmap(
+  pheatmap::pheatmap(
     mat            = impact_mat,
     color          = colorRampPalette(c("red","white"))(100),
     cluster_rows   = FALSE,       # keep custom order
@@ -6205,7 +6206,7 @@ impact_matrix <- all_impact_scores %>%
 
 # --- Plot ---
 pdf(file.path(out_dir_d50_CrossCorr, "all_annotation_impact_heatmap.pdf"), width = 4, height = 4)
-pheatmap(
+pheatmap::pheatmap(
   impact_matrix, 
   color = colorRampPalette(c("firebrick", "white"))(100), 
   cluster_rows = TRUE, 
@@ -6271,7 +6272,7 @@ plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
   impact_matrix <- impact_matrix[row_order, ]
   
   pdf(file.path(out_dir, paste0("all_annotation_impact_heatmap_", neuron_type, ".pdf")), width = 14, height = 10)
-  pheatmap(
+  pheatmap::pheatmap(
     mat = impact_matrix,
     color = colorRampPalette(c("firebrick", "white"))(100),
     cluster_rows = FALSE,
@@ -7472,7 +7473,7 @@ SphMut_mat_filtered <- SphMut_mat[row_var > 0, ]
 
 
 # --- Step 6. Heatmap with internal z-score
-Sphmut_hm <- pheatmap(
+Sphmut_hm <- pheatmap::pheatmap(
   SphMut_mat_filtered,
   annotation_col = SphMut_sample_info,
   annotation_colors = ann_colors,
@@ -7559,7 +7560,7 @@ rownames(SphMut_ko_type) <- rownames(SphMut_corr_mat)
 
 # --- Step 5. Plot correlation matrix
 pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap_selected.pdf"), width = 10, height = 14, useDingbats = FALSE)
-pheatmap(
+pheatmap::pheatmap(
   SphMut_corr_mat,
   color = rev(brewer.pal(11, "RdYlBu")),
   cluster_rows = TRUE,
@@ -7600,7 +7601,7 @@ dev.off()
 # iDA-only
 SphMut_corr_mat_iDA <- SphMut_corr_mat[rownames(SphMut_ko_type)[SphMut_ko_type$CellType == "iDA"], , drop = FALSE]
 pdf(file.path(out_dir_d50_SphMut, "SphMut_annotation_corr_heatmap_selected_iDA.pdf"), width = 10, height = 12, useDingbats = FALSE)
-pheatmap(
+pheatmap::pheatmap(
   SphMut_corr_mat_iDA,
   color = colors_fixed,
   breaks = breaks_fixed,
@@ -8333,7 +8334,7 @@ generate_day3050_heatmap <- function(df, title_label = "Combined Heatmap") {
   )
 
   # Generate heatmap
-  pheatmap(
+  pheatmap::pheatmap(
     mat,
     scale = "row",
     color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdYlBu")))(100),
@@ -8603,7 +8604,7 @@ plot_annotation_correlation <- function(annot_df, annotation_cols, out_dir, cell
 
   # Plot heatmap
   pdf(file = file.path(out_dir, "CustomAnnotation_AnnotationCorrHeatmap.pdf"), width = 8, height = 8)
-  pheatmap(
+  pheatmap::pheatmap(
     annotation_cor,
     color = colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")))(100),
     annotation_row = row_annot,
