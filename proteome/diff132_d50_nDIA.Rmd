@@ -32,13 +32,13 @@ Module 8: Performs disease-class-focused analyses including sphingolipidosis sub
 
 Module 9:
 
-Module 10:
+Module 10: Performs a comprehensive cross-omics correlation analysis between neuron (iN/iDA) nDIA proteomes and HeLa nMOST proteomes across LSD genotypes, integrating GO and organelle annotations to visualize genotype-, cluster-, and annotation-specific correlation structure using boxplots, heatmaps, and multi-layer circos plots.
 
-Module 11:
+Module 11: Builds an integrated PPI vulnerability and rewiring pipeline for neuronal proteomes (iN and iDA) across lysosomal gene knockouts by merging experimental proteomics with predicted and validated interaction networks. It quantifies network destabilization, identifies organelle- and neuron-type–specific vulnerabilities, and visualizes PPI loss, rewiring, and functional impacts using network, enrichment, and comparative analyses.
 
-Module 12:
+Module 12: Extends the PPI vulnerability framework to HeLa whole-cell proteome data from nMOST, computes control-normalized baseline stability, identifies lost/retained edges and broken trimers/complexes per KO, then performs cross-cell-type comparisons (iN, iDA, HeLa) using streamgraphs and matching pattern analysis to identify cell-type-specific versus shared PPI vulnerabilities.
 
-Module 13:
+Module 13: Validates predicted PPI networks against XL-MS cross-linking data (DSSO-CLASP from Zhu et al.) by mapping gene names to UniProt IDs, computing edge-key overlaps between CLASP-detected interactions and neuronal/HeLa baseline networks, and quantifying both forward (CLASP in baseline) and reverse (mito baseline in CLASP) validation rates with mitochondrial annotation breakdowns.
 
 # Load packackes & set project directory
 ```{r setup, include=FALSE}
