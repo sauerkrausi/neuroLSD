@@ -20412,10 +20412,8 @@ message("Gene-to-UniProt mapping: ", nrow(gene_to_uniprot), " unique mappings")
 # --- Step 2: Map CLASP to UniProt IDs ---
 message("\nMapping CLASP genes to UniProt IDs...")
 mt_clasp_mapped <- mt_XL_DSSO_CLASP |>
-  left_join(gene_to_uniprot, by = c("predicted_gene" = "Gene")) |>
-  rename(predicted_uniprot = UniProt) |>
-  left_join(gene_to_uniprot, by = c("predicting_gene" = "Gene")) |>
-  rename(predicting_uniprot = UniProt)
+  dplyr::left_join(gene_to_uniprot |> dplyr::rename(predicted_uniprot = UniProt), by = c("predicted_gene" = "Gene")) |>
+  dplyr::left_join(gene_to_uniprot |> dplyr::rename(predicting_uniprot = UniProt), by = c("predicting_gene" = "Gene"))
 
 clasp_both_mapped <- mt_clasp_mapped |> filter(!is.na(predicted_uniprot) & !is.na(predicting_uniprot))
 message("CLASP PPIs with both proteins mapped: ", nrow(clasp_both_mapped), " / ", nrow(mt_XL_DSSO_CLASP))
@@ -20429,8 +20427,8 @@ baseline_edges_hela_annotated$edge_key <- apply(baseline_edges_hela_annotated[, 
 
 # --- Step 3: Find overlaps ---
 message("\nFinding overlaps...")
-overlap_neuro <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key)
-overlap_hela <- mt_clasp_mapped |> filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key)
+overlap_neuro <- mt_clasp_mapped |> dplyr::filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key)
+overlap_hela <- mt_clasp_mapped |> dplyr::filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key)
 message("Overlap with Neuronal baseline_edges_union: ", nrow(overlap_neuro))
 message("Overlap with HeLa baseline_edges_hela_annotated: ", nrow(overlap_hela))
 
@@ -20439,14 +20437,14 @@ message("Overlap with HeLa baseline_edges_hela_annotated: ", nrow(overlap_hela))
 # --- Step 4: Create detailed overlap tables ---
 message("\nCreating detailed overlap tables...")
 overlap_neuro_detail <- mt_clasp_mapped |>
-  filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key) |>
-  left_join(baseline_edges_union |> select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
-  select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
+  dplyr::filter(!is.na(edge_key) & edge_key %in% baseline_edges_union$edge_key) |>
+  dplyr::left_join(baseline_edges_union |> dplyr::select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
+  dplyr::select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
 
 overlap_hela_detail <- mt_clasp_mapped |>
-  filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key) |>
-  left_join(baseline_edges_hela_annotated |> select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
-  select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
+  dplyr::filter(!is.na(edge_key) & edge_key %in% baseline_edges_hela_annotated$edge_key) |>
+  dplyr::left_join(baseline_edges_hela_annotated |> dplyr::select(edge_key, key, Gene1, Gene2), by = "edge_key") |>
+  dplyr::select(predicted_gene, predicting_gene, predicted_uniprot, predicting_uniprot, key, Gene1, Gene2, everything())
 
 # Save tables
 write.csv(overlap_neuro_detail, file.path(out_dir_xlms_validationCLASP, "tables", "overlap_CLASP_vs_neuro.csv"), row.names = FALSE)
@@ -20665,7 +20663,7 @@ message("Output directory: ", out_dir_xlms_validationCLASP)
 # =================================================
 # Module 14: MISC / TO DO 
 # =================================================
--- run through all code and check there are no errors
+
 - work over Module 9
 
 - by_ko heatmap correlations: 
