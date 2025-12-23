@@ -9077,8 +9077,7 @@ lm_results <- lm_results_gx2 %>%
       lm(fold_change ~ genotype * neuron + day, data = .x),
       error = function(e) NULL
     ))),
-    tidy = map(model, ~ if (!is.null(.x)) broom::tidy(.x) else tibble()
-   %>%
+    tidy = map(model, ~ if (!is.null(.x)) broom::tidy(.x) else tibble() %>%
   unnest(tidy) %>%
   filter(!is.na(p.value))
 
@@ -18804,7 +18803,7 @@ plot_hela_ppi_vulnerability <- function(df_edges,
     
     if (nrow(lost_df) == 0) return(invisible(NULL))
     
-    # **FIX: Add deduplication before pivot_wider**
+    # Add deduplication before pivot_wider
     message("Checking for duplicates in lost_df...")
     dup_check <- lost_df %>% 
       dplyr::count(genotype, key) %>% 
@@ -18818,7 +18817,7 @@ plot_hela_ppi_vulnerability <- function(df_edges,
         dplyr::summarise(lost = mean(lost, na.rm = TRUE), .groups = "drop")
     }
     
-    # **FIX: Use named list for values_fill**
+    # Use named list for values_fill
     lost_wide <- tidyr::pivot_wider(
       lost_df, 
       names_from = key, 
