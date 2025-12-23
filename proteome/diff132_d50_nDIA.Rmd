@@ -26,9 +26,9 @@ Module 5: Integrates day 70 ASAH1 knockout data with day 30/50 to build a three-
 
 Module 6: Provides reusable functions for generating annotation-stratified violin plots of log2FC across genotypes and volcano plots with customizable annotation highlights, plus iN-vs-iDA correlation scatter plots preserving top hits from both neuron types.
 
-Module 7:
+Module 7: Computes genotype-by-genotype and annotation-by-annotation Spearman correlations of log2FC values, generates impact scoring heatmaps ranking genotypes by their deviation from the group, and produces bubble plots comparing iN vs iDA correlation patterns across disease classes and subcellular compartments.
 
-Module 8:
+Module 8: Performs disease-class-focused analyses including sphingolipidosis subset heatmaps and correlations, cross-experiment ASAH1 timecourse comparisons (diff118 vs diff132), Euler diagrams for genotype overlap within annotations, limma-based differential analysis between genotypes, and circos plots visualizing annotation-level correlations stratified by disease class.
 
 
 
@@ -142,6 +142,9 @@ dir.create(out_dir_d50_DisClass, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_DisClass_circos <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/DisClass/Cirosdiagram"
 dir.create(out_dir_d50_DisClass_circos, recursive = TRUE, showWarnings = FALSE)
+
+out_dir_d50_DisClass_splitcorr_dir <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/DisClass/Cirosdiagram/splitcorr"
+dir.create(out_dir_d50_DisClass_splitcorr_dir, recursive = TRUE, showWarnings = FALSE)
 
 out_dir_d50_GRN <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/GRN"
 dir.create(out_dir_d50_GRN, recursive = TRUE, showWarnings = FALSE)
@@ -6527,6 +6530,7 @@ avg_corr_plot <- plot_avg_corr_per_genotype(
 ```
 
 
+
 ## Avg. correlation per annotation across genotypes (disease class)
 ```{r}
 # --------------------------------------------------- #
@@ -6658,14 +6662,14 @@ plots <- plot_bar_corr_split_neurons(
 ```
 
 
+
 ## Avg. correlation per nMOST GO cluster across genotypes
 ```{r}
 # --------------------------------------------------- #
 # nMOST LSD GO signatures of select Clusters (Neurons)
 # --------------------------------------------------- #
 # --- Step 1. Load GO annotation
-nMOST_GOannot <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/cell_protein_clusters_20250711KAO.csv",
-                          header = TRUE, sep = ',', stringsAsFactors = FALSE)
+nMOST_GOannot <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/datasets/cell_protein_clusters_20250711KAO.csv", header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
 # --- Step 2. Partial string matching function
 get_cluster_by_partial_match <- function(gene, reference_df) {
@@ -6681,7 +6685,7 @@ log2FC_d50_annotated_GO <- log2FC_d50_annotated %>%
   ungroup()
 
 # --- Step 4. Save merged dataframe
-write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
+write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannot, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
 write.csv(log2FC_d50_annotated_GO, file.path(out_dir_d50_dataframes, "log2FC_d50_annotated_GO.csv"), row.names = FALSE)
 
 # --- Step 5. Split iN and iDA into separate long-format dataframes
@@ -6709,8 +6713,8 @@ log2FC_iDA_df <- log2FC_d50_annotated_GO %>%
   ) %>%
   filter(!is.na(Cluster), is.finite(Score))
 
-write.csv(log2FC_iN_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, "log2FC_iN_long.csv"), row.names = FALSE)
-write.csv(log2FC_iDA_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, "log2FC_iDA_long.csv"), row.names = FALSE)
+write.csv(log2FC_iN_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannot, "log2FC_iN_long.csv"), row.names = FALSE)
+write.csv(log2FC_iDA_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannot, "log2FC_iDA_long.csv"), row.names = FALSE)
 
 # --- Step 6. Define and expand color palette
 col <- c(AGA="grey76", ARSA="grey76", ARSB="grey76", ASAH1="#D53E4F", PPT1="#FEE08B", CTSD="#FEE08B", GRN="#FEE08B",
@@ -6766,11 +6770,11 @@ NeuroClusterBarplot <- function(df_long, cluster_name = 2, cell_type = "iN") {
 
   file_tag <- paste0(gsub(" ", "", cluster_name), "_", cell_type)
 
-  ggsave(file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, paste0("nMOST_LSD_Corr_Barplot_", file_tag, ".pdf")),
+  ggsave(file.path(out_dir_d50_CrossCorr_nMOSTGOavgannot, paste0("nMOST_LSD_Corr_Barplot_", file_tag, ".pdf")),
          p, width = 4, height = 4, device = cairo_pdf)
 
   write.csv(group_order_df,
-            file = file.path(out_dir_d50_CrossCorr_nMOSTGOavgannnot, paste0("Barplot_Mean_SEM_", file_tag, ".csv")),
+            file = file.path(out_dir_d50_CrossCorr_nMOSTGOavgannot, paste0("Barplot_Mean_SEM_", file_tag, ".csv")),
             row.names = FALSE)
 }
 
@@ -6878,6 +6882,7 @@ plot_bar_corr_per_annotation_multi(
 )
 
 ```
+
 
 
 # Bubble plot of annotation corr of iN vs iDA neuron by genotype
@@ -7846,6 +7851,7 @@ ggsave(file.path(out_dir_d50_CrossCorr_bubble_ASAH1, "diff118_132_ASAH1vsCtrl_d2
 ```
 
 
+
 # Euler plot for overlap of annotations of genotypes
 ```{r}
 # --------------------------------------------------------- #
@@ -8503,7 +8509,7 @@ ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_topHits.pdf"),  day305
 
 # Disease-class-based comparison day50
 Focus on disease classes with good coverage 
-1. Sphigolipidoses
+1. Sphingolipidoises
 2. Neuronal.ceroid.lipofucinoses
 3. Integral.membrane.protein.disorders
 
@@ -8634,6 +8640,7 @@ library(ComplexHeatmap)
 library(tidyverse)
 library(grid)
 
+cor_threshold <- 0.6
 
 # --- Step 1. Define color mappings for plotting
 neuron_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F")
@@ -9017,7 +9024,7 @@ plot_annotation_genotype_circos_split(
   annot_df = annotated_log2fc_df,
   annotation_cols = custom_annotation_cols,
   disease_class_df = disease_class_df,
-  out_dir = splitcorr_dir,
+  out_dir = out_dir_d50_DisClass_splitcorr_dir,
   pos_thresh = 0.7,
   neg_thresh = -0.2
 )
