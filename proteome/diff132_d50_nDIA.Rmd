@@ -10236,7 +10236,7 @@ HeLaClusterCorr <- function(df_long, cluster_name = "Cluster 7", plot_type = "me
       geom_boxplot(outlier.size = 0.5, color = "black", size = 0.3) +
       scale_fill_manual(values = col_used) +
       theme_bw(base_size = 10) +
-      labs(title = paste0("nMOST Proteome Correlation GO – ", cluster_name),
+      labs(title = paste0("nMOST Proteome Correlation GO - ", cluster_name),
            x = NULL, y = "Score") +
       theme(axis.text.x = element_text(angle = 90, hjust = 1),
             panel.grid = element_blank(),
@@ -10567,6 +10567,9 @@ detach("package:ComplexHeatmap", unload = TRUE)
 # nMOST-nDIA correlation of select genotype
 # --------------------------------------------------- #
 
+# load complexheatmap for circos plots
+library(ComplexHeatmap)
+
 # Functions to plot circos plot of select genotype. Splits by pos / neg correlation 
 ## change inter_only from FALSE to TRUE to only plot inter-group links
 ## inter_only = TRUE: Filters only inter-group links (e.g. iN–HeLa, iDA–HeLa, iN–iDA)
@@ -10664,6 +10667,9 @@ circos_by_genotype("ASAH1")
 
 # Relaxed threshold
 circos_by_genotype("ASAH1", pos_cut = 0.05, neg_cut = -0.05)
+
+
+detach("package:ComplexHeatmap", unload = TRUE)
 ```
 
 
