@@ -30,7 +30,15 @@ Module 7: Computes genotype-by-genotype and annotation-by-annotation Spearman co
 
 Module 8: Performs disease-class-focused analyses including sphingolipidosis subset heatmaps and correlations, cross-experiment ASAH1 timecourse comparisons (diff118 vs diff132), Euler diagrams for genotype overlap within annotations, limma-based differential analysis between genotypes, and circos plots visualizing annotation-level correlations stratified by disease class.
 
+Module 9:
 
+Module 10:
+
+Module 11:
+
+Module 12:
+
+Module 13:
 
 # Load packackes & set project directory
 ```{r setup, include=FALSE}
