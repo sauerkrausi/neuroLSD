@@ -17053,6 +17053,10 @@ message("Baseline network: ", vcount(baseline_net), " proteins, ", ecount(baseli
 
 
 # --- 0.2 Add organelle annotations to nodes ---
+# Filter organelle tags - remove redundant/detailed annotations
+organelle_tags_exclude <- c("EndoLyso", "EndoDetailLoac", "Autophagy_det")
+organelle_tags <- setdiff(colnames(binary_matrix)[-1], organelle_tags_exclude)
+
 # Build gene -> organelle mapping (can have multiple annotations per gene)
 gene_annotations <- binary_matrix %>%
 dplyr::select(Genes, all_of(organelle_tags)) %>%
@@ -17064,6 +17068,12 @@ dplyr::select(Genes, annotation)
 gene_primary_annotation <- gene_annotations %>%
 dplyr::group_by(Genes) %>%
 dplyr::summarise(annotations = paste(annotation, collapse = ";"), primary_annotation = dplyr::first(annotation), n_annotations = dplyr::n(), .groups = "drop")
+
+# --- Define organelle colors (dynamic) ---
+all_annotations <- unique(gene_primary_annotation$primary_annotation)
+all_annotations <- all_annotations[all_annotations != "Unannotated"]
+organelle_colors <- setNames(colorRampPalette(RColorBrewer::brewer.pal(11, "RdBu"))(length(all_annotations)), all_annotations)
+
 
 # Add to network vertices
 V(baseline_net)$primary_annotation <- gene_primary_annotation$primary_annotation[match(V(baseline_net)$name, gene_primary_annotation$Genes)]
@@ -17143,6 +17153,7 @@ message("  Unknown (unannotated): ", edge_type_summary["unknown"])
 inter_organelle_baseline <- edge_df %>%
 dplyr::filter(edge_type == "inter") %>%
 dplyr::count(annotation_pair, name = "n_edges_baseline") %>%
+dplyr::filter(n_edges_baseline > 10) %>%
 tidyr::separate(annotation_pair, into = c("annot_A", "annot_B"), sep = "::", remove = FALSE)
 
 # Also create matrix format
@@ -17150,6 +17161,15 @@ annotation_pairs_all <- edge_df %>%
 dplyr::filter(edge_type %in% c("intra", "inter")) %>%
 dplyr::count(annotation_from, annotation_to, name = "n_edges") %>%
 dplyr::mutate(annotation_from = factor(annotation_from), annotation_to = factor(annotation_to))
+
+# For matrix: only annotations with >10 total edges
+annotation_edge_totals <- edge_df %>%
+  dplyr::filter(edge_type %in% c("intra", "inter"), annotation_from != "Unannotated", annotation_to != "Unannotated") %>%
+  tidyr::pivot_longer(cols = c(annotation_from, annotation_to), values_to = "annotation") %>%
+  dplyr::count(annotation, name = "total_edges") %>%
+  dplyr::filter(total_edges > 10)
+
+all_annots <- annotation_edge_totals$annotation
 
 # Symmetric matrix
 all_annots <- unique(c(edge_df$annotation_from, edge_df$annotation_to))
@@ -17225,7 +17245,7 @@ theme(panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA))
 
 # save as pdf
-ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 4, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
 
 # Degree by annotation
 p_degree_by_annot <- ggplot(node_metrics_baseline %>% dplyr::filter(primary_annotation != "Unannotated"), aes(x = reorder(primary_annotation, degree, median), y = degree, fill = primary_annotation)) +
@@ -17330,6 +17350,11 @@ E(annot_net_no_loops)$color <- "grey60"
 pdf(file.path(out_dir_network, "Step0_baseline", "network_annotation_level.pdf"), width = 10, height = 10)
 set.seed(42)
 layout_fr <- igraph::layout_with_fr(annot_net_no_loops)
+
+# Build color vector matching vertex order
+node_colors <- organelle_colors[V(annot_net_no_loops)$name]
+node_colors[is.na(node_colors)] <- "grey70"
+
 plot(annot_net_no_loops,
      layout = layout_fr,
      vertex.frame.color = "black",
