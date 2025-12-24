@@ -2600,7 +2600,8 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   # Color scale for log2FC (spectral)
   log2fc_range <- range(unlist(plot_df[, annotations]), na.rm = TRUE)
   log2fc_max <- max(abs(log2fc_range))
-  spectral_cols <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "Spectral")))(100)
+  #spectral_cols <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "Spectral")))(100)
+  spectral_cols <- colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100)
   
   get_color <- function(val) {
     if (is.na(val)) return("white")
@@ -17232,7 +17233,9 @@ geom_boxplot(outlier.size = 0.3, linewidth = 0.3) +
 scale_y_log10() +
 scale_fill_manual(values = organelle_colors, guide = "none") +
 coord_flip() +
-labs(title = "Degree distribution (Number of interactions) by annotation", x = NULL, y = "Degree (log10) | Number of Interaction per hub") +
+labs(
+  title = "Degree distribution (Number of interactions) by annotation", 
+  x = NULL, y = "Degree (log10) | Number of Interaction per hub") +
 theme_bw(base_size = 6) +
 theme(panel.grid = element_blank(), 
       panel.border = element_rect(color = "black", fill = NA))
@@ -17467,7 +17470,10 @@ scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
 scale_y_continuous(labels = scales::percent) +
 labs(title = "Hub vulnerability per KO (top-10% hubs)", x = NULL, y = "Mean % degree (interactions) lost") +
 theme_bw(base_size = 6) +
-theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+theme(
+  panel.grid = element_blank(), 
+  panel.border = element_rect(color = "black", fill = NA), 
+  axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
 ggsave(file.path(out_dir_network, "M1_hub_vulnerability", "barplot_hub_vulnerability_per_KO.pdf"), p_hub_vuln_bar, width = 6, height = 4, device = cairo_pdf)
 
