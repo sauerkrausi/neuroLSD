@@ -12509,7 +12509,7 @@ plot_ko_neuron_profile <- function(df, geno, nt, score_col, out_dir, org_colors,
       axis.text.x = element_text(angle = 45, hjust = 1)
     )
   
-  ggsave(file.path(out_dir, paste0(ko_label, "_boxplot_", score_col, "_by_organelle.pdf")),p_box_org, width = 9, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0(ko_label, "_boxplot_", score_col, "_by_organelle.pdf")),p_box_org, width = 5, height = 4, device = cairo_pdf)
   
   # Plot 3: Histogram faceted by organelle + state overlay
   p_hist_org <- ggplot(df_subset, aes(x = .data[[score_col]], fill = state)) +
@@ -14077,7 +14077,7 @@ p_trimer_bar <- ggplot(trimer_ko_summary, aes(x = reorder(genotype, -frac_broken
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
   )
 
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),p_trimer_bar, width = 9, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_broken_trimers_per_ko.pdf"),p_trimer_bar, width = 5, height = 4.5, device = cairo_pdf)
 
 
   # Step 7b: TRIMERS: Visualization – affected trimers per KO ---
@@ -14099,7 +14099,7 @@ p_trimer_affected_bar <- ggplot(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
   )
 
-ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_ko.pdf"),p_trimer_affected_bar,width = 6,height = 5,device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_vuln, "plots/multimer", "bars_affected_trimers_per_ko.pdf"),p_trimer_affected_bar,width = 5, height = 5,device = cairo_pdf)
 
 
 # --- Step 8: Heatmap - broken trimers by organelle × KO ---
