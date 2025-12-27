@@ -118,8 +118,11 @@ data was created with MSstats, has p/q.values and log2FC for samples
 k-means clustering was performed on data, is in column "cluster"
 
 
-# II. read in data & add protein organelle annotations
-- facet wrap by annotations & save 
+# =================================================
+# Module 1: Data Import & add protein organelle annotations
+# =================================================
+
+# import df, add subcell annotations & save in outdir
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  read the data  
@@ -198,6 +201,11 @@ write.csv(diff136_df_annotated,
           file = file.path(out_dir_diff136_dataframes,"diff136_iNd35_Ctrl-ASAH1e1_axonalproteome_annotated.csv"), row.names = FALSE)
 ```
 
+
+
+# =================================================
+# Module 2: Heatmaps & Clustering
+# =================================================
 
 ### IIa. Heatmap (z-norm rows, cluster by cluster)
 ```{r}
@@ -460,8 +468,10 @@ plot_topGO_for_geneset(
 
 
 
+# =================================================
+# Module 3: Correlation Analysis
+# =================================================
 
-# III. Correlation of Selected Annotations
 calculate annotated-based correlation across all and also facet wrap them
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
