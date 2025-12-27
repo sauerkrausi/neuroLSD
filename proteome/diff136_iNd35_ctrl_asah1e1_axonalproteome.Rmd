@@ -207,7 +207,7 @@ write.csv(diff136_df_annotated,
 # Module 2: Heatmaps & Clustering
 # =================================================
 
-### IIa. Heatmap (z-norm rows, cluster by cluster)
+# Heatmap (z-norm rows, cluster by cluster)
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Heatmap (z-norm rows, cluster by cluster)
@@ -315,7 +315,7 @@ write.csv(mat_with_cluster,
 
 
 
-### IIb.  Violin Plot of Cluster Abundance
+# Violin Plot of Cluster Abundance
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Violin Plot of Cluster Abundance
@@ -370,7 +370,7 @@ ggsave(file.path(out_dir_diff136_heatmap,
 ```
 
 
-## IIc. GO analysis of clusters of interest 
+# GO analysis of clusters of interest 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # GO term analysis based on heatmap clusters
@@ -472,6 +472,7 @@ plot_topGO_for_geneset(
 # Module 3: Correlation Analysis
 # =================================================
 
+# Correlation eval of fractions (Whole cell, soma, axon) for genotypes (KO / Ctrl) & annotations
 calculate annotated-based correlation across all and also facet wrap them
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -693,9 +694,12 @@ dev.off()
 ```
 
 
-# IV. Fraction comparisons (WC/SOMA/PROJECTION)
-## IVa. Barplots: General comparison annotation [mean(log2FC)]
-### IVaa. Comparison across ALL sample permutations
+# =================================================
+# Module 4: Fraction comparisons (WC/SOMA/PROJECTION)
+# =================================================
+
+# Barplots: General comparison annotation [mean(log2FC)]
+## Comparison across ALL sample permutations
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
@@ -776,7 +780,7 @@ ggsave(file.path(out_dir_diff136_organelle_dist_bar, "diff136_loc_dist_overview_
 )
 ```
 
-### IVab. Comparison across selected annotations
+## Comparison across selected annotations
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
@@ -814,7 +818,7 @@ ggsave(file.path(out_dir_diff136_organelle_dist_bar, "diff136_loc_dist_overview_
 
 ```
 
-### IVac. Selected annotations & sorted 
+## Selected annotations & sorted 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
@@ -857,8 +861,12 @@ ggsave(file.path(out_dir_diff136_organelle_dist_bar, "diff136_loc_dist_overview_
 ```
 
 
-## IVb. Barplots: General comparison annotation WC-norm mean(log2FC)
-### IVba. Barplots: ASAH1 [axon/WC] vs Ctrl [axon/WC]
+# =================================================
+# Module 5: Barplots & Comparisons
+# =================================================
+
+# Barplots: General comparison annotation WC-norm mean(log2FC)
+## Barplots: ASAH1 [axon/WC] vs Ctrl [axon/WC]
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # barplots of mean(log2FC) of each organelle annotations across all sample comparisons
@@ -939,7 +947,8 @@ ggsave(file.path(out_dir_diff136_organelle_dist_barnorm, "diff136_loc_dist_overv
 ```
 
 
-### IVbb. Resorted RoR, EulerTop5
+
+## Resorted RoR, EulerTop5
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # IIIb-plus. Resort by RoR, save sorted plot, extract top-5 annotations,
@@ -1988,7 +1997,11 @@ if (length(run_manifest) > 0) {
 ```
 
 
-# V. Rainbowplot of annotations markers 
+# =================================================
+# Module 6: Rainbowplots
+# =================================================
+
+# Rainbowplot of annotations markers 
 ## Va. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2730,5 +2743,9 @@ plot_ror_annotation_distribution(
 ```
 
 
+
+# =================================================
+# Module 7: 
+# =================================================
 
 
