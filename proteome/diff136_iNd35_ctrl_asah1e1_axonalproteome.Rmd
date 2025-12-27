@@ -118,6 +118,7 @@ data was created with MSstats, has p/q.values and log2FC for samples
 k-means clustering was performed on data, is in column "cluster"
 
 
+
 # =================================================
 # Module 1: Data Import & add protein organelle annotations
 # =================================================
@@ -312,6 +313,115 @@ write.csv(mat_with_cluster,
           file = file.path(out_dir_diff136_heatmap,"diff136_iNd35_heatmap.csv"),
           row.names = TRUE)
 ```
+
+
+
+
+# Mitochondrial Fission and Trafficking Analysis 
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Heatmap: Mitochondrial Trafficking & Fission Proteins
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Define protein list
+mito_trafficking_fission <- c(
+  "ARMC1", "MTFR1", "MTFR2", "MTFR1L",
+  "RHOT1", "RHOT2", "TRAK1", "TRAK2",
+  "TMEM11", "DNAJC11", "MTX1", "MTCH2", "MTCH1",
+  "TOMM20", "IMMT",
+  "FIS1", "MFF", "MIEF1", "MIEF2", "DNM1L",
+  "SNPH",
+  "ARMCX1", "ARMCX3",
+  "MFN1", "MFN2", "OPA1"
+)
+
+# --- 2. Define columns in order
+log2fc_cols_mito <- c(
+  "log2FC_ASAH1.Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.ASAH1_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon",
+  "log2FC_ASAH1_Soma.Ctrl_Soma"
+)
+
+# --- 3. Filter and prepare matrix
+mat_mito <- diff136_df_annotated %>%
+  filter(Gene.Symbol %in% mito_trafficking_fission) %>%
+  filter(Reference != "sp|L0R8F8|MIDUO_HUMAN") %>%
+  select(Gene.Symbol, all_of(log2fc_cols_mito)) %>%
+  column_to_rownames("Gene.Symbol")
+
+# Check which proteins are present/missing
+present <- mito_trafficking_fission[mito_trafficking_fission %in% rownames(mat_mito)]
+missing <- mito_trafficking_fission[!mito_trafficking_fission %in% rownames(mat_mito)]
+cat("Present:", length(present), "| Missing:", length(missing), "\n")
+cat("Missing proteins:", paste(missing, collapse = ", "), "\n")
+
+# --- 4. Row annotation by functional category
+row_anno_mito <- data.frame(
+  Category = case_when(
+    rownames(mat_mito) %in% c("ARMC1", "MTFR1", "MTFR2", "MTFR1L") ~ "ARMC1-MIRO-MTFR",
+    rownames(mat_mito) %in% c("RHOT1", "RHOT2", "TRAK1", "TRAK2") ~ "MIRO-TRAK",
+    rownames(mat_mito) %in% c("TMEM11", "DNAJC11", "MTX1", "MTCH2", "MTCH1") ~ "ARMC1 recycling",
+    rownames(mat_mito) %in% c("DNM1L", "FIS1", "MFF", "MIEF1", "MIEF2") ~ "Fission",
+    rownames(mat_mito) %in% c("SNPH") ~ "Anchoring",
+    rownames(mat_mito) %in% c("MFN1", "MFN2", "OPA1") ~ "Fusion",
+    rownames(mat_mito) %in% c("ARMCX1", "ARMCX3") ~ "ARMCX",
+    TRUE ~ "QC"
+  ),
+  row.names = rownames(mat_mito)
+)
+
+# --- 5. Colors
+ann_colors_mito <- list(
+  Category = c(
+    `ARMC1-MIRO-MTFR` = "#E41A1C",
+    `MIRO-TRAK`       = "#377EB8",
+    `ARMC1 recycling` = "#4DAF4A",
+    `Fission`         = "#984EA3",
+    `Anchoring`       = "#FF7F00",
+    `Fusion`          = "#FFFF33",
+    `ARMCX`           = "#A65628",
+    `QC`           = "grey70"
+  )
+)
+
+# --- 6. Order rows by category
+row_anno_mito$gene <- rownames(row_anno_mito)
+row_anno_mito <- row_anno_mito %>% arrange(Category)
+mat_mito <- mat_mito[row_anno_mito$gene, ]
+rownames(row_anno_mito) <- row_anno_mito$gene
+row_anno_mito$gene <- NULL
+
+
+# --- 7. Plot heatmap
+pdf_file_mito <- file.path(out_dir_diff136_heatmap, "diff136_heatmap_mito_trafficking_fission.pdf")
+
+cairo_pdf(pdf_file_mito, width = 5, height = 6)
+
+pheatmap(
+  mat_mito,
+  scale              = "none",
+  color              = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  annotation_row     = row_anno_mito,
+  annotation_colors  = ann_colors_mito,
+  breaks             = seq(-2, 2, length.out = 101),
+  cluster_rows       = FALSE,
+  cluster_cols       = FALSE,
+  show_rownames      = TRUE,
+  show_colnames      = TRUE,
+  angle_col          = 90,
+  main               = "Mito Trafficking & Fission",
+  fontsize           = 6,
+  fontsize_row       = 5,
+  cellwidth          = 8,
+  cellheight        = 8,
+  border_color       = NA
+)
+
+dev.off()
+```
+
 
 
 
@@ -1125,7 +1235,7 @@ invisible(lapply(top5_annotations_by_ror, function(ann_term) {
 
 ```
 
-### IVbc. Sensitivity ranking with normalized comparisons (delta, Cohen's d, RoR)
+## Sensitivity ranking with normalized comparisons (delta, Cohen's d, RoR)
 ```{r}
 # • Δ mean log2FC – difference in normalized mean log2 fold-change between ASAH1 and Ctrl (\bar{x}{ASAH1} - \bar{x}{Ctrl}).
 # • Cohen’s d – standardized effect size, Δ mean log2FC divided by pooled standard deviation across genes in the annotation.
@@ -1336,7 +1446,7 @@ ggsave(
 ```
 
 
-### IVbd. Top5 COMPOSITE GO eval
+## Top5 COMPOSITE GO eval
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # GO for top-5 annotations by composite rank: build inputs (up/down) + run GO
@@ -1433,7 +1543,7 @@ readr::write_csv(go_manifest_comp, file.path(out_dir_diff136_organelle_dist_norm
 ```
 
 
-### IVbe. Top5 COMPOSITE — Euler overlaps + GO on unique/common
+## Top5 COMPOSITE — Euler overlaps + GO on unique/common
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Euler analysis & GO for top-5 annotations by composite rank 
@@ -1538,7 +1648,7 @@ invisible(lapply(top5_annotations_by_comp, function(ann_term) {
 
 
 
-## IVc. Barplots of mean(log2FC) of synaptic annotations
+# Barplots of mean(log2FC) of synaptic annotations
 ```{r}
 # --- Step 1. Define columns and color mapping
 plot_cols <- c("log2FC_ASAH1_Axon.ASAH1_Soma", "log2FC_Ctrl_Axon.Ctrl_Soma")
@@ -1647,8 +1757,8 @@ ggsave(file.path(out_dir_diff136_organelle_dist, "diff136_vatpase_synaptic_barpl
 ```
 
 
-## IVd.  Comparison of Neuron Projection Proteome 
-### IVda.  Absolute & RoR
+# Comparison of Neuron Projection Proteome 
+## Absolute & RoR
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Analysis of neuronal projection proteome in Ctrl & ASAH1-/- neurons 
@@ -1790,7 +1900,7 @@ write.csv(sig_long_df,file = file.path(out_dir_diff136_organelle_dist_ror_norm, 
 
 
 
-### IVdb. GO eval of IDs in TOP 5 sig up / down categories 
+## GO eval of IDs in TOP 5 sig up / down categories 
 ```{r}
 # --------------------------------------------------
 # GO on RoR hits split into four Call classes
@@ -2002,7 +2112,7 @@ if (length(run_manifest) > 0) {
 # =================================================
 
 # Rainbowplot of annotations markers 
-## Va. Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
+## Rainbowplot of Lysosome & vATPase Members vs nuclear markers 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -2109,7 +2219,7 @@ ggsave(file.path(out_dir_diff136_rainbow, "diff136_lysosome_hydrolases_vATPase_n
 
 ```
 
-## Vb. Flexible "rainbowplot" for up to 3 annotation groups
+## Flexible "rainbowplot" for up to 3 annotation groups
 ```{r}
 # --- Step  1. Function for plotting user-defined gene sets for axon-soma localization distribution
 # Generates “rainbow” distribution plots for up to three annotation groups using Va-style aesthetics, with top/bottom N gene labels based on a reference log2FC.
@@ -2377,7 +2487,7 @@ plot_ror_rainbow3(
 
 
 
-## IVb. Rainbowplot of User-select Annotations for axon--soma localization distribution
+## Rainbowplot of User-select Annotations for axon--soma localization distribution
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -2494,7 +2604,7 @@ plot_annotation_distribution_batch(
 
 
 
-## IVc. Rainbowplot of User-select Annotations for axon--soma localization distribution
+## Rainbowplot of User-select Annotations for axon--soma localization distribution
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -2615,7 +2725,7 @@ plot_annotation_distribution_batch(
 
 
 
-## IVc. RoR-based Rainbowplot of user-selected annotations 
+## RoR-based Rainbowplot of user-selected annotations 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Rainfall plot for highlighting protein localization
@@ -2741,11 +2851,5 @@ plot_ror_annotation_distribution(
 
 
 ```
-
-
-
-# =================================================
-# Module 7: 
-# =================================================
 
 
