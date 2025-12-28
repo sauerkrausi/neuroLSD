@@ -2328,6 +2328,11 @@ plot_ternary_log2fc(
   tern_classes = c("Endo_iN_curated_Hundley", "OXPHOS","Lysosome")
 )
 
+
+# c("RecyclingEndosome", "Svexocytosis", "Mito")
+# c("ER", "Autophagy", "EarlyEndosome")
+# c("ER", "SVfusion", "EarlyEndosome")
+
 # c("SynapseSV", "OXPHOS", "Postsynaptic")
 # c("Endo_iN_curated_Hundley", "OXPHOS","Lysosome")
 
@@ -6353,6 +6358,7 @@ plot_class_aggregate_heatmap <- function(impacts_df, disease_classes, out_dir) {
     
     # Sort by mean of iN and iDA (low to high)
     row_order <- order(rowMeans(impact_matrix, na.rm = TRUE))
+    # row_order <- order(impact_matrix[, "iN"]) # to sort after iN 
     impact_matrix <- impact_matrix[row_order, , drop = FALSE]
     
     cls_clean <- gsub("\\.", "_", cls)
@@ -13305,7 +13311,7 @@ plot_ternary_ppi_loss(
   tern_classes = c("SynapseSVs", "OXPHOS", "Lysosome")
 )
 
-
+# c("SynapseSVs", "OXPHOS", "Lysosome")
 # c("SynapseSVs", "OXPHOS", "Lysosome")
 # c("Svexocytosis", "OXPHOS", "mtComplexI")
 ```
