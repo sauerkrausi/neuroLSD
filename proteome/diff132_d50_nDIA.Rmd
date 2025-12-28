@@ -2325,17 +2325,29 @@ plot_ternary_log2fc(
   disease_class_df = disease_class_df,
   out_dir = out_dir_d50_ternaryplots,
   disease_class_palette = disease_class_palette,
-  tern_classes = c("Endo_iN_curated_Hundley", "OXPHOS","Lysosome")
+  tern_classes = c("SynapseSV", "OXPHOS", "Postsynaptic")
 )
 
 
-# c("RecyclingEndosome", "Svexocytosis", "Mito")
-# c("ER", "Autophagy", "EarlyEndosome")
-# c("ER", "SVfusion", "EarlyEndosome")
 
 # c("SynapseSV", "OXPHOS", "Postsynaptic")
 # c("Endo_iN_curated_Hundley", "OXPHOS","Lysosome")
 
+#Sphingolipidoses iN:
+# c("RecyclingEndosome", "Mito", "SynapseSVs")
+#Sphingolipidoses iDA:
+# c("RecyclingEndosome", "Svexocytosis", "SVfusion")
+
+#Integral Membrane Protein Disorders iN:
+# c("ER", "Autophagy", "EarlyEndosome")
+#Integral Membrane Protein Disorders iDA:
+# c("ER", "Presynaptic", "Postsynaptic")
+
+#NCL iN:
+# c("SVfusion", "Svendocytosis", "Lysosome")
+#NCL iDA: 
+# c("ER", "EarlyEndosome", "Mito")
+  
 
 ###### Ternary / Triangle Plots across all annotations (log2FC)
 # Generates ternary plots showing log2FC composition across ALL ANNOTATIONS / SELECT PLURALITY
