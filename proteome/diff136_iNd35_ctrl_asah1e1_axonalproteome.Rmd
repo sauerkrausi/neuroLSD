@@ -329,20 +329,23 @@ mito_trafficking_fission <- c(
   "RHOT1", "RHOT2", "TRAK1", "TRAK2",
   "TMEM11", "DNAJC11", "MTX1", "MTCH2", "MTCH1",
   "TOMM20", "IMMT",
-  "FIS1", "MFF", "MIEF1", "MIEF2", "DNM1L",
-  "SNPH",
-  "ARMCX1", "ARMCX3",
-  "MFN1", "MFN2", "OPA1"
+  "FIS1", "MFF", "MIEF1", "MIEF2", "DNM1L"
 )
 
 # --- 2. Define columns in order
 log2fc_cols_mito <- c(
   "log2FC_ASAH1.Ctrl",
-  "log2FC_Ctrl_Axon.Ctrl_Soma",
-  "log2FC_ASAH1_Axon.ASAH1_Soma",
   "log2FC_ASAH1_Axon.Ctrl_Axon",
   "log2FC_ASAH1_Soma.Ctrl_Soma"
 )
+
+# log2fc_cols_mito <- c(
+#   "log2FC_ASAH1.Ctrl",
+#   "log2FC_Ctrl_Axon.Ctrl_Soma",
+#   "log2FC_ASAH1_Axon.ASAH1_Soma",
+#   "log2FC_ASAH1_Axon.Ctrl_Axon",
+#   "log2FC_ASAH1_Soma.Ctrl_Soma"
+# )
 
 # --- 3. Filter and prepare matrix
 mat_mito <- diff136_df_annotated %>%
@@ -364,9 +367,6 @@ row_anno_mito <- data.frame(
     rownames(mat_mito) %in% c("RHOT1", "RHOT2", "TRAK1", "TRAK2") ~ "MIRO-TRAK",
     rownames(mat_mito) %in% c("TMEM11", "DNAJC11", "MTX1", "MTCH2", "MTCH1") ~ "ARMC1 recycling",
     rownames(mat_mito) %in% c("DNM1L", "FIS1", "MFF", "MIEF1", "MIEF2") ~ "Fission",
-    rownames(mat_mito) %in% c("SNPH") ~ "Anchoring",
-    rownames(mat_mito) %in% c("MFN1", "MFN2", "OPA1") ~ "Fusion",
-    rownames(mat_mito) %in% c("ARMCX1", "ARMCX3") ~ "ARMCX",
     TRUE ~ "QC"
   ),
   row.names = rownames(mat_mito)
@@ -380,8 +380,6 @@ ann_colors_mito <- list(
     `ARMC1 recycling` = "#4DAF4A",
     `Fission`         = "#984EA3",
     `Anchoring`       = "#FF7F00",
-    `Fusion`          = "#FFFF33",
-    `ARMCX`           = "#A65628",
     `QC`           = "grey70"
   )
 )
@@ -414,7 +412,7 @@ cairo_pdf(pdf_file_mito, width = 5, height = 6)
 pheatmap(
   mat_mito,
   scale              = "none",
-  color              = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  color              = colorRampPalette(rev(brewer.pal(11, "RdBu")))(100),
   annotation_row     = row_anno_mito,
   annotation_colors  = ann_colors_mito,
   breaks             = seq(-2, 2, length.out = 101),
