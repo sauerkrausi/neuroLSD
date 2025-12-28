@@ -6357,6 +6357,9 @@ plot_class_aggregate_heatmap <- function(impacts_df, disease_classes, out_dir) {
     
     cls_clean <- gsub("\\.", "_", cls)
     
+    # Save CSV with two decimal points 
+    write.csv(round(impact_matrix,2), file.path(out_dir, paste0("impact_matrix_", cls_clean, ".csv")))
+              
     pdf(file.path(out_dir, paste0("impact_heatmap_aggregate_", cls_clean, ".pdf")), 
         width = 3, 
         height = 6)
@@ -6369,7 +6372,7 @@ plot_class_aggregate_heatmap <- function(impacts_df, disease_classes, out_dir) {
       fontsize = 6, 
       border_color = NA, 
       display_numbers = TRUE, 
-      number_format = "%.1f", 
+      number_format = "%.0f", 
       number_color = "black", 
       cellwidth = 8, 
       cellheight = 8,
