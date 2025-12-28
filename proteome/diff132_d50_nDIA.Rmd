@@ -6357,8 +6357,8 @@ plot_class_aggregate_heatmap <- function(impacts_df, disease_classes, out_dir) {
     
     cls_clean <- gsub("\\.", "_", cls)
     
-    # Save CSV with two decimal points 
-    write.csv(round(impact_matrix,2), file.path(out_dir, paste0("impact_matrix_", cls_clean, ".csv")))
+    # Save CSV with three decimal points 
+    write.csv(round(impact_matrix,3), file.path(out_dir, paste0("impact_matrix_", cls_clean, ".csv")))
               
     pdf(file.path(out_dir, paste0("impact_heatmap_aggregate_", cls_clean, ".pdf")), 
         width = 3, 
