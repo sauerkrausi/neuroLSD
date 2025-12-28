@@ -6330,33 +6330,52 @@ aggregate_impact_by_class <- function(impacts_df, disease_classes) {
 class_impacts <- aggregate_impact_by_class(all_impacts, disease_classes)
 
 # --- Heatmap function for disease classes ---
-plot_class_impact_heatmap <- function(class_impacts_df, neuron_type, out_dir) {
+plot_class_aggregate_heatmap <- function(impacts_df, disease_classes, out_dir) {
   
-  impact_sub <- class_impacts_df %>% dplyr::filter(Neuron == neuron_type)
-  
-  impact_matrix <- impact_sub %>%
-    dplyr::select(DiseaseClass, Annotation, MeanRank) %>%
-    tidyr::pivot_wider(names_from = Annotation, values_from = MeanRank) %>%
-    tibble::column_to_rownames("DiseaseClass") %>%
-    as.matrix()
-  
-  row_order <- order(rowSums(impact_matrix, na.rm = TRUE))
-  impact_matrix <- impact_matrix[row_order, ]
-  
-  pdf(file.path(out_dir, paste0("disease_class_impact_heatmap_", neuron_type, ".pdf")), width = 10, height = 5)
-  pheatmap::pheatmap(
-    mat = impact_matrix, 
-    color = colorRampPalette(c("firebrick", "white"))(100), 
-    cluster_rows = FALSE, cluster_cols = TRUE, 
-    main = paste0("Disease Class Impact - ", neuron_type), 
-    fontsize = 6, 
-    border_color = NA, 
-    display_numbers = TRUE, 
-    number_format = "%.1f", 
-    number_color = "black", 
-    cellwidth = 8, 
-    cellheight = 8)
-  dev.off()
+  for (cls in names(disease_classes)) {
+    
+    genotypes_in_class <- disease_classes[[cls]]
+    
+    impact_sub <- impacts_df %>%
+      dplyr::filter(Genotype %in% genotypes_in_class) %>%
+      dplyr::group_by(Annotation, Neuron) %>%
+      dplyr::summarise(
+        MeanRank = mean(Rank, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      tidyr::pivot_wider(names_from = Neuron, values_from = MeanRank)
+    
+    if (nrow(impact_sub) == 0) next
+    
+    impact_matrix <- impact_sub %>%
+      tibble::column_to_rownames("Annotation") %>%
+      as.matrix()
+    
+    # Sort by mean of iN and iDA (low to high)
+    row_order <- order(rowMeans(impact_matrix, na.rm = TRUE))
+    impact_matrix <- impact_matrix[row_order, , drop = FALSE]
+    
+    cls_clean <- gsub("\\.", "_", cls)
+    
+    pdf(file.path(out_dir, paste0("impact_heatmap_aggregate_", cls_clean, ".pdf")), 
+        width = 3, 
+        height = 6)
+    pheatmap::pheatmap(
+      mat = impact_matrix, 
+      color = colorRampPalette(c("firebrick", "white"))(100), 
+      cluster_rows = FALSE, 
+      cluster_cols = FALSE, 
+      main = cls, 
+      fontsize = 6, 
+      border_color = NA, 
+      display_numbers = TRUE, 
+      number_format = "%.1f", 
+      number_color = "black", 
+      cellwidth = 8, 
+      cellheight = 8
+    )
+    dev.off()
+  }
 }
 
 # --- Barplot function with SD across genotypes within each class ---
@@ -6390,8 +6409,7 @@ plot_class_impact_barplot <- function(impacts_df, disease_classes, neuron_type, 
 }
 
 # --- Generate plots ---
-plot_class_impact_heatmap(class_impacts, "iN", out_dir_d50_CrossCorr)
-plot_class_impact_heatmap(class_impacts, "iDA", out_dir_d50_CrossCorr)
+plot_class_aggregate_heatmap(all_impacts, disease_classes, out_dir_d50_CrossCorr)
 
 plot_class_impact_barplot(all_impacts, disease_classes, "iN", out_dir_d50_CrossCorr)
 plot_class_impact_barplot(all_impacts, disease_classes, "iDA", out_dir_d50_CrossCorr)
