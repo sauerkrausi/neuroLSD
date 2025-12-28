@@ -6313,7 +6313,7 @@ disease_classes <- list(
   PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
   Lipid.storage.diseases = c("GAA", "LIPA")
 )
-
+stack(disease_classes)
 
 # --- Aggregate impact scores by disease class ---
 aggregate_impact_by_class <- function(impacts_df, disease_classes) {
@@ -6344,7 +6344,18 @@ plot_class_impact_heatmap <- function(class_impacts_df, neuron_type, out_dir) {
   impact_matrix <- impact_matrix[row_order, ]
   
   pdf(file.path(out_dir, paste0("disease_class_impact_heatmap_", neuron_type, ".pdf")), width = 10, height = 5)
-  pheatmap::pheatmap(mat = impact_matrix, color = colorRampPalette(c("firebrick", "white"))(100), cluster_rows = FALSE, cluster_cols = TRUE, main = paste0("Disease Class Impact - ", neuron_type), fontsize = 6, border_color = NA, display_numbers = TRUE, number_format = "%.1f", number_color = "grey30", cellwidth = 10, cellheight = 12)
+  pheatmap::pheatmap(
+    mat = impact_matrix, 
+    color = colorRampPalette(c("firebrick", "white"))(100), 
+    cluster_rows = FALSE, cluster_cols = TRUE, 
+    main = paste0("Disease Class Impact - ", neuron_type), 
+    fontsize = 6, 
+    border_color = NA, 
+    display_numbers = TRUE, 
+    number_format = "%.1f", 
+    number_color = "black", 
+    cellwidth = 8, 
+    cellheight = 8)
   dev.off()
 }
 
@@ -6371,8 +6382,9 @@ plot_class_impact_barplot <- function(impacts_df, disease_classes, neuron_type, 
     ggplot2::geom_errorbar(ggplot2::aes(ymin = MeanRank - SD, ymax = MeanRank + SD), width = 0.3, linewidth = 0.3) +
     ggplot2::coord_flip() +
     ggplot2::labs(x = NULL, y = "Mean Impact Rank (lower = more impact)", title = paste0("Disease Class Impact - ", neuron_type)) +
-    ggplot2::theme_minimal(base_size = 6) +
-    ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(
+      panel.grid = element_blank())
   
   ggplot2::ggsave(file.path(out_dir, paste0("disease_class_impact_barplot_", neuron_type, ".pdf")), p, width = 4, height = 3)
 }
@@ -6384,42 +6396,6 @@ plot_class_impact_heatmap(class_impacts, "iDA", out_dir_d50_CrossCorr)
 plot_class_impact_barplot(all_impacts, disease_classes, "iN", out_dir_d50_CrossCorr)
 plot_class_impact_barplot(all_impacts, disease_classes, "iDA", out_dir_d50_CrossCorr)
 
-
-
-
-# --- Alternative: SD across genotypes within each class ---
-plot_class_impact_barplot_genotype_sd <- function(impacts_df, disease_classes, neuron_type, out_dir) {
-  
-  class_map <- stack(disease_classes) %>% rename(Genotype = values, DiseaseClass = ind) %>% mutate(DiseaseClass = as.character(DiseaseClass))
-  
-  # For each genotype, compute mean rank across all annotations
-  genotype_summary <- impacts_df %>%
-    filter(Neuron == neuron_type) %>%
-    group_by(Genotype) %>%
-    summarise(GenotypeOverallRank = mean(Rank, na.rm = TRUE), .groups = "drop")
-  
-  # Aggregate by disease class
-  class_summary <- genotype_summary %>%
-    inner_join(class_map, by = "Genotype") %>%
-    group_by(DiseaseClass) %>%
-    summarise(MeanRank = mean(GenotypeOverallRank, na.rm = TRUE), SD = sd(GenotypeOverallRank, na.rm = TRUE), N = n(), .groups = "drop") %>%
-    arrange(MeanRank)
-  
-  class_summary$DiseaseClass <- factor(class_summary$DiseaseClass, levels = class_summary$DiseaseClass)
-  
-  p <- ggplot(class_summary, aes(x = DiseaseClass, y = MeanRank)) +
-    geom_col(fill = "firebrick", alpha = 0.8) +
-    geom_errorbar(aes(ymin = MeanRank - SD, ymax = MeanRank + SD), width = 0.3, linewidth = 0.3) +
-    coord_flip() +
-    labs(x = NULL, y = "Mean Impact Rank (lower = more impact)", title = paste0("Disease Class Impact - ", neuron_type)) +
-    theme_minimal(base_size = 6) +
-    theme(panel.grid.minor = element_blank())
-  
-  ggsave(file.path(out_dir, paste0("disease_class_impact_barplot_genotype_sd_", neuron_type, ".pdf")), p, width = 4, height = 3)
-}
-
-plot_class_impact_barplot_genotype_sd(all_impacts, disease_classes, "iN", out_dir_d50_CrossCorr)
-plot_class_impact_barplot_genotype_sd(all_impacts, disease_classes, "iDA", out_dir_d50_CrossCorr)
 
 
 ```
@@ -7743,6 +7719,7 @@ dev.off()
 
 
 ```
+
 
 
 ## Correlation: All organelle annotations
