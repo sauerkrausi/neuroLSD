@@ -317,7 +317,7 @@ write.csv(mat_with_cluster,
 
 
 
-# Mitochondrial Fission and Trafficking Analysis 
+# Heatmap: Mitochondrial Fission and Trafficking Analysis 
 ```{r}
 # ─────────────────────────────────────────────────────────────────────────────
 # Heatmap: Mitochondrial Trafficking & Fission Proteins
@@ -394,7 +394,19 @@ rownames(row_anno_mito) <- row_anno_mito$gene
 row_anno_mito$gene <- NULL
 
 
-# --- 7. Plot heatmap
+# --- 7. Rename columns for display
+col_labels <- c(
+  "log2FC_ASAH1.Ctrl" = "WC: ASAH1/Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl_Soma" = "Ctrl: Axon/Soma",
+  "log2FC_ASAH1_Axon.ASAH1_Soma" = "ASAH1: Axon/Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon" = "Axon: ASAH1/Ctrl",
+  "log2FC_ASAH1_Soma.Ctrl_Soma" = "Soma: ASAH1/Ctrl"
+)
+
+colnames(mat_mito) <- col_labels[colnames(mat_mito)]
+
+
+# --- 8. Plot heatmap
 pdf_file_mito <- file.path(out_dir_diff136_heatmap, "diff136_heatmap_mito_trafficking_fission.pdf")
 
 cairo_pdf(pdf_file_mito, width = 5, height = 6)
@@ -416,7 +428,129 @@ pheatmap(
   fontsize_row       = 5,
   cellwidth          = 8,
   cellheight        = 8,
-  border_color       = NA
+  border_color       = NA,
+  annotation_names_row = FALSE,
+  annotation_legend  = TRUE,
+  legend             = TRUE,
+  annotation_row_side = "left"
+)
+
+dev.off()
+```
+
+
+
+
+# Heatmap: Mitophagy
+```{r}
+# ─────────────────────────────────────────────────────────────────────────────
+# Heatmap: Mitophagy Proteins
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- 1. Define protein list
+mitophagy_proteins <- c(
+  # PINK1-Parkin pathway
+  "PINK1", "PRKN",
+  # Receptors/adaptors
+  "OPTN", "NDP52", "CALCOCO2", "TAX1BP1",
+  # Receptor-mediated mitophagy
+  "BNIP3", "BNIP3L", "FUNDC1", "NIX",
+  # Autophagy machinery
+  "MAP1LC3B", "MAP1LC3A", "GABARAP", "GABARAPL1", "GABARAPL2",
+  "SQSTM1", "NBR1", "ATG4A", "ATG4B", "ATG4C",
+  # Ubiquitin ligases / DUBs
+  "MUL1", "USP30", "USP15"
+)
+
+# --- 2. Define columns in order
+log2fc_cols_mitophagy <- c(
+  "log2FC_ASAH1.Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl_Soma",
+  "log2FC_ASAH1_Axon.ASAH1_Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon",
+  "log2FC_ASAH1_Soma.Ctrl_Soma"
+)
+
+# --- 3. Filter and prepare matrix
+mat_mitophagy <- diff136_df_annotated %>%
+  filter(Gene.Symbol %in% mitophagy_proteins) %>%
+  select(Gene.Symbol, all_of(log2fc_cols_mitophagy)) %>%
+  column_to_rownames("Gene.Symbol")
+
+# Check which proteins are present/missing
+present <- mitophagy_proteins[mitophagy_proteins %in% rownames(mat_mitophagy)]
+missing <- mitophagy_proteins[!mitophagy_proteins %in% rownames(mat_mitophagy)]
+cat("Present:", length(present), "| Missing:", length(missing), "\n")
+cat("Missing proteins:", paste(missing, collapse = ", "), "\n")
+
+# --- 4. Row annotation by functional category
+category_order_mitophagy <- c("PINK1-Parkin", "Receptors", "Receptor-mediated", "Autophagy", "Ubiquitin")
+
+row_anno_mitophagy <- data.frame(
+  Category = factor(case_when(
+    rownames(mat_mitophagy) %in% c("PINK1", "PRKN") ~ "PINK1-Parkin",
+    rownames(mat_mitophagy) %in% c("OPTN", "NDP52", "CALCOCO2", "TAX1BP1") ~ "Receptors",
+    rownames(mat_mitophagy) %in% c("BNIP3", "BNIP3L", "FUNDC1") ~ "Receptor-mediated",
+    rownames(mat_mitophagy) %in% c("MAP1LC3B", "MAP1LC3A", "GABARAP", "GABARAPL1", "GABARAPL2", "SQSTM1", "NBR1", "ATG4A", "ATG4B", "ATG4C") ~ "Autophagy",
+    rownames(mat_mitophagy) %in% c("MUL1", "USP30", "USP15") ~ "Ubiquitin",
+    TRUE ~ "Other"
+  ), levels = category_order_mitophagy),
+  row.names = rownames(mat_mitophagy)
+)
+
+# --- 5. Order rows by category
+row_anno_mitophagy$gene <- rownames(row_anno_mitophagy)
+row_anno_mitophagy <- row_anno_mitophagy %>% arrange(Category)
+mat_mitophagy <- mat_mitophagy[row_anno_mitophagy$gene, ]
+rownames(row_anno_mitophagy) <- row_anno_mitophagy$gene
+row_anno_mitophagy$gene <- NULL
+
+# --- 6. Rename columns for display
+col_labels <- c(
+  "log2FC_ASAH1.Ctrl" = "WC: ASAH1/Ctrl",
+  "log2FC_Ctrl_Axon.Ctrl_Soma" = "Ctrl: Axon/Soma",
+  "log2FC_ASAH1_Axon.ASAH1_Soma" = "ASAH1: Axon/Soma",
+  "log2FC_ASAH1_Axon.Ctrl_Axon" = "Axon: ASAH1/Ctrl",
+  "log2FC_ASAH1_Soma.Ctrl_Soma" = "Soma: ASAH1/Ctrl"
+)
+
+colnames(mat_mitophagy) <- col_labels[colnames(mat_mitophagy)]
+
+# --- 7. Colors
+ann_colors_mitophagy <- list(
+  Category = c(
+    `PINK1-Parkin`       = "#E41A1C",
+    `Receptors`          = "#377EB8",
+    `Receptor-mediated`  = "#4DAF4A",
+    `Autophagy`          = "#984EA3",
+    `Ubiquitin`          = "#FF7F00"
+  )
+)
+
+# --- 8. Plot heatmap
+pdf_file_mitophagy <- file.path(out_dir_diff136_heatmap, "diff136_heatmap_mitophagy.pdf")
+
+cairo_pdf(pdf_file_mitophagy, width = 5, height = 5)
+
+pheatmap(
+  mat_mitophagy,
+  scale              = "none",
+  color              = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  annotation_row     = row_anno_mitophagy,
+  annotation_colors  = ann_colors_mitophagy,
+  breaks             = seq(-2, 2, length.out = 101),
+  cluster_rows       = FALSE,
+  cluster_cols       = FALSE,
+  show_rownames      = TRUE,
+  show_colnames      = TRUE,
+  angle_col          = 90,
+  main               = "Mitophagy",
+  fontsize           = 6,
+  fontsize_row       = 5,
+  border_color       = NA,
+  annotation_names_row = FALSE,
+  cellwidth = 8,
+  cellheight = 8
 )
 
 dev.off()
