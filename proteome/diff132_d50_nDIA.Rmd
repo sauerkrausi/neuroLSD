@@ -6244,7 +6244,7 @@ compute_all_annotation_impacts <- function(data, annotations, basedir) {
 }
 
 # --- All annotations ---
-all_annotations <- c("Mito", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+all_annotations <- c("Mito", "Golgi", "Lysosome", "ER", "Nucleus",
                      "Autophagy", "Endo_iN_curated_Hundley", "SynapseSVs",
                      "Presynaptic", "Postsynaptic", "EarlyEndosome",
                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis")
@@ -6372,7 +6372,8 @@ plot_class_aggregate_heatmap <- function(impacts_df, disease_classes, out_dir) {
       number_format = "%.1f", 
       number_color = "black", 
       cellwidth = 8, 
-      cellheight = 8
+      cellheight = 8,
+      breaks = seq(1, 23, length.out = 101)
     )
     dev.off()
   }
