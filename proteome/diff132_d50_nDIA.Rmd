@@ -566,7 +566,7 @@ f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neu
         plot.caption = element_text(hjust = 0))
 
 
-ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, width = 6, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, width = 4, height = 2, device = cairo_pdf)
 
 
 ```
@@ -6216,7 +6216,7 @@ pheatmap::pheatmap(
   border_color = NA, 
   display_numbers = TRUE, 
   number_format = "%.0f", 
-  number_color = "grey30", 
+  number_color = "black", 
   cellwidth = 4, 
   cellheight = 4
   )
@@ -6285,7 +6285,7 @@ plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
     border_color = NA,
     display_numbers = TRUE,
     number_format = "%.0f",
-    number_color = "grey30",
+    number_color = "black",
     cellwidth = 8,
     cellheight = 8
   )
@@ -6295,6 +6295,138 @@ plot_impact_heatmap_by_neuron <- function(impacts_df, neuron_type, out_dir) {
 # --- Plot for iN and iDA separately ---
 plot_impact_heatmap_by_neuron(all_impacts, "iN", out_dir_d50_CrossCorr)
 plot_impact_heatmap_by_neuron(all_impacts, "iDA", out_dir_d50_CrossCorr)
+
+```
+
+
+
+
+## Aggreagte Disease Class Impact Scoring
+```{r}
+# --- Step 1. Define Disease Class Map
+disease_classes <- list(
+  Sphingolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
+  Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
+  Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
+  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
+  PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
+  Lipid.storage.diseases = c("GAA", "LIPA")
+)
+
+
+# --- Aggregate impact scores by disease class ---
+aggregate_impact_by_class <- function(impacts_df, disease_classes) {
+  
+  # Map genotypes to disease classes
+  class_map <- stack(disease_classes) %>% rename(Genotype = values, DiseaseClass = ind) %>% mutate(DiseaseClass = as.character(DiseaseClass))
+  
+  # Join and aggregate
+  impacts_df %>%
+    inner_join(class_map, by = "Genotype") %>%
+    group_by(DiseaseClass, Annotation, Neuron) %>%
+    summarise(MeanRank = mean(Rank, na.rm = TRUE), SD = sd(Rank, na.rm = TRUE), N = n(), .groups = "drop")
+}
+
+# --- Compute class-level impacts ---
+class_impacts <- aggregate_impact_by_class(all_impacts, disease_classes)
+
+# --- Heatmap function for disease classes ---
+plot_class_impact_heatmap <- function(class_impacts_df, neuron_type, out_dir) {
+  
+  impact_sub <- class_impacts_df %>% filter(Neuron == neuron_type)
+  
+  impact_matrix <- impact_sub %>%
+    select(DiseaseClass, Annotation, MeanRank) %>%
+    pivot_wider(names_from = Annotation, values_from = MeanRank) %>%
+    column_to_rownames("DiseaseClass") %>%
+    as.matrix()
+  
+  row_order <- order(rowSums(impact_matrix, na.rm = TRUE))
+  impact_matrix <- impact_matrix[row_order, ]
+  
+  pdf(file.path(out_dir, paste0("disease_class_impact_heatmap_", neuron_type, ".pdf")), width = 10, height = 5)
+  pheatmap::pheatmap(
+    mat = impact_matrix, 
+    color = colorRampPalette(c("firebrick", "white"))(100), 
+    cluster_rows = FALSE, cluster_cols = TRUE, 
+    main = paste0("Disease Class Impact - ", neuron_type), 
+    fontsize = 6, border_color = NA, 
+    display_numbers = FALSE, 
+    number_format = "%.1f", 
+    number_color = "black", 
+    cellwidth = 8, 
+    cellheight = 8)
+  dev.off()
+}
+
+# --- Barplot function with SD error bars ---
+plot_class_impact_barplot <- function(class_impacts_df, neuron_type, out_dir) {
+  
+  impact_sub <- class_impacts_df %>% filter(Neuron == neuron_type)
+  
+  # Compute overall mean rank per disease class (across all annotations)
+  class_summary <- impact_sub %>%
+    group_by(DiseaseClass) %>%
+    summarise(OverallMeanRank = mean(MeanRank, na.rm = TRUE), OverallSD = sd(MeanRank, na.rm = TRUE), .groups = "drop") %>%
+    arrange(OverallMeanRank)
+  
+  class_summary$DiseaseClass <- factor(class_summary$DiseaseClass, levels = class_summary$DiseaseClass)
+  
+  p <- ggplot(class_summary, aes(x = DiseaseClass, y = OverallMeanRank)) +
+    geom_col(fill = "firebrick", alpha = 0.8) +
+    geom_errorbar(aes(ymin = OverallMeanRank - OverallSD, ymax = OverallMeanRank + OverallSD), width = 0.3, linewidth = 0.3) +
+    coord_flip() +
+    labs(x = NULL, y = "Mean Impact Rank (lower = more impact)", title = paste0("Disease Class Impact - ", neuron_type)) +
+    theme_minimal(base_size = 6) +
+    theme(panel.grid.minor = element_blank())
+  
+  ggsave(file.path(out_dir, paste0("disease_class_impact_barplot_", neuron_type, ".pdf")), p, width = 4, height = 3)
+}
+
+# --- Generate plots ---
+plot_class_impact_heatmap(class_impacts, "iN", out_dir_d50_CrossCorr)
+plot_class_impact_heatmap(class_impacts, "iDA", out_dir_d50_CrossCorr)
+
+plot_class_impact_barplot(class_impacts, "iN", out_dir_d50_CrossCorr)
+plot_class_impact_barplot(class_impacts, "iDA", out_dir_d50_CrossCorr)
+
+
+
+# --- Alternative: SD across genotypes within each class ---
+plot_class_impact_barplot_genotype_sd <- function(impacts_df, disease_classes, neuron_type, out_dir) {
+  
+  class_map <- stack(disease_classes) %>% rename(Genotype = values, DiseaseClass = ind) %>% mutate(DiseaseClass = as.character(DiseaseClass))
+  
+  # For each genotype, compute mean rank across all annotations
+  genotype_summary <- impacts_df %>%
+    filter(Neuron == neuron_type) %>%
+    group_by(Genotype) %>%
+    summarise(GenotypeOverallRank = mean(Rank, na.rm = TRUE), .groups = "drop")
+  
+  # Aggregate by disease class
+  class_summary <- genotype_summary %>%
+    inner_join(class_map, by = "Genotype") %>%
+    group_by(DiseaseClass) %>%
+    summarise(MeanRank = mean(GenotypeOverallRank, na.rm = TRUE), SD = sd(GenotypeOverallRank, na.rm = TRUE), N = n(), .groups = "drop") %>%
+    arrange(MeanRank)
+  
+  class_summary$DiseaseClass <- factor(class_summary$DiseaseClass, levels = class_summary$DiseaseClass)
+  
+  p <- ggplot(class_summary, aes(x = DiseaseClass, y = MeanRank)) +
+    geom_col(fill = "firebrick", alpha = 0.8) +
+    geom_errorbar(aes(ymin = MeanRank - SD, ymax = MeanRank + SD), width = 0.3, linewidth = 0.3) +
+    coord_flip() +
+    labs(x = NULL, y = "Mean Impact Rank (lower = more impact)", title = paste0("Disease Class Impact - ", neuron_type)) +
+    theme_minimal(base_size = 6) +
+    theme(panel.grid.minor = element_blank())
+  
+  ggsave(file.path(out_dir, paste0("disease_class_impact_barplot_genotype_sd_", neuron_type, ".pdf")), p, width = 4, height = 3)
+}
+
+plot_class_impact_barplot_genotype_sd(all_impacts, disease_classes, "iN", out_dir_d50_CrossCorr)
+plot_class_impact_barplot_genotype_sd(all_impacts, disease_classes, "iDA", out_dir_d50_CrossCorr)
+
 
 ```
 
