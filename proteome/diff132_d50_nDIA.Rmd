@@ -2743,6 +2743,9 @@ plot_halfcircos_log2fc(
 
 
 
+# Heatmap of # of IDs -0.5 log2FC per KO/neuron
+
+
 # Sorted lineplots of neuro-related annotations
 ```{r}
 # --------------------------------------------------- #
