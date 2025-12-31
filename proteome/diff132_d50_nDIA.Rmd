@@ -2785,10 +2785,11 @@ p_IDlost_stack <- ggplot2::ggplot(lostIDs_df, ggplot2::aes(x = Genotype, y = Cou
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(
     panel.grid = ggplot2::element_blank(),
-    axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)
+    axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)
   )
 
 ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "lost_proteins_stacked_barplot.pdf"), p_IDlost_stack, width = 3.5, height = 3)
+
 ```
 
 
