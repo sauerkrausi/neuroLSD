@@ -17776,7 +17776,7 @@ theme(panel.grid = element_blank(),
       panel.border = element_rect(color = "black", fill = NA), 
       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
-ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_fragmentation_per_KO.pdf"), p_frag_bar, width = 6, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_fragmentation_per_KO.pdf"), p_frag_bar, width = 4.5, height = 4, device = cairo_pdf)
 
 # Scatter: orphans vs components
 p_frag_scatter <- ggplot(fragmentation_all, aes(x = n_orphans, y = delta_components, fill = DiseaseClass)) +
@@ -17796,13 +17796,16 @@ p_lcc <- ggplot(fragmentation_all, aes(x = reorder(genotype, largest_component_p
 geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
 geom_hline(yintercept = baseline_summary$largest_component_pct, linetype = "dashed", color = "red", linewidth = 0.5) +
 scale_fill_manual(values = c(iN = "grey60", iDA = "grey80"), name = "Neuron") +
-labs(title = "Largest connected component after KO", subtitle = paste0("Baseline in Controls: ", round(baseline_summary$largest_component_pct, 1), "%"), x = NULL, y = "% of network in largest component") +
+labs(title = "Largest connected component after KO", 
+     subtitle = paste0("Baseline in Controls: ", round(baseline_summary$largest_component_pct, 1), "%"), 
+     x = NULL, 
+     y = "% of network in largest component") +
 theme_bw(base_size = 6) +
 theme(panel.grid = element_blank(), 
       panel.border = element_rect(color = "black", fill = NA), 
       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
-ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_largest_component.pdf"), p_lcc, width = 6, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_largest_component.pdf"), p_lcc, width = 4.5, height = 4, device = cairo_pdf)
 
 message("Module 2 complete.")
 
