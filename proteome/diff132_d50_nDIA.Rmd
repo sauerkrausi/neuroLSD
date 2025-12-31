@@ -2745,11 +2745,16 @@ plot_halfcircos_log2fc(
 
 # Heatmap of # of IDs -0.5 log2FC per KO/neuron
 ```{r}
-# Count proteins with log2FC <= -0.5 per sample
-lost_counts <- colSums(log2fc_mat <= -0.5, na.rm = TRUE)
+# Count genes with log2FC <= -0.5 per sample
+sample_cols_lostIDs <- grep("_i(N|DA)$", colnames(log2FC_d50_annotated), value = TRUE)
+
+lost_counts <- sapply(sample_cols_lostIDs, function(col) {
+  sum(log2FC_d50_annotated[[col]] <= -1, na.rm = TRUE)
+})
+
 
 # Create df for plotting
-lost_df <- data.frame(
+lostIDs_df <- data.frame(
   Sample = names(lost_counts),
   Count = as.numeric(lost_counts)
 ) %>%
@@ -2759,31 +2764,31 @@ lost_df <- data.frame(
   )
 
 # Order genotypes by total lost
-genotype_order <- lost_df %>%
+genotype_order <- lostIDs_df %>%
   dplyr::group_by(Genotype) %>%
   dplyr::summarise(Total = sum(Count), .groups = "drop") %>%
   dplyr::arrange(dplyr::desc(Total)) %>%
   dplyr::pull(Genotype)
 
-lost_df$Genotype <- factor(lost_df$Genotype, levels = genotype_order)
+lostIDs_df$Genotype <- factor(lostIDs_df$Genotype, levels = genotype_order)
 
 celltype_colors <- c(iDA = "grey80", iN = "grey40")
 
-p <- ggplot2::ggplot(lost_df, ggplot2::aes(x = Genotype, y = Count, fill = Neuron)) +
+p_IDlost_stack <- ggplot2::ggplot(lostIDs_df, ggplot2::aes(x = Genotype, y = Count, fill = Neuron)) +
   ggplot2::geom_col() +
   ggplot2::scale_fill_manual(values = celltype_colors) +
   ggplot2::labs(
     x = NULL, 
-    y = "Proteins lost (log2FC ≤ -0.5)", 
+    y = "Proteins lost (log2FC =< -1)", 
     fill = NULL
   ) +
-  ggplot2::theme_minimal(base_size = 6) +
+  ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(
-    panel.grid.minor = ggplot2::element_blank(),
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
+    panel.grid = ggplot2::element_blank(),
+    axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)
   )
 
-ggplot2::ggsave(file.path(out_dir, "lost_proteins_stacked_barplot.pdf"), p, width = 6, height = 3)
+ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "lost_proteins_stacked_barplot.pdf"), p_IDlost_stack, width = 3.5, height = 3)
 ```
 
 
