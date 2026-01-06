@@ -19,6 +19,7 @@ Contains Rmd scripts for proteomics evaluation of stem-cell derived cortical-lik
 - Performs pairwise KO vs Ctrl comparisons and neuron-type interaction effects.
 - Integrates organelle annotations and correlates KO profiles by organelle enrichment.
 - Generates cluster heatmaps, GO term enrichments, and cross-cell-type correlation plots (HeLa vs neuron).
+
 Modules
   - Module 0: Setup & Configuration & Experimental Background
   - Module 1: Data Import, QC (Replicate-level)
@@ -39,6 +40,7 @@ Modules
 -	Evaluates compartment-specific KO effects using log2FC and RoR metrics.
 -	Correlates subcellular enrichment (e.g., endo/lyso/synaptic) with KO-induced localization shifts.
 -	Visualizes data via heatmaps, barplots, violin plots, and custom “rainfall” plots for spatial proteomic mapping.
+
 Modules
   - Module 0: Setup & Configuration & Experimental Background
   - Module 1: Data Import & add protein organelle annotations
