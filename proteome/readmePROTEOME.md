@@ -19,9 +19,31 @@ Contains Rmd scripts for proteomics evaluation of stem-cell derived cortical-lik
 - Performs pairwise KO vs Ctrl comparisons and neuron-type interaction effects.
 - Integrates organelle annotations and correlates KO profiles by organelle enrichment.
 - Generates cluster heatmaps, GO term enrichments, and cross-cell-type correlation plots (HeLa vs neuron).
+Modules
+  - Module 0: Setup & Configuration & Experimental Background
+  - Module 1: Data Import, QC (Replicate-level)
+  - Module 2: Summarized Data & Subcellular Analysis
+  - Module 3: Neuro QC & Synaptic Markers
+  - Module 4: Time Course Analysis (d30 vs d50)
+  - Module 5: Long Diff Analysis ASAH1 (d30-50-70)
+  - Module 6: Violin & Volcano Plots (annotation / genotypes)
+  - Module 7: Organelle Correlations Analysis
+  - Module 8: Disease Class Analysis - Neuron
+  - Module 9: Linear Regression & Modeling
+  - Module 10: nDIA-nMOST Comparative Analysis
+  - Module 11: PPI Vulnerability Analysis - Neuronal nDIA
+  - Module 12: PPI Vulnerability Analysis - HeLa nMOST
 
 🚧 `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of neuronal whole cell, soma and projections fractions of iNeurons
 -	TMTpro-based proteome of iNeuron whole-cell, soma, and projection fractions at day 35.
 -	Evaluates compartment-specific KO effects using log2FC and RoR metrics.
 -	Correlates subcellular enrichment (e.g., endo/lyso/synaptic) with KO-induced localization shifts.
 -	Visualizes data via heatmaps, barplots, violin plots, and custom “rainfall” plots for spatial proteomic mapping.
+Modules
+  - Module 0: Setup & Configuration & Experimental Background
+  - Module 1: Data Import & add protein organelle annotations
+  - Module 2: Heatmaps & Clustering
+  - Module 3: Correlation Analysis
+  - Module 4: Fraction comparisons (WC/SOMA/PROJECTION)
+  - Module 5: Barplots & Comparisons
+  - Module 6: Rainbowplots
