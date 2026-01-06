@@ -8,11 +8,13 @@ Contains Rmd scripts for proteomics evaluation of stem-cell derived cortical-lik
 -	Outputs log2FC, significance tables, and cluster-based GO term enrichments.
 -	Integrates curated sub-cellular annotations to identify lysosomal and synaptic changes.
 
+
 🚧 `HeLa_Ctrl-ASAH1_LysoIP.Rmd`: Pipeline for TMTpro proteome analysis of isolated lysosomes from HeLa Ctrl and ASAH1 mutants 
 - Lysosome-enriched fraction proteomics from HeLa Ctrl vs ASAH1-/-.
 - Focus on lysosomal hydrolase abundance, lysosomal-endosomal pathway components, and autophagy markers.
 - Includes cluster-based heatmaps, scaled violin plots, and annotation-wise log2FC summaries.
 - Performs GO term enrichment per cluster and compares overlap with iNeuron datasets via Venn diagrams.
+
 
 🚧 `diff132_d50_nDIA.Rmd`: R Markdown pipeline for nDIA proteome analysis of whole cell iNeurons and iDA
 - nDIA-based quantification of whole-cell iN and iDA neurons at day 50.
@@ -34,6 +36,7 @@ Modules
   - Module 10: nDIA-nMOST Comparative Analysis
   - Module 11: PPI Vulnerability Analysis - Neuronal nDIA
   - Module 12: PPI Vulnerability Analysis - HeLa nMOST
+
 
 🚧 `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd`: R Markdown pipeline for TMTpro proteome analysis of neuronal whole cell, soma and projections fractions of iNeurons
 -	TMTpro-based proteome of iNeuron whole-cell, soma, and projection fractions at day 35.
