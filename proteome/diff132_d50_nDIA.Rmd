@@ -12632,11 +12632,26 @@ out_dir_radar <- file.path(out_dir_PPI, "Radarplot")
 dir.create(out_dir_radar, recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_radar, "tables"), recursive = TRUE, showWarnings = FALSE)
 
+
+# --- Define your 12 annotations in desired order (clockwise from top)  ---
+radar_annotations <- c(
+  "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome",
+  "Mito", "MitoMatrix", "OXPHOS", "Golgi",
+  "SynapseSVs","SVfusion","Presynaptic", "Postsynaptic"
+)
+
+# ("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic",  "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
 # Load required package
 if (!requireNamespace("fmsb", quietly = TRUE)) {
   install.packages("fmsb")
 }
 library(fmsb)
+
 
 # --- Prepare data for radar plot ---
 # Need: rows = disease classes, columns = annotations, values = normalized PPI loss
@@ -12685,16 +12700,12 @@ plot_radar_ppi <- function(radar_data, disease_class_palette, neuron_type, out_d
   # Get annotation columns (all except DiseaseClass)
   annot_cols <- setdiff(colnames(radar_data), "DiseaseClass")
   
-  # Select top annotations by variance (to avoid cluttered plot)
-  # Or keep all if <= 12
-  if (length(annot_cols) > 12) {
-    col_vars <- apply(radar_data[, annot_cols], 2, var, na.rm = TRUE)
-    top_annots <- names(sort(col_vars, decreasing = TRUE))[1:12]
-    radar_data <- radar_data %>% dplyr::select(DiseaseClass, all_of(top_annots))
-    annot_cols <- top_annots
-    message("Reduced to top 12 annotations by variance for readability")
+  # User Selected annotations
+  if (!is.null(radar_annotations)) {
+    annot_cols <- intersect(radar_annotations, annot_cols)
+    radar_data <- radar_data %>% dplyr::select(DiseaseClass, all_of(annot_cols))
   }
-  
+    
   # Prepare matrix for fmsb
   data_matrix <- as.data.frame(radar_data[, annot_cols])
   rownames(data_matrix) <- radar_data$DiseaseClass
