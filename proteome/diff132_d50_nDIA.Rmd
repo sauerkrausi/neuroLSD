@@ -12601,6 +12601,9 @@ plot_ppi_diseaseclass_impact(
 ```
 
 
+## Radar / Spider plot for lost PPI / per annotation / per disease class
+
+
 # Visualization of KO x Neuron x Annotation effect on PPIs
 ## Per-KO PPI vulnerability profiles by confidence scores
 ```{r}
