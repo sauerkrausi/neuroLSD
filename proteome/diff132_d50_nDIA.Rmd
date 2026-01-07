@@ -12627,6 +12627,10 @@ plot_ppi_diseaseclass_impact(
 # One plot per neuron type, overlaid disease classes
 # =========================================================================
 
+# --- Make Output Directory ---
+out_dir_radar <- file.path(out_dir_PPI, "Radarplot")
+dir.create(out_dir_radar, recursive = TRUE, showWarnings = FALSE)
+
 # Load required package
 if (!requireNamespace("fmsb", quietly = TRUE)) {
   install.packages("fmsb")
@@ -12638,17 +12642,13 @@ library(fmsb)
 
 prepare_radar_data <- function(df_states, shared_long, disease_class_df, neuron_type) {
   
-  # Tag edges with annotations (one edge can have multiple tags)
-  shared_tags <- shared_long %>%
-    dplyr::distinct(key, tag)
+  shared_tags <- shared_long %>% dplyr::distinct(key, tag)
   
-  # Merge - use existing DiseaseClass column if present, otherwise join
   df_tagged <- df_states %>%
     dplyr::filter(neuron == neuron_type) %>%
+    dplyr::mutate(KO = toupper(genotype)) %>%
     dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many")
   
-  # If DiseaseClass not already in df_states, add it
-
   if (!"DiseaseClass" %in% colnames(df_tagged)) {
     disease_map <- disease_class_df %>%
       dplyr::mutate(sample = toupper(sample)) %>%
@@ -12656,23 +12656,17 @@ prepare_radar_data <- function(df_states, shared_long, disease_class_df, neuron_
       dplyr::distinct()
     
     df_tagged <- df_tagged %>%
-      dplyr::mutate(KO = toupper(genotype)) %>%
       dplyr::left_join(disease_map, by = c("KO" = "sample"))
   }
   
-  # Filter to valid entries
-  df_tagged <- df_tagged %>%
-    dplyr::filter(!is.na(tag), !is.na(DiseaseClass))
+  df_tagged <- df_tagged %>% dplyr::filter(!is.na(tag), !is.na(DiseaseClass))
   
-  # Count lost PPIs per disease class × annotation, normalized by number of KOs
   radar_data <- df_tagged %>%
     dplyr::filter(state == "lost") %>%
     dplyr::group_by(DiseaseClass, tag) %>%
     dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
     dplyr::left_join(
-      df_tagged %>%
-        dplyr::distinct(KO, DiseaseClass) %>%
-        dplyr::count(DiseaseClass, name = "n_KOs"),
+      df_tagged %>% dplyr::distinct(KO, DiseaseClass) %>% dplyr::count(DiseaseClass, name = "n_KOs"),
       by = "DiseaseClass"
     ) %>%
     dplyr::mutate(loss_per_KO = n_lost / n_KOs) %>%
@@ -12681,6 +12675,7 @@ prepare_radar_data <- function(df_states, shared_long, disease_class_df, neuron_
   
   return(radar_data)
 }
+
 
 # --- Plot radar chart ---
 plot_radar_ppi <- function(radar_data, disease_class_palette, neuron_type, out_dir) {
@@ -12720,7 +12715,7 @@ plot_radar_ppi <- function(radar_data, disease_class_palette, neuron_type, out_d
   fill_colors <- adjustcolor(line_colors, alpha.f = 0.15)
   
   # Plot
-  pdf(file.path(out_dir, paste0("radar_ppi_vulnerability_", neuron_type, ".pdf")), width = 8, height = 8)
+  pdf(file.path(out_dir, paste0("FSMDradar_ppi_vulnerability_", neuron_type, ".pdf")), width = 8, height = 8)
   
   par(mar = c(1, 1, 2, 1))
   
@@ -12825,8 +12820,8 @@ radar_data_iN <- prepare_radar_data(
   neuron_type = "iN"
 )
 
-plot_radar_ppi(radar_data_iN, disease_class_palette, "iN", out_dir_ppi_vuln)
-plot_radar_ggplot(radar_data_iN, disease_class_palette, "iN", out_dir_ppi_vuln)
+plot_radar_ppi(radar_data_iN, disease_class_palette, "iN", out_dir_radar)
+plot_radar_ggplot(radar_data_iN, disease_class_palette, "iN", out_dir_radar)
 
 # iDA
 radar_data_iDA <- prepare_radar_data(
@@ -12836,13 +12831,13 @@ radar_data_iDA <- prepare_radar_data(
   neuron_type = "iDA"
 )
 
-plot_radar_ppi(radar_data_iDA, disease_class_palette, "iDA", out_dir_ppi_vuln)
-plot_radar_ggplot(radar_data_iDA, disease_class_palette, "iDA", out_dir_ppi_vuln)
+plot_radar_ppi(radar_data_iDA, disease_class_palette, "iDA", out_dir_radar)
+plot_radar_ggplot(radar_data_iDA, disease_class_palette, "iDA", out_dir_radar)
 
 
 # --- Save radar data tables ---
-write_csv(radar_data_iN, file.path(out_dir_ppi_vuln, "tables", "radar_ppi_data_iN.csv"))
-write_csv(radar_data_iDA, file.path(out_dir_ppi_vuln, "tables", "radar_ppi_data_iDA.csv"))
+write_csv(radar_data_iN, file.path(out_dir_radar, "tables", "radar_ppi_data_iN.csv"))
+write_csv(radar_data_iDA, file.path(out_dir_radar, "tables", "radar_ppi_data_iDA.csv"))
 
 
 ```
