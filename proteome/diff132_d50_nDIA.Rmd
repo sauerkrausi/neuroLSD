@@ -12501,6 +12501,9 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
     dplyr::summarise(n = sum(state == "lost", na.rm = TRUE), .groups = "drop") |>
     dplyr::filter(n > 0)
 
+  # add order from disease palette
+  tag_disease_loss$DiseaseClass <- factor(tag_disease_loss$DiseaseClass, levels = names(disease_class_palette))
+  
   
  # ---- plotting calls of data ---- 
   # Plot 1: faceted stacked barplot by tag
@@ -12531,6 +12534,9 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
     ) |>
     dplyr::mutate(n_norm = n_lost / n_KOs) |>
     dplyr::filter(n_KOs > 0)
+  
+  # add order from disease palette
+  bar_norm_tag_df$DiseaseClass <- factor(bar_norm_tag_df$DiseaseClass, levels = names(disease_class_palette))
   
   # Plot function: one faceted barplot per neuron
   plot_normed_bar_by_tag <- function(nt) {
@@ -12567,6 +12573,10 @@ plot_ppi_diseaseclass_impact <- function(df_states, shared_long, disease_class_d
     dplyr::group_by(neuron, DiseaseClass) |>
     dplyr::summarise(n = dplyr::n(), .groups = "drop")
 
+  # add order from disease palette
+  pie_df$DiseaseClass <- factor(pie_df$DiseaseClass, levels = names(disease_class_palette))
+  
+  # Plot function: pie charts for neurons / disease class
   plot_one_pie <- function(nt) {
     dd <- pie_df |> dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) return(invisible(NULL))
