@@ -317,8 +317,8 @@ disease_classes <- list(
 
 
 # convert into df
-disease_class_df <- stack(disease_classes) %>%
-  rename(sample = values, DiseaseClass = ind)
+disease_classes_dataframe <- stack(disease_classes)
+colnames(disease_classes_dataframe) <- c("sample", "DiseaseClass")
 
 
 # give it a color
@@ -11918,7 +11918,6 @@ disease_class_palette <- c(
   PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
 )
-
 
 # ---------------------------------------------------
 # Plotting: global bars, KO×KO correlations (iN/iDA + combined), per-KO organelle heatmaps
