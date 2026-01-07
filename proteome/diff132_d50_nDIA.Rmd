@@ -331,6 +331,13 @@ disease_class_palette <- c(
   PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
 )
+
+# create disease_class_df
+disease_class_df <- data.frame(
+  sample = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1", "GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH", "AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1", "PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8", "ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5", "GNPTAB", "GNPTG", "SUMF1", "GAA", "LIPA"),
+  DiseaseClass = c(rep("Sphingolipidoses", 11), rep("Mucopolysaccharidoses", 11), rep("Glycoproteinoses", 7), rep("Neuronal.ceroid.lipofuscinoses", 13), rep("Integral.membrane.protein.disorders", 9), rep("PTM.defects", 3), rep("Lipid.storage.diseases", 2))
+)
+
 ```
 
 
@@ -11578,7 +11585,7 @@ ko_edge_states <- baseline_expanded %>%
     OrgPair = .same_organelle(., organelle_tags),
     genotype_neuron = paste(genotype, neuron, sep = "_")
   ) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample")) %>%
+  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample")) %>%
   dplyr::select(
     key, Protein1, Protein2, Gene1, Gene2,
     genotype, neuron, genotype_neuron, DiseaseClass,
