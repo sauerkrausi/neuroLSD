@@ -261,7 +261,7 @@ chordDiagram(data)
 ## save plot as pdf 
 
 # set colors for disease groups
-col = c(Sphingolipidoses="#D53E4F",	Mucopolysaccharidoses="#F46D43",	Glycoproteinoses="#FDAE61", Neuronal.ceroid.lipofucinoses="#FEE08B",	
+col = c(Sphingolipidoses="#D53E4F",	Mucopolysaccharidoses="#F46D43",	Glycoproteinoses="#FDAE61", Neuronal.ceroid.lipofuscinoses="#FEE08B",	
         Integral.membrane.protein.disorders="#E6F598",	PTM.defects="#ABDDA4",	Lipid.storage.diseases= "#66C2A5", 
 AGA="grey76", ARSA="grey76", ARSB="grey76", ASAH1="#D53E4F", CLN1.PPT1="#FEE08B", CLN10.CTSD="#FEE08B", CLN11.GRN="#FEE08B", CLN12.ATP13A2="#FEE08B",CLN12.ATP13A2="#E6F598",  CLN13.CTSF="#FEE08B", CLN14.KCTD7="grey76", CLN2.TPP1="#FEE08B", CLN3="#FEE08B", CLN4.DNAJC5="#FEE08B", CLN5="#FEE08B", CLN6="#FEE08B", CLN7.MFSD8="#FEE08B", CLN8="#FEE08B", CTNS="grey76", CTSA="grey76", FUCA="grey76", GAA="#66C2A5", GALC="grey76", GALNS="grey76", GBA1="#D53E4F", GLA="grey76", GLB1="grey76", GM2A="grey76", GNPTAB="grey76", GNPTG="grey76", GNS="grey76", GUSB="grey76", HEXA="#D53E4F", HEXB="#D53E4F", HGSNAT="grey76", HYAL1="grey76", IDS="grey76", IDUA="grey76", LAMP2="grey76", LIPA="#66C2A5", MAN2B1="grey76", MANBA="grey76", MCOLN1="#E6F598", NAGA="grey76", NAGLU="grey76", NEU1="grey76", NPC1="#E6F598", NPC2="#E6F598", PSAP="#D53E4F", SCARB2="grey76", SGSH="grey76", SLC17A5="grey76", SMPD1="#D53E4F", SUMF1="grey76")
   
@@ -309,7 +309,7 @@ disease_classes <- list(
   Sphingolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
   Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
   Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
-  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Neuronal.ceroid.lipofuscinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
   Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
   PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
   Lipid.storage.diseases = c("GAA", "LIPA")
@@ -326,7 +326,7 @@ disease_class_palette <- c(
   Sphingolipidoses = "#D53E4F",
   Mucopolysaccharidoses = "#F46D43",
   Glycoproteinoses = "#FDAE61",
-  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Neuronal.ceroid.lipofuscinoses = "#FEE08B",
   Integral.membrane.protein.disorders = "#E6F598",
   PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
@@ -6382,7 +6382,7 @@ disease_classes <- list(
   Sphingolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
   Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
   Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
-  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Neuronal.ceroid.lipofuscinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
   Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
   PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
   Lipid.storage.diseases = c("GAA", "LIPA")
@@ -7106,7 +7106,7 @@ disease_classes <- list(
   Sphingolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
   Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
   Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
-  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Neuronal.ceroid.lipofuscinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
   Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
   PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
   Lipid.storage.diseases = c("GAA", "LIPA")
@@ -7118,14 +7118,14 @@ disease_classes <- list(
 disease_colors = c(Sphingolipidoses= "#1874CD",	
         Mucopolysaccharidoses="#4995D5",
         Glycoproteinoses="#7BB6DD" , 
-        Neuronal.ceroid.lipofucinoses="#ADD8E6"  ,	
+        Neuronal.ceroid.lipofuscinoses="#ADD8E6"  ,	
         Integral.membrane.protein.disorders="#9DBAC3",	
         PTM.defects="#8E9CA1" ,
         Lipid.storage.diseases= "#7F7F7F") 
         
 # disease_colors <- c(
 #   Sphingolipidoses = "dodgerblue3",
-#   Neuronal.ceroid.lipofucinoses = "lightblue",
+#   Neuronal.ceroid.lipofuscinoses = "lightblue",
 #   Integral.membrane.protein.disorders = "grey70"
 # )
 disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
@@ -8720,7 +8720,7 @@ ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_topHits.pdf"),  day305
 # Disease-class-based comparison day50
 Focus on disease classes with good coverage 
 1. Sphingolipidoises
-2. Neuronal.ceroid.lipofucinoses
+2. Neuronal.ceroid.lipofuscinoses
 3. Integral.membrane.protein.disorders
 
 
@@ -8734,13 +8734,13 @@ Focus on disease classes with good coverage
 # --- Step 1. Define Disease Class Map
 disease_classes <- list(
   Sphingolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
-  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Neuronal.ceroid.lipofuscinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
   Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
   Lipid.storage.diseases = c("GAA", "LIPA")
 )
 disease_colors <- c(
   Sphingolipidoses = "#D53E4F",
-  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Neuronal.ceroid.lipofuscinoses = "#FEE08B",
   Integral.membrane.protein.disorders = "#E6F598",
   Lipid.storage.diseases = "#66C2A5"
 )
@@ -8856,7 +8856,7 @@ cor_threshold <- 0.6
 neuron_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F")
 # disease_colors <- c(
 #   Sphingolipidoses = "#D53E4F",
-#   Neuronal.ceroid.lipofucinoses = "#FEE08B",
+#   Neuronal.ceroid.lipofuscinoses = "#FEE08B",
 #   Integral.membrane.protein.disorders = "#E6F598",
 #   Lipid.storage.diseases = "#66C2A5"
 # )
@@ -10543,14 +10543,14 @@ disease_classes <- list(
   Sphingolipidoses = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
   Mucopolysaccharidoses = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
   Glycoproteinoses = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
-  Neuronal.ceroid.lipofucinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Neuronal.ceroid.lipofuscinoses = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
   Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
   PTM.defects = c("GNPTAB", "GNPTG", "SUMF1"),
   Lipid.storage.diseases = c("GAA", "LIPA")
 )
 disease_colors <- c(
   Sphingolipidoses = "#D53E4F", Mucopolysaccharidoses = "#F46D43",
-  Glycoproteinoses = "#FDAE61", Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Glycoproteinoses = "#FDAE61", Neuronal.ceroid.lipofuscinoses = "#FEE08B",
   Integral.membrane.protein.disorders = "#E6F598", PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
 )
@@ -11920,7 +11920,7 @@ disease_class_palette <- c(
   Sphingolipidoses = "#D53E4F",
   Mucopolysaccharidoses = "#F46D43",
   Glycoproteinoses = "#FDAE61",
-  Neuronal.ceroid.lipofucinoses = "#FEE08B",
+  Neuronal.ceroid.lipofuscinoses = "#FEE08B",
   Integral.membrane.protein.disorders = "#E6F598",
   PTM.defects = "#ABDDA4",
   Lipid.storage.diseases = "#66C2A5"
@@ -11950,7 +11950,7 @@ plot_ppi_vulnerability <- function(df_edges,
       Sphingolipidoses="#D53E4F",
       Mucopolysaccharidoses="#F46D43",
       Glycoproteinoses="#FDAE61",
-      Neuronal.ceroid.lipofucinoses="#FEE08B",
+      Neuronal.ceroid.lipofuscinoses="#FEE08B",
       Integral.membrane.protein.disorders="#E6F598",
       PTM.defects="#ABDDA4",
       Lipid.storage.diseases="#66C2A5"
@@ -12118,7 +12118,8 @@ plot_ppi_vulnerability <- function(df_edges,
       rownames(annotation_df) <- annotation_df$genotype
       annotation_df$genotype <- NULL
       ann_colors <- .ann_colors_safe(annotation_df)
-
+      colnames(annotation_df) <- tolower(colnames(annotation_df))
+      
       # plot heatmap
       pheatmap::pheatmap(
         mat = rho,
@@ -12205,6 +12206,8 @@ plot_ppi_vulnerability <- function(df_edges,
         }
         if (length(ann_colors) == 0) ann_colors <- NULL
   
+        
+        
         # plot heatmap
         pheatmap::pheatmap(
           mat = rho,
@@ -12330,7 +12333,7 @@ plot_ppi_vulnerability(
   out_dir   = out_dir_ppi_vuln,
   plot_set  = c("global_bar", "global_scatter", "global_corr","global_corr_combined","organelle"),
   neuron    = "both",
-  disease_class_df = disease_classes_dataframe
+  disease_class_df = disease_class_df
 )
 ```
 
@@ -19254,7 +19257,7 @@ plot_hela_ppi_vulnerability <- function(df_edges,
       Sphingolipidoses="#D53E4F",
       Mucopolysaccharidoses="#F46D43",
       Glycoproteinoses="#FDAE61",
-      Neuronal.ceroid.lipofucinoses="#FEE08B",
+      Neuronal.ceroid.lipofuscinoses="#FEE08B",
       Integral.membrane.protein.disorders="#E6F598",
       PTM.defects="#ABDDA4",
       Lipid.storage.diseases="#66C2A5"
