@@ -12602,6 +12602,231 @@ plot_ppi_diseaseclass_impact(
 
 
 ## Radar / Spider plot for lost PPI / per annotation / per disease class
+```{r}
+# =========================================================================
+# Radar/Spider Plots: PPI Vulnerability Profile by Disease Class
+# One plot per neuron type, overlaid disease classes
+# =========================================================================
+
+# Load required package
+if (!requireNamespace("fmsb", quietly = TRUE)) {
+  install.packages("fmsb")
+}
+library(fmsb)
+
+# --- Prepare data for radar plot ---
+# Need: rows = disease classes, columns = annotations, values = normalized PPI loss
+
+prepare_radar_data <- function(df_states, shared_long, disease_class_df, neuron_type) {
+  
+  # Tag edges with annotations (one edge can have multiple tags)
+  shared_tags <- shared_long %>%
+    dplyr::distinct(key, tag)
+  
+  # Merge - use existing DiseaseClass column if present, otherwise join
+  df_tagged <- df_states %>%
+    dplyr::filter(neuron == neuron_type) %>%
+    dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many")
+  
+  # If DiseaseClass not already in df_states, add it
+
+  if (!"DiseaseClass" %in% colnames(df_tagged)) {
+    disease_map <- disease_class_df %>%
+      dplyr::mutate(sample = toupper(sample)) %>%
+      dplyr::select(sample, DiseaseClass) %>%
+      dplyr::distinct()
+    
+    df_tagged <- df_tagged %>%
+      dplyr::mutate(KO = toupper(genotype)) %>%
+      dplyr::left_join(disease_map, by = c("KO" = "sample"))
+  }
+  
+  # Filter to valid entries
+  df_tagged <- df_tagged %>%
+    dplyr::filter(!is.na(tag), !is.na(DiseaseClass))
+  
+  # Count lost PPIs per disease class × annotation, normalized by number of KOs
+  radar_data <- df_tagged %>%
+    dplyr::filter(state == "lost") %>%
+    dplyr::group_by(DiseaseClass, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    dplyr::left_join(
+      df_tagged %>%
+        dplyr::distinct(KO, DiseaseClass) %>%
+        dplyr::count(DiseaseClass, name = "n_KOs"),
+      by = "DiseaseClass"
+    ) %>%
+    dplyr::mutate(loss_per_KO = n_lost / n_KOs) %>%
+    dplyr::select(DiseaseClass, tag, loss_per_KO) %>%
+    tidyr::pivot_wider(names_from = tag, values_from = loss_per_KO, values_fill = 0)
+  
+  return(radar_data)
+}
+
+# --- Plot radar chart ---
+plot_radar_ppi <- function(radar_data, disease_class_palette, neuron_type, out_dir) {
+  
+  # fmsb requires: row 1 = max values, row 2 = min values, row 3+ = data
+  # Get annotation columns (all except DiseaseClass)
+  annot_cols <- setdiff(colnames(radar_data), "DiseaseClass")
+  
+  # Select top annotations by variance (to avoid cluttered plot)
+  # Or keep all if <= 12
+  if (length(annot_cols) > 12) {
+    col_vars <- apply(radar_data[, annot_cols], 2, var, na.rm = TRUE)
+    top_annots <- names(sort(col_vars, decreasing = TRUE))[1:12]
+    radar_data <- radar_data %>% dplyr::select(DiseaseClass, all_of(top_annots))
+    annot_cols <- top_annots
+    message("Reduced to top 12 annotations by variance for readability")
+  }
+  
+  # Prepare matrix for fmsb
+  data_matrix <- as.data.frame(radar_data[, annot_cols])
+  rownames(data_matrix) <- radar_data$DiseaseClass
+  
+  # Add max and min rows
+  max_val <- max(data_matrix, na.rm = TRUE) * 1.1
+  min_val <- 0
+  
+  radar_df <- rbind(
+    rep(max_val, ncol(data_matrix)),  # max
+    rep(min_val, ncol(data_matrix)),  # min
+    data_matrix
+  )
+  colnames(radar_df) <- annot_cols
+  
+  # Get colors for disease classes (with transparency for fill)
+  disease_classes <- radar_data$DiseaseClass
+  line_colors <- disease_class_palette[disease_classes]
+  fill_colors <- adjustcolor(line_colors, alpha.f = 0.15)
+  
+  # Plot
+  pdf(file.path(out_dir, paste0("radar_ppi_vulnerability_", neuron_type, ".pdf")), width = 8, height = 8)
+  
+  par(mar = c(1, 1, 2, 1))
+  
+  fmsb::radarchart(
+    radar_df,
+    axistype = 1,
+    pcol = line_colors,
+    pfcol = fill_colors,
+    plwd = 2,
+    plty = 1,
+    cglcol = "grey70",
+    cglty = 1,
+    cglwd = 0.8,
+    axislabcol = "grey30",
+    vlcex = 0.7,
+    calcex = 0.6,
+    title = paste0("PPI Vulnerability Profile by Disease Class (", neuron_type, ")\nNormalized lost PPIs per KO")
+  )
+  
+  # Add legend
+  legend(
+    "topright",
+    legend = disease_classes,
+    col = line_colors,
+    lwd = 2,
+    lty = 1,
+    bty = "n",
+    cex = 0.7
+  )
+  
+  dev.off()
+  
+  message("Saved radar plot: ", file.path(out_dir, paste0("radar_ppi_vulnerability_", neuron_type, ".pdf")))
+}
+
+
+# --- Alternative: ggplot2-based radar using coord_polar ---
+# More customizable, cleaner output
+plot_radar_ggplot <- function(radar_data, disease_class_palette, neuron_type, out_dir) {
+  
+  # Get annotation columns
+  annot_cols <- setdiff(colnames(radar_data), "DiseaseClass")
+  
+  # Select top annotations if too many
+  if (length(annot_cols) > 15) {
+    col_vars <- apply(radar_data[, annot_cols], 2, var, na.rm = TRUE)
+    top_annots <- names(sort(col_vars, decreasing = TRUE))[1:15]
+    radar_data <- radar_data %>% dplyr::select(DiseaseClass, all_of(top_annots))
+    annot_cols <- top_annots
+  }
+  
+  # Convert to long format
+  radar_long <- radar_data %>%
+    tidyr::pivot_longer(cols = all_of(annot_cols), names_to = "annotation", values_to = "loss_per_KO") %>%
+    dplyr::mutate(annotation = factor(annotation, levels = annot_cols))
+  
+  # Close the polygon by adding first point at end
+  radar_long_closed <- radar_long %>%
+    dplyr::group_by(DiseaseClass) %>%
+    dplyr::arrange(annotation) %>%
+    dplyr::group_modify(~ {
+      .x %>% dplyr::bind_rows(.x[1, ])
+    }) %>%
+    dplyr::ungroup()
+  
+  # Plot
+  p_radar <- ggplot(radar_long, aes(x = annotation, y = loss_per_KO, group = DiseaseClass, color = DiseaseClass, fill = DiseaseClass)) +
+    geom_polygon(alpha = 0.1, linewidth = 0.8) +
+    geom_point(size = 1.5) +
+    coord_polar(start = 0) +
+    scale_color_manual(values = disease_class_palette, name = "Disease Class") +
+    scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    labs(
+      title = paste0("PPI Vulnerability Profile (", neuron_type, ")"),
+      subtitle = "Normalized lost PPIs per KO by annotation",
+      x = NULL,
+      y = "Lost PPIs per KO"
+    ) +
+    theme_minimal(base_size = 8) +
+    theme(
+      axis.text.x = element_text(size = 6),
+      axis.text.y = element_text(size = 5),
+      legend.position = "right",
+      legend.key.size = unit(0.4, "cm"),
+      panel.grid.major = element_line(color = "grey85", linewidth = 0.3)
+    )
+  
+  ggsave(file.path(out_dir, paste0("radar_ppi_vulnerability_ggplot_", neuron_type, ".pdf")), p_radar, width = 8, height = 7, device = cairo_pdf)
+  
+  message("Saved ggplot radar: ", file.path(out_dir, paste0("radar_ppi_vulnerability_ggplot_", neuron_type, ".pdf")))
+  
+  return(p_radar)
+}
+
+
+# --- Run for both neuron types ---
+# iN
+radar_data_iN <- prepare_radar_data(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  neuron_type = "iN"
+)
+
+plot_radar_ppi(radar_data_iN, disease_class_palette, "iN", out_dir_ppi_vuln)
+plot_radar_ggplot(radar_data_iN, disease_class_palette, "iN", out_dir_ppi_vuln)
+
+# iDA
+radar_data_iDA <- prepare_radar_data(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  neuron_type = "iDA"
+)
+
+plot_radar_ppi(radar_data_iDA, disease_class_palette, "iDA", out_dir_ppi_vuln)
+plot_radar_ggplot(radar_data_iDA, disease_class_palette, "iDA", out_dir_ppi_vuln)
+
+
+# --- Save radar data tables ---
+write_csv(radar_data_iN, file.path(out_dir_ppi_vuln, "tables", "radar_ppi_data_iN.csv"))
+write_csv(radar_data_iDA, file.path(out_dir_ppi_vuln, "tables", "radar_ppi_data_iDA.csv"))
+
+
+```
 
 
 # Visualization of KO x Neuron x Annotation effect on PPIs
