@@ -12922,9 +12922,9 @@ plot_radar_diseaseclass <- function(radar_data, disease_class, neuron_type, rada
 
 # --- Define annotations for radar ---
 radar_annotations <- c(
-  "Lysosome", "EndoLyso", "EarlyEndosome", "RecyclingEndosome",
+  "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome",
   "Mito", "MitoMatrix", "OXPHOS", "Golgi",
-  "SynapseSVs", "SVfusion", "Presynaptic", "Postsynaptic"
+  "SynapseSVs","SVfusion","Presynaptic", "Postsynaptic"
 )
 
 # --- Prepare data ---
@@ -15093,24 +15093,18 @@ dir.create(out_dir_complex_tables, recursive = TRUE, showWarnings = FALSE)
 
 # --- Annotations to include ---
 selected_annotations <- c(
-"Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
-                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
-                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
-                     "Presynaptic",  "NeuroDev", "EndoLyso", "EarlyEndosome",
-                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
-
-# ("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
-#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
-#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
-#                      "Presynaptic",  "NeuroDev", "EndoLyso", "EarlyEndosome",
-#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
-
+  "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+  "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+  "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+  "Presynaptic", "NeuroDev", "EndoLyso", "EarlyEndosome",
+  "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase"
+)
 
 # --- Disease class map (bare genotype -> DiseaseClass) ---
 disease_map <- disease_class_df %>%
   dplyr::mutate(sample = toupper(gsub("_(iN|iDA)$", "", sample))) %>%
   dplyr::select(sample, DiseaseClass) %>%
-  dplyr::distinct()
+  dplyr::distinct(sample, .keep_all = TRUE)
 
 
 # =========================================================================
@@ -15124,7 +15118,6 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
                                           out_dir_plots, 
                                           out_dir_tables) {
 
-  # Add disease class
   df <- trimers_ko_states %>%
     dplyr::mutate(KO = toupper(genotype)) %>%
     dplyr::left_join(disease_map, by = c("KO" = "sample")) %>%
@@ -15132,9 +15125,10 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
     tidyr::separate_rows(shared_organelle, sep = ";") %>%
     dplyr::filter(shared_organelle %in% selected_annotations)
 
-  # Set factor order
   df$DiseaseClass <- factor(df$DiseaseClass, levels = names(disease_class_palette))
   df$shared_organelle <- factor(df$shared_organelle, levels = selected_annotations)
+
+  n_kos <- df %>% dplyr::distinct(KO, DiseaseClass, neuron) %>% dplyr::count(DiseaseClass, neuron, name = "n_KOs")
 
   # --- Broken trimers ---
   broken_df <- df %>%
@@ -15143,26 +15137,21 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
     dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
     dplyr::filter(n > 0)
 
-  # Normalize by n_KOs per disease class
-  n_kos <- df %>% dplyr::distinct(KO, DiseaseClass, neuron) %>% dplyr::count(DiseaseClass, neuron, name = "n_KOs")
   broken_norm <- broken_df %>%
     dplyr::left_join(n_kos, by = c("DiseaseClass", "neuron")) %>%
     dplyr::mutate(n_norm = n / n_KOs)
 
-  # write CSV file
   write_csv(broken_norm, file.path(out_dir_tables, "sourcedata_trimers_broken_by_diseaseclass.csv"))
 
-  # function for looping for both neuron types
   for (nt in c("iN", "iDA")) {
-    dd <- broken_norm %>% dplyr::filter(neuron == nt)
+    dd <- broken_norm %>% dplyr::filter(neuron == nt, !is.na(shared_organelle))
     if (nrow(dd) == 0) next
 
-    # Set factor levels to all annotations (enables empty facets)
-    dd$shared_organelle <- factor(dd$shared_organelle, levels = all_annotations)
+    dd$shared_organelle <- factor(dd$shared_organelle, levels = selected_annotations)
     
     p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
       geom_col(width = 0.7, color = "black", linewidth = 0.2) +
-      facet_wrap(~shared_organelle, scales = "free_y") +
+      facet_wrap(~shared_organelle, ncol = 5, drop = FALSE, scales = "free_y") +
       scale_fill_manual(values = disease_class_palette, drop = FALSE) +
       labs(title = paste("Broken trimers per KO by annotation -", nt), x = NULL, y = "Broken trimers per KO") +
       theme_bw(base_size = 6) +
@@ -15173,7 +15162,7 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
         panel.border = element_rect(color = "black", fill = NA)
       )
 
-    ggsave(file.path(out_dir_plots, paste0("bars_trimers_broken_by_diseaseclass_", nt, ".pdf")), p, width = 8, height = 6, device = cairo_pdf)
+    ggsave(file.path(out_dir_plots, paste0("bars_trimers_broken_by_diseaseclass_", nt, ".pdf")), p, width = 12, height = 12, device = cairo_pdf)
   }
 
   # --- Partial trimers ---
@@ -15190,15 +15179,14 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
   write_csv(partial_norm, file.path(out_dir_tables, "sourcedata_trimers_partial_by_diseaseclass.csv"))
 
   for (nt in c("iN", "iDA")) {
-    dd <- partial_norm %>% dplyr::filter(neuron == nt)
+    dd <- partial_norm %>% dplyr::filter(neuron == nt, !is.na(shared_organelle))
     if (nrow(dd) == 0) next
 
-    # Set factor levels to all annotations (enables empty facets)
-    dd$shared_organelle <- factor(dd$shared_organelle, levels = all_annotations)
+    dd$shared_organelle <- factor(dd$shared_organelle, levels = selected_annotations)
 
     p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
       geom_col(width = 0.7, color = "black", linewidth = 0.2) +
-      facet_wrap(~shared_organelle, scales = "free_y") +
+      facet_wrap(~shared_organelle, ncol = 5, drop = FALSE, scales = "free_y") +
       scale_fill_manual(values = disease_class_palette, drop = FALSE) +
       labs(title = paste("Partial trimers per KO by annotation -", nt), x = NULL, y = "Partial trimers per KO") +
       theme_bw(base_size = 6) +
@@ -15209,58 +15197,65 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
         panel.border = element_rect(color = "black", fill = NA)
       )
 
-    ggsave(file.path(out_dir_plots, paste0("bars_trimers_partial_by_diseaseclass_", nt, ".pdf")), p, width = 8, height = 6, device = cairo_pdf)
+    ggsave(file.path(out_dir_plots, paste0("bars_trimers_partial_by_diseaseclass_", nt, ".pdf")), p, width = 12, height = 12, device = cairo_pdf)
   }
 }
 
 
-
 # =========================================================================
-# COMPLEXES
+# COMPLEXES: Barplots of affected complexes by disease class
+# Affected = disrupted (≥75% edges lost) + partial (25-75% edges lost)
 # =========================================================================
 
 plot_complex_diseaseclass_bars <- function(complex_ko_summary, disease_map, disease_class_palette,
                                            selected_annotations, out_dir_plots, out_dir_tables) {
-
-  # Add disease class
+  
+  # Prepare data: join disease class, filter to valid organelles
   df <- complex_ko_summary %>%
     dplyr::mutate(KO = toupper(genotype)) %>%
     dplyr::left_join(disease_map, by = c("KO" = "sample")) %>%
     dplyr::filter(!is.na(DiseaseClass), !is.na(organelle), organelle != "Other") %>%
     dplyr::filter(organelle %in% selected_annotations)
-
-  # Set factor order
+  
+  # Set factor levels for consistent ordering
   df$DiseaseClass <- factor(df$DiseaseClass, levels = names(disease_class_palette))
   df$organelle <- factor(df$organelle, levels = selected_annotations)
-
-  # n_KOs per disease class
-  n_kos <- df %>% dplyr::distinct(KO, DiseaseClass, neuron) %>% dplyr::count(DiseaseClass, neuron, name = "n_KOs")
-
-  # --- Disrupted complexes ---
-  disrupted_df <- df %>%
-    dplyr::filter(complex_state == "disrupted") %>%
+  
+  # Count KOs per disease class × neuron (for normalization)
+  n_kos <- df %>% 
+    dplyr::distinct(KO, DiseaseClass, neuron) %>% 
+    dplyr::count(DiseaseClass, neuron, name = "n_KOs")
+  
+  # Aggregate affected complexes (disrupted + partial)
+  affected_df <- df %>%
+    dplyr::filter(complex_state %in% c("disrupted", "partial")) %>%
     dplyr::group_by(neuron, DiseaseClass, organelle) %>%
     dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
     dplyr::filter(n > 0)
-
-  disrupted_norm <- disrupted_df %>%
+  
+  # Normalize by number of KOs per disease class
+  affected_norm <- affected_df %>%
     dplyr::left_join(n_kos, by = c("DiseaseClass", "neuron")) %>%
     dplyr::mutate(n_norm = n / n_KOs)
-
-  write_csv(disrupted_norm, file.path(out_dir_tables, "sourcedata_complexes_disrupted_by_diseaseclass.csv"))
-
+  
+  # Save source data
+  write_csv(affected_norm, file.path(out_dir_tables, "sourcedata_complexes_affected_by_diseaseclass.csv"))
+  
+  # Plot: one PDF per neuron type
   for (nt in c("iN", "iDA")) {
-    dd <- disrupted_norm %>% dplyr::filter(neuron == nt)
+    dd <- affected_norm %>% dplyr::filter(neuron == nt, !is.na(organelle))
     if (nrow(dd) == 0) next
-
-    # Set factor levels to all annotations (enables empty facets)
-    dd$organelle <- factor(dd$organelle, levels = all_annotations)
+    
+    # Set factor levels for empty facets
+    dd$organelle <- factor(dd$organelle, levels = selected_annotations)
     
     p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
       geom_col(width = 0.7, color = "black", linewidth = 0.2) +
-      facet_wrap(~organelle, scales = "free_y") +
+      facet_wrap(~organelle, ncol = 5, drop = FALSE, scales = "free_y") +
       scale_fill_manual(values = disease_class_palette, drop = FALSE) +
-      labs(title = paste("Disrupted complexes per KO by annotation -", nt), x = NULL, y = "Disrupted complexes per KO") +
+      labs(title = paste("Affected complexes per KO by annotation -", nt), 
+           x = NULL, 
+           y = "Affected complexes per KO") +
       theme_bw(base_size = 6) +
       theme(
         panel.grid = element_blank(),
@@ -15268,47 +15263,11 @@ plot_complex_diseaseclass_bars <- function(complex_ko_summary, disease_map, dise
         axis.text.x = element_text(angle = 45, hjust = 1),
         panel.border = element_rect(color = "black", fill = NA)
       )
-
-    ggsave(file.path(out_dir_plots, paste0("bars_complexes_disrupted_by_diseaseclass_", nt, ".pdf")), p, width = 8, height = 6, device = cairo_pdf)
-  }
-
-  # --- Partial complexes ---
-  partial_df <- df %>%
-    dplyr::filter(complex_state == "partial") %>%
-    dplyr::group_by(neuron, DiseaseClass, organelle) %>%
-    dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
-    dplyr::filter(n > 0)
-
-  partial_norm <- partial_df %>%
-    dplyr::left_join(n_kos, by = c("DiseaseClass", "neuron")) %>%
-    dplyr::mutate(n_norm = n / n_KOs)
-
-  write_csv(partial_norm, file.path(out_dir_tables, "sourcedata_complexes_partial_by_diseaseclass.csv"))
-
-  for (nt in c("iN", "iDA")) {
-    dd <- partial_norm %>% dplyr::filter(neuron == nt)
-    if (nrow(dd) == 0) next
-
-    # Set factor levels to all annotations (enables empty facets)
-    dd$organelle <- factor(dd$organelle, levels = all_annotations)
     
-    p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
-      geom_col(width = 0.7, color = "black", linewidth = 0.2) +
-      facet_wrap(~organelle, scales = "free_y") +
-      scale_fill_manual(values = disease_class_palette, drop = FALSE) +
-      labs(title = paste("Partial complexes per KO by annotation -", nt), x = NULL, y = "Partial complexes per KO") +
-      theme_bw(base_size = 6) +
-      theme(
-        panel.grid = element_blank(),
-        strip.background = element_rect(fill = "white", color = "black"),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.border = element_rect(color = "black", fill = NA)
-      )
-
-    ggsave(file.path(out_dir_plots, paste0("bars_complexes_partial_by_diseaseclass_", nt, ".pdf")), p, width = 8, height = 6, device = cairo_pdf)
+    ggsave(file.path(out_dir_plots, paste0("bars_complexes_affected_by_diseaseclass_", nt, ".pdf")), 
+           p, width = 12, height = 12, device = cairo_pdf)
   }
 }
-
 
 
 # =========================================================================
