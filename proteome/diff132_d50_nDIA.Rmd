@@ -12797,6 +12797,53 @@ write_csv(radar_data_iDA, file.path(out_dir_radar, "tables", "radar_ppi_data_iDA
 ```
 
 
+### Radar plot for lost PPIs / annotation / disease class => plot one plot for each class with individual genotypes 
+```{r}
+# =========================================================================
+# Radar/Spider Plots: PPI Vulnerability Profile 
+# One plot per neuron type per disease class
+# Each disease class shows the genotype components 
+# =========================================================================
+
+# --- Make Output Directory ---
+out_dir_radarDisClass <- file.path(out_dir_radar, "DisClassDetailed")
+dir.create(out_dir_radarDisClass, recursive = TRUE, showWarnings = FALSE)
+
+# --- Prepare data for radar plot ---
+prepare_radar_data_by_genotype <- function(df_states, shared_long, disease_class_df, neuron_type) {
+  
+  shared_tags <- shared_long %>% dplyr::distinct(key, tag)
+  
+  df_tagged <- df_states %>%
+    dplyr::filter(neuron == neuron_type) %>%
+    dplyr::mutate(KO = toupper(genotype)) %>%
+    dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many")
+  
+  if (!"DiseaseClass" %in% colnames(df_tagged)) {
+    disease_map <- disease_class_df %>%
+      dplyr::mutate(sample = toupper(sample)) %>%
+      dplyr::select(sample, DiseaseClass) %>%
+      dplyr::distinct()
+    
+    df_tagged <- df_tagged %>%
+      dplyr::left_join(disease_map, by = c("KO" = "sample"))
+  }
+  
+  df_tagged <- df_tagged %>% dplyr::filter(!is.na(tag), !is.na(DiseaseClass))
+  
+  # Keep genotype granularity instead of aggregating by DiseaseClass
+
+  radar_data <- df_tagged %>%
+    dplyr::filter(state == "lost") %>%
+    dplyr::group_by(genotype, DiseaseClass, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    tidyr::pivot_wider(names_from = tag, values_from = n_lost, values_fill = 0)
+  
+  return(radar_data)
+}
+```
+
+
 # Visualization of KO x Neuron x Annotation effect on PPIs
 ## Per-KO PPI vulnerability profiles by confidence scores
 ```{r}
