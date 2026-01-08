@@ -15149,12 +15149,17 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
     dplyr::left_join(n_kos, by = c("DiseaseClass", "neuron")) %>%
     dplyr::mutate(n_norm = n / n_KOs)
 
+  # write CSV file
   write_csv(broken_norm, file.path(out_dir_tables, "sourcedata_trimers_broken_by_diseaseclass.csv"))
 
+  # function for looping for both neuron types
   for (nt in c("iN", "iDA")) {
     dd <- broken_norm %>% dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) next
 
+    # Set factor levels to all annotations (enables empty facets)
+    dd$shared_organelle <- factor(dd$shared_organelle, levels = all_annotations)
+    
     p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
       geom_col(width = 0.7, color = "black", linewidth = 0.2) +
       facet_wrap(~shared_organelle, scales = "free_y") +
@@ -15187,6 +15192,9 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states,
   for (nt in c("iN", "iDA")) {
     dd <- partial_norm %>% dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) next
+
+    # Set factor levels to all annotations (enables empty facets)
+    dd$shared_organelle <- factor(dd$shared_organelle, levels = all_annotations)
 
     p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
       geom_col(width = 0.7, color = "black", linewidth = 0.2) +
@@ -15245,6 +15253,9 @@ plot_complex_diseaseclass_bars <- function(complex_ko_summary, disease_map, dise
     dd <- disrupted_norm %>% dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) next
 
+    # Set factor levels to all annotations (enables empty facets)
+    dd$organelle <- factor(dd$organelle, levels = all_annotations)
+    
     p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
       geom_col(width = 0.7, color = "black", linewidth = 0.2) +
       facet_wrap(~organelle, scales = "free_y") +
@@ -15278,6 +15289,9 @@ plot_complex_diseaseclass_bars <- function(complex_ko_summary, disease_map, dise
     dd <- partial_norm %>% dplyr::filter(neuron == nt)
     if (nrow(dd) == 0) next
 
+    # Set factor levels to all annotations (enables empty facets)
+    dd$organelle <- factor(dd$organelle, levels = all_annotations)
+    
     p <- ggplot(dd, aes(x = DiseaseClass, y = n_norm, fill = DiseaseClass)) +
       geom_col(width = 0.7, color = "black", linewidth = 0.2) +
       facet_wrap(~organelle, scales = "free_y") +
