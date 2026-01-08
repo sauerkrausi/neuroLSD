@@ -15081,10 +15081,10 @@ message("Complex analysis complete!")
 # =========================================================================
 
 # --- Output directories ---
-out_dir_trimer_plots <- file.path(out_dir_ppi_vuln, "plots/multimer/trimers")
-out_dir_complex_plots <- file.path(out_dir_ppi_vuln, "plots/multimer/complexes")
-out_dir_trimer_tables <- file.path(out_dir_ppi_vuln, "tables/multimer/trimers")
-out_dir_complex_tables <- file.path(out_dir_ppi_vuln, "tables/multimer/complexes")
+out_dir_trimer_plots <- file.path(out_dir_ppi_vuln, "plots/multimer/barplots_trimers")
+out_dir_complex_plots <- file.path(out_dir_ppi_vuln, "plots/multimer/barplots_complexes")
+out_dir_trimer_tables <- file.path(out_dir_ppi_vuln, "tables/multimer/barplots_trimers")
+out_dir_complex_tables <- file.path(out_dir_ppi_vuln, "tables/multimer/barplots_complexes")
 
 dir.create(out_dir_trimer_plots, recursive = TRUE, showWarnings = FALSE)
 dir.create(out_dir_complex_plots, recursive = TRUE, showWarnings = FALSE)
@@ -15093,10 +15093,18 @@ dir.create(out_dir_complex_tables, recursive = TRUE, showWarnings = FALSE)
 
 # --- Annotations to include ---
 selected_annotations <- c(
- "Lysosome", "Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome",
- "Mito", "MitoMatrix", "OXPHOS", "Golgi",
- "SynapseSVs", "SVfusion", "Presynaptic", "Postsynaptic"
-)
+"Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+                     "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+                     "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+                     "Presynaptic",  "NeuroDev", "EndoLyso", "EarlyEndosome",
+                     "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
+# ("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
+#                      "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
+#                      "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
+#                      "Presynaptic",  "NeuroDev", "EndoLyso", "EarlyEndosome",
+#                      "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
+
 
 # --- Disease class map (bare genotype -> DiseaseClass) ---
 disease_map <- disease_class_df %>%
@@ -15104,12 +15112,17 @@ disease_map <- disease_class_df %>%
   dplyr::select(sample, DiseaseClass) %>%
   dplyr::distinct()
 
+
 # =========================================================================
 # TRIMERS
 # =========================================================================
 
-plot_trimer_diseaseclass_bars <- function(trimers_ko_states, disease_map, disease_class_palette,
-                                          selected_annotations, out_dir_plots, out_dir_tables) {
+plot_trimer_diseaseclass_bars <- function(trimers_ko_states, 
+                                          disease_map, 
+                                          disease_class_palette,
+                                          selected_annotations, 
+                                          out_dir_plots, 
+                                          out_dir_tables) {
 
   # Add disease class
   df <- trimers_ko_states %>%
@@ -15191,6 +15204,8 @@ plot_trimer_diseaseclass_bars <- function(trimers_ko_states, disease_map, diseas
     ggsave(file.path(out_dir_plots, paste0("bars_trimers_partial_by_diseaseclass_", nt, ".pdf")), p, width = 8, height = 6, device = cairo_pdf)
   }
 }
+
+
 
 # =========================================================================
 # COMPLEXES
@@ -15279,6 +15294,8 @@ plot_complex_diseaseclass_bars <- function(complex_ko_summary, disease_map, dise
     ggsave(file.path(out_dir_plots, paste0("bars_complexes_partial_by_diseaseclass_", nt, ".pdf")), p, width = 8, height = 6, device = cairo_pdf)
   }
 }
+
+
 
 # =========================================================================
 # RUN
