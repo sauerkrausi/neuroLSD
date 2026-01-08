@@ -12801,25 +12801,28 @@ write_csv(radar_data_iDA, file.path(out_dir_radar, "tables", "radar_ppi_data_iDA
 ```{r}
 # =========================================================================
 # Radar/Spider Plots: PPI Vulnerability Profile 
-# One plot per neuron type per disease class
-# Each disease class shows the genotype components 
+# One plot per disease class, showing all genotypes within that class
+# Grey shades for iN, blue shades for iDA
 # =========================================================================
 
 # --- Make Output Directory ---
 out_dir_radarDisClass <- file.path(out_dir_radar, "DisClassDetailed")
 dir.create(out_dir_radarDisClass, recursive = TRUE, showWarnings = FALSE)
 
-# --- Prepare data for radar plot ---
+# --- Prepare data for radar plot (genotype-level) ---
 prepare_radar_data_by_genotype <- function(df_states, shared_long, disease_class_df, neuron_type) {
   
-  shared_tags <- shared_long %>% dplyr::distinct(key, tag)
+  # Get unique key-tag pairs for organelle annotation
+ shared_tags <- shared_long %>% dplyr::distinct(key, tag)
   
-  df_tagged <- df_states %>%
+  # Filter to neuron type and add KO identifier
+ df_tagged <- df_states %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::mutate(KO = toupper(genotype)) %>%
     dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many")
   
-  if (!"DiseaseClass" %in% colnames(df_tagged)) {
+  # Add disease class if not present
+ if (!"DiseaseClass" %in% colnames(df_tagged)) {
     disease_map <- disease_class_df %>%
       dplyr::mutate(sample = toupper(sample)) %>%
       dplyr::select(sample, DiseaseClass) %>%
@@ -12831,9 +12834,8 @@ prepare_radar_data_by_genotype <- function(df_states, shared_long, disease_class
   
   df_tagged <- df_tagged %>% dplyr::filter(!is.na(tag), !is.na(DiseaseClass))
   
-  # Keep genotype granularity instead of aggregating by DiseaseClass
-
-  radar_data <- df_tagged %>%
+  # Summarize lost PPIs per genotype × annotation (keep genotype granularity)
+ radar_data <- df_tagged %>%
     dplyr::filter(state == "lost") %>%
     dplyr::group_by(genotype, DiseaseClass, tag) %>%
     dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
@@ -12842,9 +12844,102 @@ prepare_radar_data_by_genotype <- function(df_states, shared_long, disease_class
   return(radar_data)
 }
 
+# --- Plot radar chart per disease class (both neuron types overlaid) ---
+plot_radar_by_diseaseclass <- function(radar_data_iN, radar_data_iDA, disease_class, radar_annotations = NULL, out_dir) {
+  
+  # Filter to disease class
+  data_iN <- radar_data_iN %>% dplyr::filter(DiseaseClass == disease_class)
+  data_iDA <- radar_data_iDA %>% dplyr::filter(DiseaseClass == disease_class)
+  
+  # Skip if no data
+  if (nrow(data_iN) == 0 && nrow(data_iDA) == 0) {
+    message("No data for ", disease_class, "; skipping.")
+    return(invisible(NULL))
+  }
+  
+  # Get annotation columns (exclude metadata)
+  annot_cols <- setdiff(colnames(radar_data_iN), c("genotype", "DiseaseClass"))
+  
+  # Filter to user-specified annotations if provided
+  if (!is.null(radar_annotations)) {
+    annot_cols <- intersect(radar_annotations, annot_cols)
+  }
+  
+  # Combine iN and iDA data
+  combined <- dplyr::bind_rows(
+    data_iN %>% dplyr::mutate(neuron = "iN") %>% dplyr::select(genotype, neuron, all_of(annot_cols)),
+    data_iDA %>% dplyr::mutate(neuron = "iDA") %>% dplyr::select(genotype, neuron, all_of(annot_cols))
+  )
+  
+  if (nrow(combined) == 0) return(invisible(NULL))
+  
+  # Create row labels (genotype_neuron)
+  combined$label <- paste0(combined$genotype, "_", combined$neuron)
+  
+  # Prepare matrix for fmsb
+  data_matrix <- as.data.frame(combined[, annot_cols])
+  rownames(data_matrix) <- combined$label
+  
+  # Add max/min rows for fmsb
+  max_val <- max(data_matrix, na.rm = TRUE) * 1.1
+  if (max_val == 0) max_val <- 1
+  
+  radar_df <- rbind(
+    rep(max_val, ncol(data_matrix)),
+    rep(0, ncol(data_matrix)),
+    data_matrix
+  )
+  colnames(radar_df) <- annot_cols
+  
+  # Generate colors: grey shades for iN, blue shades for iDA
+  n_iN <- sum(combined$neuron == "iN")
+  n_iDA <- sum(combined$neuron == "iDA")
+  
+  grey_shades <- if (n_iN > 0) colorRampPalette(c("grey30", "grey70"))(n_iN) else character(0)
+  blue_shades <- if (n_iDA > 0) colorRampPalette(c("navy", "steelblue"))(n_iDA) else character(0)
+  
+  line_colors <- c(grey_shades, blue_shades)
+  fill_colors <- adjustcolor(line_colors, alpha.f = 0.1)
+  
+  # Plot
+  pdf_file <- file.path(out_dir, paste0("radar_", gsub("\\.", "_", disease_class), ".pdf"))
+  pdf(pdf_file, width = 10, height = 8)
+  
+  par(mar = c(1, 1, 3, 1))
+  
+  fmsb::radarchart(
+    radar_df,
+    axistype = 1,
+    pcol = line_colors,
+    pfcol = fill_colors,
+    plwd = 1.5,
+    plty = 1,
+    cglcol = "grey70",
+    cglty = 1,
+    cglwd = 0.8,
+    axislabcol = "grey30",
+    vlcex = 0.6,
+    calcex = 0.5,
+    title = paste0("PPI Vulnerability: ", disease_class, "\n(grey = iN, blue = iDA)")
+  )
+  
+  # Add legend
+  legend(
+    "topright",
+    legend = combined$label,
+    col = line_colors,
+    lwd = 1.5,
+    lty = 1,
+    bty = "n",
+    cex = 0.5,
+    ncol = 2
+  )
+  
+  dev.off()
+  message("Saved: ", pdf_file)
+}
 
 # --- Run for both neuron types ---
-# iN
 radar_dataDisClass_iN <- prepare_radar_data_by_genotype(
   df_states = ko_edge_states,
   shared_long = shared_long,
@@ -12852,9 +12947,6 @@ radar_dataDisClass_iN <- prepare_radar_data_by_genotype(
   neuron_type = "iN"
 )
 
-plot_radar_ppi(radar_dataDisClass, disease_class_palette, "iN", out_dir_radarDisClass)
-
-# iDA
 radar_dataDisClass_iDA <- prepare_radar_data_by_genotype(
   df_states = ko_edge_states,
   shared_long = shared_long,
@@ -12862,15 +12954,30 @@ radar_dataDisClass_iDA <- prepare_radar_data_by_genotype(
   neuron_type = "iDA"
 )
 
-plot_radar_ppi(radar_dataDisClass, disease_class_palette, "iDA", out_dir_radarDisClass)
+# --- Define annotations for radar (optional, NULL = use all) ---
+radar_annotations <- c(
+  "Lysosome", "EndoLyso", "EarlyEndosome", "RecyclingEndosome",
+  "Mito", "MitoMatrix", "OXPHOS", "Golgi",
+  "SynapseSVs", "SVfusion", "Presynaptic", "Postsynaptic"
+)
 
+# --- Generate one radar plot per disease class ---
+disease_classes_present <- unique(c(radar_dataDisClass_iN$DiseaseClass, radar_dataDisClass_iDA$DiseaseClass))
+
+for (dc in disease_classes_present) {
+  plot_radar_by_diseaseclass(
+    radar_data_iN = radar_dataDisClass_iN,
+    radar_data_iDA = radar_dataDisClass_iDA,
+    disease_class = dc,
+    radar_annotations = radar_annotations,
+    out_dir = out_dir_radarDisClass
+  )
+}
 
 # --- Save radar data tables ---
 write_csv(radar_dataDisClass_iN, file.path(out_dir_radar, "tables", "radar_ppi_DisClass_data_iN.csv"))
 write_csv(radar_dataDisClass_iDA, file.path(out_dir_radar, "tables", "radar_ppi_DisClass_data_iDA.csv"))
-
-
-
+Now 
 ```
 
 
