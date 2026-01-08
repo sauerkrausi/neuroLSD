@@ -12841,6 +12841,36 @@ prepare_radar_data_by_genotype <- function(df_states, shared_long, disease_class
   
   return(radar_data)
 }
+
+
+# --- Run for both neuron types ---
+# iN
+radar_dataDisClass_iN <- prepare_radar_data_by_genotype(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  neuron_type = "iN"
+)
+
+plot_radar_ppi(radar_dataDisClass, disease_class_palette, "iN", out_dir_radarDisClass)
+
+# iDA
+radar_dataDisClass_iDA <- prepare_radar_data_by_genotype(
+  df_states = ko_edge_states,
+  shared_long = shared_long,
+  disease_class_df = disease_class_df,
+  neuron_type = "iDA"
+)
+
+plot_radar_ppi(radar_dataDisClass, disease_class_palette, "iDA", out_dir_radarDisClass)
+
+
+# --- Save radar data tables ---
+write_csv(radar_dataDisClass_iN, file.path(out_dir_radar, "tables", "radar_ppi_DisClass_data_iN.csv"))
+write_csv(radar_dataDisClass_iDA, file.path(out_dir_radar, "tables", "radar_ppi_DisClass_data_iDA.csv"))
+
+
+
 ```
 
 
