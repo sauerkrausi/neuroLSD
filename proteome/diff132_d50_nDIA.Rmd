@@ -13715,11 +13715,11 @@ plot_ternary_ppi_loss(
   disease_class_df = disease_class_df,
   out_dir = out_dir_ppi_vuln,
   disease_class_palette = disease_class_palette,
-  tern_classes = c("SynapseSVs", "OXPHOS", "Lysosome")
+  tern_classes = c("SynapseSVs", "Mito", "Endo_iN_curated_Hundley")
 )
 
 # c("SynapseSVs", "OXPHOS", "Lysosome")
-# c("SynapseSVs", "OXPHOS", "Lysosome")
+# c("SynapseSVs", "Mito", "Endo_iN_curated_Hundley")
 # c("Svexocytosis", "OXPHOS", "mtComplexI")
 ```
 
