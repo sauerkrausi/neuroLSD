@@ -3554,17 +3554,18 @@ ggsave(file.path(out_dir_diffQC, "diff132_d50_TH_iDA.pdf"), p_th, width = 6, hei
 # --- Helper function: calculate annotation average with log2 transform
 calc_annotation_avg_log2 <- function(genes, data) {
   data %>%
-    filter(Genes %in% genes) %>%
+    dplyr::filter(Genes %in% genes) %>%
     dplyr::group_by(genotype, neuron) %>%
-    dplyr::summarise(mean_intensity = mean(mean_intensity, na.rm = TRUE), sd_intensity = sd(mean_intensity, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::mutate(log2_intensity = log2(mean_intensity), log2_sd_upper = log2(mean_intensity + sd_intensity) - log2_intensity, log2_sd_lower = log2_intensity - log2(pmax(mean_intensity - sd_intensity, 1)))
+    dplyr::summarise(avg_intensity = mean(mean_intensity, na.rm = TRUE), sem_intensity = stats::sd(mean_intensity, na.rm = TRUE) / sqrt(dplyr::n()), .groups = "drop") %>%
+    dplyr::mutate(log2_intensity = log2(avg_intensity), log2_sem_upper = log2(avg_intensity + sem_intensity) - log2_intensity, log2_sem_lower = log2_intensity - log2(pmax(avg_intensity - sem_intensity, 1)))
 }
+
 
 # --- Helper function: plot annotation average (log2)
 plot_annotation_avg_log2 <- function(data, title_text) {
   ggplot(data, aes(x = genotype, y = log2_intensity, fill = neuron)) +
     geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-    geom_errorbar(aes(ymin = log2_intensity - log2_sd_lower, ymax = log2_intensity + log2_sd_upper), position = position_dodge(width = 0.8), width = 0.2) +
+    geom_errorbar(aes(ymin = log2_intensity - log2_sem_lower, ymax = log2_intensity + log2_sem_upper), position = position_dodge(width = 0.8), width = 0.2) +
     scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80")) +
     labs(title = title_text, x = "Genotype", y = expression(log[2](Mean~Intensity))) +
     theme_bw(base_size = 6) +
