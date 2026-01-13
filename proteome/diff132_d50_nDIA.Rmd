@@ -3492,15 +3492,22 @@ out_dir_diffQC <- file.path(out_dir_d50_QC, "DifferentiationQC")
 dir.create(out_dir_diffQC, recursive = TRUE, showWarnings = FALSE)
 
 # --- Create differentiation_df from clean_d50_df
+# Goal: reshape data so ctrl is a genotype alongside KOs for barplot comparison
+# clean_d50_df has mean_ctrl/sd_ctrl (same for all KOs) and mean_ko/sd_ko per condition
+# We extract ctrl as its own rows, then bind with KO rows
+
+# Ctrl: take one row per gene x neuron (mean_ctrl is identical across KO rows)
 ctrl_df <- clean_d50_df %>%
   filter(day == 50) %>%
   distinct(Genes, neuron, .keep_all = TRUE) %>%
   transmute(Genes, neuron, genotype = "ctrl", mean_intensity = mean_ctrl, sd_intensity = sd_ctrl)
 
+# KO: rename mean_ko/sd_ko to match ctrl structure
 ko_df <- clean_d50_df %>%
   filter(day == 50) %>%
   transmute(Genes, neuron, genotype, mean_intensity = mean_ko, sd_intensity = sd_ko)
 
+# Set genotype factor with ctrl first, then alphabetical
 all_genotypes <- sort(unique(c("ctrl", ko_df$genotype)))
 all_genotypes <- c("ctrl", all_genotypes[all_genotypes != "ctrl"])
 
@@ -3508,7 +3515,6 @@ differentiation_df <- bind_rows(ctrl_df, ko_df) %>%
   mutate(genotype = factor(genotype, levels = all_genotypes))
 
 # --- Gene lists
-es_drivers <- c("ATF1", "CUX1", "MKI67", "NANOG", "POU5F1", "SOX2")
 neuron_drivers <- c("BDNF", "CAMK2B", "CRTC1", "DCX", "JUN", "MAP2", "NCAM1", "NEFH", "NEFL", "NEFM", "NES", "POU3F2", "SLC17A7", "SYN1", "SYP", "TUBB3", "TH", "BSN", "SYNJ1", "GAP43", "SYN2", "SYN3")
 presyn_genes <- c("BSN", "CPLX1", "CPLX2", "PCLO", "RAB3A", "SNAP25", "STX1A", "STX1B", "SV2A", "SV2B", "SV2C", "SYN1", "SYN2", "SYP", "SYT1", "SYT2", "SYT7", "VAMP1", "VAMP2")
 postsyn_genes <- c("DLG4", "DLG3", "DLG2", "SHANK1", "SHANK2", "SHANK3", "HOMER1", "HOMER2", "HOMER3", "GPHN", "SYNGAP1", "GRIN1", "GRIN2A", "GRIN2B", "GRIA1", "GRIA2", "GRIA3", "GRIA4", "CAMK2A", "CAMK2B", "NRGN", "NPTX2")
@@ -3528,15 +3534,11 @@ plot_diff_markers <- function(genes, data, title_text) {
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), panel.grid = element_blank())
 }
 
-# --- Plot 1: ES markers (individual)
-p_es <- plot_diff_markers(es_drivers, differentiation_df, "ES Markers across all KOs")
-ggsave(file.path(out_dir_diffQC, "diff132_d50_ES_markers.pdf"), p_es, width = 8, height = 6, device = cairo_pdf)
-
-# --- Plot 2: Neuronal markers (individual)
+# --- Plot 1: Neuronal markers (individual)
 p_neuro <- plot_diff_markers(neuron_drivers, differentiation_df, "Neuronal Markers across all KOs")
 ggsave(file.path(out_dir_diffQC, "diff132_d50_Neuronal_markers.pdf"), p_neuro, width = 12, height = 10, device = cairo_pdf)
 
-# --- Plot 3: TH for iDA only (log2)
+# --- Plot 2: TH for iDA only (log2)
 th_df <- differentiation_df %>% 
   filter(Genes == "TH", neuron == "iDA") %>%
   mutate(log2_intensity = log2(mean_intensity), log2_sd_upper = log2(mean_intensity + sd_intensity) - log2_intensity, log2_sd_lower = log2_intensity - log2(pmax(mean_intensity - sd_intensity, 1)))
@@ -3551,7 +3553,7 @@ p_th <- ggplot(th_df, aes(x = genotype, y = log2_intensity, fill = genotype)) +
 
 ggsave(file.path(out_dir_diffQC, "diff132_d50_TH_iDA.pdf"), p_th, width = 6, height = 4, device = cairo_pdf)
 
-# --- Helper function: calculate annotation average with log2 transform
+# --- Helper function: calculate annotation average with log2 transform and SEM
 calc_annotation_avg_log2 <- function(genes, data) {
   data %>%
     dplyr::filter(Genes %in% genes) %>%
@@ -3559,7 +3561,6 @@ calc_annotation_avg_log2 <- function(genes, data) {
     dplyr::summarise(avg_intensity = mean(mean_intensity, na.rm = TRUE), sem_intensity = stats::sd(mean_intensity, na.rm = TRUE) / sqrt(dplyr::n()), .groups = "drop") %>%
     dplyr::mutate(log2_intensity = log2(avg_intensity), log2_sem_upper = log2(avg_intensity + sem_intensity) - log2_intensity, log2_sem_lower = log2_intensity - log2(pmax(avg_intensity - sem_intensity, 1)))
 }
-
 
 # --- Helper function: plot annotation average (log2)
 plot_annotation_avg_log2 <- function(data, title_text) {
@@ -3572,25 +3573,21 @@ plot_annotation_avg_log2 <- function(data, title_text) {
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), panel.grid = element_blank())
 }
 
-# --- Plot 4: Presynaptic average (log2)
+# --- Plot 3: Presynaptic average (log2)
 presyn_avg <- calc_annotation_avg_log2(presyn_genes, differentiation_df)
 p_presyn <- plot_annotation_avg_log2(presyn_avg, "Presynaptic Markers (Average)")
 ggsave(file.path(out_dir_diffQC, "diff132_d50_Presynaptic_avg.pdf"), p_presyn, width = 6, height = 4, device = cairo_pdf)
 
-# --- Plot 5: Postsynaptic average (log2)
+# --- Plot 4: Postsynaptic average (log2)
 postsyn_avg <- calc_annotation_avg_log2(postsyn_genes, differentiation_df)
 p_postsyn <- plot_annotation_avg_log2(postsyn_avg, "Postsynaptic Markers (Average)")
 ggsave(file.path(out_dir_diffQC, "diff132_d50_Postsynaptic_avg.pdf"), p_postsyn, width = 6, height = 4, device = cairo_pdf)
 
-# --- Plot 6: Neuronal markers average (log2)
+# --- Plot 5: Neuronal markers average (log2)
 neuro_avg <- calc_annotation_avg_log2(neuron_drivers, differentiation_df)
 p_neuro_avg <- plot_annotation_avg_log2(neuro_avg, "Neuronal Markers (Average)")
 ggsave(file.path(out_dir_diffQC, "diff132_d50_Neuronal_avg.pdf"), p_neuro_avg, width = 6, height = 4, device = cairo_pdf)
 
-# --- Plot 7: ES markers average (log2)
-es_avg <- calc_annotation_avg_log2(es_drivers, differentiation_df)
-p_es_avg <- plot_annotation_avg_log2(es_avg, "ES Markers (Average)")
-ggsave(file.path(out_dir_diffQC, "diff132_d50_ES_avg.pdf"), p_es_avg, width = 6, height = 4, device = cairo_pdf)
 ```
 
 
