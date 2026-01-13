@@ -4153,6 +4153,10 @@ ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd3
 ```
 
 
+# Plot differentiation markers for all KOs
+
+
+
 # GBA1 - ASAH1 time course comparison
 ```{r}
 # --------------------------------------------------- #
