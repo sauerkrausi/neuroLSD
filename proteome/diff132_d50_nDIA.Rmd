@@ -15756,15 +15756,21 @@ organelle_annot <- complex_context_summary %>%
 # Color palettes
 state_colors <- c("partial" = "#FDB863", "disrupted" = "#B2182B")
 organelle_colors <- c(
-  "Lysosome" = "#8E24AA", "Mitochondria" = "#1E88E5", "ER" = "#43A047",
-  "Golgi" = "#FDD835", "Peroxisome" = "#FB8C00", "Nucleus" = "#5E35B1",
-  "Cytosol" = "#90A4AE", "Membrane" = "#00ACC1", "Other" = "#BDBDBD"
+  "SynGO" = "#1E88E5",
+  "Postsynaptic" = "#5E35B1",
+  "Svendocytosis" = "#00ACC1",
+  "ER" = "#43A047",
+  "Mito" = "#E53935",
+  "Golgi" = "#FDD835",
+  "EarlyEndosome" = "#FB8C00",
+  "EndoLyso" = "#8E24AA",
+  "Other" = "#BDBDBD"
 )
 
 # Main dot plot
 p_dots <- ggplot(plot_data, aes(x = genotype, y = complex_id)) +
-  geom_point(aes(size = frac_edges_lost, color = complex_state), alpha = 0.8) +
-  scale_size_continuous(range = c(1, 5), name = "Fraction\nedges lost", limits = c(0.25, 1)) +
+  geom_point(aes(size = frac_edges_lost, color = complex_state), alpha = 1.0) +
+  scale_size_continuous(range = c(0.5, 3), name = "Fraction\nedges lost", limits = c(0.25, 1)) +
   scale_color_manual(values = state_colors, name = "State", drop = FALSE) +
   facet_wrap(~neuron, scales = "free_x") +
   labs(x = NULL, y = NULL, title = "Protein complex disruption across LSD genotypes") +
@@ -15775,12 +15781,13 @@ p_dots <- ggplot(plot_data, aes(x = genotype, y = complex_id)) +
     panel.grid.major = element_line(color = "grey90", linewidth = 0.2),
     panel.grid.minor = element_blank(),
     strip.background = element_rect(fill = "grey95"),
-    legend.position = "right"
+    legend.position = "right",
+    panel.spacing = unit(0.5, "lines")
   )
 
 # Organelle annotation strip (separate plot to combine)
 p_org <- ggplot(organelle_annot, aes(x = 1, y = complex_id, fill = organelle)) +
-  geom_tile(width = 0.9, height = 0.9) +
+  geom_tile(width = 1, height = 1) +
   scale_fill_manual(values = organelle_colors, name = "Organelle") +
   theme_void(base_size = 6) +
   theme(
@@ -15792,11 +15799,15 @@ p_org <- ggplot(organelle_annot, aes(x = 1, y = complex_id, fill = organelle)) +
 # Combine with patchwork if available, otherwise save separately
 if (requireNamespace("patchwork", quietly = TRUE)) {
   library(patchwork)
-  p_combined <- p_org + p_dots + plot_layout(widths = c(0.05, 1), guides = "collect")
-  ggsave(file.path(out_dir_structures, "complex_disruption_dotplot.pdf"), p_combined, width = 10, height = 12, device = cairo_pdf)
+  p_combined <- p_org + p_dots + plot_layout(widths = c(0.03, 1), guides = "collect")
+  n_complexes <- n_distinct(plot_data$complex_id)
+  plot_height <- max(4, n_complexes * 0.12)
+  ggsave(file.path(out_dir_structures, "complex_disruption_dotplot.pdf"), p_combined, width = 8, height = plot_height, device = cairo_pdf)
 } else {
-  ggsave(file.path(out_dir_structures, "complex_disruption_dotplot.pdf"), p_dots, width = 9, height = 12, device = cairo_pdf)
-  ggsave(file.path(out_dir_structures, "complex_disruption_organelle_strip.pdf"), p_org, width = 1, height = 12, device = cairo_pdf)
+  n_complexes <- n_distinct(plot_data$complex_id)
+  plot_height <- max(4, n_complexes * 0.12)
+  ggsave(file.path(out_dir_structures, "complex_disruption_dotplot.pdf"), p_dots, width = 7, height = plot_height, device = cairo_pdf)
+  ggsave(file.path(out_dir_structures, "complex_disruption_organelle_strip.pdf"), p_org, width = 0.5, height = plot_height, device = cairo_pdf)
 }
 
 message("Saved dot plot: complex_disruption_dotplot.pdf")
