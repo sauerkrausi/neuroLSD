@@ -15855,18 +15855,19 @@ master_csv <- master_csv %>%
 
 # --- Step 3: Build chain mapping reference ---
 # For each complex, map protein -> expected chain order (based on JSON order)
+# First get unique proteins per complex, then assign chain IDs
 
 complex_chain_map <- master_csv %>%
   dplyr::filter(!is.na(sequence)) %>%
+  dplyr::select(complex_id, protein, seq_prefix) %>%
+  dplyr::distinct() %>%
   dplyr::group_by(complex_id) %>%
-  dplyr::arrange(protein) %>%  
+  dplyr::arrange(complex_id, protein) %>%
   dplyr::mutate(
     # Proteins are ordered alphabetically in our JSON generation
     wt_chain_expected = LETTERS[row_number()]
   ) %>%
-  dplyr::ungroup() %>%
-  dplyr::select(complex_id, protein, seq_prefix, wt_chain_expected) %>%
-  dplyr::distinct()
+  dplyr::ungroup()
 
 
 # --- Step 4: Function to generate ChimeraX script ---
