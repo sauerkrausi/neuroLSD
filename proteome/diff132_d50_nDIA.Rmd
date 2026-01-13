@@ -14846,7 +14846,7 @@ for (nt in c("iN", "iDA")) {
 # - Leiden algorithm  
 # - MCL (Markov Clustering)
 # - Finds real biological complexes, handles partial connectivity
-# if 75% of edges lost ==> compelx disruped 
+# if 75% of edges lost ==> complex disruped 
 # if 25% of edges lost ==> complex affecetd 
 
 
