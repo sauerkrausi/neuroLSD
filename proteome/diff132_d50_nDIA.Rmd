@@ -19691,6 +19691,115 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 
 
 # Master PPI Stats output for summary csv
+```{r}
+# ==========================================================================
+# PPI Master Stats Summary
+# Aggregates PPI, trimer, and complex disruption statistics per KO × neuron.
+# ==========================================================================
+
+# --- Step 1: Load summary tables ---
+
+# PPI-level summary (from Module 11)
+# ko_summary_global should already be in environment, or load from file:
+# ko_summary_global <- read_csv(file.path(out_dir_ppi_vuln, "tables", "ko_summary_global.csv"), show_col_types = FALSE)
+
+# Trimer-level summary (from trimer analysis)
+# trimer_ko_summary should already be in environment, or load from file:
+# trimer_ko_summary <- read_csv(file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_ko_summary.csv"), show_col_types = FALSE)
+
+# Complex-level summary (from Module 11b)
+# complex_ko_summary should already be in environment, or load from file:
+# complex_ko_summary <- read_csv(file.path(out_dir_ppi_vuln, "tables", "complex_ko_summary.csv"), show_col_types = FALSE)
+
+
+# --- Step 2: Aggregate complex stats per KO × neuron ---
+
+complex_stats <- complex_ko_summary %>%
+  dplyr::group_by(genotype, neuron) %>%
+  dplyr::summarise(
+    complexes_total = n(),
+    complexes_disrupted = sum(complex_state == "disrupted", na.rm = TRUE),
+    complexes_partial = sum(complex_state == "partial", na.rm = TRUE),
+    complexes_intact = sum(complex_state == "intact", na.rm = TRUE),
+    pct_complexes_disrupted = round(100 * complexes_disrupted / complexes_total, 2),
+    pct_complexes_affected = round(100 * (complexes_disrupted + complexes_partial) / complexes_total, 2),
+    mean_frac_edges_lost = round(mean(frac_edges_lost, na.rm = TRUE), 3),
+    .groups = "drop"
+  )
+
+
+# --- Step 3: Prepare PPI stats ---
+
+ppi_stats <- ko_summary_global %>%
+  dplyr::select(genotype, neuron, 
+                ppi_total = total_baseline_edges,
+                ppi_lost = n_lost,
+                ppi_retained = n_retained,
+                ppi_unknown = n_unknown) %>%
+  dplyr::mutate(
+    pct_ppi_lost = round(100 * ppi_lost / ppi_total, 2)
+  )
+
+
+# --- Step 4: Prepare trimer stats ---
+
+trimer_stats <- trimer_ko_summary %>%
+  dplyr::select(genotype, neuron,
+                trimers_total = n_total,
+                trimers_broken = n_broken,
+                trimers_partial = n_partial,
+                trimers_intact = n_intact) %>%
+  dplyr::mutate(
+    pct_trimers_broken = round(100 * trimers_broken / trimers_total, 2),
+    pct_trimers_affected = round(100 * (trimers_broken + trimers_partial) / trimers_total, 2)
+  )
+
+
+# --- Step 5: Merge all stats into master summary ---
+
+ppi_master_stats <- ppi_stats %>%
+  dplyr::left_join(trimer_stats, by = c("genotype", "neuron")) %>%
+  dplyr::left_join(complex_stats, by = c("genotype", "neuron")) %>%
+  dplyr::arrange(desc(pct_ppi_lost))
+
+
+# --- Step 6: Add disease class annotation ---
+
+disease_map <- disease_classes_dataframe %>%
+  dplyr::mutate(
+    genotype = sub("_i[ND]A?$", "", sample),
+    neuron = ifelse(grepl("_iDA$", sample), "iDA", "iN")
+  ) %>%
+  dplyr::select(genotype, neuron, DiseaseClass) %>%
+  dplyr::distinct()
+
+ppi_master_stats <- ppi_master_stats %>%
+  dplyr::left_join(disease_map, by = c("genotype", "neuron")) %>%
+  dplyr::relocate(DiseaseClass, .after = neuron)
+
+
+# --- Step 7: Save output ---
+
+write_csv(ppi_master_stats, file.path(out_dir_ppi_vuln, "tables", "ppi_master_stats_summary.csv"))
+
+message("=== PPI Master Stats Summary ===")
+message("Output: ", file.path(out_dir_ppi_vuln, "tables", "ppi_master_stats_summary.csv"))
+message("Rows: ", nrow(ppi_master_stats))
+message("")
+message("Columns:")
+message("  PPI level: ppi_total, ppi_lost, ppi_retained, pct_ppi_lost")
+message("  Trimer level: trimers_total, trimers_broken, trimers_partial, pct_trimers_broken")
+message("  Complex level: complexes_total, complexes_disrupted, complexes_partial, pct_complexes_disrupted")
+message("")
+
+# Print top 10 most affected KOs
+message("Top 10 most affected KOs (by % PPI lost):")
+ppi_master_stats %>%
+  dplyr::select(genotype, neuron, DiseaseClass, pct_ppi_lost, pct_trimers_broken, pct_complexes_disrupted) %>%
+  head(10) %>%
+  print()
+```
+
 
 
 
