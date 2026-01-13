@@ -15831,6 +15831,247 @@ message("Master CSV: master_complex_proteins.csv")
 
 
 
+### ChimeraX Automation for Complex Structure Comparison
+```{r}
+# ==========================================================================
+# ChimeraX Automation for Complex Structure Comparison
+# Generates .cxc command files for WT vs KO structure visualization
+# ==========================================================================
+
+# --- Step 1: Setup ---
+
+out_dir_chimerax <- file.path(out_dir_structures, "chimerax_scripts")
+dir.create(out_dir_chimerax, recursive = TRUE, showWarnings = FALSE)
+
+
+# --- Step 2: Add sequence prefix to protein data ---
+# First 10 amino acids for chain matching in ChimeraX
+
+master_csv <- read_csv(file.path(out_dir_structures, "master_complex_proteins.csv"), show_col_types = FALSE)
+
+master_csv <- master_csv %>%
+  dplyr::mutate(seq_prefix = substr(sequence, 1, 10))
+
+
+# --- Step 3: Build chain mapping reference ---
+# For each complex, map protein -> expected chain order (based on JSON order)
+
+complex_chain_map <- master_csv %>%
+  dplyr::filter(!is.na(sequence)) %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::arrange(protein) %>%  
+  dplyr::mutate(
+    # Proteins are ordered alphabetically in our JSON generation
+    wt_chain_expected = LETTERS[row_number()]
+  ) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(complex_id, protein, seq_prefix, wt_chain_expected) %>%
+  dplyr::distinct()
+
+
+# --- Step 4: Function to generate ChimeraX script ---
+
+generate_chimerax_script <- function(complex_id, genotype, neuron, 
+                                      proteins_df, broken_proteins,
+                                      wt_path, ko_path, output_path) {
+  
+  # Get chain info for this complex
+  chain_info <- proteins_df %>%
+    dplyr::mutate(
+      is_broken = protein %in% broken_proteins,
+      status = ifelse(is_broken, "BROKEN", "retained")
+    )
+  
+  # Build script lines
+  lines <- c(
+    paste0("# =========================================================="),
+    paste0("# ChimeraX script for ", complex_id, " - ", genotype, " ", neuron),
+    paste0("# Generated: ", Sys.time()),
+    paste0("# =========================================================="),
+    "",
+    "# --- Chain mapping (verify by sequence prefix) ---",
+    paste0("# Proteins in complex:")
+  )
+  
+  # Add chain mapping comments
+  for (i in seq_len(nrow(chain_info))) {
+    row <- chain_info[i, ]
+    lines <- c(lines, paste0(
+      "#   Chain ", row$wt_chain_expected, ": ", row$protein, 
+      " [", row$status, "] - starts with ", row$seq_prefix
+    ))
+  }
+  
+  # Get broken chain IDs
+  broken_chains <- chain_info %>%
+    dplyr::filter(is_broken) %>%
+    dplyr::pull(wt_chain_expected)
+  
+  retained_chains <- chain_info %>%
+    dplyr::filter(!is_broken) %>%
+    dplyr::pull(wt_chain_expected)
+  
+  lines <- c(lines,
+    "",
+    "# --- Load structures ---",
+    "# UPDATE THESE PATHS to your local AF3 output locations",
+    paste0("# open ", wt_path),
+    paste0("# open ", ko_path),
+    "",
+    "# After loading, structures will be #1 (WT) and #2 (KO)",
+    "# Uncomment the lines below once paths are set:",
+    "",
+    "# --- Align structures ---",
+    "matchmaker #2 to #1",
+    "",
+    "# --- Color scheme ---",
+    "# WT structure: grey for retained, red for broken chain(s)",
+    "# KO structure: steelblue",
+    "",
+    "color #1 darkgrey"
+  )
+  
+  # Add commands to color broken chains red
+  for (chain in broken_chains) {
+    lines <- c(lines, paste0("color #1/", chain, " red"))
+  }
+  
+  lines <- c(lines,
+    "",
+    "color #2 steelblue",
+    "",
+    "# --- Display settings ---",
+    "set bgColor white",
+    "lighting soft",
+    "graphics silhouettes true",
+    "",
+    "# --- Orient view ---",
+    "view orient",
+    "",
+    "# --- Optional: show cartoon only ---",
+    "# hide atoms",
+    "# show cartoons",
+    "",
+    "# --- Save image ---",
+    paste0("# save ", complex_id, "_", genotype, "_", neuron, "_overlay.png width 2000 height 2000"),
+    "",
+    "# --- RMSD info will appear in Log panel after matchmaker ---",
+    "",
+    "# ==========================================================",
+    "# Quick commands to paste:",
+    "# ==========================================================",
+    paste0("# matchmaker #2 to #1"),
+    paste0("# color #1 darkgrey"),
+    paste0("# color #1/", paste(broken_chains, collapse = " red; color #1/"), " red"),
+    paste0("# color #2 steelblue"),
+    paste0("# set bgColor white"),
+    paste0("# lighting soft"),
+    paste0("# view orient")
+  )
+  
+  writeLines(lines, output_path)
+  return(TRUE)
+}
+
+
+# --- Step 5: Generate scripts for all WT_and_KO entries ---
+
+context_summary <- read_csv(file.path(out_dir_structures, "complex_context_summary.csv"), show_col_types = FALSE)
+
+wt_and_ko_contexts <- context_summary %>%
+  dplyr::filter(structure_status == "WT_and_KO")
+
+message("Generating ChimeraX scripts for ", nrow(wt_and_ko_contexts), " WT vs KO comparisons...")
+
+scripts_generated <- 0
+
+for (i in seq_len(nrow(wt_and_ko_contexts))) {
+  ctx <- wt_and_ko_contexts[i, ]
+  
+  # Get protein info for this complex
+  proteins_df <- complex_chain_map %>%
+    dplyr::filter(complex_id == ctx$complex_id)
+  
+  if (nrow(proteins_df) == 0) next
+  
+  # Parse broken proteins
+  broken_proteins <- unlist(strsplit(ctx$proteins_broken, ";"))
+  
+  # Define paths (placeholders - user updates)
+  wt_path <- paste0("path/to/", ctx$complex_id, "_WT_model_0.cif")
+  ko_path <- paste0("path/to/", ctx$complex_id, "_", ctx$genotype, "_", ctx$neuron, "_KO_model_0.cif")
+  
+  # Output path
+  script_path <- file.path(out_dir_chimerax, 
+                           paste0(ctx$complex_id, "_", ctx$genotype, "_", ctx$neuron, ".cxc"))
+  
+  # Generate script
+  success <- generate_chimerax_script(
+    complex_id = ctx$complex_id,
+    genotype = ctx$genotype,
+    neuron = ctx$neuron,
+    proteins_df = proteins_df,
+    broken_proteins = broken_proteins,
+    wt_path = wt_path,
+    ko_path = ko_path,
+    output_path = script_path
+  )
+  
+  if (success) scripts_generated <- scripts_generated + 1
+}
+
+message("Generated ", scripts_generated, " ChimeraX scripts")
+
+
+# --- Step 6: Generate master script for batch processing ---
+
+master_script <- c(
+  "# ==========================================================",
+  "# Master ChimeraX Script - Complex Structure Comparisons",
+  paste0("# Generated: ", Sys.time()),
+  "# ==========================================================",
+  "",
+  "# This script lists all available comparisons.",
+  "# Update the BASE_PATH variable to your AF3 output directory.",
+  "",
+  "# BASE_PATH = /path/to/your/af3_outputs/",
+  "",
+  "# Available comparisons:",
+  ""
+)
+
+for (i in seq_len(nrow(wt_and_ko_contexts))) {
+  ctx <- wt_and_ko_contexts[i, ]
+  master_script <- c(master_script,
+    paste0("# ", ctx$complex_id, " - ", ctx$genotype, " ", ctx$neuron, 
+           " (", ctx$n_proteins_broken, "/", ctx$n_proteins_total, " broken, ",
+           "frac_lost=", round(ctx$frac_edges_lost, 2), ")"))
+}
+
+writeLines(master_script, file.path(out_dir_chimerax, "00_master_list.txt"))
+
+
+# --- Step 7: Save chain mapping reference ---
+
+write_csv(complex_chain_map, file.path(out_dir_chimerax, "chain_mapping_reference.csv"))
+
+
+message("")
+message("=== ChimeraX automation complete ===")
+message("Output directory: ", out_dir_chimerax)
+message("Scripts generated: ", scripts_generated)
+message("Chain mapping: chain_mapping_reference.csv")
+message("")
+message("Usage:")
+message("1. Open ChimeraX")
+message("2. Load WT structure: open /path/to/Complex_XXXX_WT_model_0.cif")
+message("3. Load KO structure: open /path/to/Complex_XXXX_genotype_neuron_KO_model_0.cif")
+message("4. File > Open > Complex_XXXX_genotype_neuron.cxc")
+message("5. Or paste commands from script into ChimeraX command line")
+```
+
+
+
 ## Dumbbell-Plot of broken PPIs on edge, trimer and complex level
 ```{r}
 # --------- Dumbbell plots for trimers and complexes ---------
