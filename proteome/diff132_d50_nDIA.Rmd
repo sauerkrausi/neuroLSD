@@ -15836,6 +15836,8 @@ message("Master CSV: master_complex_proteins.csv")
 # ==========================================================================
 # ChimeraX Automation for Complex Structure Comparison
 # Generates .cxc command files for WT vs KO structure visualization
+# Generate ChimeraX command scripts (.cxc) for automated WT vs KO structure comparison.
+# Colors WT retained chains grey, broken chain(s) red, and KO structure blue to visualize complex disruption.
 # ==========================================================================
 
 # --- Step 1: Setup ---
@@ -19686,6 +19688,9 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 
 ```
 
+
+
+# Master PPI Stats output for summary csv
 
 
 
