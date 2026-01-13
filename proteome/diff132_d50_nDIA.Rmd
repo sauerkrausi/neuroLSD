@@ -15841,14 +15841,12 @@ message("Master CSV: master_complex_proteins.csv")
 # ==========================================================================
 
 # --- Step 1: Setup ---
-
 out_dir_chimerax <- file.path(out_dir_structures, "chimerax_scripts")
 dir.create(out_dir_chimerax, recursive = TRUE, showWarnings = FALSE)
 
 
 # --- Step 2: Add sequence prefix to protein data ---
 # First 10 amino acids for chain matching in ChimeraX
-
 master_csv <- read_csv(file.path(out_dir_structures, "master_complex_proteins.csv"), show_col_types = FALSE)
 
 master_csv <- master_csv %>%
@@ -15873,7 +15871,6 @@ complex_chain_map <- master_csv %>%
 
 
 # --- Step 4: Function to generate ChimeraX script ---
-
 generate_chimerax_script <- function(complex_id, genotype, neuron, 
                                       proteins_df, broken_proteins,
                                       wt_path, ko_path, output_path) {
@@ -15978,7 +15975,6 @@ generate_chimerax_script <- function(complex_id, genotype, neuron,
 
 
 # --- Step 5: Generate scripts for all WT_and_KO entries ---
-
 context_summary <- read_csv(file.path(out_dir_structures, "complex_context_summary.csv"), show_col_types = FALSE)
 
 wt_and_ko_contexts <- context_summary %>%
@@ -16027,7 +16023,6 @@ message("Generated ", scripts_generated, " ChimeraX scripts")
 
 
 # --- Step 6: Generate master script for batch processing ---
-
 master_script <- c(
   "# ==========================================================",
   "# Master ChimeraX Script - Complex Structure Comparisons",
@@ -16055,7 +16050,6 @@ writeLines(master_script, file.path(out_dir_chimerax, "00_master_list.txt"))
 
 
 # --- Step 7: Save chain mapping reference ---
-
 write_csv(complex_chain_map, file.path(out_dir_chimerax, "chain_mapping_reference.csv"))
 
 
@@ -19693,12 +19687,11 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 # Master PPI Stats output for summary csv
 ```{r}
 # ==========================================================================
-# PPI Master Stats Summary
+# Module 14: PPI Master Stats Summary
 # Aggregates PPI, trimer, and complex disruption statistics per KO × neuron.
 # ==========================================================================
 
 # --- Step 1: Load summary tables ---
-
 # PPI-level summary (from Module 11)
 # ko_summary_global should already be in environment, or load from file:
 # ko_summary_global <- read_csv(file.path(out_dir_ppi_vuln, "tables", "ko_summary_global.csv"), show_col_types = FALSE)
@@ -19707,13 +19700,12 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 # trimer_ko_summary should already be in environment, or load from file:
 # trimer_ko_summary <- read_csv(file.path(out_dir_ppi_vuln, "tables/multimer", "trimer_ko_summary.csv"), show_col_types = FALSE)
 
-# Complex-level summary (from Module 11b)
+# Complex-level summary (from multimer analysis))
 # complex_ko_summary should already be in environment, or load from file:
 # complex_ko_summary <- read_csv(file.path(out_dir_ppi_vuln, "tables", "complex_ko_summary.csv"), show_col_types = FALSE)
 
 
 # --- Step 2: Aggregate complex stats per KO × neuron ---
-
 complex_stats <- complex_ko_summary %>%
   dplyr::group_by(genotype, neuron) %>%
   dplyr::summarise(
@@ -19729,7 +19721,6 @@ complex_stats <- complex_ko_summary %>%
 
 
 # --- Step 3: Prepare PPI stats ---
-
 ppi_stats <- ko_summary_global %>%
   dplyr::select(genotype, neuron, 
                 ppi_total = total_baseline_edges,
@@ -19742,7 +19733,6 @@ ppi_stats <- ko_summary_global %>%
 
 
 # --- Step 4: Prepare trimer stats ---
-
 trimer_stats <- trimer_ko_summary %>%
   dplyr::select(genotype, neuron,
                 trimers_total = n_total,
@@ -19756,15 +19746,45 @@ trimer_stats <- trimer_ko_summary %>%
 
 
 # --- Step 5: Merge all stats into master summary ---
-
 ppi_master_stats <- ppi_stats %>%
   dplyr::left_join(trimer_stats, by = c("genotype", "neuron")) %>%
-  dplyr::left_join(complex_stats, by = c("genotype", "neuron")) %>%
+  dplyr::left_join(complex_stats, by = c("genotype", "neuron"))
+
+
+# --- Step 6: Add control (WT) rows ---
+# Get baseline totals from any KO row (all start with same baseline)
+baseline_ppi <- ppi_stats$ppi_total[1]
+baseline_trimers <- trimer_stats$trimers_total[1]
+baseline_complexes <- complex_stats$complexes_total[1]
+
+control_rows <- tibble::tibble(
+  genotype = c("WT", "WT"),
+  neuron = c("iN", "iDA"),
+  ppi_total = baseline_ppi,
+  ppi_lost = 0L,
+  ppi_retained = baseline_ppi,
+  ppi_unknown = 0L,
+  pct_ppi_lost = 0,
+  trimers_total = baseline_trimers,
+  trimers_broken = 0L,
+  trimers_partial = 0L,
+  trimers_intact = baseline_trimers,
+  pct_trimers_broken = 0,
+  pct_trimers_affected = 0,
+  complexes_total = baseline_complexes,
+  complexes_disrupted = 0L,
+  complexes_partial = 0L,
+  complexes_intact = baseline_complexes,
+  pct_complexes_disrupted = 0,
+  pct_complexes_affected = 0,
+  mean_frac_edges_lost = 0
+)
+
+ppi_master_stats <- dplyr::bind_rows(control_rows, ppi_master_stats) %>%
   dplyr::arrange(desc(pct_ppi_lost))
 
 
-# --- Step 6: Add disease class annotation ---
-
+# --- Step 7: Add disease class annotation ---
 disease_map <- disease_classes_dataframe %>%
   dplyr::mutate(
     genotype = sub("_i[ND]A?$", "", sample),
@@ -19775,11 +19795,11 @@ disease_map <- disease_classes_dataframe %>%
 
 ppi_master_stats <- ppi_master_stats %>%
   dplyr::left_join(disease_map, by = c("genotype", "neuron")) %>%
+  dplyr::mutate(DiseaseClass = ifelse(genotype == "WT", "Control", DiseaseClass)) %>%
   dplyr::relocate(DiseaseClass, .after = neuron)
 
 
-# --- Step 7: Save output ---
-
+# --- Step 8: Save output ---
 write_csv(ppi_master_stats, file.path(out_dir_ppi_vuln, "tables", "ppi_master_stats_summary.csv"))
 
 message("=== PPI Master Stats Summary ===")
@@ -19798,6 +19818,7 @@ ppi_master_stats %>%
   dplyr::select(genotype, neuron, DiseaseClass, pct_ppi_lost, pct_trimers_broken, pct_complexes_disrupted) %>%
   head(10) %>%
   print()
+
 ```
 
 
