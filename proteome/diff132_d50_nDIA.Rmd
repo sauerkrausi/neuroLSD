@@ -15583,46 +15583,71 @@ make_chimerax_script <- function(proteins_df, complex_name) {
 }
 
 
-# --- Step 7: Generate structure files per complex x KO x neuron ---
+# --- Step 7: Generate structure files ---
+# One WT per complex, KO versions per context where broken proteins differ
 
-contexts_to_process <- complex_context_summary %>% dplyr::filter(n_proteins_retained > 0)
-message("Generating files for ", nrow(contexts_to_process), " contexts...")
+unique_complexes <- unique(target_contexts$complex_id)
+message("Generating WT files for ", length(unique_complexes), " complexes...")
+
+# Step 7a: Generate one WT per complex
+for (cid in unique_complexes) {
+  
+  # Get all proteins for this complex (from any context, they're the same)
+  wt_proteins <- complex_protein_states %>%
+    dplyr::filter(complex_id == cid) %>%
+    dplyr::select(Gene, UniProt, sequence) %>%
+    dplyr::distinct() %>%
+    dplyr::filter(!is.na(sequence), nchar(sequence) > 0)
+  
+  if (nrow(wt_proteins) < 2) next
+  
+  # Create complex directory
+  complex_dir <- file.path(out_dir_structures, cid)
+  dir.create(complex_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # WT files
+  wt_json <- make_af3_json(wt_proteins, paste0(cid, "_WT"))
+  write_json(wt_json, file.path(complex_dir, paste0(cid, "_WT.json")), pretty = TRUE, auto_unbox = TRUE)
+  write_fasta(wt_proteins, file.path(complex_dir, paste0(cid, "_WT.fasta")))
+}
+
+# Step 7b: Generate KO versions per context (only where proteins differ)
+contexts_to_process <- complex_context_summary %>% dplyr::filter(n_proteins_retained > 0, n_proteins_broken > 0)
+message("Generating KO files for ", nrow(contexts_to_process), " contexts...")
+
+# Track unique KO protein sets to avoid duplicates
+ko_signatures_done <- list()
 
 for (i in seq_len(nrow(contexts_to_process))) {
   ctx <- contexts_to_process[i, ]
-  if (i %% 25 == 0) message("  Processing ", i, "/", nrow(contexts_to_process))
   
-  # Get proteins for this context
-  ctx_proteins <- complex_protein_states %>%
-    dplyr::filter(complex_id == ctx$complex_id, genotype == ctx$genotype, neuron == ctx$neuron, !is.na(sequence), nchar(sequence) > 0)
+  # Get retained proteins for this context
+  ko_proteins <- complex_protein_states %>%
+    dplyr::filter(complex_id == ctx$complex_id, genotype == ctx$genotype, neuron == ctx$neuron, !is_broken, !is.na(sequence), nchar(sequence) > 0)
   
-  if (nrow(ctx_proteins) < 2) next
+  if (nrow(ko_proteins) < 2) next
   
-  # Create complex directory
+  # Check if we already generated this exact KO (same proteins missing)
+  ko_signature <- paste(ctx$complex_id, paste(sort(ko_proteins$Gene), collapse = ";"), sep = ":")
+  if (ko_signature %in% names(ko_signatures_done)) next
+  ko_signatures_done[[ko_signature]] <- TRUE
+  
   complex_dir <- file.path(out_dir_structures, ctx$complex_id)
-  dir.create(complex_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # File prefix
   prefix <- paste(ctx$complex_id, ctx$genotype, ctx$neuron, sep = "_")
   
-  # WT files (all proteins)
-  wt_proteins <- ctx_proteins
-  wt_json <- make_af3_json(wt_proteins, paste0(prefix, "_WT"))
-  write_json(wt_json, file.path(complex_dir, paste0(prefix, "_WT.json")), pretty = TRUE, auto_unbox = TRUE)
-  write_fasta(wt_proteins, file.path(complex_dir, paste0(prefix, "_WT.fasta")))
+  # KO files
+  ko_json <- make_af3_json(ko_proteins, paste0(prefix, "_KO"))
+  write_json(ko_json, file.path(complex_dir, paste0(prefix, "_KO.json")), pretty = TRUE, auto_unbox = TRUE)
+  write_fasta(ko_proteins, file.path(complex_dir, paste0(prefix, "_KO.fasta")))
   
-  # KO files (only retained proteins)
-  ko_proteins <- ctx_proteins %>% dplyr::filter(!is_broken)
-  if (nrow(ko_proteins) >= 2) {
-    ko_json <- make_af3_json(ko_proteins, paste0(prefix, "_KO"))
-    write_json(ko_json, file.path(complex_dir, paste0(prefix, "_KO.json")), pretty = TRUE, auto_unbox = TRUE)
-    write_fasta(ko_proteins, file.path(complex_dir, paste0(prefix, "_KO.fasta")))
-  }
-  
-  # ChimeraX script (for WT structure, colors broken proteins)
-  chimerax_lines <- make_chimerax_script(wt_proteins, prefix)
+  # ChimeraX script (colors broken proteins on WT structure)
+  wt_proteins_annotated <- complex_protein_states %>%
+    dplyr::filter(complex_id == ctx$complex_id, genotype == ctx$genotype, neuron == ctx$neuron, !is.na(sequence), nchar(sequence) > 0)
+  chimerax_lines <- make_chimerax_script(wt_proteins_annotated, prefix)
   writeLines(chimerax_lines, file.path(complex_dir, paste0(prefix, "_chimerax.cxc")))
 }
+
+message("Generated ", length(unique_complexes), " WT structures and ", length(ko_signatures_done), " unique KO structures")
 
 
 # --- Step 8: Write summary files ---
@@ -15643,6 +15668,7 @@ complex_summary_agg <- complex_context_summary %>%
     n_partial = sum(complex_state == "partial"),
     mean_frac_lost = mean(frac_edges_lost, na.rm = TRUE),
     max_frac_lost = max(frac_edges_lost, na.rm = TRUE),
+    kos_affected = paste(unique(genotype), collapse = ";"),
     .groups = "drop"
   ) %>%
   dplyr::left_join(complexes_summary %>% dplyr::select(complex_id, n_proteins, proteins, organelle), by = "complex_id") %>%
@@ -15658,46 +15684,45 @@ readme_lines <- c(
   paste0("# Generated: ", Sys.time()),
   "",
   "## Overview",
-  paste0("Total complexes: ", n_distinct(target_contexts$complex_id)),
-  paste0("Total contexts (complex x KO x neuron): ", nrow(contexts_to_process)),
+  paste0("Total complexes: ", length(unique_complexes)),
+  paste0("Total KO contexts: ", length(ko_signatures_done)),
   "",
   "## File descriptions",
   "",
   "master_complex_proteins.csv",
   "  Per-protein data for all target complexes. Columns:",
-
-"  complex_id, genotype, neuron, complex_state, frac_edges_lost,",
+  "  complex_id, genotype, neuron, complex_state, frac_edges_lost,",
   "  protein, uniprot_id, sequence, log2FC, is_broken, n_proteins_total, n_proteins_broken",
   "",
   "complex_context_summary.csv",
   "  Per-context summary (one row per complex x KO x neuron)",
+  "  Use this to see which KOs affect each complex and which proteins are broken",
   "",
   "complex_summary_aggregated.csv",
-  "  Per-complex summary aggregated across all KO x neuron contexts",
+  "  Per-complex summary with list of affected KOs",
   "",
   "## Per-complex directories",
   "",
   "Each Complex_XXXX/ folder contains:",
-  "  {complex}_{genotype}_{neuron}_WT.json    - AF3 input with all proteins",
-  "  {complex}_{genotype}_{neuron}_KO.json    - AF3 input without broken proteins",
-  "  {complex}_{genotype}_{neuron}_WT.fasta   - FASTA for WT (all proteins)",
-  "  {complex}_{genotype}_{neuron}_KO.fasta   - FASTA for KO (retained only)",
+  "  {complex}_WT.json              - AF3 input with all proteins (one per complex)",
+  "  {complex}_WT.fasta             - FASTA for WT",
+  "  {complex}_{genotype}_{neuron}_KO.json   - AF3 input without broken proteins",
+  "  {complex}_{genotype}_{neuron}_KO.fasta  - FASTA for KO",
   "  {complex}_{genotype}_{neuron}_chimerax.cxc - ChimeraX coloring script",
+  "",
+  "## Workflow",
+  "",
+  "1. Run AF3 on {complex}_WT.json to get the baseline structure",
+  "2. Optionally run AF3 on KO versions to see structural impact of missing proteins",
+  "3. Use ChimeraX scripts to color broken proteins on the WT structure",
   "",
   "## AlphaFold3 Server usage",
   "",
   "1. Go to https://alphafoldserver.com",
-  "2. Click 'New job' or 'Start new prediction'
-",
+  "2. Click 'Upload JSON'",
   "3. Upload the *_WT.json or *_KO.json file",
   "4. Submit and wait for results",
-  "5. Download the predicted structure (.cif or .pdb)",
-  "",
-  "## ChimeraX visualization",
-  "",
-  "1. Open the predicted WT structure in ChimeraX",
-  "2. File > Open > {complex}_chimerax.cxc",
-  "3. Broken proteins will be colored red, retained proteins steel blue",
+  "5. Download the predicted structure (.cif)",
   "",
   "## Complex states",
   "",
@@ -15711,10 +15736,11 @@ writeLines(readme_lines, file.path(out_dir_structures, "README.txt"))
 message("")
 message("=== Structure preparation complete ===")
 message("Output: ", out_dir_structures)
-message("Complexes: ", n_distinct(target_contexts$complex_id))
-message("Contexts processed: ", nrow(contexts_to_process))
+message("WT structures: ", length(unique_complexes))
+message("Unique KO structures: ", length(ko_signatures_done))
 message("Master CSV: master_complex_proteins.csv")
 ```
+
 
 
 ## Dumbbell-Plot of broken PPIs on edge, trimer and complex level
