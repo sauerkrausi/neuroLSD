@@ -3553,6 +3553,7 @@ p_th <- ggplot(th_df, aes(x = genotype, y = log2_intensity, fill = genotype)) +
 
 ggsave(file.path(out_dir_diffQC, "diff132_d50_TH_iDA.pdf"), p_th, width = 6, height = 4, device = cairo_pdf)
 
+######
 # --- Helper function: calculate annotation average with log2 transform and SEM
 calc_annotation_avg_log2 <- function(genes, data) {
   data %>%
@@ -15404,6 +15405,305 @@ plot_complex_diseaseclass_bars(
 )
 ```
 
+
+## Structural complex vulnearbility
+```{r}
+# ==========================================================================
+# Prepare Protein Complexes for AlphaFold3 Structure Prediction
+# Generates WT and KO structure files for disrupted/partial complexes
+# ==========================================================================
+
+library(httr)
+library(jsonlite)
+
+out_dir_structures <- file.path(out_dir_ppi_vuln, "structures")
+dir.create(out_dir_structures, recursive = TRUE, showWarnings = FALSE)
+
+
+# --- Step 1: Select target complexes ---
+# Top 10 per KO x neuron + top 50 global
+
+top_per_ko <- complex_ko_summary %>%
+  dplyr::filter(complex_state %in% c("disrupted", "partial")) %>%
+  dplyr::group_by(genotype, neuron) %>%
+  dplyr::slice_max(frac_edges_lost, n = 10, with_ties = FALSE) %>%
+  dplyr::ungroup()
+
+top_global <- complex_ko_summary %>%
+  dplyr::filter(complex_state %in% c("disrupted", "partial")) %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(mean_frac_lost = mean(frac_edges_lost, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::slice_max(mean_frac_lost, n = 50, with_ties = FALSE)
+
+# Union: all complex x KO x neuron combinations from both sets
+target_contexts <- complex_ko_summary %>%
+  dplyr::filter(complex_state %in% c("disrupted", "partial")) %>%
+  dplyr::filter(complex_id %in% top_global$complex_id | 
+                paste(complex_id, genotype, neuron) %in% paste(top_per_ko$complex_id, top_per_ko$genotype, top_per_ko$neuron))
+
+message("Target contexts: ", nrow(target_contexts), " (complex x KO x neuron combinations)")
+message("Unique complexes: ", n_distinct(target_contexts$complex_id))
+
+
+# --- Step 2: Build protein-level data for target complexes ---
+# Join complex membership with per-KO expression data
+
+complex_proteins_base <- complexes_baseline %>%
+  dplyr::inner_join(complexes_summary %>% dplyr::select(community_id, complex_id), by = "community_id") %>%
+  dplyr::filter(complex_id %in% target_contexts$complex_id) %>%
+  dplyr::select(complex_id, Gene)
+
+# Expand to all KO x neuron contexts and add expression
+complex_protein_states <- target_contexts %>%
+  dplyr::select(complex_id, genotype, neuron, complex_state, frac_edges_lost) %>%
+  dplyr::left_join(complex_proteins_base, by = "complex_id", relationship = "many-to-many") %>%
+  dplyr::left_join(prot_long %>% dplyr::select(Genes, genotype, neuron, log2FC), 
+                   by = c("Gene" = "Genes", "genotype", "neuron")) %>%
+  dplyr::mutate(is_broken = !is.na(log2FC) & log2FC < drop_thresh)
+
+message("Protein-level rows: ", nrow(complex_protein_states))
+
+
+# --- Step 3: Build UniProt mapping and fetch sequences ---
+
+protein_to_uniprot <- baseline_edges_union %>%
+  dplyr::select(Gene1, Protein1) %>%
+  dplyr::rename(Gene = Gene1, UniProt = Protein1) %>%
+  dplyr::bind_rows(baseline_edges_union %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(Gene = Gene2, UniProt = Protein2)) %>%
+  dplyr::filter(!is.na(Gene), !is.na(UniProt)) %>%
+  dplyr::distinct(Gene, .keep_all = TRUE)
+
+# Get all unique genes needing sequences
+genes_needed <- unique(complex_protein_states$Gene)
+uniprot_ids_needed <- protein_to_uniprot %>% dplyr::filter(Gene %in% genes_needed) %>% dplyr::pull(UniProt) %>% unique()
+
+message("Fetching sequences for ", length(uniprot_ids_needed), " UniProt IDs...")
+
+fetch_uniprot_sequences <- function(uniprot_ids) {
+  sequences <- list()
+  for (i in seq_along(uniprot_ids)) {
+    uid <- uniprot_ids[i]
+    if (i %% 50 == 0) message("  Fetched ", i, "/", length(uniprot_ids))
+    tryCatch({
+      url <- paste0("https://rest.uniprot.org/uniprotkb/", uid, ".fasta")
+      response <- httr::GET(url, httr::timeout(10))
+      if (httr::status_code(response) == 200) {
+        fasta_text <- httr::content(response, "text", encoding = "UTF-8")
+        lines <- strsplit(fasta_text, "\n")[[1]]
+        sequences[[uid]] <- paste(lines[!grepl("^>", lines)], collapse = "")
+      } else {
+        sequences[[uid]] <- NA_character_
+      }
+      Sys.sleep(0.1)
+    }, error = function(e) { sequences[[uid]] <- NA_character_ })
+  }
+  return(sequences)
+}
+
+all_sequences <- fetch_uniprot_sequences(uniprot_ids_needed)
+message("Successfully fetched: ", sum(!is.na(all_sequences)), "/", length(all_sequences))
+
+
+# --- Step 4: Add UniProt IDs and sequences to protein states ---
+
+complex_protein_states <- complex_protein_states %>%
+  dplyr::left_join(protein_to_uniprot, by = "Gene") %>%
+  dplyr::mutate(sequence = sapply(UniProt, function(x) if (!is.na(x) && x %in% names(all_sequences)) all_sequences[[x]] else NA_character_))
+
+# Summary stats per complex x KO x neuron
+complex_context_summary <- complex_protein_states %>%
+  dplyr::group_by(complex_id, genotype, neuron, complex_state, frac_edges_lost) %>%
+  dplyr::summarise(
+    n_proteins_total = n(),
+    n_proteins_broken = sum(is_broken, na.rm = TRUE),
+    n_proteins_retained = sum(!is_broken, na.rm = TRUE),
+    proteins_broken = paste(Gene[is_broken], collapse = ";"),
+    proteins_retained = paste(Gene[!is_broken], collapse = ";"),
+    .groups = "drop"
+  )
+
+
+# --- Step 5: Write master CSV ---
+
+master_csv <- complex_protein_states %>%
+  dplyr::select(complex_id, genotype, neuron, complex_state, frac_edges_lost, Gene, UniProt, sequence, log2FC, is_broken) %>%
+  dplyr::rename(protein = Gene, uniprot_id = UniProt) %>%
+  dplyr::left_join(complex_context_summary %>% dplyr::select(complex_id, genotype, neuron, n_proteins_total, n_proteins_broken), 
+                   by = c("complex_id", "genotype", "neuron")) %>%
+  dplyr::arrange(complex_id, genotype, neuron, desc(is_broken), protein)
+
+write_csv(master_csv, file.path(out_dir_structures, "master_complex_proteins.csv"))
+message("Wrote master CSV: ", nrow(master_csv), " rows")
+
+
+# --- Step 6: Helper functions for file generation ---
+
+make_af3_json <- function(proteins_df, complex_name) {
+  # AF3 server schema: sequences array with proteinChain objects
+  chains <- lapply(seq_len(nrow(proteins_df)), function(i) {
+    list(proteinChain = list(sequence = proteins_df$sequence[i], count = 1L))
+  })
+  list(name = complex_name, modelSeeds = list(), sequences = chains)
+}
+
+write_fasta <- function(proteins_df, filepath) {
+  lines <- unlist(lapply(seq_len(nrow(proteins_df)), function(i) {
+    c(paste0(">", proteins_df$UniProt[i], "|", proteins_df$Gene[i]), proteins_df$sequence[i])
+  }))
+  writeLines(lines, filepath)
+}
+
+make_chimerax_script <- function(proteins_df, complex_name) {
+  # Color broken proteins red, retained proteins steel blue
+  lines <- c(
+    paste0("# ChimeraX coloring script for ", complex_name),
+    paste0("# Generated: ", Sys.time()),
+    "",
+    "# Chain color assignments (WT structure):",
+    "# Broken proteins = red, Retained proteins = steel blue",
+    ""
+  )
+  for (i in seq_len(nrow(proteins_df))) {
+    chain_id <- LETTERS[i]
+    color <- if (proteins_df$is_broken[i]) "red" else "steelblue"
+    lfc <- if (!is.na(proteins_df$log2FC[i])) round(proteins_df$log2FC[i], 2) else "NA"
+    lines <- c(lines, 
+      paste0("# Chain ", chain_id, ": ", proteins_df$Gene[i], " (log2FC=", lfc, ", broken=", proteins_df$is_broken[i], ")"),
+      paste0("color /", chain_id, " ", color))
+  }
+  lines <- c(lines, "", "# Surface representation (optional):", "# surface", "# color surface /A-Z fromAtoms")
+  return(lines)
+}
+
+
+# --- Step 7: Generate structure files per complex x KO x neuron ---
+
+contexts_to_process <- complex_context_summary %>% dplyr::filter(n_proteins_retained > 0)
+message("Generating files for ", nrow(contexts_to_process), " contexts...")
+
+for (i in seq_len(nrow(contexts_to_process))) {
+  ctx <- contexts_to_process[i, ]
+  if (i %% 25 == 0) message("  Processing ", i, "/", nrow(contexts_to_process))
+  
+  # Get proteins for this context
+  ctx_proteins <- complex_protein_states %>%
+    dplyr::filter(complex_id == ctx$complex_id, genotype == ctx$genotype, neuron == ctx$neuron, !is.na(sequence), nchar(sequence) > 0)
+  
+  if (nrow(ctx_proteins) < 2) next
+  
+  # Create complex directory
+  complex_dir <- file.path(out_dir_structures, ctx$complex_id)
+  dir.create(complex_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # File prefix
+  prefix <- paste(ctx$complex_id, ctx$genotype, ctx$neuron, sep = "_")
+  
+  # WT files (all proteins)
+  wt_proteins <- ctx_proteins
+  wt_json <- make_af3_json(wt_proteins, paste0(prefix, "_WT"))
+  write_json(wt_json, file.path(complex_dir, paste0(prefix, "_WT.json")), pretty = TRUE, auto_unbox = TRUE)
+  write_fasta(wt_proteins, file.path(complex_dir, paste0(prefix, "_WT.fasta")))
+  
+  # KO files (only retained proteins)
+  ko_proteins <- ctx_proteins %>% dplyr::filter(!is_broken)
+  if (nrow(ko_proteins) >= 2) {
+    ko_json <- make_af3_json(ko_proteins, paste0(prefix, "_KO"))
+    write_json(ko_json, file.path(complex_dir, paste0(prefix, "_KO.json")), pretty = TRUE, auto_unbox = TRUE)
+    write_fasta(ko_proteins, file.path(complex_dir, paste0(prefix, "_KO.fasta")))
+  }
+  
+  # ChimeraX script (for WT structure, colors broken proteins)
+  chimerax_lines <- make_chimerax_script(wt_proteins, prefix)
+  writeLines(chimerax_lines, file.path(complex_dir, paste0(prefix, "_chimerax.cxc")))
+}
+
+
+# --- Step 8: Write summary files ---
+
+# Context-level summary
+write_csv(complex_context_summary, file.path(out_dir_structures, "complex_context_summary.csv"))
+
+# Per-complex summary (aggregated across KOs)
+complex_summary_agg <- complex_context_summary %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(
+    n_contexts = n(),
+    n_disrupted = sum(complex_state == "disrupted"),
+    n_partial = sum(complex_state == "partial"),
+    mean_frac_lost = mean(frac_edges_lost, na.rm = TRUE),
+    max_frac_lost = max(frac_edges_lost, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(complexes_summary %>% dplyr::select(complex_id, n_proteins, proteins, organelle), by = "complex_id") %>%
+  dplyr::arrange(desc(mean_frac_lost))
+
+write_csv(complex_summary_agg, file.path(out_dir_structures, "complex_summary_aggregated.csv"))
+
+
+# --- Step 9: README ---
+
+readme_lines <- c(
+  "# Protein Complex Structure Prediction Files",
+  paste0("# Generated: ", Sys.time()),
+  "",
+  "## Overview",
+  paste0("Total complexes: ", n_distinct(target_contexts$complex_id)),
+  paste0("Total contexts (complex x KO x neuron): ", nrow(contexts_to_process)),
+  "",
+  "## File descriptions",
+  "",
+  "master_complex_proteins.csv",
+  "  Per-protein data for all target complexes. Columns:",
+
+"  complex_id, genotype, neuron, complex_state, frac_edges_lost,",
+  "  protein, uniprot_id, sequence, log2FC, is_broken, n_proteins_total, n_proteins_broken",
+  "",
+  "complex_context_summary.csv",
+  "  Per-context summary (one row per complex x KO x neuron)",
+  "",
+  "complex_summary_aggregated.csv",
+  "  Per-complex summary aggregated across all KO x neuron contexts",
+  "",
+  "## Per-complex directories",
+  "",
+  "Each Complex_XXXX/ folder contains:",
+  "  {complex}_{genotype}_{neuron}_WT.json    - AF3 input with all proteins",
+  "  {complex}_{genotype}_{neuron}_KO.json    - AF3 input without broken proteins",
+  "  {complex}_{genotype}_{neuron}_WT.fasta   - FASTA for WT (all proteins)",
+  "  {complex}_{genotype}_{neuron}_KO.fasta   - FASTA for KO (retained only)",
+  "  {complex}_{genotype}_{neuron}_chimerax.cxc - ChimeraX coloring script",
+  "",
+  "## AlphaFold3 Server usage",
+  "",
+  "1. Go to https://alphafoldserver.com",
+  "2. Click 'New job' or 'Start new prediction'
+",
+  "3. Upload the *_WT.json or *_KO.json file",
+  "4. Submit and wait for results",
+  "5. Download the predicted structure (.cif or .pdb)",
+  "",
+  "## ChimeraX visualization",
+  "",
+  "1. Open the predicted WT structure in ChimeraX",
+  "2. File > Open > {complex}_chimerax.cxc",
+  "3. Broken proteins will be colored red, retained proteins steel blue",
+  "",
+  "## Complex states",
+  "",
+  "disrupted: >= 75% of intra-complex PPI edges lost",
+  "partial: 25-75% of edges lost",
+  "Edge lost = either partner protein has log2FC < -0.5"
+)
+
+writeLines(readme_lines, file.path(out_dir_structures, "README.txt"))
+
+message("")
+message("=== Structure preparation complete ===")
+message("Output: ", out_dir_structures)
+message("Complexes: ", n_distinct(target_contexts$complex_id))
+message("Contexts processed: ", nrow(contexts_to_process))
+message("Master CSV: master_complex_proteins.csv")
+```
 
 
 
