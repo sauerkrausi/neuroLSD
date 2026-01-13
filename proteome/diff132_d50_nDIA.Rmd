@@ -3482,6 +3482,100 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_Svexocytosis.pdf"),
 
 
 # Plot differentiation markers for all KOs
+```{r}
+r# =================================================
+# Differentiation QC for Reviewer 1
+# =================================================
+
+# --- Setup output directory
+out_dir_diffQC <- file.path(out_dir_d50_QC, "DifferentiationQC")
+dir.create(out_dir_diffQC, recursive = TRUE, showWarnings = FALSE)
+
+# --- Create differentiation_df from clean_d50_df
+# ctrl rows (distinct per gene x neuron)
+ctrl_df <- clean_d50_df %>%
+  filter(day == 50) %>%
+  distinct(Genes, neuron, .keep_all = TRUE) %>%
+  transmute(Genes, neuron, genotype = "ctrl", mean_intensity = mean_ctrl, sd_intensity = sd_ctrl)
+
+# KO rows
+ko_df <- clean_d50_df %>%
+  filter(day == 50) %>%
+  transmute(Genes, neuron, genotype, mean_intensity = mean_ko, sd_intensity = sd_ko)
+
+differentiation_df <- bind_rows(ctrl_df, ko_df) %>%
+  mutate(genotype = factor(genotype, levels = sort(unique(genotype))))
+
+# --- Gene lists
+es_drivers <- c("ATF1", "CUX1", "MKI67", "NANOG", "POU5F1", "SOX2")
+neuron_drivers <- c("BDNF", "CAMK2B", "CRTC1", "DCX", "JUN", "MAP2", "NCAM1", "NEFH", "NEFL", "NEFM", "NES", "POU3F2", "SLC17A7", "SYN1", "SYP", "TUBB3", "TH", "BSN", "SYNJ1", "GAP43", "SYN2", "SYN3")
+
+presyn_genes <- c("BSN", "CPLX1", "CPLX2", "PCLO", "RAB3A", "SNAP25", "STX1A", "STX1B", "SV2A", "SV2B", "SV2C", "SYN1", "SYN2", "SYP", "SYT1", "SYT2", "SYT7", "VAMP1", "VAMP2")
+postsyn_genes <- c("DLG4", "DLG3", "DLG2", "SHANK1", "SHANK2", "SHANK3", "HOMER1", "HOMER2", "HOMER3", "GPHN", "SYNGAP1", "GRIN1", "GRIN2A", "GRIN2B", "GRIA1", "GRIA2", "GRIA3", "GRIA4", "CAMK2A", "CAMK2B", "NRGN", "NPTX2")
+
+# --- Plot function for marker genes
+plot_diff_markers <- function(genes, data, title_text) {
+  plot_df <- data %>% filter(Genes %in% genes)
+  if (nrow(plot_df) == 0) return(NULL)
+  
+  ggplot(plot_df, aes(x = genotype, y = mean_intensity, fill = neuron)) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+    geom_errorbar(aes(ymin = mean_intensity - sd_intensity, ymax = mean_intensity + sd_intensity), position = position_dodge(width = 0.8), width = 0.2) +
+    scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80")) +
+    facet_wrap(~Genes, scales = "free_y") +
+    labs(title = title_text, x = "Genotype", y = "Mean Intensity") +
+    theme_bw(base_size = 6) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), panel.grid.minor = element_blank())
+}
+
+# --- Plot 1: ES markers
+p_es <- plot_diff_markers(es_drivers, differentiation_df, "ES Markers across all KOs")
+ggsave(file.path(out_dir_diffQC, "diff132_d50_ES_markers.pdf"), p_es, width = 8, height = 6, device = cairo_pdf)
+
+# --- Plot 2: Neuronal markers
+p_neuro <- plot_diff_markers(neuron_drivers, differentiation_df, "Neuronal Markers across all KOs")
+ggsave(file.path(out_dir_diffQC, "diff132_d50_Neuronal_markers.pdf"), p_neuro, width = 12, height = 10, device = cairo_pdf)
+
+# --- Plot 3: TH for iDA only (all genotypes)
+th_df <- differentiation_df %>% filter(Genes == "TH", neuron == "iDA")
+
+p_th <- ggplot(th_df, aes(x = genotype, y = mean_intensity, fill = neuron)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  geom_errorbar(aes(ymin = mean_intensity - sd_intensity, ymax = mean_intensity + sd_intensity), width = 0.2) +
+  scale_fill_manual(values = c("iDA" = "grey80")) +
+  labs(title = "TH Expression in iDA Neurons", x = "Genotype", y = "Mean Intensity") +
+  theme_bw(base_size = 6) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), panel.grid.minor = element_blank(), legend.position = "none")
+
+ggsave(file.path(out_dir_diffQC, "diff132_d50_TH_iDA.pdf"), p_th, width = 6, height = 4, device = cairo_pdf)
+
+# --- Plot 4 & 5: Pre/Post synaptic averages
+calc_annotation_avg <- function(genes, data) {
+  data %>%
+    filter(Genes %in% genes) %>%
+    group_by(genotype, neuron) %>%
+    summarise(mean_intensity = mean(mean_intensity, na.rm = TRUE), sd_intensity = sd(mean_intensity, na.rm = TRUE), .groups = "drop")
+}
+
+presyn_avg <- calc_annotation_avg(presyn_genes, differentiation_df)
+postsyn_avg <- calc_annotation_avg(postsyn_genes, differentiation_df)
+
+plot_annotation_avg <- function(data, title_text) {
+  ggplot(data, aes(x = genotype, y = mean_intensity, fill = neuron)) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+    geom_errorbar(aes(ymin = mean_intensity - sd_intensity, ymax = mean_intensity + sd_intensity), position = position_dodge(width = 0.8), width = 0.2) +
+    scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80")) +
+    labs(title = title_text, x = "Genotype", y = "Mean Intensity") +
+    theme_bw(base_size = 6) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), panel.grid.minor = element_blank())
+}
+
+p_presyn <- plot_annotation_avg(presyn_avg, "Presynaptic Markers (Average)")
+ggsave(file.path(out_dir_diffQC, "diff132_d50_Presynaptic_avg.pdf"), p_presyn, width = 6, height = 4, device = cairo_pdf)
+
+p_postsyn <- plot_annotation_avg(postsyn_avg, "Postsynaptic Markers (Average)")
+ggsave(file.path(out_dir_diffQC, "diff132_d50_Postsynaptic_avg.pdf"), p_postsyn, width = 6, height = 4, device = cairo_pdf)
+```
 
 
 
