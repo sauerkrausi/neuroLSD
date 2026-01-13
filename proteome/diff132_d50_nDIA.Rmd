@@ -3481,6 +3481,10 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_Top5_Avg_Svexocytosis.pdf"),
 
 
 
+# Plot differentiation markers for all KOs
+
+
+
 # vATPase by neuron x genotype
 Plotted in ascending order 
 ```{r}
@@ -4151,10 +4155,6 @@ NeuoDevd30d50
 ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd30d50, width = 8, height = 6, device = cairo_pdf)
 
 ```
-
-
-# Plot differentiation markers for all KOs
-
 
 
 # GBA1 - ASAH1 time course comparison
