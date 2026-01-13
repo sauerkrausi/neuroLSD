@@ -15520,6 +15520,14 @@ complex_context_summary <- complex_protein_states %>%
     proteins_broken = paste(Gene[is_broken], collapse = ";"),
     proteins_retained = paste(Gene[!is_broken], collapse = ";"),
     .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    structure_status = dplyr::case_when(
+      n_proteins_retained >= 2 & n_proteins_broken > 0 ~ "WT_and_KO",
+      n_proteins_retained < 2 & n_proteins_broken > 0 ~ "WT_only",
+      n_proteins_broken == 0 ~ "intact",
+      TRUE ~ "no_structure"
+    )
   )
 
 
@@ -15528,7 +15536,7 @@ complex_context_summary <- complex_protein_states %>%
 master_csv <- complex_protein_states %>%
   dplyr::select(complex_id, genotype, neuron, complex_state, frac_edges_lost, Gene, UniProt, sequence, log2FC, is_broken) %>%
   dplyr::rename(protein = Gene, uniprot_id = UniProt) %>%
-  dplyr::left_join(complex_context_summary %>% dplyr::select(complex_id, genotype, neuron, n_proteins_total, n_proteins_broken), 
+  dplyr::left_join(complex_context_summary %>% dplyr::select(complex_id, genotype, neuron, n_proteins_total, n_proteins_broken, n_proteins_retained, structure_status), 
                    by = c("complex_id", "genotype", "neuron")) %>%
   dplyr::arrange(complex_id, genotype, neuron, desc(is_broken), protein)
 
@@ -15769,7 +15777,7 @@ organelle_colors <- c(
 
 # Main dot plot
 p_dots <- ggplot(plot_data, aes(x = genotype, y = complex_id)) +
-  geom_point(aes(size = frac_edges_lost, color = complex_state), alpha = 1.0) +
+  geom_point(aes(size = frac_edges_lost, color = complex_state), alpha = 0.8) +
   scale_size_continuous(range = c(0.5, 3), name = "Fraction\nedges lost", limits = c(0.25, 1)) +
   scale_color_manual(values = state_colors, name = "State", drop = FALSE) +
   facet_wrap(~neuron, scales = "free_x") +
