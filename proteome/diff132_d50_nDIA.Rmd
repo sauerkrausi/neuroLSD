@@ -19407,7 +19407,7 @@ p_dist_jaccard <- ggplot(all_pairs, aes(x = pathway_distance, y = jaccard_iN)) +
   ggrepel::geom_text_repel(aes(label = paste(gene_a, gene_b, sep = "-")), size = 2, max.overlaps = 20) +
   scale_color_manual(values = c("FALSE" = "#E41A1C", "TRUE" = "#377EB8"), name = "Same branch") +
   labs(
-    x = "Pathway distance (steps from ceramide)",
+    x = "Pathway distance (Pairwise enzyme distance from ceramide)",
     y = "Jaccard similarity (lost PPIs)",
     title = "Sphingolipidosis pathway: distance vs PPI disruption similarity"
   ) +
