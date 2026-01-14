@@ -19688,7 +19688,7 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 # OXPHOS vulnerability analysis in sphingolipidoses
 ```{r}
 # ==========================================================================
-# OXPHOS Vulnerability in Sphingolipidoses
+# Module 15: OXPHOS Vulnerability in Sphingolipidoses
 # Analyzes mitochondrial and OXPHOS complex disruption across LSD KOs,
 # with focus on sphingolipidosis genes and ceramide pathway convergence.
 # ==========================================================================
@@ -19778,7 +19778,7 @@ for (neuron_type in c("iN", "iDA")) {
   row_annot <- disease_classes_dataframe %>%
     dplyr::mutate(genotype = sub("_i[ND]A?$", "", sample)) %>%
     dplyr::select(genotype, DiseaseClass) %>%
-    dplyr::distinct() %>%
+    dplyr::distinct(genotype, .keep_all = TRUE) %>%
     dplyr::filter(genotype %in% rownames(heatmap_data)) %>%
     tibble::column_to_rownames("genotype")
   row_annot <- row_annot[rownames(heatmap_data), , drop = FALSE]
@@ -19865,7 +19865,7 @@ for (neuron_type in c("iN", "iDA")) {
   row_annot <- disease_classes_dataframe %>%
     dplyr::mutate(genotype = sub("_i[ND]A?$", "", sample)) %>%
     dplyr::select(genotype, DiseaseClass) %>%
-    dplyr::distinct() %>%
+    dplyr::distinct(genotype, .keep_all = TRUE) %>%
     dplyr::filter(genotype %in% rownames(heatmap_data)) %>%
     tibble::column_to_rownames("genotype")
   row_annot <- row_annot[rownames(heatmap_data), , drop = FALSE]
@@ -19942,7 +19942,7 @@ for (neuron_type in c("iN", "iDA")) {
   row_annot <- disease_classes_dataframe %>%
     dplyr::mutate(genotype = sub("_i[ND]A?$", "", sample)) %>%
     dplyr::select(genotype, DiseaseClass) %>%
-    dplyr::distinct() %>%
+    dplyr::distinct(genotype, .keep_all = TRUE) %>%
     dplyr::filter(genotype %in% rownames(heatmap_data)) %>%
     tibble::column_to_rownames("genotype")
   row_annot <- row_annot[rownames(heatmap_data), , drop = FALSE]
@@ -20099,6 +20099,7 @@ message("Output directory: ", out_dir_mito)
 message("")
 message("Ceramide core (ASAH1 ∩ GBA1 ∩ SMPD1) shared Mito disruptions:")
 print(ceramide_core_summary_df)
+
 ```
 
 
