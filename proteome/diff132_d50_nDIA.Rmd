@@ -19698,6 +19698,7 @@ library(pheatmap)
 library(UpSetR)
 
 # --- Step 0: Setup directories ---
+
 out_dir_mito <- file.path(out_dir_ppi_vuln, "mito_oxphos_vulnerability")
 dir.create(file.path(out_dir_mito, "plots"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_mito, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
@@ -19705,6 +19706,7 @@ dir.create(file.path(out_dir_mito, "tables"), recursive = TRUE, showWarnings = F
 
 
 # --- Step 1: Define Mito annotations and gene groups ---
+
 mito_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
 
 sphingolipidosis_genes <- c("ASAH1", "GBA1", "SMPD1", "HEXA", "HEXB", "PSAP")
@@ -19713,6 +19715,7 @@ ceramide_core_genes <- c("ASAH1", "GBA1", "SMPD1")
 
 # --- Step 2: Build Mito annotation lookup per gene ---
 # From binary_matrix, get which genes have each Mito annotation
+
 mito_cols_present <- intersect(mito_annotations, colnames(binary_matrix))
 message("Mito annotations found: ", paste(mito_cols_present, collapse = ", "))
 
@@ -19789,7 +19792,7 @@ for (neuron_type in c("iN", "iDA")) {
   # Plot
   pheatmap::pheatmap(
     as.matrix(heatmap_data),
-    color = colorRampPalette(c("white", "#FEE08B", "#D73027"))(100),
+    color = colorRampPalette(c("grey90", "#C51B7D"))(100),
     cluster_rows = FALSE,
     cluster_cols = FALSE,
     annotation_row = row_annot,
@@ -19797,12 +19800,10 @@ for (neuron_type in c("iN", "iDA")) {
     fontsize_row = 5,
     fontsize_col = 5,
     border_color = NA,
-    cellwidth = 5,
-    cellheight = 5,
     main = paste0("Broken Mito PPIs - ", neuron_type),
     filename = file.path(out_dir_mito, "plots", paste0("ppi_broken_heatmap_", neuron_type, ".pdf")),
-    width = 6,
-    height = 8
+    width = 5,
+    height = 5
   )
 }
 
@@ -19876,7 +19877,7 @@ for (neuron_type in c("iN", "iDA")) {
   
   pheatmap::pheatmap(
     as.matrix(heatmap_data),
-    color = colorRampPalette(c("white", "#FEE08B", "#D73027"))(100),
+    color = colorRampPalette(c("grey90", "#C51B7D"))(100),
     cluster_rows = FALSE,
     cluster_cols = FALSE,
     annotation_row = row_annot,
@@ -19884,12 +19885,10 @@ for (neuron_type in c("iN", "iDA")) {
     fontsize_row = 5,
     fontsize_col = 5,
     border_color = NA,
-    cellwidth = 5,
-    cellheight = 5,
     main = paste0("Broken Mito Trimers - ", neuron_type),
     filename = file.path(out_dir_mito, "plots", paste0("trimers_broken_heatmap_", neuron_type, ".pdf")),
-    width = 6,
-    height = 8
+    width = 5,
+    height = 5
   )
 }
 
@@ -19955,7 +19954,7 @@ for (neuron_type in c("iN", "iDA")) {
   
   pheatmap::pheatmap(
     as.matrix(heatmap_data),
-    color = colorRampPalette(c("white", "#FEE08B", "#D73027"))(100),
+    color = colorRampPalette(c("grey90", "#C51B7D"))(100),
     cluster_rows = FALSE,
     cluster_cols = FALSE,
     annotation_row = row_annot,
@@ -19963,12 +19962,10 @@ for (neuron_type in c("iN", "iDA")) {
     fontsize_row = 5,
     fontsize_col = 5,
     border_color = NA,
-    cellheight = 5,
-    cellwidth = 5,
     main = paste0("Disrupted Mito Complexes - ", neuron_type),
     filename = file.path(out_dir_mito, "plots", paste0("complexes_disrupted_heatmap_", neuron_type, ".pdf")),
-    width = 6,
-    height = 8
+    width = 5,
+    height = 5
   )
 }
 
@@ -19991,13 +19988,18 @@ for (neuron_type in c("iN", "iDA")) {
     # Save source data
     write_csv(ppi_upset_data, file.path(out_dir_mito, "sourcedata", paste0("upset_ppi_ceramide_core_", neuron_type, ".csv")))
     
+    # Prepare data for UpSetR (needs numeric matrix without ID column)
+    upset_matrix <- ppi_upset_data %>%
+      tibble::column_to_rownames("key") %>%
+      as.data.frame()
+    
     # Plot
     pdf(file.path(out_dir_mito, "plots", paste0("upset_ppi_ceramide_core_", neuron_type, ".pdf")), width = 6, height = 4)
-    print(upset(
-      as.data.frame(ppi_upset_data),
-      sets = intersect(ceramide_core_genes, colnames(ppi_upset_data)),
+    print(UpSetR::upset(
+      upset_matrix,
+      sets = intersect(ceramide_core_genes, colnames(upset_matrix)),
       order.by = "freq",
-      main.bar.color = "#D73027",
+      main.bar.color = "#C51B7D",
       sets.bar.color = "#4575B4",
       text.scale = 1.2
     ))
@@ -20016,12 +20018,16 @@ for (neuron_type in c("iN", "iDA")) {
   if (nrow(trimer_upset_data) > 0 && ncol(trimer_upset_data) > 1) {
     write_csv(trimer_upset_data, file.path(out_dir_mito, "sourcedata", paste0("upset_trimers_ceramide_core_", neuron_type, ".csv")))
     
+    upset_matrix <- trimer_upset_data %>%
+      tibble::column_to_rownames("trimer_id") %>%
+      as.data.frame()
+    
     pdf(file.path(out_dir_mito, "plots", paste0("upset_trimers_ceramide_core_", neuron_type, ".pdf")), width = 6, height = 4)
-    print(upset(
-      as.data.frame(trimer_upset_data),
-      sets = intersect(ceramide_core_genes, colnames(trimer_upset_data)),
+    print(UpSetR::upset(
+      upset_matrix,
+      sets = intersect(ceramide_core_genes, colnames(upset_matrix)),
       order.by = "freq",
-      main.bar.color = "#D73027",
+      main.bar.color = "#C51B7D",
       sets.bar.color = "#4575B4",
       text.scale = 1.2
     ))
@@ -20040,12 +20046,16 @@ for (neuron_type in c("iN", "iDA")) {
   if (nrow(complex_upset_data) > 0 && ncol(complex_upset_data) > 1) {
     write_csv(complex_upset_data, file.path(out_dir_mito, "sourcedata", paste0("upset_complexes_ceramide_core_", neuron_type, ".csv")))
     
+    upset_matrix <- complex_upset_data %>%
+      tibble::column_to_rownames("complex_id") %>%
+      as.data.frame()
+    
     pdf(file.path(out_dir_mito, "plots", paste0("upset_complexes_ceramide_core_", neuron_type, ".pdf")), width = 6, height = 4)
-    print(upset(
-      as.data.frame(complex_upset_data),
-      sets = intersect(ceramide_core_genes, colnames(complex_upset_data)),
+    print(UpSetR::upset(
+      upset_matrix,
+      sets = intersect(ceramide_core_genes, colnames(upset_matrix)),
       order.by = "freq",
-      main.bar.color = "#D73027",
+      main.bar.color = "#C51B7D",
       sets.bar.color = "#4575B4",
       text.scale = 1.2
     ))
@@ -20101,6 +20111,7 @@ message("=== OXPHOS Vulnerability Analysis Complete ===")
 message("Output directory: ", out_dir_mito)
 message("")
 message("Ceramide core (ASAH1 ∩ GBA1 ∩ SMPD1) shared Mito disruptions:")
+
 
 
 ```
