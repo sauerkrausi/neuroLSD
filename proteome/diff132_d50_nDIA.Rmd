@@ -19698,7 +19698,6 @@ library(pheatmap)
 library(UpSetR)
 
 # --- Step 0: Setup directories ---
-
 out_dir_mito <- file.path(out_dir_ppi_vuln, "mito_oxphos_vulnerability")
 dir.create(file.path(out_dir_mito, "plots"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_mito, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
@@ -19706,7 +19705,6 @@ dir.create(file.path(out_dir_mito, "tables"), recursive = TRUE, showWarnings = F
 
 
 # --- Step 1: Define Mito annotations and gene groups ---
-
 mito_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
 
 sphingolipidosis_genes <- c("ASAH1", "GBA1", "SMPD1", "HEXA", "HEXB", "PSAP")
@@ -19715,7 +19713,6 @@ ceramide_core_genes <- c("ASAH1", "GBA1", "SMPD1")
 
 # --- Step 2: Build Mito annotation lookup per gene ---
 # From binary_matrix, get which genes have each Mito annotation
-
 mito_cols_present <- intersect(mito_annotations, colnames(binary_matrix))
 message("Mito annotations found: ", paste(mito_cols_present, collapse = ", "))
 
@@ -19800,6 +19797,8 @@ for (neuron_type in c("iN", "iDA")) {
     fontsize_row = 5,
     fontsize_col = 5,
     border_color = NA,
+    cellwidth = 5,
+    cellheight = 5,
     main = paste0("Broken Mito PPIs - ", neuron_type),
     filename = file.path(out_dir_mito, "plots", paste0("ppi_broken_heatmap_", neuron_type, ".pdf")),
     width = 6,
@@ -19885,6 +19884,8 @@ for (neuron_type in c("iN", "iDA")) {
     fontsize_row = 5,
     fontsize_col = 5,
     border_color = NA,
+    cellwidth = 5,
+    cellheight = 5,
     main = paste0("Broken Mito Trimers - ", neuron_type),
     filename = file.path(out_dir_mito, "plots", paste0("trimers_broken_heatmap_", neuron_type, ".pdf")),
     width = 6,
@@ -19962,6 +19963,8 @@ for (neuron_type in c("iN", "iDA")) {
     fontsize_row = 5,
     fontsize_col = 5,
     border_color = NA,
+    cellheight = 5,
+    cellwidth = 5,
     main = paste0("Disrupted Mito Complexes - ", neuron_type),
     filename = file.path(out_dir_mito, "plots", paste0("complexes_disrupted_heatmap_", neuron_type, ".pdf")),
     width = 6,
@@ -20098,7 +20101,7 @@ message("=== OXPHOS Vulnerability Analysis Complete ===")
 message("Output directory: ", out_dir_mito)
 message("")
 message("Ceramide core (ASAH1 ∩ GBA1 ∩ SMPD1) shared Mito disruptions:")
-print(ceramide_core_summary_df)
+
 
 ```
 
