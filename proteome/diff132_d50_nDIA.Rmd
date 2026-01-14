@@ -19684,6 +19684,14 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 
 
 
+
+# OXPHOS vulnerability analysis in sphingolipidoses
+```{r}
+
+```
+
+
+
 # Master PPI Stats output for summary csv
 ```{r}
 # ==========================================================================
