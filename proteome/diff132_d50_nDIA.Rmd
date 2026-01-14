@@ -19687,7 +19687,418 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 
 # OXPHOS vulnerability analysis in sphingolipidoses
 ```{r}
+# ==========================================================================
+# OXPHOS Vulnerability in Sphingolipidoses
+# Analyzes mitochondrial and OXPHOS complex disruption across LSD KOs,
+# with focus on sphingolipidosis genes and ceramide pathway convergence.
+# ==========================================================================
 
+library(tidyverse)
+library(pheatmap)
+library(UpSetR)
+
+# --- Step 0: Setup directories ---
+
+out_dir_mito <- file.path(out_dir_ppi_vuln, "mito_oxphos_vulnerability")
+dir.create(file.path(out_dir_mito, "plots"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_mito, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_mito, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+
+# --- Step 1: Define Mito annotations and gene groups ---
+
+mito_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+
+sphingolipidosis_genes <- c("ASAH1", "GBA1", "SMPD1", "HEXA", "HEXB", "PSAP")
+ceramide_core_genes <- c("ASAH1", "GBA1", "SMPD1")
+
+
+# --- Step 2: Build Mito annotation lookup per gene ---
+# From binary_matrix, get which genes have each Mito annotation
+
+mito_cols_present <- intersect(mito_annotations, colnames(binary_matrix))
+message("Mito annotations found: ", paste(mito_cols_present, collapse = ", "))
+
+gene_mito_annotations <- binary_matrix %>%
+  dplyr::select(Genes, all_of(mito_cols_present)) %>%
+  tidyr::pivot_longer(-Genes, names_to = "mito_compartment", values_to = "is_mito") %>%
+  dplyr::filter(is_mito == TRUE) %>%
+  dplyr::select(Genes, mito_compartment)
+
+message("Genes with Mito annotations: ", n_distinct(gene_mito_annotations$Genes))
+
+
+# --- Step 3: Annotate PPIs with Mito compartments ---
+# A PPI is "Mito-associated" if BOTH partners are in the same Mito compartment
+
+ppi_mito_annotated <- ko_edge_states %>%
+  dplyr::left_join(gene_mito_annotations, by = c("Gene1" = "Genes")) %>%
+  dplyr::rename(mito_compartment_1 = mito_compartment) %>%
+  dplyr::left_join(gene_mito_annotations, by = c("Gene2" = "Genes")) %>%
+  dplyr::rename(mito_compartment_2 = mito_compartment) %>%
+  dplyr::filter(!is.na(mito_compartment_1) & !is.na(mito_compartment_2)) %>%
+  dplyr::filter(mito_compartment_1 == mito_compartment_2) %>%
+  dplyr::rename(mito_compartment = mito_compartment_1) %>%
+  dplyr::select(-mito_compartment_2)
+
+message("Mito-associated PPI entries: ", nrow(ppi_mito_annotated))
+
+
+# --- Step 4: Summarize broken Mito PPIs per KO x neuron x compartment ---
+
+ppi_mito_summary <- ppi_mito_annotated %>%
+  dplyr::group_by(genotype, neuron, mito_compartment) %>%
+  dplyr::summarise(
+    n_total = n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    n_retained = sum(state == "retained", na.rm = TRUE),
+    pct_lost = round(100 * n_lost / n_total, 2),
+    .groups = "drop"
+  )
+
+write_csv(ppi_mito_summary, file.path(out_dir_mito, "tables", "ppi_mito_summary.csv"))
+
+
+# --- Step 5: Heatmaps - Broken Mito PPIs ---
+
+for (neuron_type in c("iN", "iDA")) {
+  
+  # Prepare matrix
+  heatmap_data <- ppi_mito_summary %>%
+    dplyr::filter(neuron == neuron_type) %>%
+    dplyr::select(genotype, mito_compartment, n_lost) %>%
+    tidyr::pivot_wider(names_from = mito_compartment, values_from = n_lost, values_fill = 0) %>%
+    tibble::column_to_rownames("genotype")
+  
+  # Order rows by total lost
+  row_order <- rowSums(heatmap_data) %>% sort(decreasing = TRUE) %>% names()
+  heatmap_data <- heatmap_data[row_order, , drop = FALSE]
+  
+  # Add disease class annotation
+  row_annot <- disease_classes_dataframe %>%
+    dplyr::mutate(genotype = sub("_i[ND]A?$", "", sample)) %>%
+    dplyr::select(genotype, DiseaseClass) %>%
+    dplyr::distinct() %>%
+    dplyr::filter(genotype %in% rownames(heatmap_data)) %>%
+    tibble::column_to_rownames("genotype")
+  row_annot <- row_annot[rownames(heatmap_data), , drop = FALSE]
+  
+  # Save source data
+  sourcedata <- heatmap_data %>%
+    tibble::rownames_to_column("genotype") %>%
+    dplyr::left_join(row_annot %>% tibble::rownames_to_column("genotype"), by = "genotype")
+  write_csv(sourcedata, file.path(out_dir_mito, "sourcedata", paste0("ppi_broken_heatmap_", neuron_type, ".csv")))
+  
+  # Plot
+  pheatmap::pheatmap(
+    as.matrix(heatmap_data),
+    color = colorRampPalette(c("white", "#FEE08B", "#D73027"))(100),
+    cluster_rows = FALSE,
+    cluster_cols = FALSE,
+    annotation_row = row_annot,
+    fontsize = 6,
+    fontsize_row = 5,
+    fontsize_col = 5,
+    border_color = NA,
+    main = paste0("Broken Mito PPIs - ", neuron_type),
+    filename = file.path(out_dir_mito, "plots", paste0("ppi_broken_heatmap_", neuron_type, ".pdf")),
+    width = 6,
+    height = 8
+  )
+}
+
+message("PPI heatmaps generated")
+
+
+# --- Step 6: Annotate trimers with Mito compartments ---
+# A trimer is "Mito-associated" if ALL THREE proteins are in the same Mito compartment
+
+trimers_mito_annotated <- trimers_ko_states %>%
+  dplyr::left_join(gene_mito_annotations, by = c("GeneA" = "Genes")) %>%
+  dplyr::rename(mito_A = mito_compartment) %>%
+  dplyr::left_join(gene_mito_annotations, by = c("GeneB" = "Genes")) %>%
+  dplyr::rename(mito_B = mito_compartment) %>%
+  dplyr::left_join(gene_mito_annotations, by = c("GeneC" = "Genes")) %>%
+  dplyr::rename(mito_C = mito_compartment) %>%
+  dplyr::filter(!is.na(mito_A) & !is.na(mito_B) & !is.na(mito_C)) %>%
+  dplyr::filter(mito_A == mito_B & mito_B == mito_C) %>%
+  dplyr::rename(mito_compartment = mito_A) %>%
+  dplyr::select(-mito_B, -mito_C)
+
+message("Mito-associated trimer entries: ", nrow(trimers_mito_annotated))
+
+
+# --- Step 7: Summarize broken Mito trimers per KO x neuron x compartment ---
+
+trimer_mito_summary <- trimers_mito_annotated %>%
+  dplyr::group_by(genotype, neuron, mito_compartment) %>%
+  dplyr::summarise(
+    n_total = n(),
+    n_broken = sum(trimer_state == "broken", na.rm = TRUE),
+    n_partial = sum(trimer_state == "partial", na.rm = TRUE),
+    n_intact = sum(trimer_state == "intact", na.rm = TRUE),
+    pct_broken = round(100 * n_broken / n_total, 2),
+    .groups = "drop"
+  )
+
+write_csv(trimer_mito_summary, file.path(out_dir_mito, "tables", "trimer_mito_summary.csv"))
+
+
+# --- Step 8: Heatmaps - Broken Mito Trimers ---
+
+for (neuron_type in c("iN", "iDA")) {
+  
+  heatmap_data <- trimer_mito_summary %>%
+    dplyr::filter(neuron == neuron_type) %>%
+    dplyr::select(genotype, mito_compartment, n_broken) %>%
+    tidyr::pivot_wider(names_from = mito_compartment, values_from = n_broken, values_fill = 0) %>%
+    tibble::column_to_rownames("genotype")
+  
+  if (nrow(heatmap_data) == 0 || ncol(heatmap_data) == 0) {
+    message("No Mito trimer data for ", neuron_type, " - skipping")
+    next
+  }
+  
+  row_order <- rowSums(heatmap_data) %>% sort(decreasing = TRUE) %>% names()
+  heatmap_data <- heatmap_data[row_order, , drop = FALSE]
+  
+  row_annot <- disease_classes_dataframe %>%
+    dplyr::mutate(genotype = sub("_i[ND]A?$", "", sample)) %>%
+    dplyr::select(genotype, DiseaseClass) %>%
+    dplyr::distinct() %>%
+    dplyr::filter(genotype %in% rownames(heatmap_data)) %>%
+    tibble::column_to_rownames("genotype")
+  row_annot <- row_annot[rownames(heatmap_data), , drop = FALSE]
+  
+  sourcedata <- heatmap_data %>%
+    tibble::rownames_to_column("genotype") %>%
+    dplyr::left_join(row_annot %>% tibble::rownames_to_column("genotype"), by = "genotype")
+  write_csv(sourcedata, file.path(out_dir_mito, "sourcedata", paste0("trimers_broken_heatmap_", neuron_type, ".csv")))
+  
+  pheatmap::pheatmap(
+    as.matrix(heatmap_data),
+    color = colorRampPalette(c("white", "#FEE08B", "#D73027"))(100),
+    cluster_rows = FALSE,
+    cluster_cols = FALSE,
+    annotation_row = row_annot,
+    fontsize = 6,
+    fontsize_row = 5,
+    fontsize_col = 5,
+    border_color = NA,
+    main = paste0("Broken Mito Trimers - ", neuron_type),
+    filename = file.path(out_dir_mito, "plots", paste0("trimers_broken_heatmap_", neuron_type, ".pdf")),
+    width = 6,
+    height = 8
+  )
+}
+
+message("Trimer heatmaps generated")
+
+
+# --- Step 9: Annotate complexes with Mito compartments ---
+# Use the organelle annotation from complexes_summary
+
+# Check if we have Mito-annotated complexes
+complexes_mito <- complex_ko_summary %>%
+  dplyr::filter(grepl("Mito", organelle, ignore.case = TRUE))
+
+message("Mito-associated complex entries: ", nrow(complexes_mito))
+
+
+# --- Step 10: Summarize disrupted Mito complexes per KO x neuron ---
+
+complex_mito_summary <- complexes_mito %>%
+  dplyr::group_by(genotype, neuron, organelle) %>%
+  dplyr::summarise(
+    n_total = n(),
+    n_disrupted = sum(complex_state == "disrupted", na.rm = TRUE),
+    n_partial = sum(complex_state == "partial", na.rm = TRUE),
+    n_intact = sum(complex_state == "intact", na.rm = TRUE),
+    pct_disrupted = round(100 * n_disrupted / n_total, 2),
+    .groups = "drop"
+  )
+
+write_csv(complex_mito_summary, file.path(out_dir_mito, "tables", "complex_mito_summary.csv"))
+
+
+# --- Step 11: Heatmaps - Disrupted Mito Complexes ---
+
+for (neuron_type in c("iN", "iDA")) {
+  
+  heatmap_data <- complex_mito_summary %>%
+    dplyr::filter(neuron == neuron_type) %>%
+    dplyr::select(genotype, organelle, n_disrupted) %>%
+    tidyr::pivot_wider(names_from = organelle, values_from = n_disrupted, values_fill = 0) %>%
+    tibble::column_to_rownames("genotype")
+  
+  if (nrow(heatmap_data) == 0 || ncol(heatmap_data) == 0) {
+    message("No Mito complex data for ", neuron_type, " - skipping")
+    next
+  }
+  
+  row_order <- rowSums(heatmap_data) %>% sort(decreasing = TRUE) %>% names()
+  heatmap_data <- heatmap_data[row_order, , drop = FALSE]
+  
+  row_annot <- disease_classes_dataframe %>%
+    dplyr::mutate(genotype = sub("_i[ND]A?$", "", sample)) %>%
+    dplyr::select(genotype, DiseaseClass) %>%
+    dplyr::distinct() %>%
+    dplyr::filter(genotype %in% rownames(heatmap_data)) %>%
+    tibble::column_to_rownames("genotype")
+  row_annot <- row_annot[rownames(heatmap_data), , drop = FALSE]
+  
+  sourcedata <- heatmap_data %>%
+    tibble::rownames_to_column("genotype") %>%
+    dplyr::left_join(row_annot %>% tibble::rownames_to_column("genotype"), by = "genotype")
+  write_csv(sourcedata, file.path(out_dir_mito, "sourcedata", paste0("complexes_disrupted_heatmap_", neuron_type, ".csv")))
+  
+  pheatmap::pheatmap(
+    as.matrix(heatmap_data),
+    color = colorRampPalette(c("white", "#FEE08B", "#D73027"))(100),
+    cluster_rows = FALSE,
+    cluster_cols = FALSE,
+    annotation_row = row_annot,
+    fontsize = 6,
+    fontsize_row = 5,
+    fontsize_col = 5,
+    border_color = NA,
+    main = paste0("Disrupted Mito Complexes - ", neuron_type),
+    filename = file.path(out_dir_mito, "plots", paste0("complexes_disrupted_heatmap_", neuron_type, ".pdf")),
+    width = 6,
+    height = 8
+  )
+}
+
+message("Complex heatmaps generated")
+
+
+# --- Step 12: UpSet plots - Ceramide core convergence (ASAH1 ∩ GBA1 ∩ SMPD1) ---
+
+for (neuron_type in c("iN", "iDA")) {
+  
+  # --- 12a: UpSet for Mito PPIs ---
+  ppi_upset_data <- ppi_mito_annotated %>%
+    dplyr::filter(neuron == neuron_type, state == "lost", genotype %in% ceramide_core_genes) %>%
+    dplyr::select(key, genotype) %>%
+    dplyr::distinct() %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(names_from = genotype, values_from = present, values_fill = 0)
+  
+  if (nrow(ppi_upset_data) > 0 && ncol(ppi_upset_data) > 1) {
+    # Save source data
+    write_csv(ppi_upset_data, file.path(out_dir_mito, "sourcedata", paste0("upset_ppi_ceramide_core_", neuron_type, ".csv")))
+    
+    # Plot
+    pdf(file.path(out_dir_mito, "plots", paste0("upset_ppi_ceramide_core_", neuron_type, ".pdf")), width = 6, height = 4)
+    print(upset(
+      as.data.frame(ppi_upset_data),
+      sets = intersect(ceramide_core_genes, colnames(ppi_upset_data)),
+      order.by = "freq",
+      main.bar.color = "#D73027",
+      sets.bar.color = "#4575B4",
+      text.scale = 1.2
+    ))
+    dev.off()
+    message("UpSet PPI plot generated for ", neuron_type)
+  }
+  
+  # --- 12b: UpSet for Mito Trimers ---
+  trimer_upset_data <- trimers_mito_annotated %>%
+    dplyr::filter(neuron == neuron_type, trimer_state == "broken", genotype %in% ceramide_core_genes) %>%
+    dplyr::select(trimer_id, genotype) %>%
+    dplyr::distinct() %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(names_from = genotype, values_from = present, values_fill = 0)
+  
+  if (nrow(trimer_upset_data) > 0 && ncol(trimer_upset_data) > 1) {
+    write_csv(trimer_upset_data, file.path(out_dir_mito, "sourcedata", paste0("upset_trimers_ceramide_core_", neuron_type, ".csv")))
+    
+    pdf(file.path(out_dir_mito, "plots", paste0("upset_trimers_ceramide_core_", neuron_type, ".pdf")), width = 6, height = 4)
+    print(upset(
+      as.data.frame(trimer_upset_data),
+      sets = intersect(ceramide_core_genes, colnames(trimer_upset_data)),
+      order.by = "freq",
+      main.bar.color = "#D73027",
+      sets.bar.color = "#4575B4",
+      text.scale = 1.2
+    ))
+    dev.off()
+    message("UpSet trimer plot generated for ", neuron_type)
+  }
+  
+  # --- 12c: UpSet for Mito Complexes ---
+  complex_upset_data <- complexes_mito %>%
+    dplyr::filter(neuron == neuron_type, complex_state %in% c("disrupted", "partial"), genotype %in% ceramide_core_genes) %>%
+    dplyr::select(complex_id, genotype) %>%
+    dplyr::distinct() %>%
+    dplyr::mutate(present = 1) %>%
+    tidyr::pivot_wider(names_from = genotype, values_from = present, values_fill = 0)
+  
+  if (nrow(complex_upset_data) > 0 && ncol(complex_upset_data) > 1) {
+    write_csv(complex_upset_data, file.path(out_dir_mito, "sourcedata", paste0("upset_complexes_ceramide_core_", neuron_type, ".csv")))
+    
+    pdf(file.path(out_dir_mito, "plots", paste0("upset_complexes_ceramide_core_", neuron_type, ".pdf")), width = 6, height = 4)
+    print(upset(
+      as.data.frame(complex_upset_data),
+      sets = intersect(ceramide_core_genes, colnames(complex_upset_data)),
+      order.by = "freq",
+      main.bar.color = "#D73027",
+      sets.bar.color = "#4575B4",
+      text.scale = 1.2
+    ))
+    dev.off()
+    message("UpSet complex plot generated for ", neuron_type)
+  }
+}
+
+
+# --- Step 13: Summary - Ceramide core shared disruptions ---
+
+ceramide_core_summary <- list()
+
+for (neuron_type in c("iN", "iDA")) {
+  
+  # Shared lost PPIs
+  ppi_shared <- ppi_mito_annotated %>%
+    dplyr::filter(neuron == neuron_type, state == "lost", genotype %in% ceramide_core_genes) %>%
+    dplyr::group_by(key) %>%
+    dplyr::summarise(n_kos = n_distinct(genotype), .groups = "drop") %>%
+    dplyr::filter(n_kos == 3) %>%
+    nrow()
+  
+  # Shared broken trimers
+  trimer_shared <- trimers_mito_annotated %>%
+    dplyr::filter(neuron == neuron_type, trimer_state == "broken", genotype %in% ceramide_core_genes) %>%
+    dplyr::group_by(trimer_id) %>%
+    dplyr::summarise(n_kos = n_distinct(genotype), .groups = "drop") %>%
+    dplyr::filter(n_kos == 3) %>%
+    nrow()
+  
+  # Shared disrupted complexes
+  complex_shared <- complexes_mito %>%
+    dplyr::filter(neuron == neuron_type, complex_state %in% c("disrupted", "partial"), genotype %in% ceramide_core_genes) %>%
+    dplyr::group_by(complex_id) %>%
+    dplyr::summarise(n_kos = n_distinct(genotype), .groups = "drop") %>%
+    dplyr::filter(n_kos == 3) %>%
+    nrow()
+  
+  ceramide_core_summary[[neuron_type]] <- tibble::tibble(
+    neuron = neuron_type,
+    shared_lost_ppi = ppi_shared,
+    shared_broken_trimers = trimer_shared,
+    shared_disrupted_complexes = complex_shared
+  )
+}
+
+ceramide_core_summary_df <- dplyr::bind_rows(ceramide_core_summary)
+write_csv(ceramide_core_summary_df, file.path(out_dir_mito, "tables", "ceramide_core_shared_disruptions.csv"))
+
+message("")
+message("=== OXPHOS Vulnerability Analysis Complete ===")
+message("Output directory: ", out_dir_mito)
+message("")
+message("Ceramide core (ASAH1 ∩ GBA1 ∩ SMPD1) shared Mito disruptions:")
+print(ceramide_core_summary_df)
 ```
 
 
