@@ -11815,9 +11815,12 @@ p_source_bar <- ggplot(source_summary, aes(x = reorder(source_category, -n), y =
   scale_fill_brewer(palette = "Set2", guide = "none") +
   labs(title = "PPI edges by evidence source", x = NULL, y = "Number of edges") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.minor = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_source_overlap.pdf"), p_source_bar, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_source_overlap.pdf"), p_source_bar, width = 4.5, height = 4, device = cairo_pdf)
+
 
 # --- QC Plot 4: Tier validation summary ---
 message("Generating tier validation plot...")
@@ -11839,9 +11842,11 @@ p_validation <- ggplot(validation_summary, aes(x = confidence_tier, y = percenta
   scale_fill_manual(values = c("IntAct validated" = "#4DAF4A", "High ipTM (>=0.7)" = "#377EB8"), name = NULL) +
   labs(title = "Validation metrics by confidence tier", x = NULL, y = "Percentage of edges") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.minor = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top")
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_validation.pdf"), p_validation, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_validation.pdf"), p_validation, width = 4.5, height = 4, device = cairo_pdf)
 
 # --- QC Plot 5: Key score scatter plots ---
 message("Generating score scatter plots...")
@@ -11854,7 +11859,8 @@ p_afm_spoc <- ggplot(overlap_for_scatter, aes(x = AFMprob, y = SPOC_score)) +
   geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
   labs(title = paste0("AFMprob vs SPOC (n=", nrow(overlap_for_scatter), ", r=", round(cor(overlap_for_scatter$AFMprob, overlap_for_scatter$SPOC_score, use = "complete.obs"), 2), ")"), x = "AFMprob (Baker)", y = "SPOC score (Predictomes.org)") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.minor = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_ppi_dual, "qc/plots", "scatter_AFMprob_vs_SPOC.pdf"), p_afm_spoc, width = 4, height = 4, device = cairo_pdf)
 
@@ -11864,7 +11870,8 @@ p_afm_iptm <- ggplot(overlap_for_scatter, aes(x = AFMprob, y = ipTM_max)) +
   geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
   labs(title = paste0("AFMprob vs ipTM (n=", nrow(overlap_for_scatter), ", r=", round(cor(overlap_for_scatter$AFMprob, overlap_for_scatter$ipTM_max, use = "complete.obs"), 2), ")"), x = "AFMprob (Baker)", y = "ipTM max (Predictomes.org)") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.minor = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid= element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_ppi_dual, "qc/plots", "scatter_AFMprob_vs_ipTM.pdf"), p_afm_iptm, width = 4, height = 4, device = cairo_pdf)
 
@@ -11874,9 +11881,11 @@ p_rf_afm <- ggplot(master_ppi %>% dplyr::filter(!is.na(RFprob) & !is.na(AFMprob)
   geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
   labs(title = paste0("RFprob vs AFMprob (Baker scores)"), x = "RFprob (coevolution)", y = "AFMprob (structural)") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.minor = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_ppi_dual, "qc/plots", "scatter_RFprob_vs_AFMprob.pdf"), p_rf_afm, width = 4, height = 4, device = cairo_pdf)
+
 
 # --- QC Plot 6: Edge counts by organelle ---
 message("Generating organelle distribution plots...")
@@ -11895,14 +11904,16 @@ p_org_counts <- ggplot(edge_counts_org, aes(x = reorder(tag, n), y = n, fill = t
   coord_flip() +
   labs(title = "PPI edges per shared organelle", x = NULL, y = "Edge count") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.minor = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_edges_by_organelle.pdf"), p_org_counts, width = 5, height = 6, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_edges_by_organelle.pdf"), p_org_counts, width = 4.5, height = 4, device = cairo_pdf)
 
 # --- QC Plot 7: Tier distribution by organelle ---
 tier_by_org <- shared_long_master %>%
   dplyr::left_join(master_ppi %>% dplyr::select(key, confidence_tier), by = "key") %>%
   dplyr::count(tag, confidence_tier) %>%
+  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze"))) %>%
   dplyr::group_by(tag) %>%
   dplyr::mutate(pct = 100 * n / sum(n)) %>%
   dplyr::ungroup()
@@ -11912,11 +11923,18 @@ p_tier_org <- ggplot(tier_by_org, aes(x = reorder(tag, -n), y = pct, fill = conf
   scale_fill_manual(values = c("gold" = "#FFD700", "silver" = "#C0C0C0", "bronze" = "#CD7F32"), name = "Tier") +
   labs(title = "Confidence tier distribution by organelle", x = NULL, y = "Percentage") +
   theme_bw(base_size = 6) +
-  theme(panel.grid.minor = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "top", legend.key.size = unit(0.3, "cm"))
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_by_organelle.pdf"), p_tier_org, width = 8, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_by_organelle.pdf"), p_tier_org, width = 6, height = 5, device = cairo_pdf)
 
 message("QC plots complete. Saved to: ", file.path(out_dir_ppi_dual, "qc/plots"))
+
+
+
+
 ```
 
 
