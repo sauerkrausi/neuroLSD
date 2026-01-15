@@ -11494,93 +11494,82 @@ intact <- intact_raw %>%
 
 message("  IntAct: ", nrow(intact), " unique edges")
 
-# --- Step 5: Merge all three sources ---
-message("Merging PPI evidence...")
+#--- Step 5: Merge prediction sources (P80 + 16k) ---
+message("Merging prediction sources...")
 
 master_ppi <- predictome80 %>%
   dplyr::select(key, Protein1, Protein2, Gene1, Gene2, RFprob, AFprob, AFMprob, CFprob, STRING, confDBs, allDBs, Source, PDBtemp, Locality1, Locality2, in_Predictome80) %>%
-  dplyr::full_join(predictomes16k %>% dplyr::select(key, Gene1_16k, Gene2_16k, SPOC_score, FDR_pct, ipTM_max, KIRC_score, BioGRID_count, STRING_16k, in_Predictomes16k), by = "key") %>%
-  dplyr::full_join(intact %>% dplyr::select(key, IntAct_MIscore, DetectionMethod, in_IntAct), by = "key")
+  dplyr::full_join(predictomes16k %>% dplyr::select(key, Gene1_16k, Gene2_16k, SPOC_score, FDR_pct, ipTM_max, KIRC_score, BioGRID_count, STRING_16k, in_Predictomes16k), by = "key")
 
 # Fill missing flags
 master_ppi <- master_ppi %>%
   dplyr::mutate(
     in_Predictome80 = tidyr::replace_na(in_Predictome80, FALSE),
     in_Predictomes16k = tidyr::replace_na(in_Predictomes16k, FALSE),
-    in_IntAct = tidyr::replace_na(in_IntAct, FALSE),
-    n_sources = in_Predictome80 + in_Predictomes16k + in_IntAct
+    in_both_predictions = in_Predictome80 & in_Predictomes16k
   )
 
-# Fill Protein1/2 and Gene1/2 from whichever source has them
+# Fill Protein1/2 and Gene1/2
 master_ppi <- master_ppi %>%
   dplyr::mutate(
-    Protein1 = dplyr::case_when(
-      !is.na(Protein1) ~ Protein1,
-      TRUE ~ sub("::.*", "", key)
-    ),
-    Protein2 = dplyr::case_when(
-      !is.na(Protein2) ~ Protein2,
-      TRUE ~ sub(".*::", "", key)
-    ),
+    Protein1 = dplyr::case_when(!is.na(Protein1) ~ Protein1, TRUE ~ sub("::.*", "", key)),
+    Protein2 = dplyr::case_when(!is.na(Protein2) ~ Protein2, TRUE ~ sub(".*::", "", key)),
     Gene1 = dplyr::coalesce(Gene1, Gene1_16k),
     Gene2 = dplyr::coalesce(Gene2, Gene2_16k)
   ) %>%
   dplyr::select(-Gene1_16k, -Gene2_16k)
 
+# Add IntAct as validation flag (left join, not full join)
+master_ppi <- master_ppi %>%
+  dplyr::left_join(intact %>% dplyr::select(key, IntAct_MIscore, DetectionMethod, in_IntAct), by = "key") %>%
+  dplyr::mutate(in_IntAct = tidyr::replace_na(in_IntAct, FALSE))
+
 message("  Master table: ", nrow(master_ppi), " unique edges")
+message("  In both P80 and 16k: ", sum(master_ppi$in_both_predictions))
+message("  With IntAct validation: ", sum(master_ppi$in_IntAct))
 
 # --- Step 6: Overlap statistics ---
 message("\n=== Overlap Statistics ===")
-overlap_stats <- master_ppi %>%
-  dplyr::summarise(
-    total_edges = dplyr::n(),
-    in_P80_only = sum(in_Predictome80 & !in_Predictomes16k & !in_IntAct),
-    in_16k_only = sum(!in_Predictome80 & in_Predictomes16k & !in_IntAct),
-    in_IntAct_only = sum(!in_Predictome80 & !in_Predictomes16k & in_IntAct),
-    P80_and_16k = sum(in_Predictome80 & in_Predictomes16k & !in_IntAct),
-    P80_and_IntAct = sum(in_Predictome80 & !in_Predictomes16k & in_IntAct),
-    `16k_and_IntAct` = sum(!in_Predictome80 & in_Predictomes16k & in_IntAct),
-    all_three = sum(in_Predictome80 & in_Predictomes16k & in_IntAct)
-  )
-
-overlap_stats_long <- data.frame(
-  category = names(overlap_stats),
-  count = as.numeric(overlap_stats[1, ]),
+overlap_stats <- data.frame(
+  category = c("total_edges", "in_P80_only", "in_16k_only", "in_both_predictions", "with_IntAct_validation"),
+  count = c(
+    nrow(master_ppi),
+    sum(master_ppi$in_Predictome80 & !master_ppi$in_Predictomes16k),
+    sum(!master_ppi$in_Predictome80 & master_ppi$in_Predictomes16k),
+    sum(master_ppi$in_both_predictions),
+    sum(master_ppi$in_IntAct)
+  ),
   stringsAsFactors = FALSE
 )
-print(overlap_stats_long)
+print(overlap_stats)
 
 # --- Step 7: Confidence tier assignment ---
 # Tier logic:
-# - gold: multiple independent sources (n_sources >= 2)
-#         OR IntAct MI >= 0.7
+# - gold: in both prediction sources (P80 and 16k agree)
 #         OR high structural + coevolution (AFMprob >= 0.8 AND RFprob >= 0.8)
-# - silver: single prediction source with high structural confidence (AFMprob or ipTM >= 0.8)
+# - silver: single source with high structural confidence (AFMprob or ipTM >= 0.8)
 #           OR high coevolution alone (RFprob >= 0.8)
-#           OR any IntAct
-# - bronze: single source, lower confidence
+# - bronze: remaining predictions with lower confidence
+# - IntAct experimental validation tracked separately as QC flag
 
 master_ppi <- master_ppi %>%
   dplyr::mutate(
     max_structural_conf = pmax(AFMprob, ipTM_max, na.rm = TRUE),
     confidence_tier = dplyr::case_when(
-      n_sources >= 2 ~ "gold",
-      in_IntAct & IntAct_MIscore >= 0.7 ~ "gold",
+      in_both_predictions ~ "gold",
       AFMprob >= 0.8 & RFprob >= 0.8 ~ "gold",
-      (in_Predictome80 | in_Predictomes16k) & max_structural_conf >= 0.8 ~ "silver",
+      max_structural_conf >= 0.8 ~ "silver",
       RFprob >= 0.8 ~ "silver",
-      in_IntAct ~ "silver",
       TRUE ~ "bronze"
     ),
     confidence_tier_rationale = dplyr::case_when(
-      n_sources >= 2 ~ "multiple_sources",
-      in_IntAct & IntAct_MIscore >= 0.7 ~ "IntAct_high_MI",
+      in_both_predictions ~ "both_prediction_sources",
       AFMprob >= 0.8 & RFprob >= 0.8 ~ "high_structural_and_coevol",
-      (in_Predictome80 | in_Predictomes16k) & max_structural_conf >= 0.8 ~ "high_structural_conf",
+      max_structural_conf >= 0.8 ~ "high_structural_conf",
       RFprob >= 0.8 ~ "high_coevol_only",
-      in_IntAct ~ "IntAct_any",
-      TRUE ~ "single_source_low_conf"
-    )
+      TRUE ~ "low_conf"
+    ),
+    has_experimental_validation = in_IntAct
   )
 
 tier_summary <- master_ppi %>% 
@@ -11589,15 +11578,22 @@ tier_summary <- master_ppi %>%
 message("\nConfidence tiers:")
 print(tier_summary)
 
+# Validation overlap by tier
+validation_by_tier <- master_ppi %>%
+  dplyr::group_by(confidence_tier) %>%
+  dplyr::summarise(n = dplyr::n(), n_with_IntAct = sum(has_experimental_validation), pct_validated = round(100 * n_with_IntAct / n, 1), .groups = "drop")
+message("\nIntAct validation by tier:")
+print(validation_by_tier)
 
 # --- Step 8: Save outputs ---
 readr::write_csv(master_ppi, file.path(out_dir_ppi_dual, "tables", "master_ppi_evidence.csv"))
-readr::write_csv(overlap_stats_long, file.path(out_dir_ppi_dual, "qc", "overlap_statistics.csv"))
+readr::write_csv(overlap_stats, file.path(out_dir_ppi_dual, "qc", "overlap_statistics.csv"))
 readr::write_csv(tier_summary, file.path(out_dir_ppi_dual, "qc", "confidence_tier_summary.csv"))
-
+readr::write_csv(validation_by_tier, file.path(out_dir_ppi_dual, "qc", "validation_by_tier.csv"))
 
 message("\nSaved to: ", out_dir_ppi_dual)
 message("Master PPI evidence table complete.")
+
 ```
 
 # PPI vulnerability pipeline in iN and iDA LSD mutants
