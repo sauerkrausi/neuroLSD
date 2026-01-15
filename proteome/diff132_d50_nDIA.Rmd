@@ -11543,37 +11543,60 @@ overlap_stats <- data.frame(
 )
 print(overlap_stats)
 
-# --- Step 7: Confidence tier assignment ---
+Good results! The tier distribution makes sense:
+
+Gold edges have higher IntAct validation (8.7%) and higher ipTM (39.9%)
+This supports our tier logic
+
+Let me add more descriptive columns to the output:
+r# --- Step 7: Confidence tier assignment ---
 # Tier logic:
-# - gold: in both prediction sources (P80 and 16k agree)
-#         OR high structural + coevolution (AFMprob >= 0.8 AND RFprob >= 0.8)
-# - silver: single source with high structural confidence (AFMprob or ipTM >= 0.8)
-#           OR high coevolution alone (RFprob >= 0.8)
+# - gold: in both prediction sources (convergent evidence)
+#         OR high structural + coevolution (AFMprob >= 0.9 AND RFprob >= 0.9)
+#         OR high omics integration (SPOC >= 0.95)
+# - silver: good structural (AFMprob >= 0.8)
+#           OR good coevolution (RFprob >= 0.8)
+#           OR good omics (SPOC >= 0.9)
 # - bronze: remaining predictions with lower confidence
-# - IntAct experimental validation tracked separately as QC flag
+# 
+# Note: ipTM_max retained for complex analysis (interface quality metric)
+# IntAct experimental validation tracked separately as QC flag
 
 master_ppi <- master_ppi %>%
   dplyr::mutate(
-    max_structural_conf = pmax(AFMprob, ipTM_max, na.rm = TRUE),
     confidence_tier = dplyr::case_when(
       in_both_predictions ~ "gold",
-      AFMprob >= 0.8 & RFprob >= 0.8 ~ "gold",
-      max_structural_conf >= 0.8 ~ "silver",
+      AFMprob >= 0.9 & RFprob >= 0.9 ~ "gold",
+      SPOC_score >= 0.95 ~ "gold",
+      AFMprob >= 0.8 ~ "silver",
       RFprob >= 0.8 ~ "silver",
+      SPOC_score >= 0.9 ~ "silver",
       TRUE ~ "bronze"
     ),
     confidence_tier_rationale = dplyr::case_when(
       in_both_predictions ~ "both_prediction_sources",
-      AFMprob >= 0.8 & RFprob >= 0.8 ~ "high_structural_and_coevol",
-      max_structural_conf >= 0.8 ~ "high_structural_conf",
-      RFprob >= 0.8 ~ "high_coevol_only",
+      AFMprob >= 0.9 & RFprob >= 0.9 ~ "P80_high_structural_and_coevol",
+      SPOC_score >= 0.95 ~ "16k_high_omics",
+      AFMprob >= 0.8 ~ "P80_good_structural",
+      RFprob >= 0.8 ~ "P80_good_coevol",
+      SPOC_score >= 0.9 ~ "16k_good_omics",
       TRUE ~ "low_conf"
     ),
+    confidence_tier_description = dplyr::case_when(
+      in_both_predictions ~ "Edge found in both Baker Interactome and Predictomes.org - convergent evidence from independent pipelines",
+      AFMprob >= 0.9 & RFprob >= 0.9 ~ "High AlphaFold-Multimer probability (>=0.9) AND high RoseTTAFold coevolution (>=0.9)",
+      SPOC_score >= 0.95 ~ "High SPOC score (>=0.95) integrating co-localization, co-precipitation, and genetic co-dependency",
+      AFMprob >= 0.8 ~ "Good AlphaFold-Multimer structural confidence (>=0.8)",
+      RFprob >= 0.8 ~ "Good RoseTTAFold coevolution signal (>=0.8)",
+      SPOC_score >= 0.9 ~ "Good SPOC omics integration score (>=0.9)",
+      TRUE ~ "Lower confidence - single source with scores below thresholds"
+    ),
+    high_interface_quality = ipTM_max >= 0.7,
     has_experimental_validation = in_IntAct
   )
 
 tier_summary <- master_ppi %>% 
-  dplyr::count(confidence_tier, confidence_tier_rationale) %>%
+  dplyr::count(confidence_tier, confidence_tier_rationale, confidence_tier_description) %>%
   dplyr::arrange(confidence_tier, dplyr::desc(n))
 message("\nConfidence tiers:")
 print(tier_summary)
@@ -11581,8 +11604,15 @@ print(tier_summary)
 # Validation overlap by tier
 validation_by_tier <- master_ppi %>%
   dplyr::group_by(confidence_tier) %>%
-  dplyr::summarise(n = dplyr::n(), n_with_IntAct = sum(has_experimental_validation), pct_validated = round(100 * n_with_IntAct / n, 1), .groups = "drop")
-message("\nIntAct validation by tier:")
+  dplyr::summarise(
+    n = dplyr::n(), 
+    n_with_IntAct = sum(has_experimental_validation), 
+    pct_validated = round(100 * n_with_IntAct / n, 1),
+    n_high_ipTM = sum(high_interface_quality, na.rm = TRUE),
+    pct_high_ipTM = round(100 * n_high_ipTM / n, 1),
+    .groups = "drop"
+  )
+message("\nValidation and interface quality by tier:")
 print(validation_by_tier)
 
 # --- Step 8: Save outputs ---
@@ -11593,6 +11623,7 @@ readr::write_csv(validation_by_tier, file.path(out_dir_ppi_dual, "qc", "validati
 
 message("\nSaved to: ", out_dir_ppi_dual)
 message("Master PPI evidence table complete.")
+
 
 ```
 
