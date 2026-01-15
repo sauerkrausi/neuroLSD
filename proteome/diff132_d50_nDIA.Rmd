@@ -11397,6 +11397,57 @@ pheatmap::pheatmap(
 # Module 11: PPI Vulnerability Analysis - Neuronal nDIA
 # =================================================
 
+PPI vulnerability pipeline in iN and iDA LSD mutants
+
+Goal: Build a Protein-Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. Integrate experimental proteome shifts with predicted and experimentally validated interaction data to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type-specific effects.
+
+> Data Sources
+>> 1. Baker Lab Human Interactome (Predictome80)**
+- Source: https://www.biorxiv.org/content/10.1101/2024.10.01.615885v1
+- ~29k edges, 80% confidence threshold
+- Scores: RFprob (RoseTTAFold coevolution), AFMprob (AlphaFold-Multimer)
+
+>> 2. Predictomes.org 16k set**
+- Source: https://predictomes.org/downloads
+- Paper: https://www.biorxiv.org/content/10.1101/2025.11.10.687652v1
+- ~16.5k edges, top predictions by SPOC score (~90% precision)
+- Scores: SPOC (omics integration), ipTM_max (interface quality), KIRC
+
+>> 3. IntAct Database**
+- Source: https://www.ebi.ac.uk/intact/
+- Experimentally validated interactions (MI-score >= 0.5)
+- Used as orthogonal validation, not primary source
+
+>> Overlap Statistics
+- Predictome80 only: ~22k edges
+- Predictomes16k only: ~9.5k edges  
+- In both (convergent): ~7k edges
+- With IntAct validation: ~1.7k edges
+
+> Confidence Tier Logic
+>> GOLD:
+- In both prediction sources (convergent evidence), OR
+- AFMprob >= 0.9 AND RFprob >= 0.9 (high structural + coevolution), OR
+- SPOC >= 0.95 (high omics integration)
+
+>> SILVER:
+- AFMprob >= 0.8 (good structural), OR
+- RFprob >= 0.8 (good coevolution), OR
+- SPOC >= 0.9 (good omics)
+
+>> BRONZE:
+- Remaining edges with lower confidence
+
+> Additional Flags
+- high_interface_quality: ipTM_max >= 0.7 (retained for complex analysis)
+- has_experimental_validation: present in IntAct (orthogonal QC)
+
+> Key Insight
+AFMprob and RFprob correlate; ipTM_max does not correlate with other metrics. ipTM likely measures interface quality specifically, valuable for complex analysis but not for general PPI confidence tiering.
+
+
+
+
 # Module 11b: Master PPI Evidence Table
 ```{r}
 # =================================================
@@ -11543,13 +11594,8 @@ overlap_stats <- data.frame(
 )
 print(overlap_stats)
 
-Good results! The tier distribution makes sense:
 
-Gold edges have higher IntAct validation (8.7%) and higher ipTM (39.9%)
-This supports our tier logic
-
-Let me add more descriptive columns to the output:
-r# --- Step 7: Confidence tier assignment ---
+# --- Step 7: Confidence tier assignment ---
 # Tier logic:
 # - gold: in both prediction sources (convergent evidence)
 #         OR high structural + coevolution (AFMprob >= 0.9 AND RFprob >= 0.9)
