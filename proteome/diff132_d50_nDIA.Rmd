@@ -11392,9 +11392,213 @@ pheatmap::pheatmap(
 
 
 
+
 # =================================================
 # Module 11: PPI Vulnerability Analysis - Neuronal nDIA
 # =================================================
+
+# Module 11b: Master PPI Evidence Table
+```{r}
+# =================================================
+# Module 11b: Master PPI Evidence Table
+# =================================================
+# Integrates Predictome80 (Baker), Predictomes.org 16k (SPOC), and IntAct
+# Outputs: master_ppi_evidence.csv with all evidence columns and confidence tiers
+
+# --- Step 0: Setup output directory ---
+out_dir_ppi_dual <- file.path(out_dir_PPI, "ppi_dual_evidence")
+dir.create(file.path(out_dir_ppi_dual, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_dual, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+# Input paths
+path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
+path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
+path_intact_tsv <- "/Users/felix/Desktop/ppi/interact.tsv"
+
+# --- Step 1: Helper functions ---
+.make_undirected_key <- function(a, b) {
+  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+}
+
+# --- Step 2: Load Predictome80 (Baker Human Interactome) ---
+message("Loading Predictome80...")
+predictome80_raw <- data.table::fread(path_predictome80, sep = "\t", header = TRUE, skip = 28, fill = TRUE, quote = "", data.table = FALSE)
+predictome80_raw <- predictome80_raw[!grepl("^#", predictome80_raw$Protein1), ]
+
+predictome80 <- predictome80_raw %>%
+  dplyr::transmute(
+    Protein1 = Protein1,
+    Protein2 = Protein2,
+    Gene1 = Name1,
+    Gene2 = Name2,
+    RFprob = suppressWarnings(as.numeric(RFprob)),
+    AFprob = suppressWarnings(as.numeric(AFprob)),
+    AFMprob = suppressWarnings(as.numeric(AFMprob)),
+    CFprob = suppressWarnings(as.numeric(CFprob)),
+    STRING = suppressWarnings(as.numeric(STRING)),
+    confDBs = confDBs,
+    allDBs = allDBs,
+    Source = Source,
+    PDBtemp = PDBtemp,
+    Locality1 = Locality1,
+    Locality2 = Locality2,
+    key = .make_undirected_key(Protein1, Protein2)
+  ) %>%
+  dplyr::distinct(key, .keep_all = TRUE) %>%
+  dplyr::mutate(in_Predictome80 = TRUE)
+
+message("  Predictome80: ", nrow(predictome80), " unique edges")
+
+# --- Step 3: Load Predictomes.org 16k (SPOC scores) ---
+message("Loading Predictomes.org 16k...")
+predictomes16k_raw <- read.csv(path_predictomes16k, stringsAsFactors = FALSE)
+
+predictomes16k <- predictomes16k_raw %>%
+  dplyr::transmute(
+    Protein1 = trimws(sub(" / .*", "", UniProt_ID)),
+    Protein2 = trimws(sub(".* / ", "", UniProt_ID)),
+    Gene1_16k = trimws(sub(" / .*", "", Gene_Symbol)),
+    Gene2_16k = trimws(sub(".* / ", "", Gene_Symbol)),
+    SPOC_score = as.numeric(SPOC_score),
+    FDR_pct = as.numeric(gsub("[^0-9.]", "", `FDR_...`)),
+    ipTM_max = as.numeric(ipTM_max),
+    KIRC_score = as.numeric(KIRC_score),
+    BioGRID_count = as.numeric(BioGRID),
+    STRING_16k = as.numeric(STRING_score),
+    key = .make_undirected_key(Protein1, Protein2)
+  ) %>%
+  dplyr::distinct(key, .keep_all = TRUE) %>%
+  dplyr::mutate(in_Predictomes16k = TRUE)
+
+message("  Predictomes16k: ", nrow(predictomes16k), " unique edges")
+
+# --- Step 4: Load IntAct ---
+message("Loading IntAct...")
+intact_raw <- data.table::fread(path_intact_tsv, sep = "\t", header = TRUE, fill = TRUE, quote = "", data.table = FALSE)
+colnames(intact_raw) <- trimws(gsub("^#", "", colnames(intact_raw)))
+
+intact <- intact_raw %>%
+  dplyr::transmute(
+    Protein1 = sub("^uniprotkb:", "", sub("\\|.*$", "", `ID(s) interactor A`)),
+    Protein2 = sub("^uniprotkb:", "", sub("\\|.*$", "", `ID(s) interactor B`)),
+    IntAct_MIscore = {
+      x <- `Confidence value(s)`
+      x <- sub("^.*miscore:", "", x, ignore.case = TRUE)
+      suppressWarnings(as.numeric(x))
+    },
+    DetectionMethod = gsub('psi-mi:|"', "", `Interaction detection method(s)`)
+  ) %>%
+  dplyr::mutate(key = .make_undirected_key(Protein1, Protein2)) %>%
+  dplyr::distinct(key, .keep_all = TRUE) %>%
+  dplyr::mutate(in_IntAct = TRUE)
+
+message("  IntAct: ", nrow(intact), " unique edges")
+
+# --- Step 5: Merge all three sources ---
+message("Merging PPI evidence...")
+
+master_ppi <- predictome80 %>%
+  dplyr::select(key, Protein1, Protein2, Gene1, Gene2, RFprob, AFprob, AFMprob, CFprob, STRING, confDBs, allDBs, Source, PDBtemp, Locality1, Locality2, in_Predictome80) %>%
+  dplyr::full_join(predictomes16k %>% dplyr::select(key, Gene1_16k, Gene2_16k, SPOC_score, FDR_pct, ipTM_max, KIRC_score, BioGRID_count, STRING_16k, in_Predictomes16k), by = "key") %>%
+  dplyr::full_join(intact %>% dplyr::select(key, IntAct_MIscore, DetectionMethod, in_IntAct), by = "key")
+
+# Fill missing flags
+master_ppi <- master_ppi %>%
+  dplyr::mutate(
+    in_Predictome80 = tidyr::replace_na(in_Predictome80, FALSE),
+    in_Predictomes16k = tidyr::replace_na(in_Predictomes16k, FALSE),
+    in_IntAct = tidyr::replace_na(in_IntAct, FALSE),
+    n_sources = in_Predictome80 + in_Predictomes16k + in_IntAct
+  )
+
+# Fill Protein1/2 and Gene1/2 from whichever source has them
+master_ppi <- master_ppi %>%
+  dplyr::mutate(
+    Protein1 = dplyr::case_when(
+      !is.na(Protein1) ~ Protein1,
+      TRUE ~ sub("::.*", "", key)
+    ),
+    Protein2 = dplyr::case_when(
+      !is.na(Protein2) ~ Protein2,
+      TRUE ~ sub(".*::", "", key)
+    ),
+    Gene1 = dplyr::coalesce(Gene1, Gene1_16k),
+    Gene2 = dplyr::coalesce(Gene2, Gene2_16k)
+  ) %>%
+  dplyr::select(-Gene1_16k, -Gene2_16k)
+
+message("  Master table: ", nrow(master_ppi), " unique edges")
+
+# --- Step 6: Overlap statistics ---
+message("\n=== Overlap Statistics ===")
+overlap_stats <- master_ppi %>%
+  dplyr::summarise(
+    total_edges = dplyr::n(),
+    in_P80_only = sum(in_Predictome80 & !in_Predictomes16k & !in_IntAct),
+    in_16k_only = sum(!in_Predictome80 & in_Predictomes16k & !in_IntAct),
+    in_IntAct_only = sum(!in_Predictome80 & !in_Predictomes16k & in_IntAct),
+    P80_and_16k = sum(in_Predictome80 & in_Predictomes16k & !in_IntAct),
+    P80_and_IntAct = sum(in_Predictome80 & !in_Predictomes16k & in_IntAct),
+    `16k_and_IntAct` = sum(!in_Predictome80 & in_Predictomes16k & in_IntAct),
+    all_three = sum(in_Predictome80 & in_Predictomes16k & in_IntAct)
+  )
+
+overlap_stats_long <- data.frame(
+  category = names(overlap_stats),
+  count = as.numeric(overlap_stats[1, ]),
+  stringsAsFactors = FALSE
+)
+print(overlap_stats_long)
+
+# --- Step 7: Confidence tier assignment ---
+# Tier logic:
+# - gold: multiple independent sources (n_sources >= 2)
+#         OR IntAct MI >= 0.7
+#         OR high structural + coevolution (AFMprob >= 0.8 AND RFprob >= 0.8)
+# - silver: single prediction source with high structural confidence (AFMprob or ipTM >= 0.8)
+#           OR high coevolution alone (RFprob >= 0.8)
+#           OR any IntAct
+# - bronze: single source, lower confidence
+
+master_ppi <- master_ppi %>%
+  dplyr::mutate(
+    max_structural_conf = pmax(AFMprob, ipTM_max, na.rm = TRUE),
+    confidence_tier = dplyr::case_when(
+      n_sources >= 2 ~ "gold",
+      in_IntAct & IntAct_MIscore >= 0.7 ~ "gold",
+      AFMprob >= 0.8 & RFprob >= 0.8 ~ "gold",
+      (in_Predictome80 | in_Predictomes16k) & max_structural_conf >= 0.8 ~ "silver",
+      RFprob >= 0.8 ~ "silver",
+      in_IntAct ~ "silver",
+      TRUE ~ "bronze"
+    ),
+    confidence_tier_rationale = dplyr::case_when(
+      n_sources >= 2 ~ "multiple_sources",
+      in_IntAct & IntAct_MIscore >= 0.7 ~ "IntAct_high_MI",
+      AFMprob >= 0.8 & RFprob >= 0.8 ~ "high_structural_and_coevol",
+      (in_Predictome80 | in_Predictomes16k) & max_structural_conf >= 0.8 ~ "high_structural_conf",
+      RFprob >= 0.8 ~ "high_coevol_only",
+      in_IntAct ~ "IntAct_any",
+      TRUE ~ "single_source_low_conf"
+    )
+  )
+
+tier_summary <- master_ppi %>% 
+  dplyr::count(confidence_tier, confidence_tier_rationale) %>%
+  dplyr::arrange(confidence_tier, dplyr::desc(n))
+message("\nConfidence tiers:")
+print(tier_summary)
+
+
+# --- Step 8: Save outputs ---
+readr::write_csv(master_ppi, file.path(out_dir_ppi_dual, "tables", "master_ppi_evidence.csv"))
+readr::write_csv(overlap_stats_long, file.path(out_dir_ppi_dual, "qc", "overlap_statistics.csv"))
+readr::write_csv(tier_summary, file.path(out_dir_ppi_dual, "qc", "confidence_tier_summary.csv"))
+
+
+message("\nSaved to: ", out_dir_ppi_dual)
+message("Master PPI evidence table complete.")
+```
 
 # PPI vulnerability pipeline in iN and iDA LSD mutants
 Build a Protein–Protein Interaction (PPI) vulnerability and rewiring landscape for neuronal proteomes (iN and iDA) across 23 lysosomal KOs. The goal is to integrate experimental proteome shifts with predicted and experimentally validated interaction data (Predictome 80% and IntAct) to quantify network destabilization, organelle-specific vulnerabilities, and neuron-type–specific effects.
