@@ -12170,9 +12170,12 @@ p_source_baseline <- ggplot(source_summary_baseline, aes(x = reorder(source_cate
   scale_fill_brewer(palette = "Set2", guide = "none") +
   labs(title = "Baseline PPI edges by evidence source", x = NULL, y = "Number of edges") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave(file.path(out_dir_baseline, "qc", "barplot_source_distribution_baseline.pdf"), p_source_baseline, width = 4, height = 4, device = cairo_pdf)
+
 
 # --- QC Plot 3: Node degree distribution ---
 p_degree_hist <- ggplot(degree_df, aes(x = degree)) +
