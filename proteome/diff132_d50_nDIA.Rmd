@@ -11819,7 +11819,7 @@ p_source_bar <- ggplot(source_summary, aes(x = reorder(source_category, -n), y =
         panel.border = element_rect(color = "black", fill = NA), 
         axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_source_overlap.pdf"), p_source_bar, width = 4.5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_source_overlap.pdf"), p_source_bar, width = 4, height = 4, device = cairo_pdf)
 
 
 # --- QC Plot 4: Tier validation summary ---
@@ -11846,7 +11846,8 @@ p_validation <- ggplot(validation_summary, aes(x = confidence_tier, y = percenta
         panel.border = element_rect(color = "black", fill = NA), 
         legend.position = "top")
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_validation.pdf"), p_validation, width = 4.5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_validation.pdf"), p_validation, width = 4, height = 4, device = cairo_pdf)
+
 
 # --- QC Plot 5: Key score scatter plots ---
 message("Generating score scatter plots...")
@@ -11909,6 +11910,7 @@ p_org_counts <- ggplot(edge_counts_org, aes(x = reorder(tag, n), y = n, fill = t
 
 ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_edges_by_organelle.pdf"), p_org_counts, width = 4.5, height = 4, device = cairo_pdf)
 
+
 # --- QC Plot 7: Tier distribution by organelle ---
 tier_by_org <- shared_long_master %>%
   dplyr::left_join(master_ppi %>% dplyr::select(key, confidence_tier), by = "key") %>%
@@ -11934,6 +11936,13 @@ message("QC plots complete. Saved to: ", file.path(out_dir_ppi_dual, "qc/plots")
 
 
 
+
+```
+
+
+
+# 
+```{r}
 
 ```
 
