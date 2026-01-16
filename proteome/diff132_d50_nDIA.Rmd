@@ -11941,9 +11941,369 @@ message("QC plots complete. Saved to: ", file.path(out_dir_ppi_dual, "qc/plots")
 
 
 
-# 
+# Baseline PPI Network for Neuronal Proteome
 ```{r}
+# =================================================
+# Module 1: Baseline PPI Network for Neuronal Proteome
+# =================================================
+# Filters master_ppi to edges where both partners are detected in neuronal proteome
+# Generates QC metrics and plots for baseline characterization
 
+# --- Setup ---
+out_dir_baseline <- file.path(out_dir_ppi_dual, "baseline")
+dir.create(file.path(out_dir_baseline, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_baseline, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Step 1: Define neuronal proteome and filter ---
+message("=== Filtering master_ppi to neuronal proteome ===")
+
+neuronal_genes <- unique(complete_data_annotated_day50$Genes)
+message("Neuronal proteome: ", length(neuronal_genes), " proteins")
+
+# Pre-filter stats
+n_pre <- nrow(master_ppi)
+n_gene1_in <- sum(master_ppi$Gene1 %in% neuronal_genes)
+n_gene2_in <- sum(master_ppi$Gene2 %in% neuronal_genes)
+n_both_in <- sum(master_ppi$Gene1 %in% neuronal_genes & master_ppi$Gene2 %in% neuronal_genes)
+
+message("Pre-filter edges: ", n_pre)
+message("  Gene1 in proteome: ", n_gene1_in, " (", round(100 * n_gene1_in / n_pre, 1), "%)")
+message("  Gene2 in proteome: ", n_gene2_in, " (", round(100 * n_gene2_in / n_pre, 1), "%)")
+message("  Both in proteome: ", n_both_in, " (", round(100 * n_both_in / n_pre, 1), "%)")
+
+# Filter
+baseline_ppi <- master_ppi %>%
+  dplyr::filter(Gene1 %in% neuronal_genes & Gene2 %in% neuronal_genes)
+
+message("Post-filter edges: ", nrow(baseline_ppi))
+
+# Unique proteins in baseline network
+baseline_proteins <- unique(c(baseline_ppi$Gene1, baseline_ppi$Gene2))
+message("Unique proteins in baseline network: ", length(baseline_proteins))
+
+# --- Step 2: Pre/post filter comparison stats ---
+filter_comparison <- data.frame(
+  metric = c("total_edges", "gene1_in_proteome", "gene2_in_proteome", "both_in_proteome", "unique_proteins_in_network", "proteome_coverage_pct"),
+  pre_filter = c(n_pre, n_gene1_in, n_gene2_in, n_both_in, length(unique(c(master_ppi$Gene1, master_ppi$Gene2))), NA),
+  post_filter = c(nrow(baseline_ppi), nrow(baseline_ppi), nrow(baseline_ppi), nrow(baseline_ppi), length(baseline_proteins), round(100 * length(baseline_proteins) / length(neuronal_genes), 1)),
+  stringsAsFactors = FALSE
+)
+readr::write_csv(filter_comparison, file.path(out_dir_baseline, "tables", "filter_comparison.csv"))
+
+# --- Step 3: Tier distribution pre/post filter ---
+tier_pre <- master_ppi %>% dplyr::count(confidence_tier, name = "n_pre")
+tier_post <- baseline_ppi %>% dplyr::count(confidence_tier, name = "n_post")
+
+tier_comparison <- tier_pre %>%
+  dplyr::full_join(tier_post, by = "confidence_tier") %>%
+  dplyr::mutate(
+    n_pre = tidyr::replace_na(n_pre, 0),
+    n_post = tidyr::replace_na(n_post, 0),
+    pct_retained = round(100 * n_post / n_pre, 1),
+    confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze"))
+  ) %>%
+  dplyr::arrange(confidence_tier)
+
+message("\nConfidence tier comparison:")
+print(tier_comparison)
+readr::write_csv(tier_comparison, file.path(out_dir_baseline, "tables", "tier_comparison_pre_post.csv"))
+
+# --- Step 4: Source distribution in baseline ---
+source_summary_baseline <- baseline_ppi %>%
+  dplyr::mutate(
+    source_category = dplyr::case_when(
+      in_both_predictions & in_IntAct ~ "P80 + 16k + IntAct",
+      in_both_predictions ~ "P80 + 16k",
+      in_Predictome80 & in_IntAct ~ "P80 + IntAct",
+      in_Predictomes16k & in_IntAct ~ "16k + IntAct",
+      in_Predictome80 ~ "P80 only",
+      in_Predictomes16k ~ "16k only",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  dplyr::count(source_category) %>%
+  dplyr::arrange(dplyr::desc(n))
+
+readr::write_csv(source_summary_baseline, file.path(out_dir_baseline, "tables", "source_distribution_baseline.csv"))
+
+# --- Step 5: Validation rates in baseline ---
+validation_baseline <- baseline_ppi %>%
+  dplyr::group_by(confidence_tier) %>%
+  dplyr::summarise(
+    n = dplyr::n(),
+    n_IntAct = sum(has_experimental_validation),
+    pct_IntAct = round(100 * n_IntAct / n, 1),
+    n_high_ipTM = sum(high_interface_quality, na.rm = TRUE),
+    pct_high_ipTM = round(100 * n_high_ipTM / n, 1),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze")))
+
+message("\nValidation rates in baseline:")
+print(validation_baseline)
+readr::write_csv(validation_baseline, file.path(out_dir_baseline, "tables", "validation_by_tier_baseline.csv"))
+
+# --- Step 6: Organelle coverage in baseline ---
+organelle_tags <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus", "Autophagy", "Autophagy_det", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs", "Presynaptic", "Postsynaptic", "EndoDetailLoac", "EndoLyso", "EarlyEndosome", "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase", "mtCI_AF")
+
+# Shared organelle edges (long format)
+org1_cols <- paste0(organelle_tags, "_prot1")
+org2_cols <- paste0(organelle_tags, "_prot2")
+existing_org1 <- intersect(org1_cols, colnames(baseline_ppi))
+existing_org2 <- intersect(org2_cols, colnames(baseline_ppi))
+existing_tags <- sub("_prot1$", "", existing_org1)
+
+shared_long_baseline <- {
+  m1 <- baseline_ppi[, existing_org1, drop = FALSE] %>% lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% as.data.frame()
+  m2 <- baseline_ppi[, existing_org2, drop = FALSE] %>% lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% as.data.frame()
+  shared_mat <- as.matrix(m1) & as.matrix(m2)
+  
+  dplyr::bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
+    idx <- which(shared_mat[i, ])
+    if (!length(idx)) return(NULL)
+    data.frame(key = baseline_ppi$key[i], tag = existing_tags[idx], stringsAsFactors = FALSE)
+  }))
+}
+
+organelle_edge_counts <- shared_long_baseline %>% dplyr::count(tag, name = "n_edges") %>% dplyr::arrange(dplyr::desc(n_edges))
+message("\nOrganelle edge counts in baseline:")
+print(organelle_edge_counts)
+readr::write_csv(organelle_edge_counts, file.path(out_dir_baseline, "tables", "organelle_edge_counts_baseline.csv"))
+readr::write_csv(shared_long_baseline, file.path(out_dir_baseline, "tables", "shared_organelle_edges_baseline.csv"))
+
+# --- Step 7: Node degree distribution ---
+degree_df <- data.frame(gene = c(baseline_ppi$Gene1, baseline_ppi$Gene2), stringsAsFactors = FALSE) %>%
+  dplyr::count(gene, name = "degree") %>%
+  dplyr::arrange(dplyr::desc(degree))
+
+degree_summary <- data.frame(
+  metric = c("min_degree", "median_degree", "mean_degree", "max_degree", "n_hubs_deg10plus", "n_hubs_deg50plus"),
+  value = c(min(degree_df$degree), median(degree_df$degree), round(mean(degree_df$degree), 2), max(degree_df$degree), sum(degree_df$degree >= 10), sum(degree_df$degree >= 50))
+)
+message("\nNode degree summary:")
+print(degree_summary)
+readr::write_csv(degree_df, file.path(out_dir_baseline, "tables", "node_degree_baseline.csv"))
+readr::write_csv(degree_summary, file.path(out_dir_baseline, "tables", "node_degree_summary.csv"))
+
+# --- Step 8: Summary table for methods ---
+baseline_summary <- data.frame(
+  metric = c(
+    "neuronal_proteome_proteins",
+    "master_ppi_edges",
+    "baseline_ppi_edges",
+    "baseline_unique_proteins",
+    "proteome_coverage_pct",
+    "gold_tier_edges",
+    "silver_tier_edges", 
+    "bronze_tier_edges",
+    "edges_in_both_sources",
+    "edges_with_IntAct_validation",
+    "edges_with_high_ipTM",
+    "median_node_degree",
+    "max_node_degree"
+  ),
+  value = c(
+    length(neuronal_genes),
+    n_pre,
+    nrow(baseline_ppi),
+    length(baseline_proteins),
+    round(100 * length(baseline_proteins) / length(neuronal_genes), 1),
+    sum(baseline_ppi$confidence_tier == "gold"),
+    sum(baseline_ppi$confidence_tier == "silver"),
+    sum(baseline_ppi$confidence_tier == "bronze"),
+    sum(baseline_ppi$in_both_predictions),
+    sum(baseline_ppi$has_experimental_validation),
+    sum(baseline_ppi$high_interface_quality, na.rm = TRUE),
+    median(degree_df$degree),
+    max(degree_df$degree)
+  ),
+  stringsAsFactors = FALSE
+)
+readr::write_csv(baseline_summary, file.path(out_dir_baseline, "tables", "baseline_summary_for_methods.csv"))
+
+message("\n=== Baseline summary ===")
+print(baseline_summary)
+
+# Save baseline_ppi
+readr::write_csv(baseline_ppi, file.path(out_dir_baseline, "tables", "baseline_ppi.csv"))
+message("\nBaseline PPI saved to: ", file.path(out_dir_baseline, "tables", "baseline_ppi.csv"))
+```
+
+
+
+# QC plots 
+```{r}
+# =================================================
+# Module 1 QC Plots
+# =================================================
+
+# Color palette for organelles
+n_tags <- length(unique(shared_long_baseline$tag))
+organelle_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(n_tags)
+names(organelle_colors) <- sort(unique(shared_long_baseline$tag))
+
+tier_colors <- c("gold" = "#FFD700", "silver" = "#C0C0C0", "bronze" = "#CD7F32")
+
+# --- QC Plot 1: Pre/post filter tier comparison ---
+tier_comparison_long <- tier_comparison %>%
+  tidyr::pivot_longer(cols = c(n_pre, n_post), names_to = "stage", values_to = "n") %>%
+  dplyr::mutate(stage = factor(stage, levels = c("n_pre", "n_post"), labels = c("Pre-filter", "Post-filter")))
+
+p_tier_prepost <- ggplot(tier_comparison_long, aes(x = confidence_tier, y = n, fill = stage)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("Pre-filter" = "grey70", "Post-filter" = "steelblue"), name = NULL) +
+  labs(title = "Confidence tier distribution: pre vs post neuronal proteome filter", x = NULL, y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+ggsave(file.path(out_dir_baseline, "qc", "barplot_tier_pre_post_filter.pdf"), p_tier_prepost, width = 4.5, height = 4, device = cairo_pdf)
+
+# --- QC Plot 2: Source distribution in baseline ---
+p_source_baseline <- ggplot(source_summary_baseline, aes(x = reorder(source_category, -n), y = n, fill = source_category)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(title = "Baseline PPI edges by evidence source", x = NULL, y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_baseline, "qc", "barplot_source_distribution_baseline.pdf"), p_source_baseline, width = 4, height = 4, device = cairo_pdf)
+
+# --- QC Plot 3: Node degree distribution ---
+p_degree_hist <- ggplot(degree_df, aes(x = degree)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "black", linewidth = 0.2) +
+  scale_x_continuous(limits = c(0, quantile(degree_df$degree, 0.99))) +
+  labs(title = paste0("Node degree distribution (n = ", nrow(degree_df), " proteins)"), x = "Degree (number of interactions)", y = "Count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree.pdf"), p_degree_hist, width = 4, height = 3.5, device = cairo_pdf)
+
+# Log-scale version
+p_degree_log <- ggplot(degree_df, aes(x = degree)) +
+  geom_histogram(binwidth = 0.1, fill = "steelblue", color = "black", linewidth = 0.2) +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(title = "Node degree distribution (log-log)", x = "Degree (log10)", y = "Count (log10)") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_loglog.pdf"), p_degree_log, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- QC Plot 4: Score distributions by tier (baseline) ---
+score_cols <- c("RFprob", "AFMprob", "SPOC_score", "ipTM_max")
+scores_long_baseline <- baseline_ppi %>%
+  dplyr::select(key, confidence_tier, dplyr::all_of(score_cols)) %>%
+  tidyr::pivot_longer(cols = dplyr::all_of(score_cols), names_to = "score_type", values_to = "score_value") %>%
+  dplyr::filter(!is.na(score_value)) %>%
+  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze")))
+
+p_scores_tier <- ggplot(scores_long_baseline, aes(x = confidence_tier, y = score_value, fill = confidence_tier)) +
+  geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+  facet_wrap(~score_type, scales = "free_y", ncol = 2) +
+  scale_fill_manual(values = tier_colors, guide = "none") +
+  labs(title = "Score distributions by confidence tier (baseline)", x = NULL, y = "Score") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+
+ggsave(file.path(out_dir_baseline, "qc", "boxplot_scores_by_tier_baseline.pdf"), p_scores_tier, width = 5, height = 5, device = cairo_pdf)
+
+# --- QC Plot 5: Score density by organelle ---
+scores_org_baseline <- baseline_ppi %>%
+  dplyr::select(key, dplyr::all_of(score_cols)) %>%
+  dplyr::left_join(shared_long_baseline, by = "key") %>%
+  dplyr::filter(!is.na(tag))
+
+plot_score_density_by_organelle <- function(df, score_col, org_colors, out_dir) {
+  df_plot <- df %>% dplyr::filter(!is.na(!!sym(score_col)))
+  if (nrow(df_plot) == 0) return(invisible(NULL))
+  
+  p <- ggplot(df_plot, aes(x = !!sym(score_col), fill = tag)) +
+    geom_density(alpha = 0.5) +
+    scale_fill_manual(values = org_colors, name = "Organelle") +
+    labs(title = paste(score_col, "density by organelle (baseline)"), x = score_col, y = "Density") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.key.size = unit(0.25, "cm"), legend.position = "right")
+  
+  ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")), p, width = 7, height = 4, device = cairo_pdf)
+}
+
+for (sc in score_cols) {
+  plot_score_density_by_organelle(scores_org_baseline, sc, organelle_colors, file.path(out_dir_baseline, "qc"))
+}
+
+# --- QC Plot 6: Score boxplot by organelle ---
+plot_score_boxplot_by_organelle <- function(df, score_col, org_colors, out_dir) {
+  df_plot <- df %>% dplyr::filter(!is.na(!!sym(score_col)))
+  if (nrow(df_plot) == 0) return(invisible(NULL))
+  
+  p <- ggplot(df_plot, aes(x = reorder(tag, !!sym(score_col), median), y = !!sym(score_col), fill = tag)) +
+    geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+    scale_fill_manual(values = org_colors, guide = "none") +
+    coord_flip() +
+    labs(title = paste(score_col, "by organelle (baseline)"), x = NULL, y = score_col) +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  
+  ggsave(file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle.pdf")), p, width = 5, height = 5, device = cairo_pdf)
+}
+
+for (sc in score_cols) {
+  plot_score_boxplot_by_organelle(scores_org_baseline, sc, organelle_colors, file.path(out_dir_baseline, "qc"))
+}
+
+# --- QC Plot 7: Organelle edge counts (baseline) ---
+p_org_counts <- ggplot(organelle_edge_counts, aes(x = reorder(tag, n_edges), y = n_edges, fill = tag)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = organelle_colors, guide = "none") +
+  coord_flip() +
+  labs(title = "PPI edges per shared organelle (baseline)", x = NULL, y = "Edge count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_baseline, "qc", "barplot_organelle_edge_counts_baseline.pdf"), p_org_counts, width = 4.5, height = 5, device = cairo_pdf)
+
+# --- QC Plot 8: Tier distribution by organelle (baseline) ---
+tier_by_org_baseline <- shared_long_baseline %>%
+  dplyr::left_join(baseline_ppi %>% dplyr::select(key, confidence_tier), by = "key") %>%
+  dplyr::count(tag, confidence_tier) %>%
+  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze"))) %>%
+  dplyr::group_by(tag) %>%
+  dplyr::mutate(pct = 100 * n / sum(n)) %>%
+  dplyr::ungroup()
+
+p_tier_org <- ggplot(tier_by_org_baseline, aes(x = reorder(tag, -n), y = pct, fill = confidence_tier)) +
+  geom_col(color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = tier_colors, name = "Tier") +
+  labs(title = "Confidence tier distribution by organelle (baseline)", x = NULL, y = "Percentage") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_baseline, "qc", "barplot_tier_by_organelle_baseline.pdf"), p_tier_org, width = 6, height = 5, device = cairo_pdf)
+
+# --- QC Plot 9: Score correlation heatmap (baseline) ---
+cor_matrix_baseline <- baseline_ppi %>%
+  dplyr::select(dplyr::all_of(score_cols)) %>%
+  cor(use = "pairwise.complete.obs", method = "spearman")
+
+pheatmap::pheatmap(
+  cor_matrix_baseline,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
+  breaks = seq(-1, 1, length.out = 102),
+  main = "Score correlations (baseline)",
+  fontsize = 8,
+  cellwidth = 40,
+  cellheight = 40,
+  border_color = "black",
+  filename = file.path(out_dir_baseline, "qc", "heatmap_score_correlations_baseline.pdf"),
+  width = 5,
+  height = 4.5
+)
+
+message("\nQC plots saved to: ", file.path(out_dir_baseline, "qc"))
 ```
 
 
