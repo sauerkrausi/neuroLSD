@@ -12144,6 +12144,7 @@ names(organelle_colors) <- sort(unique(shared_long_baseline$tag))
 
 tier_colors <- c("gold" = "#FFD700", "silver" = "#C0C0C0", "bronze" = "#CD7F32")
 
+
 # --- QC Plot 1: Pre/post filter tier comparison ---
 tier_comparison_long <- tier_comparison %>%
   tidyr::pivot_longer(cols = c(n_pre, n_post), names_to = "stage", values_to = "n") %>%
@@ -12155,9 +12156,12 @@ p_tier_prepost <- ggplot(tier_comparison_long, aes(x = confidence_tier, y = n, f
   scale_fill_manual(values = c("Pre-filter" = "grey70", "Post-filter" = "steelblue"), name = NULL) +
   labs(title = "Confidence tier distribution: pre vs post neuronal proteome filter", x = NULL, y = "Number of edges") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top")
 
 ggsave(file.path(out_dir_baseline, "qc", "barplot_tier_pre_post_filter.pdf"), p_tier_prepost, width = 4.5, height = 4, device = cairo_pdf)
+
 
 # --- QC Plot 2: Source distribution in baseline ---
 p_source_baseline <- ggplot(source_summary_baseline, aes(x = reorder(source_category, -n), y = n, fill = source_category)) +
