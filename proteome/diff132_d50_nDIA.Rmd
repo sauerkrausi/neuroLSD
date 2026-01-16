@@ -12194,9 +12194,11 @@ p_degree_log <- ggplot(degree_df, aes(x = degree)) +
   scale_y_log10() +
   labs(title = "Node degree distribution (log-log)", x = "Degree (log10)", y = "Count (log10)") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_loglog.pdf"), p_degree_log, width = 4, height = 3.5, device = cairo_pdf)
+
 
 # --- QC Plot 4: Score distributions by tier (baseline) ---
 score_cols <- c("RFprob", "AFMprob", "SPOC_score", "ipTM_max")
@@ -12212,9 +12214,12 @@ p_scores_tier <- ggplot(scores_long_baseline, aes(x = confidence_tier, y = score
   scale_fill_manual(values = tier_colors, guide = "none") +
   labs(title = "Score distributions by confidence tier (baseline)", x = NULL, y = "Score") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        strip.background = element_rect(fill = "white", color = "black"))
 
 ggsave(file.path(out_dir_baseline, "qc", "boxplot_scores_by_tier_baseline.pdf"), p_scores_tier, width = 5, height = 5, device = cairo_pdf)
+
 
 # --- QC Plot 5: Score density by organelle ---
 scores_org_baseline <- baseline_ppi %>%
@@ -12231,7 +12236,10 @@ plot_score_density_by_organelle <- function(df, score_col, org_colors, out_dir) 
     scale_fill_manual(values = org_colors, name = "Organelle") +
     labs(title = paste(score_col, "density by organelle (baseline)"), x = score_col, y = "Density") +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.key.size = unit(0.25, "cm"), legend.position = "right")
+    theme(panel.grid = element_blank(), 
+          panel.border = element_rect(color = "black", fill = NA), 
+          legend.key.size = unit(0.25, "cm"), 
+          legend.position = "right")
   
   ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")), p, width = 7, height = 4, device = cairo_pdf)
 }
