@@ -12559,6 +12559,519 @@ message("\nQC plots saved to: ", file.path(out_dir_baseline, "qc"))
 
 
 
+# Trimer Detection and Validation
+```{r}
+# =================================================
+# Module 2: Trimer Detection and Validation
+# =================================================
+
+library(igraph)
+
+# --- Setup ---
+out_dir_trimer <- file.path(out_dir_ppi_dual, "trimers")
+dir.create(file.path(out_dir_trimer, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_trimer, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Step 1: Filter baseline to gold + silver ---
+message("=== Filtering baseline_ppi to gold + silver tiers ===")
+
+baseline_gs <- baseline_ppi %>%
+  dplyr::filter(confidence_tier %in% c("gold", "silver"))
+
+message("Gold + silver edges: ", nrow(baseline_gs), " / ", nrow(baseline_ppi), " (", round(100 * nrow(baseline_gs) / nrow(baseline_ppi), 1), "%)")
+
+# --- Step 2: Load and parse ComplexPortal ---
+message("Loading ComplexPortal...")
+
+path_complexportal <- "/Users/felix/Desktop/ppi/9606.tsv"
+complexportal_raw <- data.table::fread(path_complexportal, sep = "\t", header = TRUE, fill = TRUE, quote = "", data.table = FALSE)
+
+# Parse protein identifiers and stoichiometry
+# Column: "Identifiers (and stoichiometry) of molecules in complex" contains e.g. "P84022(1)|Q13485(1)|Q15796(1)"
+complexportal <- complexportal_raw %>%
+  dplyr::transmute(
+    complex_id = `#Complex ac`,
+    complex_name = `Recommended name`,
+    proteins_raw = `Identifiers (and stoichiometry) of molecules in complex`,
+    go_annotations = `Go Annotations`,
+    description = Description
+  ) %>%
+  dplyr::mutate(
+    # Extract UniProt IDs (remove stoichiometry)
+    proteins_list = stringr::str_extract_all(proteins_raw, "[A-Z][A-Z0-9]{5}(?=\\()"),
+    n_proteins = purrr::map_int(proteins_list, length)
+  )
+
+message("ComplexPortal complexes loaded: ", nrow(complexportal))
+message("Complexes with 3+ proteins: ", sum(complexportal$n_proteins >= 3))
+
+# Create lookup: protein -> complex_ids
+protein_to_complex <- complexportal %>%
+  dplyr::select(complex_id, proteins_list) %>%
+  tidyr::unnest(proteins_list) %>%
+  dplyr::rename(protein = proteins_list) %>%
+  dplyr::group_by(protein) %>%
+  dplyr::summarise(complex_ids = list(unique(complex_id)), .groups = "drop")
+
+# Create lookup: complex_id -> all proteins
+complex_to_proteins <- complexportal %>%
+  dplyr::select(complex_id, proteins_list) %>%
+  tidyr::unnest(proteins_list) %>%
+  dplyr::rename(protein = proteins_list) %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(proteins = list(unique(protein)), .groups = "drop")
+
+# --- Step 3: Build UniProt to Gene mapping ---
+# Need to map ComplexPortal (UniProt) to our data (Gene symbols)
+uniprot_to_gene <- baseline_ppi %>%
+  dplyr::select(Protein1, Gene1) %>%
+  dplyr::rename(uniprot = Protein1, gene = Gene1) %>%
+  dplyr::bind_rows(
+    baseline_ppi %>% dplyr::select(Protein2, Gene2) %>% dplyr::rename(uniprot = Protein2, gene = Gene2)
+  ) %>%
+  dplyr::distinct(uniprot, .keep_all = TRUE)
+
+gene_to_uniprot <- uniprot_to_gene %>%
+  dplyr::distinct(gene, .keep_all = TRUE) %>%
+  dplyr::select(gene, uniprot)
+
+message("UniProt-Gene mappings: ", nrow(uniprot_to_gene))
+
+# --- Step 4: Build igraph ---
+message("Building graph from gold + silver edges...")
+
+g <- igraph::graph_from_data_frame(
+  baseline_gs %>% dplyr::select(Gene1, Gene2),
+  directed = FALSE
+)
+
+# Remove multi-edges and loops
+g <- igraph::simplify(g)
+
+message("Graph: ", igraph::vcount(g), " nodes, ", igraph::ecount(g), " edges")
+
+# --- Step 5: Find all triangles (trimers) ---
+message("Finding triangles...")
+
+triangles_raw <- igraph::triangles(g)
+n_triangles <- length(triangles_raw) / 3
+
+message("Triangles found: ", n_triangles)
+
+# Convert to matrix (each row = 1 triangle)
+if (n_triangles > 0) {
+  triangle_matrix <- matrix(igraph::V(g)$name[triangles_raw], ncol = 3, byrow = TRUE)
+  
+  # Sort each row alphabetically for consistent trimer_id
+  triangle_matrix_sorted <- t(apply(triangle_matrix, 1, sort))
+  
+  # Create trimer dataframe
+  trimers_df <- data.frame(
+    Gene1 = triangle_matrix_sorted[, 1],
+    Gene2 = triangle_matrix_sorted[, 2],
+    Gene3 = triangle_matrix_sorted[, 3],
+    stringsAsFactors = FALSE
+  ) %>%
+    dplyr::mutate(trimer_id = paste(Gene1, Gene2, Gene3, sep = "::")) %>%
+    dplyr::distinct(trimer_id, .keep_all = TRUE)
+  
+  message("Unique trimers: ", nrow(trimers_df))
+} else {
+  stop("No triangles found. Check graph connectivity.")
+}
+
+# --- Step 6: Get edge keys for each trimer ---
+message("Retrieving edge scores for trimers...")
+
+# Helper function to get edge key
+.get_edge_key <- function(a, b) {
+  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+}
+
+trimers_df <- trimers_df %>%
+  dplyr::mutate(
+    edge1_key = .get_edge_key(Gene1, Gene2),
+    edge2_key = .get_edge_key(Gene1, Gene3),
+    edge3_key = .get_edge_key(Gene2, Gene3)
+  )
+
+# Create edge score lookup from baseline_gs
+edge_scores <- baseline_gs %>%
+  dplyr::mutate(edge_key = .get_edge_key(Gene1, Gene2)) %>%
+  dplyr::select(edge_key, confidence_tier, RFprob, AFMprob, SPOC_score, ipTM_max)
+
+# Join scores for each edge
+trimers_df <- trimers_df %>%
+  dplyr::left_join(edge_scores %>% dplyr::rename_with(~paste0(.x, "_e1"), -edge_key), by = c("edge1_key" = "edge_key")) %>%
+  dplyr::left_join(edge_scores %>% dplyr::rename_with(~paste0(.x, "_e2"), -edge_key), by = c("edge2_key" = "edge_key")) %>%
+  dplyr::left_join(edge_scores %>% dplyr::rename_with(~paste0(.x, "_e3"), -edge_key), by = c("edge3_key" = "edge_key"))
+
+# --- Step 7: Compute trimer-level scores ---
+message("Computing trimer scores...")
+
+trimers_df <- trimers_df %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    mean_AFMprob = mean(c(AFMprob_e1, AFMprob_e2, AFMprob_e3), na.rm = TRUE),
+    min_AFMprob = min(c(AFMprob_e1, AFMprob_e2, AFMprob_e3), na.rm = TRUE),
+    mean_RFprob = mean(c(RFprob_e1, RFprob_e2, RFprob_e3), na.rm = TRUE),
+    min_RFprob = min(c(RFprob_e1, RFprob_e2, RFprob_e3), na.rm = TRUE),
+    mean_ipTM = mean(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3), na.rm = TRUE),
+    min_ipTM = min(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3), na.rm = TRUE),
+    mean_SPOC = mean(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3), na.rm = TRUE),
+    min_SPOC = min(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3), na.rm = TRUE),
+    n_gold_edges = sum(c(confidence_tier_e1, confidence_tier_e2, confidence_tier_e3) == "gold", na.rm = TRUE),
+    n_silver_edges = sum(c(confidence_tier_e1, confidence_tier_e2, confidence_tier_e3) == "silver", na.rm = TRUE)
+  ) %>%
+  dplyr::ungroup()
+
+# --- Step 8: Assign shared organelle ---
+message("Assigning shared organelle annotations...")
+
+# Get organelle annotations per gene
+gene_to_organelles <- complete_data_annotated_day50 %>%
+  dplyr::select(Genes, dplyr::all_of(organelle_tags)) %>%
+  tidyr::pivot_longer(-Genes, names_to = "organelle", values_to = "present") %>%
+  dplyr::filter(present == 1) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(organelles = list(organelle), .groups = "drop")
+
+# Function to find shared organelles for 3 genes (with NA handling)
+.shared_organelles <- function(g1, g2, g3, lookup) {
+  o1_idx <- which(lookup$Genes == g1)
+  o2_idx <- which(lookup$Genes == g2)
+  o3_idx <- which(lookup$Genes == g3)
+  
+  # Check if all genes are in lookup
+  if (length(o1_idx) == 0 || length(o2_idx) == 0 || length(o3_idx) == 0) return(NA_character_)
+  
+  o1 <- lookup$organelles[[o1_idx]]
+  o2 <- lookup$organelles[[o2_idx]]
+  o3 <- lookup$organelles[[o3_idx]]
+  
+  # Check if organelle lists are empty
+  if (length(o1) == 0 || length(o2) == 0 || length(o3) == 0) return(NA_character_)
+  
+  shared <- intersect(intersect(o1, o2), o3)
+  if (length(shared) == 0) return(NA_character_)
+  return(paste(shared, collapse = ";"))
+}
+
+# Re-run
+trimers_df <- trimers_df %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(shared_organelle = .shared_organelles(Gene1, Gene2, Gene3, gene_to_organelles)) %>%
+  dplyr::ungroup()
+
+message("Trimers with shared organelle: ", sum(!is.na(trimers_df$shared_organelle)))
+# --- Step 9: ComplexPortal validation ---
+message("Validating against ComplexPortal...")
+
+# Map genes to UniProt for matching
+trimers_df <- trimers_df %>%
+  dplyr::left_join(gene_to_uniprot %>% dplyr::rename(Protein1 = uniprot), by = c("Gene1" = "gene")) %>%
+  dplyr::left_join(gene_to_uniprot %>% dplyr::rename(Protein2 = uniprot), by = c("Gene2" = "gene")) %>%
+  dplyr::left_join(gene_to_uniprot %>% dplyr::rename(Protein3 = uniprot), by = c("Gene3" = "gene"))
+
+# Function to check if trimer is in a complex
+.check_complex_match <- function(p1, p2, p3, complex_to_proteins) {
+  if (is.na(p1) || is.na(p2) || is.na(p3)) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+  
+  proteins <- c(p1, p2, p3)
+  
+  for (i in seq_len(nrow(complex_to_proteins))) {
+    complex_proteins <- complex_to_proteins$proteins[[i]]
+    n_match <- sum(proteins %in% complex_proteins)
+    
+    if (n_match == 3) {
+      return(list(strict = TRUE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+    }
+    if (n_match >= 2) {
+      return(list(strict = FALSE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+    }
+  }
+  
+  return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+}
+
+# Apply matching (this may take a moment for large datasets)
+message("Matching trimers to ComplexPortal (this may take a moment)...")
+
+complex_matches <- purrr::pmap(
+  list(trimers_df$Protein1, trimers_df$Protein2, trimers_df$Protein3),
+  ~ .check_complex_match(..1, ..2, ..3, complex_to_proteins)
+)
+
+trimers_df$complexportal_strict <- purrr::map_lgl(complex_matches, "strict")
+trimers_df$complexportal_relaxed <- purrr::map_lgl(complex_matches, "relaxed")
+trimers_df$complexportal_id <- purrr::map_chr(complex_matches, "complex_id")
+
+message("Trimers with strict ComplexPortal match (3/3): ", sum(trimers_df$complexportal_strict))
+message("Trimers with relaxed ComplexPortal match (2/3): ", sum(trimers_df$complexportal_relaxed))
+
+# --- Step 10: Tier composition classification ---
+trimers_df <- trimers_df %>%
+  dplyr::mutate(
+    tier_composition = dplyr::case_when(
+      n_gold_edges == 3 ~ "all_gold",
+      n_gold_edges == 2 ~ "2gold_1silver",
+      n_gold_edges == 1 ~ "1gold_2silver",
+      n_gold_edges == 0 ~ "all_silver",
+      TRUE ~ "other"
+    )
+  )
+
+# --- Step 11: Save trimer evidence table ---
+# Select and order columns for output
+trimer_evidence <- trimers_df %>%
+  dplyr::select(
+    trimer_id, Gene1, Gene2, Gene3,
+    edge1_key, edge2_key, edge3_key,
+    mean_AFMprob, min_AFMprob,
+    mean_RFprob, min_RFprob,
+    mean_ipTM, min_ipTM,
+    mean_SPOC, min_SPOC,
+    n_gold_edges, n_silver_edges, tier_composition,
+    shared_organelle,
+    complexportal_strict, complexportal_relaxed, complexportal_id,
+    Protein1, Protein2, Protein3
+  )
+
+readr::write_csv(trimer_evidence, file.path(out_dir_trimer, "tables", "trimer_evidence.csv"))
+message("Trimer evidence table saved: ", nrow(trimer_evidence), " trimers")
+
+# --- Step 12: Summary statistics ---
+trimer_stats <- data.frame(
+  metric = c(
+    "total_trimers",
+    "trimers_all_gold",
+    "trimers_2gold_1silver",
+    "trimers_1gold_2silver",
+    "trimers_all_silver",
+    "trimers_with_shared_organelle",
+    "trimers_complexportal_strict",
+    "trimers_complexportal_relaxed",
+    "median_mean_AFMprob",
+    "median_min_AFMprob",
+    "median_mean_ipTM",
+    "median_min_ipTM"
+  ),
+  value = c(
+    nrow(trimer_evidence),
+    sum(trimer_evidence$tier_composition == "all_gold"),
+    sum(trimer_evidence$tier_composition == "2gold_1silver"),
+    sum(trimer_evidence$tier_composition == "1gold_2silver"),
+    sum(trimer_evidence$tier_composition == "all_silver"),
+    sum(!is.na(trimer_evidence$shared_organelle)),
+    sum(trimer_evidence$complexportal_strict),
+    sum(trimer_evidence$complexportal_relaxed),
+    round(median(trimer_evidence$mean_AFMprob, na.rm = TRUE), 3),
+    round(median(trimer_evidence$min_AFMprob, na.rm = TRUE), 3),
+    round(median(trimer_evidence$mean_ipTM, na.rm = TRUE), 3),
+    round(median(trimer_evidence$min_ipTM, na.rm = TRUE), 3)
+  ),
+  stringsAsFactors = FALSE
+)
+
+readr::write_csv(trimer_stats, file.path(out_dir_trimer, "tables", "trimer_stats.csv"))
+message("\n=== Trimer Summary ===")
+print(trimer_stats)
+```
+
+
+
+
+# Trimer and Complex QC plots
+```{r}
+# =================================================
+# Module 2 QC Plots
+# =================================================
+
+tier_colors <- c("gold" = "#FFD700", "silver" = "#C0C0C0", "bronze" = "#CD7F32")
+tier_comp_colors <- c("all_gold" = "#FFD700", "2gold_1silver" = "#E6BE00", "1gold_2silver" = "#D4D4D4", "all_silver" = "#C0C0C0")
+
+# --- QC Plot 1: Trimer tier composition ---
+tier_comp_summary <- trimer_evidence %>%
+  dplyr::count(tier_composition) %>%
+  dplyr::mutate(tier_composition = factor(tier_composition, levels = c("all_gold", "2gold_1silver", "1gold_2silver", "all_silver")))
+
+p_tier_comp <- ggplot(tier_comp_summary, aes(x = tier_composition, y = n, fill = tier_composition)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = tier_comp_colors, guide = "none") +
+  labs(title = "Trimer edge tier composition", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_trimer_tier_composition.pdf"), p_tier_comp, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- QC Plot 2: Trimer score distributions (density) ---
+score_cols_trimer <- c("mean_AFMprob", "min_AFMprob", "mean_RFprob", "min_RFprob", "mean_ipTM", "min_ipTM", "mean_SPOC", "min_SPOC")
+
+scores_long_trimer <- trimer_evidence %>%
+  dplyr::select(trimer_id, dplyr::all_of(score_cols_trimer)) %>%
+  tidyr::pivot_longer(-trimer_id, names_to = "score_type", values_to = "score_value") %>%
+  dplyr::filter(!is.na(score_value))
+
+p_trimer_density <- ggplot(scores_long_trimer, aes(x = score_value, fill = score_type)) +
+  geom_density(alpha = 0.6) +
+  facet_wrap(~score_type, scales = "free", ncol = 2) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(title = "Trimer score distributions", x = "Score", y = "Density") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+
+ggsave(file.path(out_dir_trimer, "qc", "density_trimer_scores.pdf"), p_trimer_density, width = 6, height = 7, device = cairo_pdf)
+
+# --- QC Plot 3: Trimer score boxplots by tier composition ---
+scores_by_tier <- trimer_evidence %>%
+  dplyr::select(trimer_id, tier_composition, mean_AFMprob, mean_ipTM, mean_RFprob, mean_SPOC) %>%
+  tidyr::pivot_longer(cols = c(mean_AFMprob, mean_ipTM, mean_RFprob, mean_SPOC), names_to = "score_type", values_to = "score_value") %>%
+  dplyr::filter(!is.na(score_value)) %>%
+  dplyr::mutate(tier_composition = factor(tier_composition, levels = c("all_gold", "2gold_1silver", "1gold_2silver", "all_silver")))
+
+p_scores_by_tier <- ggplot(scores_by_tier, aes(x = tier_composition, y = score_value, fill = tier_composition)) +
+  geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+  facet_wrap(~score_type, scales = "free_y", ncol = 2) +
+  scale_fill_manual(values = tier_comp_colors, guide = "none") +
+  labs(title = "Trimer scores by tier composition", x = NULL, y = "Score") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"), axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_tier.pdf"), p_scores_by_tier, width = 5, height = 5, device = cairo_pdf)
+
+# --- QC Plot 4: Trimers per organelle ---
+# Expand shared_organelle (some trimers have multiple)
+trimer_by_org <- trimer_evidence %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::count(shared_organelle, name = "n_trimers") %>%
+  dplyr::arrange(dplyr::desc(n_trimers))
+
+p_trimer_org <- ggplot(trimer_by_org, aes(x = reorder(shared_organelle, n_trimers), y = n_trimers, fill = shared_organelle)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = organelle_colors, guide = "none") +
+  coord_flip() +
+  labs(title = "Trimers per shared organelle", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_trimers_per_organelle.pdf"), p_trimer_org, width = 5, height = 5, device = cairo_pdf)
+
+# --- QC Plot 5: ComplexPortal validation summary ---
+cp_summary <- data.frame(
+  category = c("Strict match (3/3)", "Relaxed match (2/3)", "Novel (no match)"),
+  n = c(
+    sum(trimer_evidence$complexportal_strict),
+    sum(trimer_evidence$complexportal_relaxed & !trimer_evidence$complexportal_strict),
+    sum(!trimer_evidence$complexportal_relaxed)
+  ),
+  stringsAsFactors = FALSE
+) %>%
+  dplyr::mutate(pct = round(100 * n / sum(n), 1))
+
+p_cp_validation <- ggplot(cp_summary, aes(x = category, y = n, fill = category)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("Strict match (3/3)" = "#4DAF4A", "Relaxed match (2/3)" = "#FFFF33", "Novel (no match)" = "#E41A1C"), guide = "none") +
+  labs(title = "Trimer validation against ComplexPortal", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_validation.pdf"), p_cp_validation, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- QC Plot 6: Trimer score distribution by ComplexPortal status ---
+trimer_evidence <- trimer_evidence %>%
+  dplyr::mutate(
+    cp_status = dplyr::case_when(
+      complexportal_strict ~ "Strict (3/3)",
+      complexportal_relaxed ~ "Relaxed (2/3)",
+      TRUE ~ "Novel"
+    )
+  )
+
+scores_by_cp <- trimer_evidence %>%
+  dplyr::select(trimer_id, cp_status, mean_AFMprob, mean_ipTM) %>%
+  tidyr::pivot_longer(cols = c(mean_AFMprob, mean_ipTM), names_to = "score_type", values_to = "score_value") %>%
+  dplyr::filter(!is.na(score_value))
+
+p_scores_by_cp <- ggplot(scores_by_cp, aes(x = cp_status, y = score_value, fill = cp_status)) +
+  geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+  facet_wrap(~score_type, scales = "free_y") +
+  scale_fill_manual(values = c("Strict (3/3)" = "#4DAF4A", "Relaxed (2/3)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "Trimer scores by ComplexPortal validation status", x = NULL, y = "Score") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+
+ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_cp_status.pdf"), p_scores_by_cp, width = 5, height = 3.5, device = cairo_pdf)
+
+# --- QC Plot 7: Heatmap - organelle × tier composition ---
+org_tier_matrix <- trimer_evidence %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::count(shared_organelle, tier_composition) %>%
+  tidyr::pivot_wider(names_from = tier_composition, values_from = n, values_fill = 0) %>%
+  tibble::column_to_rownames("shared_organelle") %>%
+  as.matrix()
+
+if (nrow(org_tier_matrix) > 1 && ncol(org_tier_matrix) > 1) {
+  pheatmap::pheatmap(
+    org_tier_matrix,
+    display_numbers = TRUE,
+    number_format = "%d",
+    color = colorRampPalette(c("white", "steelblue"))(50),
+    main = "Trimers: organelle × tier composition",
+    fontsize = 8,
+    border_color = "black",
+    filename = file.path(out_dir_trimer, "qc", "heatmap_organelle_tier_composition.pdf"),
+    width = 6,
+    height = 6
+  )
+}
+
+# --- QC Plot 8: Network visualization (if manageable size) ---
+if (nrow(trimer_evidence) <= 500) {
+  message("Generating trimer network plot...")
+  
+  # Create edge list from trimers
+  trimer_edges <- trimer_evidence %>%
+    dplyr::select(Gene1, Gene2, Gene3, tier_composition) %>%
+    tidyr::pivot_longer(cols = c(Gene1, Gene2, Gene3), values_to = "gene") %>%
+    dplyr::select(-name)
+  
+  # Build graph from trimer proteins only
+  trimer_proteins <- unique(c(trimer_evidence$Gene1, trimer_evidence$Gene2, trimer_evidence$Gene3))
+  
+  g_trimer <- igraph::induced_subgraph(g, vids = which(igraph::V(g)$name %in% trimer_proteins))
+  
+  # Add organelle as node attribute for coloring
+  node_org <- gene_to_organelles %>%
+    dplyr::filter(Genes %in% trimer_proteins) %>%
+    dplyr::mutate(primary_org = purrr::map_chr(organelles, ~ if (length(.x) > 0) .x[1] else NA_character_))
+  
+  igraph::V(g_trimer)$organelle <- node_org$primary_org[match(igraph::V(g_trimer)$name, node_org$Genes)]
+  
+  # Plot
+  pdf(file.path(out_dir_trimer, "qc", "network_trimers.pdf"), width = 10, height = 10)
+  plot(g_trimer, 
+       vertex.size = 3, 
+       vertex.label = NA, 
+       vertex.color = organelle_colors[igraph::V(g_trimer)$organelle],
+       edge.width = 0.3,
+       main = paste0("Trimer network (", nrow(trimer_evidence), " trimers, ", igraph::vcount(g_trimer), " proteins)"))
+  dev.off()
+  
+  message("Network plot saved.")
+} else {
+  message("Too many trimers for network plot (", nrow(trimer_evidence), "). Skipping.")
+}
+
+message("\nTrimer QC plots saved to: ", file.path(out_dir_trimer, "qc"))
+```
+
+
+
+
 # =================================================
 # OLD Module 11: PPI Vulnerability Analysis - Neuronal nDIA
 # =================================================
