@@ -12261,8 +12261,9 @@ for (sc in score_cols) {
   plot_score_density_by_organelle(scores_org_baseline, sc, organelle_colors_filtered, file.path(out_dir_baseline, "qc"))
 }
 
-# --- Bubble plots: mean scores by organelle ---
 
+
+# --- Bubble plots: mean scores by organelle ---
 organelle_score_summary <- scores_org_baseline %>%
   dplyr::group_by(tag) %>%
   dplyr::summarise(
