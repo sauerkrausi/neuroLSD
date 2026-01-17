@@ -13041,9 +13041,11 @@ p_trimer_org <- ggplot(trimer_by_org, aes(x = reorder(shared_organelle, n_trimer
   coord_flip() +
   labs(title = "Trimers per shared organelle", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_trimer, "qc", "barplot_trimers_per_organelle.pdf"), p_trimer_org, width = 5, height = 5, device = cairo_pdf)
+
 
 # --- QC Plot 5: ComplexPortal validation summary ---
 cp_summary <- data.frame(
@@ -13063,9 +13065,10 @@ p_cp_validation <- ggplot(cp_summary, aes(x = category, y = n, fill = category))
   scale_fill_manual(values = c("Strict match (3/3)" = "#4DAF4A", "Relaxed match (2/3)" = "#FFFF33", "Novel (no match)" = "#E41A1C"), guide = "none") +
   labs(title = "Trimer validation against ComplexPortal", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_validation.pdf"), p_cp_validation, width = 4, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_validation.pdf"), p_cp_validation, width = 4, height = 4, device = cairo_pdf)
 
 
 # --- QC Plot 6: Trimer score distribution by ComplexPortal status ---
@@ -13089,7 +13092,9 @@ p_scores_by_cp <- ggplot(scores_by_cp, aes(x = cp_status, y = score_value, fill 
   scale_fill_manual(values = c("Strict (3/3)" = "#4DAF4A", "Relaxed (2/3)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Trimer scores by ComplexPortal validation status", x = NULL, y = "Score") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        strip.background = element_rect(fill = "white", color = "black"))
 
 ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_cp_status.pdf"), p_scores_by_cp, width = 5, height = 3.5, device = cairo_pdf)
 
@@ -13161,6 +13166,332 @@ if (nrow(trimer_evidence) <= 500) {
 
 print(quality_by_cp)
 message("\nTrimer QC plots saved to: ", file.path(out_dir_trimer, "qc"))
+```
+
+
+
+
+# Tetramer Extraction & Validation
+```{r}
+# =================================================
+# Module 3: Tetramer Extension
+# =================================================
+
+out_dir_tetramer <- file.path(out_dir_ppi_dual, "tetramers")
+dir.create(file.path(out_dir_tetramer, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tetramer, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Step 1: Get all proteins in trimers ---
+message("=== Extending trimers to tetramers ===")
+
+trimer_proteins <- unique(c(trimer_evidence$Gene1, trimer_evidence$Gene2, trimer_evidence$Gene3))
+message("Unique proteins in trimers: ", length(trimer_proteins))
+
+# --- Step 2: For each trimer, find candidate 4th proteins ---
+# A protein can join a trimer if it has edges to at least 2 of the 3 trimer members
+
+# Build adjacency list from gold+silver edges for fast lookup
+adj_list <- baseline_gs %>%
+  dplyr::select(Gene1, Gene2) %>%
+  {
+    edges <- rbind(
+      data.frame(from = .$Gene1, to = .$Gene2, stringsAsFactors = FALSE),
+      data.frame(from = .$Gene2, to = .$Gene1, stringsAsFactors = FALSE)
+    )
+    split(edges$to, edges$from)
+  }
+
+message("Adjacency list built: ", length(adj_list), " nodes")
+
+# --- Step 3: Function to find valid 4th proteins for a trimer ---
+.find_fourth_proteins <- function(g1, g2, g3, adj_list) {
+  # Get neighbors of each trimer member
+  n1 <- adj_list[[g1]]
+  n2 <- adj_list[[g2]]
+  n3 <- adj_list[[g3]]
+  
+  if (is.null(n1)) n1 <- character(0)
+  if (is.null(n2)) n2 <- character(0)
+  if (is.null(n3)) n3 <- character(0)
+  
+  # Find proteins connected to at least 2 of the 3 members
+  all_neighbors <- c(n1, n2, n3)
+  neighbor_counts <- table(all_neighbors)
+  
+  # Must connect to >=2 members and not be a trimer member itself
+  candidates <- names(neighbor_counts)[neighbor_counts >= 2]
+  candidates <- setdiff(candidates, c(g1, g2, g3))
+  
+  return(candidates)
+}
+
+# --- Step 4: Enumerate all tetramers ---
+message("Finding tetramers...")
+
+tetramer_list <- list()
+pb <- txtProgressBar(min = 0, max = nrow(trimer_evidence), style = 3)
+
+for (i in seq_len(nrow(trimer_evidence))) {
+  g1 <- trimer_evidence$Gene1[i]
+  g2 <- trimer_evidence$Gene2[i]
+  g3 <- trimer_evidence$Gene3[i]
+  trimer_id <- trimer_evidence$trimer_id[i]
+  
+  fourth_proteins <- .find_fourth_proteins(g1, g2, g3, adj_list)
+  
+  if (length(fourth_proteins) > 0) {
+    for (g4 in fourth_proteins) {
+      # Sort all 4 genes for consistent tetramer_id
+      genes_sorted <- sort(c(g1, g2, g3, g4))
+      tetramer_id <- paste(genes_sorted, collapse = "::")
+      
+      tetramer_list[[tetramer_id]] <- data.frame(
+        tetramer_id = tetramer_id,
+        Gene1 = genes_sorted[1],
+        Gene2 = genes_sorted[2],
+        Gene3 = genes_sorted[3],
+        Gene4 = genes_sorted[4],
+        seed_trimer_id = trimer_id,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  setTxtProgressBar(pb, i)
+}
+close(pb)
+
+# Combine and deduplicate
+tetramers_df <- dplyr::bind_rows(tetramer_list) %>%
+  dplyr::distinct(tetramer_id, .keep_all = TRUE)
+
+message("Unique tetramers found: ", nrow(tetramers_df))
+
+# --- Step 5: Get edge keys for each tetramer (6 edges) ---
+message("Retrieving edge scores for tetramers...")
+
+tetramers_df <- tetramers_df %>%
+  dplyr::mutate(
+    edge1_key = .get_edge_key(Gene1, Gene2),
+    edge2_key = .get_edge_key(Gene1, Gene3),
+    edge3_key = .get_edge_key(Gene1, Gene4),
+    edge4_key = .get_edge_key(Gene2, Gene3),
+    edge5_key = .get_edge_key(Gene2, Gene4),
+    edge6_key = .get_edge_key(Gene3, Gene4)
+  )
+
+# Check which edges exist (tetramer requires >=5 edges based on Baker: each node connects to >=2 others)
+# Actually for tetramer: we need each of 4 nodes to connect to at least 2 others
+# Minimum edges = 4 (cycle), maximum = 6 (complete)
+
+# Join edge scores
+edge_cols <- paste0("edge", 1:6, "_key")
+
+for (j in 1:6) {
+  edge_col <- paste0("edge", j, "_key")
+  suffix <- paste0("_e", j)
+  
+  tetramers_df <- tetramers_df %>%
+    dplyr::left_join(
+      edge_scores %>% dplyr::rename_with(~paste0(.x, suffix), -edge_key),
+      by = setNames("edge_key", edge_col)
+    )
+}
+
+# --- Step 6: Count edges and compute scores ---
+message("Computing tetramer scores...")
+
+# Helper for safe min/mean
+safe_min <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return(NA_real_)
+  min(x)
+}
+
+safe_mean <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return(NA_real_)
+  mean(x)
+}
+
+tetramers_df <- tetramers_df %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    # Count edges present
+    n_edges = sum(!is.na(c(confidence_tier_e1, confidence_tier_e2, confidence_tier_e3, confidence_tier_e4, confidence_tier_e5, confidence_tier_e6))),
+    n_gold_edges = sum(c(confidence_tier_e1, confidence_tier_e2, confidence_tier_e3, confidence_tier_e4, confidence_tier_e5, confidence_tier_e6) == "gold", na.rm = TRUE),
+    n_silver_edges = sum(c(confidence_tier_e1, confidence_tier_e2, confidence_tier_e3, confidence_tier_e4, confidence_tier_e5, confidence_tier_e6) == "silver", na.rm = TRUE),
+    
+    # Scores
+    mean_AFMprob = safe_mean(c(AFMprob_e1, AFMprob_e2, AFMprob_e3, AFMprob_e4, AFMprob_e5, AFMprob_e6)),
+    min_AFMprob = safe_min(c(AFMprob_e1, AFMprob_e2, AFMprob_e3, AFMprob_e4, AFMprob_e5, AFMprob_e6)),
+    mean_RFprob = safe_mean(c(RFprob_e1, RFprob_e2, RFprob_e3, RFprob_e4, RFprob_e5, RFprob_e6)),
+    min_RFprob = safe_min(c(RFprob_e1, RFprob_e2, RFprob_e3, RFprob_e4, RFprob_e5, RFprob_e6)),
+    mean_ipTM = safe_mean(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3, ipTM_max_e4, ipTM_max_e5, ipTM_max_e6)),
+    min_ipTM = safe_min(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3, ipTM_max_e4, ipTM_max_e5, ipTM_max_e6)),
+    mean_SPOC = safe_mean(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3, SPOC_score_e4, SPOC_score_e5, SPOC_score_e6)),
+    min_SPOC = safe_min(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3, SPOC_score_e4, SPOC_score_e5, SPOC_score_e6))
+  ) %>%
+  dplyr::ungroup()
+
+# Quality scores
+tetramers_df <- tetramers_df %>%
+  dplyr::mutate(
+    quality_A = min_AFMprob,
+    quality_B = mean_AFMprob * mean_ipTM,
+    quality_C = min_AFMprob * min_ipTM,
+    quality_D = 0.5 * min_AFMprob + 0.3 * min_ipTM + 0.2 * (n_gold_edges / 6)
+  )
+
+# --- Step 7: Assign shared organelle ---
+message("Assigning shared organelle annotations...")
+
+.shared_organelles_4 <- function(g1, g2, g3, g4, lookup) {
+  o1_idx <- which(lookup$Genes == g1)
+  o2_idx <- which(lookup$Genes == g2)
+  o3_idx <- which(lookup$Genes == g3)
+  o4_idx <- which(lookup$Genes == g4)
+  
+  if (length(o1_idx) == 0 || length(o2_idx) == 0 || length(o3_idx) == 0 || length(o4_idx) == 0) return(NA_character_)
+  
+  o1 <- lookup$organelles[[o1_idx]]
+  o2 <- lookup$organelles[[o2_idx]]
+  o3 <- lookup$organelles[[o3_idx]]
+  o4 <- lookup$organelles[[o4_idx]]
+  
+  if (length(o1) == 0 || length(o2) == 0 || length(o3) == 0 || length(o4) == 0) return(NA_character_)
+  
+  shared <- Reduce(intersect, list(o1, o2, o3, o4))
+  if (length(shared) == 0) return(NA_character_)
+  return(paste(shared, collapse = ";"))
+}
+
+tetramers_df <- tetramers_df %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(shared_organelle = .shared_organelles_4(Gene1, Gene2, Gene3, Gene4, gene_to_organelles)) %>%
+  dplyr::ungroup()
+
+message("Tetramers with shared organelle: ", sum(!is.na(tetramers_df$shared_organelle)))
+
+# --- Step 8: ComplexPortal validation ---
+message("Validating tetramers against ComplexPortal...")
+
+# Map genes to UniProt
+tetramers_df <- tetramers_df %>%
+  dplyr::left_join(gene_to_uniprot %>% dplyr::rename(Protein1 = uniprot), by = c("Gene1" = "gene")) %>%
+  dplyr::left_join(gene_to_uniprot %>% dplyr::rename(Protein2 = uniprot), by = c("Gene2" = "gene")) %>%
+  dplyr::left_join(gene_to_uniprot %>% dplyr::rename(Protein3 = uniprot), by = c("Gene3" = "gene")) %>%
+  dplyr::left_join(gene_to_uniprot %>% dplyr::rename(Protein4 = uniprot), by = c("Gene4" = "gene"))
+
+.check_complex_match_4 <- function(p1, p2, p3, p4, complex_to_proteins) {
+  if (is.na(p1) || is.na(p2) || is.na(p3) || is.na(p4)) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+  
+  proteins <- c(p1, p2, p3, p4)
+  
+  for (i in seq_len(nrow(complex_to_proteins))) {
+    complex_proteins <- complex_to_proteins$proteins[[i]]
+    n_match <- sum(proteins %in% complex_proteins)
+    
+    if (n_match == 4) {
+      return(list(strict = TRUE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+    }
+    if (n_match >= 3) {
+      return(list(strict = FALSE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+    }
+  }
+  
+  return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+}
+
+message("Matching tetramers to ComplexPortal...")
+complex_matches_4 <- purrr::pmap(
+  list(tetramers_df$Protein1, tetramers_df$Protein2, tetramers_df$Protein3, tetramers_df$Protein4),
+  ~ .check_complex_match_4(..1, ..2, ..3, ..4, complex_to_proteins)
+)
+
+tetramers_df$complexportal_strict <- purrr::map_lgl(complex_matches_4, "strict")
+tetramers_df$complexportal_relaxed <- purrr::map_lgl(complex_matches_4, "relaxed")
+tetramers_df$complexportal_id <- purrr::map_chr(complex_matches_4, "complex_id")
+
+message("Tetramers with strict ComplexPortal match (4/4): ", sum(tetramers_df$complexportal_strict))
+message("Tetramers with relaxed ComplexPortal match (3/4): ", sum(tetramers_df$complexportal_relaxed))
+
+# --- Step 9: Edge composition classification ---
+tetramers_df <- tetramers_df %>%
+  dplyr::mutate(
+    edge_completeness = dplyr::case_when(
+      n_edges == 6 ~ "complete (6/6)",
+      n_edges == 5 ~ "near-complete (5/6)",
+      n_edges == 4 ~ "minimal (4/6)",
+      TRUE ~ "sparse (<4/6)"
+    ),
+    tier_composition = dplyr::case_when(
+      n_gold_edges == n_edges ~ "all_gold",
+      n_silver_edges == n_edges ~ "all_silver",
+      n_gold_edges > n_silver_edges ~ "gold_majority",
+      TRUE ~ "silver_majority"
+    ),
+    cp_status = dplyr::case_when(
+      complexportal_strict ~ "Strict (4/4)",
+      complexportal_relaxed ~ "Relaxed (3/4)",
+      TRUE ~ "Novel"
+    )
+  )
+
+# --- Step 10: Save tetramer evidence table ---
+tetramer_evidence <- tetramers_df %>%
+  dplyr::select(
+    tetramer_id, Gene1, Gene2, Gene3, Gene4,
+    n_edges, edge_completeness,
+    mean_AFMprob, min_AFMprob,
+    mean_RFprob, min_RFprob,
+    mean_ipTM, min_ipTM,
+    mean_SPOC, min_SPOC,
+    quality_A, quality_B, quality_C, quality_D,
+    n_gold_edges, n_silver_edges, tier_composition,
+    shared_organelle,
+    complexportal_strict, complexportal_relaxed, complexportal_id, cp_status,
+    Protein1, Protein2, Protein3, Protein4
+  )
+
+readr::write_csv(tetramer_evidence, file.path(out_dir_tetramer, "tables", "tetramer_evidence.csv"))
+message("Tetramer evidence table saved: ", nrow(tetramer_evidence), " tetramers")
+
+# --- Step 11: Summary statistics ---
+tetramer_stats <- data.frame(
+  metric = c(
+    "total_tetramers",
+    "tetramers_complete_6edges",
+    "tetramers_5edges",
+    "tetramers_4edges",
+    "tetramers_all_gold",
+    "tetramers_gold_majority",
+    "tetramers_with_shared_organelle",
+    "tetramers_complexportal_strict",
+    "tetramers_complexportal_relaxed",
+    "median_mean_AFMprob",
+    "median_min_AFMprob",
+    "median_quality_C"
+  ),
+  value = c(
+    nrow(tetramer_evidence),
+    sum(tetramer_evidence$edge_completeness == "complete (6/6)"),
+    sum(tetramer_evidence$edge_completeness == "near-complete (5/6)"),
+    sum(tetramer_evidence$edge_completeness == "minimal (4/6)"),
+    sum(tetramer_evidence$tier_composition == "all_gold"),
+    sum(tetramer_evidence$tier_composition == "gold_majority"),
+    sum(!is.na(tetramer_evidence$shared_organelle)),
+    sum(tetramer_evidence$complexportal_strict),
+    sum(tetramer_evidence$complexportal_relaxed),
+    round(median(tetramer_evidence$mean_AFMprob, na.rm = TRUE), 3),
+    round(median(tetramer_evidence$min_AFMprob, na.rm = TRUE), 3),
+    round(median(tetramer_evidence$quality_C, na.rm = TRUE), 3)
+  ),
+  stringsAsFactors = FALSE
+)
+
+readr::write_csv(tetramer_stats, file.path(out_dir_tetramer, "tables", "tetramer_stats.csv"))
+message("\n=== Tetramer Summary ===")
+print(tetramer_stats)
 ```
 
 
