@@ -12942,7 +12942,8 @@ p_coverage <- ggplot(complex_coverage %>% dplyr::filter(!is.na(size_bin)), aes(x
   scale_fill_brewer(palette = "Blues", guide = "none") +
   labs(title = "ComplexPortal recovery rate by complex size", x = "Complex size (subunits)", y = "Recovery rate (%)") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_coverage_by_size.pdf"), p_coverage, width = 4.5, height = 3.5, device = cairo_pdf)
 
