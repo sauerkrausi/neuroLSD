@@ -12552,7 +12552,6 @@ message("Degree by tier plots saved.")
 
 
 
-
 message("\nQC plots saved to: ", file.path(out_dir_baseline, "qc"))
 ```
 
@@ -12874,6 +12873,82 @@ trimer_stats <- data.frame(
 )
 
 readr::write_csv(trimer_stats, file.path(out_dir_trimer, "tables", "trimer_stats.csv"))
+
+
+
+
+# =================================================
+# ComplexPortal Validation
+# =================================================
+# --- ComplexPortal matched trimers export ---
+cp_matched <- trimer_evidence %>%
+  dplyr::filter(!is.na(complexportal_id)) %>%
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3, complexportal_strict, complexportal_relaxed, complexportal_id) %>%
+  dplyr::left_join(
+    complexportal %>% dplyr::select(complex_id, complex_name, n_proteins, description),
+    by = c("complexportal_id" = "complex_id")
+  )
+
+readr::write_csv(cp_matched, file.path(out_dir_trimer, "tables", "trimers_complexportal_matched.csv"))
+
+# --- Complex counts ---
+cp_complex_counts <- cp_matched %>%
+  dplyr::count(complexportal_id, complex_name, n_proteins, sort = TRUE) %>%
+  dplyr::rename(n_trimers = n)
+
+readr::write_csv(cp_complex_counts, file.path(out_dir_trimer, "tables", "complexportal_complex_counts.csv"))
+
+message("Top 10 ComplexPortal complexes by trimer count:")
+print(head(cp_complex_counts, 10))
+
+# --- Unique complexes recovered ---
+n_unique_complexes <- trimer_evidence %>%
+  dplyr::filter(!is.na(complexportal_id)) %>%
+  dplyr::pull(complexportal_id) %>%
+  unique() %>%
+  length()
+
+message("Unique ComplexPortal complexes recovered: ", n_unique_complexes, " / ", nrow(complexportal))
+
+# --- Coverage by complex size ---
+complex_coverage <- complexportal %>%
+  dplyr::mutate(recovered = complex_id %in% trimer_evidence$complexportal_id) %>%
+  dplyr::group_by(size_bin = cut(n_proteins, breaks = c(0, 3, 5, 10, 20, 50, Inf), labels = c("2-3", "4-5", "6-10", "11-20", "21-50", "51+"))) %>%
+  dplyr::summarise(
+    n_total = dplyr::n(),
+    n_recovered = sum(recovered),
+    pct_recovered = round(100 * n_recovered / n_total, 1),
+    .groups = "drop"
+  )
+
+readr::write_csv(complex_coverage, file.path(out_dir_trimer, "tables", "complexportal_coverage_by_size.csv"))
+
+message("\nComplexPortal coverage by complex size:")
+print(complex_coverage)
+
+# --- Coverage summary for methods ---
+coverage_summary <- data.frame(
+  metric = c("complexportal_total_complexes", "complexportal_complexes_recovered", "complexportal_recovery_rate_pct", "complexportal_trimers_strict_match", "complexportal_trimers_relaxed_match"),
+  value = c(nrow(complexportal), n_unique_complexes, round(100 * n_unique_complexes / nrow(complexportal), 1), sum(trimer_evidence$complexportal_strict), sum(trimer_evidence$complexportal_relaxed)),
+  stringsAsFactors = FALSE
+)
+
+readr::write_csv(coverage_summary, file.path(out_dir_trimer, "tables", "complexportal_coverage_summary.csv"))
+
+# --- QC Plot: Coverage by complex size ---
+p_coverage <- ggplot(complex_coverage %>% dplyr::filter(!is.na(size_bin)), aes(x = size_bin, y = pct_recovered, fill = size_bin)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(n_recovered, "/", n_total)), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "Blues", guide = "none") +
+  labs(title = "ComplexPortal recovery rate by complex size", x = "Complex size (subunits)", y = "Recovery rate (%)") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_coverage_by_size.pdf"), p_coverage, width = 4.5, height = 3.5, device = cairo_pdf)
+
+
+
+
 message("\n=== Trimer Summary ===")
 print(trimer_stats)
 ```
@@ -13066,6 +13141,9 @@ if (nrow(trimer_evidence) <= 500) {
   message("Too many trimers for network plot (", nrow(trimer_evidence), "). Skipping.")
 }
 
+
+
+print(quality_by_cp)
 message("\nTrimer QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 ```
 
