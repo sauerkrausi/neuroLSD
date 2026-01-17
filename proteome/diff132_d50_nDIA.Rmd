@@ -12248,6 +12248,7 @@ for (sc in score_cols) {
   plot_score_density_by_organelle(scores_org_baseline, sc, organelle_colors, file.path(out_dir_baseline, "qc"))
 }
 
+
 # --- QC Plot 6: Score boxplot by organelle ---
 plot_score_boxplot_by_organelle <- function(df, score_col, org_colors, out_dir) {
   df_plot <- df %>% dplyr::filter(!is.na(!!sym(score_col)))
@@ -12259,7 +12260,8 @@ plot_score_boxplot_by_organelle <- function(df, score_col, org_colors, out_dir) 
     coord_flip() +
     labs(title = paste(score_col, "by organelle (baseline)"), x = NULL, y = score_col) +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+    theme(panel.grid = element_blank(), 
+          panel.border = element_rect(color = "black", fill = NA))
   
   ggsave(file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle.pdf")), p, width = 5, height = 5, device = cairo_pdf)
 }
@@ -12268,6 +12270,7 @@ for (sc in score_cols) {
   plot_score_boxplot_by_organelle(scores_org_baseline, sc, organelle_colors, file.path(out_dir_baseline, "qc"))
 }
 
+
 # --- QC Plot 7: Organelle edge counts (baseline) ---
 p_org_counts <- ggplot(organelle_edge_counts, aes(x = reorder(tag, n_edges), y = n_edges, fill = tag)) +
   geom_col(color = "black", linewidth = 0.3) +
@@ -12275,9 +12278,11 @@ p_org_counts <- ggplot(organelle_edge_counts, aes(x = reorder(tag, n_edges), y =
   coord_flip() +
   labs(title = "PPI edges per shared organelle (baseline)", x = NULL, y = "Edge count") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_baseline, "qc", "barplot_organelle_edge_counts_baseline.pdf"), p_org_counts, width = 4.5, height = 5, device = cairo_pdf)
+
 
 # --- QC Plot 8: Tier distribution by organelle (baseline) ---
 tier_by_org_baseline <- shared_long_baseline %>%
@@ -12293,9 +12298,14 @@ p_tier_org <- ggplot(tier_by_org_baseline, aes(x = reorder(tag, -n), y = pct, fi
   scale_fill_manual(values = tier_colors, name = "Tier") +
   labs(title = "Confidence tier distribution by organelle (baseline)", x = NULL, y = "Percentage") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "top", 
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "barplot_tier_by_organelle_baseline.pdf"), p_tier_org, width = 6, height = 5, device = cairo_pdf)
+
 
 # --- QC Plot 9: Score correlation heatmap (baseline) ---
 cor_matrix_baseline <- baseline_ppi %>%
