@@ -12382,7 +12382,10 @@ p_bubble_afm_iptm_full <- ggplot(organelle_score_summary, aes(x = mean_AFMprob, 
   scale_y_continuous(limits = c(0, 1)) +
   labs(title = "Mean AFMprob vs ipTM by organelle (full scale)", x = "Mean AFMprob", y = "Mean ipTM") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "right", 
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "bubble_AFMprob_vs_ipTM_by_organelle_fullscale.pdf"), p_bubble_afm_iptm_full, width = 6, height = 5, device = cairo_pdf)
 
@@ -12396,7 +12399,10 @@ p_bubble_rf_spoc_full <- ggplot(organelle_score_summary, aes(x = mean_SPOC, y = 
   scale_y_continuous(limits = c(0, 1)) +
   labs(title = "Mean RFprob vs SPOC by organelle (full scale)", x = "Mean SPOC score", y = "Mean RFprob") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "right", 
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_SPOC_by_organelle_fullscale.pdf"), p_bubble_rf_spoc_full, width = 6, height = 5, device = cairo_pdf)
 
@@ -13022,7 +13028,34 @@ p_trimer_density <- ggplot(scores_long_trimer, aes(x = score_value, fill = score
 ggsave(file.path(out_dir_trimer, "qc", "density_trimer_scores.pdf"), p_trimer_density, width = 6, height = 7, device = cairo_pdf)
 
 
-# --- QC Plot 3: Trimer score boxplots by tier composition ---
+# --- QC Plot 3: Trimer quality score distributions ---
+quality_cols_trimer <- c("quality_A", "quality_B", "quality_C", "quality_D")
+
+quality_labels_trimer <- c(
+  "quality_A" = "A: min(AFMprob)",
+  "quality_B" = "B: mean(AFMprob) × mean(ipTM)",
+  "quality_C" = "C: min(AFMprob) × min(ipTM)",
+  "quality_D" = "D: 0.5×min(AFM) + 0.3×min(ipTM) + 0.2×(gold/3)"
+)
+
+quality_long_trimer <- trimer_evidence %>%
+  dplyr::select(trimer_id, dplyr::all_of(quality_cols_trimer)) %>%
+  tidyr::pivot_longer(-trimer_id, names_to = "quality_type", values_to = "quality_value") %>%
+  dplyr::filter(!is.na(quality_value), !is.infinite(quality_value)) %>%
+  dplyr::mutate(quality_label = quality_labels_trimer[quality_type])
+
+p_trimer_quality <- ggplot(quality_long_trimer, aes(x = quality_value, fill = quality_type)) +
+  geom_density(alpha = 0.6) +
+  facet_wrap(~quality_label, scales = "free", ncol = 2) +
+  scale_fill_brewer(palette = "Set1", guide = "none") +
+  labs(title = "Trimer quality score distributions", x = "Score", y = "Density") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+
+ggsave(file.path(out_dir_trimer, "qc", "density_quality_score_options.pdf"), p_trimer_quality, width = 5, height = 5, device = cairo_pdf)
+
+
+# --- QC Plot 4: Trimer score boxplots by tier composition ---
 scores_by_tier <- trimer_evidence %>%
   dplyr::select(trimer_id, tier_composition, mean_AFMprob, mean_ipTM, mean_RFprob, mean_SPOC) %>%
   tidyr::pivot_longer(cols = c(mean_AFMprob, mean_ipTM, mean_RFprob, mean_SPOC), names_to = "score_type", values_to = "score_value") %>%
@@ -13043,7 +13076,7 @@ p_scores_by_tier <- ggplot(scores_by_tier, aes(x = tier_composition, y = score_v
 ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_tier.pdf"), p_scores_by_tier, width = 5, height = 5, device = cairo_pdf)
 
 
-# --- QC Plot 4: Trimers per organelle ---
+# --- QC Plot 5: Trimers per organelle ---
 # Expand shared_organelle (some trimers have multiple)
 trimer_by_org <- trimer_evidence %>%
   dplyr::filter(!is.na(shared_organelle)) %>%
@@ -13063,7 +13096,7 @@ p_trimer_org <- ggplot(trimer_by_org, aes(x = reorder(shared_organelle, n_trimer
 ggsave(file.path(out_dir_trimer, "qc", "barplot_trimers_per_organelle.pdf"), p_trimer_org, width = 5, height = 5, device = cairo_pdf)
 
 
-# --- QC Plot 5: ComplexPortal validation summary ---
+# --- QC Plot 6: ComplexPortal validation summary ---
 cp_summary <- data.frame(
   category = c("Strict match (3/3)", "Relaxed match (2/3)", "Novel (no match)"),
   n = c(
@@ -13087,7 +13120,7 @@ p_cp_validation <- ggplot(cp_summary, aes(x = category, y = n, fill = category))
 ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_validation.pdf"), p_cp_validation, width = 4, height = 4, device = cairo_pdf)
 
 
-# --- QC Plot 6: Trimer score distribution by ComplexPortal status ---
+# --- QC Plot 7: Trimer score distribution by ComplexPortal status ---
 trimer_evidence <- trimer_evidence %>%
   dplyr::mutate(
     cp_status = dplyr::case_when(
@@ -13115,7 +13148,7 @@ p_scores_by_cp <- ggplot(scores_by_cp, aes(x = cp_status, y = score_value, fill 
 ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_cp_status.pdf"), p_scores_by_cp, width = 5, height = 3.5, device = cairo_pdf)
 
 
-# --- QC Plot 7: Heatmap - organelle × tier composition ---
+# --- QC Plot 8: Heatmap - organelle × tier composition ---
 org_tier_matrix <- trimer_evidence %>%
   dplyr::filter(!is.na(shared_organelle)) %>%
   tidyr::separate_rows(shared_organelle, sep = ";") %>%
@@ -13141,7 +13174,7 @@ if (nrow(org_tier_matrix) > 1 && ncol(org_tier_matrix) > 1) {
   )
 }
 
-# --- QC Plot 8: Network visualization (if manageable size) ---
+# --- QC Plot 9: Network visualization (if manageable size) ---
 if (nrow(trimer_evidence) <= 500) {
   message("Generating trimer network plot...")
   
