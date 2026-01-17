@@ -12327,6 +12327,66 @@ ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_SPOC_by_organelle.pdf
 
 message("Bubble plots saved.")
 
+# --- Bubble plots: full scale (0-1) versions ---
+# Bubble plot 1: RFprob vs AFMprob (full scale)
+p_bubble_rf_afm_full <- ggplot(organelle_score_summary, aes(x = mean_AFMprob, y = mean_RFprob, size = n_edges, fill = tag)) +
+  geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+  ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+  scale_fill_manual(values = organelle_colors_filtered, guide = "none") +
+  scale_size_continuous(range = c(3, 12), name = "Edges") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Mean RFprob vs AFMprob by organelle (full scale)", x = "Mean AFMprob", y = "Mean RFprob") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_AFMprob_by_organelle_fullscale.pdf"), p_bubble_rf_afm_full, width = 6, height = 5, device = cairo_pdf)
+
+# Bubble plot 2: SPOC vs ipTM (full scale)
+p_bubble_spoc_iptm_full <- ggplot(organelle_score_summary, aes(x = mean_SPOC, y = mean_ipTM, size = n_edges, fill = tag)) +
+  geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+  ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+  scale_fill_manual(values = organelle_colors_filtered, guide = "none") +
+  scale_size_continuous(range = c(3, 12), name = "Edges") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Mean SPOC vs ipTM by organelle (full scale)", x = "Mean SPOC score", y = "Mean ipTM") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_baseline, "qc", "bubble_SPOC_vs_ipTM_by_organelle_fullscale.pdf"), p_bubble_spoc_iptm_full, width = 6, height = 5, device = cairo_pdf)
+
+# Bubble plot 3: AFMprob vs ipTM (full scale)
+p_bubble_afm_iptm_full <- ggplot(organelle_score_summary, aes(x = mean_AFMprob, y = mean_ipTM, size = n_edges, fill = tag)) +
+  geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+  ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+  scale_fill_manual(values = organelle_colors_filtered, guide = "none") +
+  scale_size_continuous(range = c(3, 12), name = "Edges") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Mean AFMprob vs ipTM by organelle (full scale)", x = "Mean AFMprob", y = "Mean ipTM") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_baseline, "qc", "bubble_AFMprob_vs_ipTM_by_organelle_fullscale.pdf"), p_bubble_afm_iptm_full, width = 6, height = 5, device = cairo_pdf)
+
+# Bubble plot 4: RFprob vs SPOC (full scale)
+p_bubble_rf_spoc_full <- ggplot(organelle_score_summary, aes(x = mean_SPOC, y = mean_RFprob, size = n_edges, fill = tag)) +
+  geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+  ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+  scale_fill_manual(values = organelle_colors_filtered, guide = "none") +
+  scale_size_continuous(range = c(3, 12), name = "Edges") +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Mean RFprob vs SPOC by organelle (full scale)", x = "Mean SPOC score", y = "Mean RFprob") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_SPOC_by_organelle_fullscale.pdf"), p_bubble_rf_spoc_full, width = 6, height = 5, device = cairo_pdf)
+
+message("Full scale bubble plots saved.")
+
+
 
 # --- QC Plot 6: Score boxplot by organelle ---
 plot_score_boxplot_by_organelle <- function(df, score_col, org_colors, out_dir) {
