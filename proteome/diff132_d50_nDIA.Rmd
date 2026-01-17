@@ -12330,7 +12330,85 @@ pheatmap::pheatmap(
 
 
 
+# --- QC Plot 10: Node degree distribution by confidence tier ---
+# Rationale: nodes with many interactros (degrees) have probably low prediction score in AF-M and RF2
+# Calculate degree per protein, stratified by tier of their edges
+degree_by_tier <- baseline_ppi %>%
+  dplyr::select(Gene1, Gene2, confidence_tier) %>%
+  tidyr::pivot_longer(cols = c(Gene1, Gene2), values_to = "gene") %>%
+  dplyr::count(gene, confidence_tier, name = "degree") %>%
+  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze")))
 
+# Total degree per protein (for ordering)
+total_degree <- degree_by_tier %>%
+  dplyr::group_by(gene) %>%
+  dplyr::summarise(total_degree = sum(degree), .groups = "drop")
+
+# Plot 1: Degree distribution faceted by tier
+p_degree_by_tier <- ggplot(degree_by_tier, aes(x = degree, fill = confidence_tier)) +
+  geom_histogram(binwidth = 1, color = "black", linewidth = 0.2) +
+  facet_wrap(~confidence_tier, ncol = 1, scales = "free_y") +
+  scale_fill_manual(values = tier_colors, guide = "none") +
+  scale_x_continuous(limits = c(0, 30)) +
+  labs(title = "Node degree distribution by confidence tier", x = "Degree (interactions per tier)", y = "Count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+
+ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_by_tier.pdf"), p_degree_by_tier, width = 4, height = 6, device = cairo_pdf)
+
+# Plot 2: For high-degree nodes, what's their tier composition?
+high_degree_genes <- total_degree %>% dplyr::filter(total_degree >= 10) %>% dplyr::pull(gene)
+
+tier_composition_hubs <- degree_by_tier %>%
+  dplyr::filter(gene %in% high_degree_genes) %>%
+  dplyr::group_by(gene) %>%
+  dplyr::mutate(total = sum(degree), pct = 100 * degree / total) %>%
+  dplyr::ungroup()
+
+# Summarize: for hubs, what fraction of edges are gold/silver/bronze?
+hub_tier_summary <- tier_composition_hubs %>%
+  dplyr::group_by(confidence_tier) %>%
+  dplyr::summarise(total_edges = sum(degree), .groups = "drop") %>%
+  dplyr::mutate(pct = round(100 * total_edges / sum(total_edges), 1))
+
+message("Hub proteins (degree >= 10) tier composition:")
+print(hub_tier_summary)
+
+# Plot 3: Mean score vs degree
+degree_with_scores <- baseline_ppi %>%
+  dplyr::select(Gene1, Gene2, AFMprob, RFprob, ipTM_max) %>%
+  tidyr::pivot_longer(cols = c(Gene1, Gene2), values_to = "gene") %>%
+  dplyr::group_by(gene) %>%
+  dplyr::summarise(
+    degree = dplyr::n(),
+    mean_AFMprob = mean(AFMprob, na.rm = TRUE),
+    mean_RFprob = mean(RFprob, na.rm = TRUE),
+    mean_ipTM = mean(ipTM_max, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_degree_vs_afm <- ggplot(degree_with_scores, aes(x = degree, y = mean_AFMprob)) +
+  geom_point(alpha = 0.3, size = 0.8, color = "steelblue") +
+  geom_smooth(method = "loess", se = TRUE, color = "red", linewidth = 0.5) +
+  labs(title = "Node degree vs mean AFMprob", x = "Degree", y = "Mean AFMprob of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_baseline, "qc", "scatter_degree_vs_AFMprob.pdf"), p_degree_vs_afm, width = 4, height = 3.5, device = cairo_pdf)
+
+p_degree_vs_rf <- ggplot(degree_with_scores, aes(x = degree, y = mean_RFprob)) +
+  geom_point(alpha = 0.3, size = 0.8, color = "steelblue") +
+  geom_smooth(method = "loess", se = TRUE, color = "red", linewidth = 0.5) +
+  labs(title = "Node degree vs mean RFprob", x = "Degree", y = "Mean RFprob of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_baseline, "qc", "scatter_degree_vs_RFprob.pdf"), p_degree_vs_rf, width = 4, height = 3.5, device = cairo_pdf)
+
+# Save degree with scores table
+readr::write_csv(degree_with_scores, file.path(out_dir_baseline, "tables", "node_degree_with_scores.csv"))
+
+message("Degree by tier plots saved.")
 
 
 message("\nQC plots saved to: ", file.path(out_dir_baseline, "qc"))
