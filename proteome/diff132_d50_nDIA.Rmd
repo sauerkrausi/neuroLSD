@@ -13631,7 +13631,84 @@ if (nrow(org_tier_matrix_tet) > 1 && ncol(org_tier_matrix_tet) > 1) {
   )
 }
 
+
 message("\nTetramer QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
+
+
+
+
+
+# --- ComplexPortal matched tetramers export ---
+cp_matched_tet <- tetramer_evidence %>%
+  dplyr::filter(!is.na(complexportal_id)) %>%
+  dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, complexportal_strict, complexportal_relaxed, complexportal_id) %>%
+  dplyr::left_join(
+    complexportal %>% dplyr::select(complex_id, complex_name, n_proteins, description),
+    by = c("complexportal_id" = "complex_id")
+  )
+
+readr::write_csv(cp_matched_tet, file.path(out_dir_tetramer, "tables", "tetramers_complexportal_matched.csv"))
+
+# --- Complex counts ---
+cp_complex_counts_tet <- cp_matched_tet %>%
+  dplyr::count(complexportal_id, complex_name, n_proteins, sort = TRUE) %>%
+  dplyr::rename(n_tetramers = n)
+
+readr::write_csv(cp_complex_counts_tet, file.path(out_dir_tetramer, "tables", "complexportal_complex_counts.csv"))
+
+message("Top 10 ComplexPortal complexes by tetramer count:")
+print(head(cp_complex_counts_tet, 10))
+
+# --- Unique complexes recovered ---
+n_unique_complexes_tet <- tetramer_evidence %>%
+  dplyr::filter(!is.na(complexportal_id)) %>%
+  dplyr::pull(complexportal_id) %>%
+  unique() %>%
+  length()
+
+message("Unique ComplexPortal complexes recovered by tetramers: ", n_unique_complexes_tet, " / ", nrow(complexportal))
+
+# --- Coverage by complex size ---
+complex_coverage_tet <- complexportal %>%
+  dplyr::mutate(recovered = complex_id %in% tetramer_evidence$complexportal_id) %>%
+  dplyr::group_by(size_bin = cut(n_proteins, breaks = c(0, 3, 5, 10, 20, 50, Inf), labels = c("2-3", "4-5", "6-10", "11-20", "21-50", "51+"))) %>%
+  dplyr::summarise(
+    n_total = dplyr::n(),
+    n_recovered = sum(recovered),
+    pct_recovered = round(100 * n_recovered / n_total, 1),
+    .groups = "drop"
+  )
+
+readr::write_csv(complex_coverage_tet, file.path(out_dir_tetramer, "tables", "complexportal_coverage_by_size.csv"))
+
+message("\nComplexPortal coverage by complex size (tetramers):")
+print(complex_coverage_tet)
+
+# --- Coverage summary for methods ---
+coverage_summary_tet <- data.frame(
+  metric = c("complexportal_total_complexes", "complexportal_complexes_recovered", "complexportal_recovery_rate_pct", "complexportal_tetramers_strict_match", "complexportal_tetramers_relaxed_match"),
+  value = c(nrow(complexportal), n_unique_complexes_tet, round(100 * n_unique_complexes_tet / nrow(complexportal), 1), sum(tetramer_evidence$complexportal_strict), sum(tetramer_evidence$complexportal_relaxed)),
+  stringsAsFactors = FALSE
+)
+
+readr::write_csv(coverage_summary_tet, file.path(out_dir_tetramer, "tables", "complexportal_coverage_summary.csv"))
+
+# --- QC Plot: Coverage by complex size ---
+p_coverage_tet <- ggplot(complex_coverage_tet %>% dplyr::filter(!is.na(size_bin)), aes(x = size_bin, y = pct_recovered, fill = size_bin)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(n_recovered, "/", n_total)), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "Blues", guide = "none") +
+  labs(title = "ComplexPortal recovery rate by complex size (tetramers)", x = "Complex size (subunits)", y = "Recovery rate (%)") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_tetramer, "qc", "barplot_complexportal_coverage_by_size.pdf"), p_coverage_tet, width = 5, height = 5, device = cairo_pdf)
+
+message("\nTetramer ComplexPortal analysis complete. Tables saved to: ", file.path(out_dir_tetramer, "tables"))
+
+
+
 ```
 
 
