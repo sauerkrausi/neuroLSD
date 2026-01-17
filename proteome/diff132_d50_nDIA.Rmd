@@ -13714,6 +13714,163 @@ message("\nTetramer ComplexPortal analysis complete. Tables saved to: ", file.pa
 
 
 
+# Stoichiometry Analysis: Trimers and Tetramers vs ComplexPortal
+```{r}
+# =================================================
+# Stoichiometry Analysis: Trimers and Tetramers vs ComplexPortal
+# =================================================
+
+# --- Parse stoichiometry from ComplexPortal ---
+# Format: "P84022(1)|Q13485(1)|Q15796(1)" or "P84022(2)|Q13485(1)"
+
+complexportal_stoich <- complexportal %>%
+  dplyr::select(complex_id, complex_name, proteins_raw, n_proteins) %>%
+  dplyr::mutate(
+    # Extract protein(stoich) pairs
+    stoich_list = stringr::str_extract_all(proteins_raw, "[A-Z][A-Z0-9]{5}\\(\\d+\\)"),
+    # Parse into structured format
+    stoich_parsed = purrr::map(stoich_list, function(x) {
+      if (length(x) == 0) return(data.frame(protein = character(), copies = integer()))
+      proteins <- stringr::str_extract(x, "^[A-Z][A-Z0-9]{5}")
+      copies <- as.integer(stringr::str_extract(x, "(?<=\\()\\d+(?=\\))"))
+      data.frame(protein = proteins, copies = copies, stringsAsFactors = FALSE)
+    }),
+    # Count unique proteins vs total subunits
+    n_unique_proteins = purrr::map_int(stoich_parsed, ~length(unique(.x$protein))),
+    n_total_subunits = purrr::map_int(stoich_parsed, ~sum(.x$copies)),
+    has_multimeric = purrr::map_lgl(stoich_parsed, ~any(.x$copies > 1)),
+    max_copies = purrr::map_int(stoich_parsed, ~max(.x$copies, na.rm = TRUE))
+  )
+
+# Summary
+stoich_summary <- complexportal_stoich %>%
+  dplyr::summarise(
+    total_complexes = dplyr::n(),
+    n_with_multimeric = sum(has_multimeric),
+    pct_multimeric = round(100 * n_with_multimeric / total_complexes, 1),
+    n_homomeric_2plus = sum(max_copies >= 2),
+    n_homomeric_3plus = sum(max_copies >= 3)
+  )
+
+message("=== ComplexPortal Stoichiometry Summary ===")
+print(stoich_summary)
+
+# --- Check trimers against ComplexPortal stoichiometry ---
+message("\nChecking trimers against ComplexPortal stoichiometry...")
+
+# For matched trimers, get the complex stoichiometry
+trimer_stoich <- trimer_evidence %>%
+  dplyr::filter(complexportal_strict) %>%
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3, Protein1, Protein2, Protein3, complexportal_id) %>%
+  dplyr::left_join(
+    complexportal_stoich %>% dplyr::select(complex_id, stoich_parsed, has_multimeric, n_unique_proteins, n_total_subunits),
+    by = c("complexportal_id" = "complex_id")
+  )
+
+# Check if any trimer protein appears multiple times in the complex
+trimer_stoich <- trimer_stoich %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    # Get copies for each trimer protein
+    copies_p1 = {
+      idx <- which(stoich_parsed$protein == Protein1)
+      if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+    },
+    copies_p2 = {
+      idx <- which(stoich_parsed$protein == Protein2)
+      if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+    },
+    copies_p3 = {
+      idx <- which(stoich_parsed$protein == Protein3)
+      if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+    },
+    trimer_has_multimeric = any(c(copies_p1, copies_p2, copies_p3) > 1, na.rm = TRUE),
+    trimer_total_copies = sum(c(copies_p1, copies_p2, copies_p3), na.rm = TRUE)
+  ) %>%
+  dplyr::ungroup()
+
+trimer_stoich_summary <- trimer_stoich %>%
+  dplyr::summarise(
+    n_trimers_matched = dplyr::n(),
+    n_with_multimeric_subunit = sum(trimer_has_multimeric, na.rm = TRUE),
+    pct_multimeric = round(100 * n_with_multimeric_subunit / n_trimers_matched, 1)
+  )
+
+message("Trimers with strict ComplexPortal match:")
+print(trimer_stoich_summary)
+
+# --- Check tetramers against ComplexPortal stoichiometry ---
+message("\nChecking tetramers against ComplexPortal stoichiometry...")
+
+tetramer_stoich <- tetramer_evidence %>%
+  dplyr::filter(complexportal_strict) %>%
+  dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, Protein1, Protein2, Protein3, Protein4, complexportal_id) %>%
+  dplyr::left_join(
+    complexportal_stoich %>% dplyr::select(complex_id, stoich_parsed, has_multimeric, n_unique_proteins, n_total_subunits),
+    by = c("complexportal_id" = "complex_id")
+  )
+
+tetramer_stoich <- tetramer_stoich %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    copies_p1 = {
+      idx <- which(stoich_parsed$protein == Protein1)
+      if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+    },
+    copies_p2 = {
+      idx <- which(stoich_parsed$protein == Protein2)
+      if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+    },
+    copies_p3 = {
+      idx <- which(stoich_parsed$protein == Protein3)
+      if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+    },
+    copies_p4 = {
+      idx <- which(stoich_parsed$protein == Protein4)
+      if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+    },
+    tetramer_has_multimeric = any(c(copies_p1, copies_p2, copies_p3, copies_p4) > 1, na.rm = TRUE),
+    tetramer_total_copies = sum(c(copies_p1, copies_p2, copies_p3, copies_p4), na.rm = TRUE)
+  ) %>%
+  dplyr::ungroup()
+
+tetramer_stoich_summary <- tetramer_stoich %>%
+  dplyr::summarise(
+    n_tetramers_matched = dplyr::n(),
+    n_with_multimeric_subunit = sum(tetramer_has_multimeric, na.rm = TRUE),
+    pct_multimeric = round(100 * n_with_multimeric_subunit / n_tetramers_matched, 1)
+  )
+
+message("Tetramers with strict ComplexPortal match:")
+print(tetramer_stoich_summary)
+
+# --- Save stoichiometry info for later use ---
+readr::write_csv(trimer_stoich, file.path(out_dir_trimer, "tables", "trimers_stoichiometry.csv"))
+readr::write_csv(tetramer_stoich, file.path(out_dir_tetramer, "tables", "tetramers_stoichiometry.csv"))
+
+# --- Summary table ---
+stoich_combined <- data.frame(
+  level = c("ComplexPortal total", "Trimers (strict match)", "Tetramers (strict match)"),
+  n_total = c(nrow(complexportal_stoich), nrow(trimer_stoich), nrow(tetramer_stoich)),
+  n_with_multimeric = c(sum(complexportal_stoich$has_multimeric), sum(trimer_stoich$trimer_has_multimeric, na.rm = TRUE), sum(tetramer_stoich$tetramer_has_multimeric, na.rm = TRUE)),
+  pct_multimeric = c(
+    round(100 * sum(complexportal_stoich$has_multimeric) / nrow(complexportal_stoich), 1),
+    round(100 * sum(trimer_stoich$trimer_has_multimeric, na.rm = TRUE) / nrow(trimer_stoich), 1),
+    round(100 * sum(tetramer_stoich$tetramer_has_multimeric, na.rm = TRUE) / nrow(tetramer_stoich), 1)
+  ),
+  stringsAsFactors = FALSE
+)
+
+message("\n=== Stoichiometry Summary ===")
+print(stoich_combined)
+
+readr::write_csv(stoich_combined, file.path(out_dir_ppi_dual, "tables", "stoichiometry_summary.csv"))
+
+```
+
+
+
+
 # =================================================
 # OLD Module 11: PPI Vulnerability Analysis - Neuronal nDIA
 # =================================================
