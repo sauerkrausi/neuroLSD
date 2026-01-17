@@ -12160,7 +12160,7 @@ p_tier_prepost <- ggplot(tier_comparison_long, aes(x = confidence_tier, y = n, f
         panel.border = element_rect(color = "black", fill = NA), 
         legend.position = "top")
 
-ggsave(file.path(out_dir_baseline, "qc", "barplot_tier_pre_post_filter.pdf"), p_tier_prepost, width = 4.5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_baseline, "qc", "barplot_tier_pre_post_filter.pdf"), p_tier_prepost, width = 4, height = 4, device = cairo_pdf)
 
 
 # --- QC Plot 2: Source distribution in baseline ---
@@ -12183,9 +12183,10 @@ p_degree_hist <- ggplot(degree_df, aes(x = degree)) +
   scale_x_continuous(limits = c(0, quantile(degree_df$degree, 0.99))) +
   labs(title = paste0("Node degree distribution (n = ", nrow(degree_df), " proteins)"), x = "Degree (number of interactions)", y = "Count") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree.pdf"), p_degree_hist, width = 4, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree.pdf"), p_degree_hist, width = 4, height = 4, device = cairo_pdf)
 
 # Log-scale version
 p_degree_log <- ggplot(degree_df, aes(x = degree)) +
@@ -12197,7 +12198,7 @@ p_degree_log <- ggplot(degree_df, aes(x = degree)) +
   theme(panel.grid = element_blank(), 
         panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_loglog.pdf"), p_degree_log, width = 4, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_loglog.pdf"), p_degree_log, width = 4, height = 4, device = cairo_pdf)
 
 
 # --- QC Plot 4: Score distributions by tier (baseline) ---
@@ -12222,7 +12223,6 @@ ggsave(file.path(out_dir_baseline, "qc", "boxplot_scores_by_tier_baseline.pdf"),
 
 
 # --- QC Plot 5: Score density by organelle (filtered for n >= 50) ---
-
 # Define minimum edge threshold
 min_edges_for_density <- 50
 
@@ -12252,7 +12252,9 @@ plot_score_density_by_organelle <- function(df, score_col, org_colors, out_dir) 
     scale_fill_manual(values = org_colors, name = "Organelle") +
     labs(title = paste(score_col, "density by organelle (baseline, n >= 50)"), x = score_col, y = "Density") +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.key.size = unit(0.25, "cm"), legend.position = "right")
+    theme(panel.grid = element_blank(), 
+          panel.border = element_rect(color = "black", fill = NA), 
+          legend.key.size = unit(0.25, "cm"), legend.position = "right")
   
   ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")), p, width = 7, height = 4, device = cairo_pdf)
 }
@@ -12260,7 +12262,6 @@ plot_score_density_by_organelle <- function(df, score_col, org_colors, out_dir) 
 for (sc in score_cols) {
   plot_score_density_by_organelle(scores_org_baseline, sc, organelle_colors_filtered, file.path(out_dir_baseline, "qc"))
 }
-
 
 
 # --- Bubble plots: mean scores by organelle ---
@@ -12285,7 +12286,10 @@ p_bubble_rf_afm <- ggplot(organelle_score_summary, aes(x = mean_AFMprob, y = mea
   scale_size_continuous(range = c(3, 12), name = "Edges") +
   labs(title = "Mean RFprob vs AFMprob by organelle", x = "Mean AFMprob", y = "Mean RFprob") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "right", 
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_AFMprob_by_organelle.pdf"), p_bubble_rf_afm, width = 6, height = 5, device = cairo_pdf)
 
@@ -12297,7 +12301,10 @@ p_bubble_spoc_iptm <- ggplot(organelle_score_summary, aes(x = mean_SPOC, y = mea
   scale_size_continuous(range = c(3, 12), name = "Edges") +
   labs(title = "Mean SPOC vs ipTM by organelle", x = "Mean SPOC score", y = "Mean ipTM") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "right", 
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "bubble_SPOC_vs_ipTM_by_organelle.pdf"), p_bubble_spoc_iptm, width = 6, height = 5, device = cairo_pdf)
 
@@ -12309,7 +12316,10 @@ p_bubble_afm_iptm <- ggplot(organelle_score_summary, aes(x = mean_AFMprob, y = m
   scale_size_continuous(range = c(3, 12), name = "Edges") +
   labs(title = "Mean AFMprob vs ipTM by organelle", x = "Mean AFMprob", y = "Mean ipTM") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.position = "right", 
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "bubble_AFMprob_vs_ipTM_by_organelle.pdf"), p_bubble_afm_iptm, width = 6, height = 5, device = cairo_pdf)
 
@@ -12321,7 +12331,10 @@ p_bubble_rf_spoc <- ggplot(organelle_score_summary, aes(x = mean_SPOC, y = mean_
   scale_size_continuous(range = c(3, 12), name = "Edges") +
   labs(title = "Mean RFprob vs SPOC by organelle", x = "Mean SPOC score", y = "Mean RFprob") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.position = "right",
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_SPOC_by_organelle.pdf"), p_bubble_rf_spoc, width = 6, height = 5, device = cairo_pdf)
 
@@ -12338,7 +12351,10 @@ p_bubble_rf_afm_full <- ggplot(organelle_score_summary, aes(x = mean_AFMprob, y 
   scale_y_continuous(limits = c(0, 1)) +
   labs(title = "Mean RFprob vs AFMprob by organelle (full scale)", x = "Mean AFMprob", y = "Mean RFprob") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "right", 
+        legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_AFMprob_by_organelle_fullscale.pdf"), p_bubble_rf_afm_full, width = 6, height = 5, device = cairo_pdf)
 
