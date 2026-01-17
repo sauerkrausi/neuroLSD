@@ -12945,7 +12945,7 @@ p_coverage <- ggplot(complex_coverage %>% dplyr::filter(!is.na(size_bin)), aes(x
   theme(panel.grid = element_blank(), 
         panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_coverage_by_size.pdf"), p_coverage, width = 4.5, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_coverage_by_size.pdf"), p_coverage, width = 3.5, height = 3.5, device = cairo_pdf)
 
 
 
@@ -12966,6 +12966,7 @@ print(trimer_stats)
 tier_colors <- c("gold" = "#FFD700", "silver" = "#C0C0C0", "bronze" = "#CD7F32")
 tier_comp_colors <- c("all_gold" = "#FFD700", "2gold_1silver" = "#E6BE00", "1gold_2silver" = "#D4D4D4", "all_silver" = "#C0C0C0")
 
+
 # --- QC Plot 1: Trimer tier composition ---
 tier_comp_summary <- trimer_evidence %>%
   dplyr::count(tier_composition) %>%
@@ -12980,6 +12981,7 @@ p_tier_comp <- ggplot(tier_comp_summary, aes(x = tier_composition, y = n, fill =
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_trimer, "qc", "barplot_trimer_tier_composition.pdf"), p_tier_comp, width = 4, height = 3.5, device = cairo_pdf)
+
 
 # --- QC Plot 2: Trimer score distributions (density) ---
 score_cols_trimer <- c("mean_AFMprob", "min_AFMprob", "mean_RFprob", "min_RFprob", "mean_ipTM", "min_ipTM", "mean_SPOC", "min_SPOC")
@@ -12999,6 +13001,7 @@ p_trimer_density <- ggplot(scores_long_trimer, aes(x = score_value, fill = score
 
 ggsave(file.path(out_dir_trimer, "qc", "density_trimer_scores.pdf"), p_trimer_density, width = 6, height = 7, device = cairo_pdf)
 
+
 # --- QC Plot 3: Trimer score boxplots by tier composition ---
 scores_by_tier <- trimer_evidence %>%
   dplyr::select(trimer_id, tier_composition, mean_AFMprob, mean_ipTM, mean_RFprob, mean_SPOC) %>%
@@ -13015,6 +13018,7 @@ p_scores_by_tier <- ggplot(scores_by_tier, aes(x = tier_composition, y = score_v
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"), axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_tier.pdf"), p_scores_by_tier, width = 5, height = 5, device = cairo_pdf)
+
 
 # --- QC Plot 4: Trimers per organelle ---
 # Expand shared_organelle (some trimers have multiple)
@@ -13055,6 +13059,7 @@ p_cp_validation <- ggplot(cp_summary, aes(x = category, y = n, fill = category))
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_trimer, "qc", "barplot_complexportal_validation.pdf"), p_cp_validation, width = 4, height = 3.5, device = cairo_pdf)
+
 
 # --- QC Plot 6: Trimer score distribution by ComplexPortal status ---
 trimer_evidence <- trimer_evidence %>%
