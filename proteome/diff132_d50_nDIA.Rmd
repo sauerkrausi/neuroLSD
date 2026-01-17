@@ -13884,6 +13884,51 @@ print(stoich_combined)
 dir.create(file.path(out_dir_ppi_dual, "tables"), recursive = TRUE, showWarnings = FALSE)
 readr::write_csv(stoich_combined, file.path(out_dir_ppi_dual, "tables", "stoichiometry_summary.csv"))
 
+
+
+
+# --- QC Plot: Stoichiometry validation summary ---
+stoich_plot_df <- data.frame(
+  category = c("Trimers\n(strict match)", "Trimers\n(multimeric)", "Tetramers\n(strict match)", "Tetramers\n(multimeric)"),
+  n = c(1202, 169, 400, 103),
+  type = c("ComplexPortal match", "With multimeric subunit", "ComplexPortal match", "With multimeric subunit"),
+  level = c("Trimer", "Trimer", "Tetramer", "Tetramer"),
+  stringsAsFactors = FALSE
+)
+
+p_stoich <- ggplot(stoich_plot_df, aes(x = category, y = n, fill = type)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("ComplexPortal match" = "#4DAF4A", "With multimeric subunit" = "#984EA3"), name = NULL) +
+  labs(title = "Stoichiometry validation: trimers and tetramers", x = NULL, y = "Count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_ppi_dual, "qc", "barplot_stoichiometry_validation.pdf"), p_stoich, width = 5, height = 5, device = cairo_pdf)
+
+
+# --- QC Plot: Stoichiometry as proportion ---
+stoich_prop_df <- data.frame(
+  level = c("Trimers", "Trimers", "Tetramers", "Tetramers"),
+  type = c("Without multimeric", "With multimeric", "Without multimeric", "With multimeric"),
+  n = c(1202 - 169, 169, 400 - 103, 103),
+  stringsAsFactors = FALSE
+) %>%
+  dplyr::group_by(level) %>%
+  dplyr::mutate(pct = round(100 * n / sum(n), 1)) %>%
+  dplyr::ungroup()
+
+p_stoich_prop <- ggplot(stoich_prop_df, aes(x = level, y = n, fill = type)) +
+  geom_col(color = "black", linewidth = 0.3, position = "stack") +
+  geom_text(aes(label = paste0(n, " (", pct, "%)")), position = position_stack(vjust = 0.5), size = 2) +
+  scale_fill_manual(values = c("Without multimeric" = "#B3B3B3", "With multimeric" = "#984EA3"), name = NULL) +
+  labs(title = "ComplexPortal-matched: stoichiometry breakdown", x = NULL, y = "Count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_ppi_dual, "qc", "barplot_stoichiometry_proportion.pdf"), p_stoich_prop, width = 5, height = 5, device = cairo_pdf)
+
+
 ```
 
 
