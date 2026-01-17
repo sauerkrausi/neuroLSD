@@ -12978,7 +12978,9 @@ p_tier_comp <- ggplot(tier_comp_summary, aes(x = tier_composition, y = n, fill =
   scale_fill_manual(values = tier_comp_colors, guide = "none") +
   labs(title = "Trimer edge tier composition", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", 
+                                    fill = NA))
 
 ggsave(file.path(out_dir_trimer, "qc", "barplot_trimer_tier_composition.pdf"), p_tier_comp, width = 4, height = 3.5, device = cairo_pdf)
 
@@ -12997,7 +12999,9 @@ p_trimer_density <- ggplot(scores_long_trimer, aes(x = score_value, fill = score
   scale_fill_brewer(palette = "Set2", guide = "none") +
   labs(title = "Trimer score distributions", x = "Score", y = "Density") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        strip.background = element_rect(fill = "white", color = "black"))
 
 ggsave(file.path(out_dir_trimer, "qc", "density_trimer_scores.pdf"), p_trimer_density, width = 6, height = 7, device = cairo_pdf)
 
@@ -13015,7 +13019,10 @@ p_scores_by_tier <- ggplot(scores_by_tier, aes(x = tier_composition, y = score_v
   scale_fill_manual(values = tier_comp_colors, guide = "none") +
   labs(title = "Trimer scores by tier composition", x = NULL, y = "Score") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"), axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        strip.background = element_rect(fill = "white", color = "black"), 
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_tier.pdf"), p_scores_by_tier, width = 5, height = 5, device = cairo_pdf)
 
