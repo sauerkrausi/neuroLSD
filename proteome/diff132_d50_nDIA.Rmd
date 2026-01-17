@@ -13563,9 +13563,11 @@ p_tet_org <- ggplot(tetramer_by_org, aes(x = reorder(shared_organelle, n_tetrame
   coord_flip() +
   labs(title = "Tetramers per shared organelle", x = NULL, y = "Number of tetramers") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_tetramer, "qc", "barplot_tetramers_per_organelle.pdf"), p_tet_org, width = sq_size, height = sq_size, device = cairo_pdf)
+
 
 # --- QC Plot 6: ComplexPortal validation ---
 cp_summary_tet <- tetramer_evidence %>%
@@ -13578,9 +13580,11 @@ p_cp_tet <- ggplot(cp_summary_tet, aes(x = cp_status, y = n, fill = cp_status)) 
   scale_fill_manual(values = c("Strict (4/4)" = "#4DAF4A", "Relaxed (3/4)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Tetramer validation against ComplexPortal", x = NULL, y = "Number of tetramers") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_tetramer, "qc", "barplot_complexportal_validation.pdf"), p_cp_tet, width = sq_size, height = sq_size, device = cairo_pdf)
+
 
 # --- QC Plot 7: Scores by ComplexPortal status ---
 scores_by_cp_tet <- tetramer_evidence %>%
@@ -13594,9 +13598,12 @@ p_scores_cp_tet <- ggplot(scores_by_cp_tet, aes(x = cp_status, y = score_value, 
   scale_fill_manual(values = c("Strict (4/4)" = "#4DAF4A", "Relaxed (3/4)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Tetramer scores by ComplexPortal status", x = NULL, y = "Score") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        strip.background = element_rect(fill = "white", color = "black"))
 
 ggsave(file.path(out_dir_tetramer, "qc", "boxplot_tetramer_scores_by_cp_status.pdf"), p_scores_cp_tet, width = 6, height = sq_size, device = cairo_pdf)
+
 
 # --- QC Plot 8: Heatmap organelle × tier composition ---
 org_tier_matrix_tet <- tetramer_evidence %>%
@@ -13614,8 +13621,10 @@ if (nrow(org_tier_matrix_tet) > 1 && ncol(org_tier_matrix_tet) > 1) {
     number_format = "%d",
     color = colorRampPalette(c("white", "steelblue"))(50),
     main = "Tetramers: organelle × tier composition",
-    fontsize = 8,
+    fontsize = 6,
     border_color = "black",
+    cellheight = 12,
+    cellwidth = 12,
     filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_tier_composition.pdf"),
     width = 6,
     height = 6
