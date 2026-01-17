@@ -13081,6 +13081,7 @@ p_scores_by_cp <- ggplot(scores_by_cp, aes(x = cp_status, y = score_value, fill 
 
 ggsave(file.path(out_dir_trimer, "qc", "boxplot_trimer_scores_by_cp_status.pdf"), p_scores_by_cp, width = 5, height = 3.5, device = cairo_pdf)
 
+
 # --- QC Plot 7: Heatmap - organelle × tier composition ---
 org_tier_matrix <- trimer_evidence %>%
   dplyr::filter(!is.na(shared_organelle)) %>%
@@ -13097,7 +13098,9 @@ if (nrow(org_tier_matrix) > 1 && ncol(org_tier_matrix) > 1) {
     number_format = "%d",
     color = colorRampPalette(c("white", "steelblue"))(50),
     main = "Trimers: organelle × tier composition",
-    fontsize = 8,
+    fontsize = 6,
+    cellwidth = 12,
+    cellheight = 12,
     border_color = "black",
     filename = file.path(out_dir_trimer, "qc", "heatmap_organelle_tier_composition.pdf"),
     width = 6,
