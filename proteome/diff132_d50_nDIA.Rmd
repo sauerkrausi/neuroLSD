@@ -14152,6 +14152,7 @@ for (i in seq_len(nrow(unique_complexes))) {
 
 message("Complexes after merging: ", length(merged_complexes))
 
+
 # --- Step 9: Convert to dataframe ---
 complex_evidence <- dplyr::bind_rows(lapply(seq_along(merged_complexes), function(i) {
   data.frame(
@@ -14171,6 +14172,7 @@ complex_evidence <- complex_evidence %>%
 
 message("Final complex count: ", nrow(complex_evidence))
 
+
 # --- Step 10: Size distribution ---
 size_dist <- complex_evidence %>%
   dplyr::count(complex_size, name = "n_complexes") %>%
@@ -14178,6 +14180,7 @@ size_dist <- complex_evidence %>%
 
 message("\nComplex size distribution:")
 print(size_dist)
+
 
 # --- Step 11: ComplexPortal validation ---
 message("\nValidating complexes against ComplexPortal...")
@@ -14248,6 +14251,7 @@ complex_evidence <- complex_evidence %>%
 
 message("Complexes with shared organelle: ", sum(!is.na(complex_evidence$shared_organelle)))
 
+
 # --- Step 13: Summary statistics ---
 complex_stats <- data.frame(
   metric = c(
@@ -14279,6 +14283,7 @@ complex_stats <- data.frame(
 
 message("\n=== Complex Summary ===")
 print(complex_stats)
+
 
 # --- Step 14: Save outputs ---
 # Save without list column for CSV
@@ -14343,6 +14348,7 @@ complex_evidence <- complex_evidence %>%
 
 message("Edge scores computed.")
 
+
 # --- Step 2: Dominant organelles (>50% of members) ---
 message("Computing dominant organelles...")
 
@@ -14376,6 +14382,7 @@ complex_evidence <- complex_evidence %>%
 
 message("Complexes with dominant organelle(s): ", sum(!is.na(complex_evidence$dominant_organelles)))
 
+
 # --- Step 3: Origin classification ---
 complex_evidence <- complex_evidence %>%
   dplyr::mutate(
@@ -14391,6 +14398,7 @@ origin_summary <- complex_evidence %>% dplyr::count(origin)
 message("\nComplex origin:")
 print(origin_summary)
 
+
 # --- Step 4: Quality score for complexes ---
 complex_evidence <- complex_evidence %>%
   dplyr::mutate(
@@ -14398,6 +14406,7 @@ complex_evidence <- complex_evidence %>%
     quality_B = mean_AFMprob * ifelse(is.na(mean_ipTM), 1, mean_ipTM),
     quality_C = min_AFMprob * ifelse(is.na(min_ipTM), 1, min_ipTM)
   )
+
 
 # --- Step 5: Update summary stats ---
 complex_stats_updated <- data.frame(
@@ -14442,6 +14451,7 @@ complex_stats_updated <- data.frame(
 
 message("\n=== Updated Complex Summary ===")
 print(complex_stats_updated)
+
 
 # --- Step 6: Save updated evidence ---
 complex_evidence_flat <- complex_evidence %>%
