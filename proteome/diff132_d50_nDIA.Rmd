@@ -14214,6 +14214,7 @@ complex_evidence <- complex_evidence %>%
 message("Complexes with strict ComplexPortal match: ", sum(complex_evidence$complexportal_strict))
 message("Complexes with relaxed ComplexPortal match (>=50%): ", sum(complex_evidence$complexportal_relaxed))
 
+
 # --- Step 12: Assign shared organelle ---
 message("Assigning shared organelle annotations...")
 
@@ -14285,6 +14286,165 @@ readr::write_csv(size_dist, file.path(out_dir_complex, "tables", "complex_size_d
 saveRDS(complex_evidence, file.path(out_dir_complex, "tables", "complex_evidence.rds"))
 
 message("\nComplex evidence saved to: ", file.path(out_dir_complex, "tables"))
+```
+
+
+
+
+# Complex Scoring: Add metrics and organelle analysis
+```{r}
+# =================================================
+# Complex Scoring: Add metrics and organelle analysis
+# =================================================
+
+# --- Step 1: Get all edges for each complex ---
+message("Computing edge-level scores for complexes...")
+
+.get_complex_edges <- function(members, edge_scores) {
+  # Generate all pairwise combinations
+  if (length(members) < 2) return(data.frame())
+  
+  pairs <- combn(members, 2, simplify = FALSE)
+  
+  edges <- lapply(pairs, function(p) {
+    key <- .get_edge_key(p[1], p[2])
+    edge_scores %>% dplyr::filter(edge_key == key)
+  })
+  
+  dplyr::bind_rows(edges)
+}
+
+# Compute scores per complex
+complex_evidence <- complex_evidence %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    edge_data = list(.get_complex_edges(members, edge_scores)),
+    n_edges = nrow(edge_data),
+    n_edges_with_ipTM = sum(!is.na(edge_data$ipTM_max)),
+    mean_AFMprob = if (nrow(edge_data) > 0) mean(edge_data$AFMprob, na.rm = TRUE) else NA_real_,
+    min_AFMprob = if (nrow(edge_data) > 0) safe_min(edge_data$AFMprob) else NA_real_,
+    mean_RFprob = if (nrow(edge_data) > 0) mean(edge_data$RFprob, na.rm = TRUE) else NA_real_,
+    min_RFprob = if (nrow(edge_data) > 0) safe_min(edge_data$RFprob) else NA_real_,
+    mean_ipTM = if (n_edges_with_ipTM > 0) mean(edge_data$ipTM_max, na.rm = TRUE) else NA_real_,
+    min_ipTM = if (n_edges_with_ipTM > 0) safe_min(edge_data$ipTM_max) else NA_real_,
+    pct_edges_with_ipTM = if (n_edges > 0) round(100 * n_edges_with_ipTM / n_edges, 1) else 0,
+    high_interface_quality = !is.na(mean_ipTM) & mean_ipTM >= 0.7
+  ) %>%
+  dplyr::select(-edge_data) %>%
+  dplyr::ungroup()
+
+message("Edge scores computed.")
+
+# --- Step 2: Dominant organelles (>50% of members) ---
+message("Computing dominant organelles...")
+
+.get_dominant_organelles <- function(members, lookup, threshold = 0.5) {
+  n_members <- length(members)
+  if (n_members == 0) return(NA_character_)
+  
+  # Count organelle occurrences
+  all_orgs <- unlist(lapply(members, function(g) {
+    idx <- which(lookup$Genes == g)
+    if (length(idx) == 0) return(character(0))
+    lookup$organelles[[idx]]
+  }))
+  
+  if (length(all_orgs) == 0) return(NA_character_)
+  
+  org_counts <- table(all_orgs)
+  org_fracs <- org_counts / n_members
+  
+  # Keep those above threshold
+  dominant <- names(org_fracs)[org_fracs >= threshold]
+  
+  if (length(dominant) == 0) return(NA_character_)
+  return(paste(sort(dominant), collapse = ";"))
+}
+
+complex_evidence <- complex_evidence %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(dominant_organelles = .get_dominant_organelles(members, gene_to_organelles, threshold = 0.5)) %>%
+  dplyr::ungroup()
+
+message("Complexes with dominant organelle(s): ", sum(!is.na(complex_evidence$dominant_organelles)))
+
+# --- Step 3: Origin classification ---
+complex_evidence <- complex_evidence %>%
+  dplyr::mutate(
+    origin = dplyr::case_when(
+      n_trimer_seeds > 0 & n_tetramer_seeds > 0 ~ "both",
+      n_trimer_seeds > 0 ~ "trimer_only",
+      n_tetramer_seeds > 0 ~ "tetramer_only",
+      TRUE ~ "unknown"
+    )
+  )
+
+origin_summary <- complex_evidence %>% dplyr::count(origin)
+message("\nComplex origin:")
+print(origin_summary)
+
+# --- Step 4: Quality score for complexes ---
+complex_evidence <- complex_evidence %>%
+  dplyr::mutate(
+    quality_A = min_AFMprob,
+    quality_B = mean_AFMprob * ifelse(is.na(mean_ipTM), 1, mean_ipTM),
+    quality_C = min_AFMprob * ifelse(is.na(min_ipTM), 1, min_ipTM)
+  )
+
+# --- Step 5: Update summary stats ---
+complex_stats_updated <- data.frame(
+  metric = c(
+    "total_complexes",
+    "complexes_size_3",
+    "complexes_size_4",
+    "complexes_size_5_10",
+    "complexes_size_11_plus",
+    "max_complex_size",
+    "median_complex_size",
+    "complexes_with_dominant_organelle",
+    "complexes_high_interface_quality",
+    "complexes_from_trimer_only",
+    "complexes_from_tetramer_only",
+    "complexes_from_both",
+    "complexes_complexportal_strict",
+    "complexes_complexportal_relaxed",
+    "median_mean_AFMprob",
+    "median_mean_ipTM"
+  ),
+  value = c(
+    nrow(complex_evidence),
+    sum(complex_evidence$complex_size == 3),
+    sum(complex_evidence$complex_size == 4),
+    sum(complex_evidence$complex_size >= 5 & complex_evidence$complex_size <= 10),
+    sum(complex_evidence$complex_size >= 11),
+    max(complex_evidence$complex_size),
+    median(complex_evidence$complex_size),
+    sum(!is.na(complex_evidence$dominant_organelles)),
+    sum(complex_evidence$high_interface_quality, na.rm = TRUE),
+    sum(complex_evidence$origin == "trimer_only"),
+    sum(complex_evidence$origin == "tetramer_only"),
+    sum(complex_evidence$origin == "both"),
+    sum(complex_evidence$complexportal_strict),
+    sum(complex_evidence$complexportal_relaxed),
+    round(median(complex_evidence$mean_AFMprob, na.rm = TRUE), 3),
+    round(median(complex_evidence$mean_ipTM, na.rm = TRUE), 3)
+  ),
+  stringsAsFactors = FALSE
+)
+
+message("\n=== Updated Complex Summary ===")
+print(complex_stats_updated)
+
+# --- Step 6: Save updated evidence ---
+complex_evidence_flat <- complex_evidence %>%
+  dplyr::mutate(members_str = sapply(members, paste, collapse = ";")) %>%
+  dplyr::select(-members)
+
+readr::write_csv(complex_evidence_flat, file.path(out_dir_complex, "tables", "complex_evidence.csv"))
+readr::write_csv(complex_stats_updated, file.path(out_dir_complex, "tables", "complex_stats.csv"))
+saveRDS(complex_evidence, file.path(out_dir_complex, "tables", "complex_evidence.rds"))
+
+message("Updated complex evidence saved.")
 ```
 
 
