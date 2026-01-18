@@ -14450,6 +14450,92 @@ message("Updated complex evidence saved.")
 
 
 
+# QC: Trimer and Tetramer enrichment per organelle
+```{r}
+# =================================================
+# QC: Trimer and Tetramer enrichment per organelle
+# =================================================
+
+# --- PPIs per organelle (from baseline) ---
+ppi_per_org <- shared_long_baseline %>%
+  dplyr::count(tag, name = "n_ppi")
+
+# --- Trimers per organelle ---
+trimer_per_org <- trimer_evidence %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::count(shared_organelle, name = "n_trimers") %>%
+  dplyr::rename(tag = shared_organelle)
+
+# --- Tetramers per organelle ---
+tetramer_per_org <- tetramer_evidence %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  tidyr::separate_rows(shared_organelle, sep = ";") %>%
+  dplyr::count(shared_organelle, name = "n_tetramers") %>%
+  dplyr::rename(tag = shared_organelle)
+
+# --- Combine and compute ratios ---
+organelle_enrichment <- ppi_per_org %>%
+  dplyr::left_join(trimer_per_org, by = "tag") %>%
+  dplyr::left_join(tetramer_per_org, by = "tag") %>%
+  dplyr::mutate(
+    n_trimers = tidyr::replace_na(n_trimers, 0),
+    n_tetramers = tidyr::replace_na(n_tetramers, 0),
+    trimer_per_ppi = round(n_trimers / n_ppi, 4),
+    tetramer_per_ppi = round(n_tetramers / n_ppi, 4)
+  ) %>%
+  dplyr::arrange(dplyr::desc(trimer_per_ppi))
+
+message("\n=== Organelle Enrichment ===")
+print(organelle_enrichment)
+
+readr::write_csv(organelle_enrichment, file.path(out_dir_complex, "tables", "organelle_enrichment.csv"))
+
+# --- QC Plot: Trimer/PPI ratio by organelle ---
+p_trimer_ratio <- ggplot(organelle_enrichment %>% dplyr::filter(n_ppi >= 50), 
+                          aes(x = reorder(tag, trimer_per_ppi), y = trimer_per_ppi, fill = tag)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = organelle_colors, guide = "none") +
+  coord_flip() +
+  labs(title = "Trimer / PPI ratio by organelle", subtitle = "Higher = more complex-forming PPIs", x = NULL, y = "Trimers per PPI") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_trimer_per_ppi_by_organelle.pdf"), p_trimer_ratio, width = 5, height = 5, device = cairo_pdf)
+
+# --- QC Plot: Tetramer/PPI ratio by organelle ---
+p_tetramer_ratio <- ggplot(organelle_enrichment %>% dplyr::filter(n_ppi >= 50), 
+                            aes(x = reorder(tag, tetramer_per_ppi), y = tetramer_per_ppi, fill = tag)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = organelle_colors, guide = "none") +
+  coord_flip() +
+  labs(title = "Tetramer / PPI ratio by organelle", subtitle = "Higher = more complex-forming PPIs", x = NULL, y = "Tetramers per PPI") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_tetramer_per_ppi_by_organelle.pdf"), p_tetramer_ratio, width = 5, height = 5, device = cairo_pdf)
+
+# --- QC Plot: Combined ratio comparison ---
+enrichment_long <- organelle_enrichment %>%
+  dplyr::filter(n_ppi >= 50) %>%
+  tidyr::pivot_longer(cols = c(trimer_per_ppi, tetramer_per_ppi), names_to = "type", values_to = "ratio") %>%
+  dplyr::mutate(type = ifelse(type == "trimer_per_ppi", "Trimer/PPI", "Tetramer/PPI"))
+
+p_enrichment_combined <- ggplot(enrichment_long, aes(x = reorder(tag, ratio), y = ratio, fill = type)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = c("Trimer/PPI" = "#66C2A5", "Tetramer/PPI" = "#FC8D62"), name = NULL) +
+  coord_flip() +
+  labs(title = "Complex enrichment by organelle", x = NULL, y = "Ratio") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top", legend.key.size = unit(0.3, "cm"))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_enrichment_combined_by_organelle.pdf"), p_enrichment_combined, width = 5, height = 5, device = cairo_pdf)
+
+message("Organelle enrichment plots saved.")
+```
+
+
+
 # =================================================
 # OLD Module 11: PPI Vulnerability Analysis - Neuronal nDIA
 # =================================================
