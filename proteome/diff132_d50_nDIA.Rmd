@@ -13950,6 +13950,7 @@ out_dir_complex <- file.path(out_dir_ppi_dual, "complexes")
 dir.create(file.path(out_dir_complex, "tables"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_complex, "qc"), recursive = TRUE, showWarnings = FALSE)
 
+
 # --- Step 1: Setup adjacency list for fast lookup ---
 message("=== Complex Growing ===")
 message("Building adjacency structures...")
@@ -13966,6 +13967,7 @@ adj_list <- baseline_gs %>%
   }
 
 message("Adjacency list: ", length(adj_list), " nodes")
+
 
 # --- Step 2: Function to grow a complex by one step ---
 .grow_complex <- function(members, adj_list, min_edges = 2) {
@@ -13985,6 +13987,7 @@ message("Adjacency list: ", length(adj_list), " nodes")
   return(candidates)
 }
 
+
 # --- Step 3: Function to iteratively grow until no more can be added ---
 .grow_complex_iterative <- function(seed_members, adj_list, min_edges = 2, max_size = 100) {
   current <- seed_members
@@ -14002,6 +14005,7 @@ message("Adjacency list: ", length(adj_list), " nodes")
   
   return(sort(current))
 }
+
 
 # --- Step 4: Grow from trimers ---
 message("Growing complexes from trimers...")
@@ -14025,6 +14029,7 @@ grown_from_trimers <- trimer_seeds %>%
 message("Trimers grown: ", nrow(grown_from_trimers))
 message("Unique complexes from trimers: ", length(unique(grown_from_trimers$complex_id)))
 
+
 # --- Step 5: Grow from tetramers ---
 message("Growing complexes from tetramers...")
 
@@ -14046,6 +14051,7 @@ grown_from_tetramers <- tetramer_seeds %>%
 message("Tetramers grown: ", nrow(grown_from_tetramers))
 message("Unique complexes from tetramers: ", length(unique(grown_from_tetramers$complex_id)))
 
+
 # --- Step 6: Internal QC - compare trimer+1 with de novo tetramers ---
 message("\n=== Internal QC: Trimer+1 vs Tetramer ===")
 
@@ -14066,6 +14072,7 @@ trimer_plus_one_overlap <- trimer_plus_one %>%
 
 message("Trimer+1 that match de novo tetramers: ", sum(trimer_plus_one_overlap$matches_tetramer), " / ", nrow(trimer_plus_one_overlap))
 message("Match rate: ", round(100 * mean(trimer_plus_one_overlap$matches_tetramer), 1), "%")
+
 
 # --- Step 7: Combine and deduplicate complexes ---
 message("\nCombining complexes from all seeds...")
@@ -14091,6 +14098,7 @@ unique_complexes <- all_grown %>%
   dplyr::left_join(complex_seed_counts, by = "complex_id")
 
 message("Unique complexes (before merging): ", nrow(unique_complexes))
+
 
 # --- Step 8: Merge overlapping complexes (80% threshold) ---
 message("\nMerging overlapping complexes (80% threshold)...")
