@@ -14509,6 +14509,7 @@ print(organelle_enrichment)
 
 readr::write_csv(organelle_enrichment, file.path(out_dir_complex, "tables", "organelle_enrichment.csv"))
 
+
 # --- QC Plot: Trimer/PPI ratio by organelle ---
 p_trimer_ratio <- ggplot(organelle_enrichment %>% dplyr::filter(n_ppi >= 50), 
                           aes(x = reorder(tag, trimer_per_ppi), y = trimer_per_ppi, fill = tag)) +
@@ -14517,9 +14518,11 @@ p_trimer_ratio <- ggplot(organelle_enrichment %>% dplyr::filter(n_ppi >= 50),
   coord_flip() +
   labs(title = "Trimer / PPI ratio by organelle", subtitle = "Higher = more complex-forming PPIs", x = NULL, y = "Trimers per PPI") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_complex, "qc", "barplot_trimer_per_ppi_by_organelle.pdf"), p_trimer_ratio, width = 5, height = 5, device = cairo_pdf)
+
 
 # --- QC Plot: Tetramer/PPI ratio by organelle ---
 p_tetramer_ratio <- ggplot(organelle_enrichment %>% dplyr::filter(n_ppi >= 50), 
@@ -14529,9 +14532,11 @@ p_tetramer_ratio <- ggplot(organelle_enrichment %>% dplyr::filter(n_ppi >= 50),
   coord_flip() +
   labs(title = "Tetramer / PPI ratio by organelle", subtitle = "Higher = more complex-forming PPIs", x = NULL, y = "Tetramers per PPI") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_complex, "qc", "barplot_tetramer_per_ppi_by_organelle.pdf"), p_tetramer_ratio, width = 5, height = 5, device = cairo_pdf)
+
 
 # --- QC Plot: Combined ratio comparison ---
 enrichment_long <- organelle_enrichment %>%
@@ -14540,12 +14545,14 @@ enrichment_long <- organelle_enrichment %>%
   dplyr::mutate(type = ifelse(type == "trimer_per_ppi", "Trimer/PPI", "Tetramer/PPI"))
 
 p_enrichment_combined <- ggplot(enrichment_long, aes(x = reorder(tag, ratio), y = ratio, fill = type)) +
-  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
-  scale_fill_manual(values = c("Trimer/PPI" = "#66C2A5", "Tetramer/PPI" = "#FC8D62"), name = NULL) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.1) +
+  scale_fill_manual(values = c("Trimer/PPI" = "grey60", "Tetramer/PPI" = "dodgerblue3"), name = NULL) +
   coord_flip() +
   labs(title = "Complex enrichment by organelle", x = NULL, y = "Ratio") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top", legend.key.size = unit(0.3, "cm"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        legend.position = "top", legend.key.size = unit(0.3, "cm"))
 
 ggsave(file.path(out_dir_complex, "qc", "barplot_enrichment_combined_by_organelle.pdf"), p_enrichment_combined, width = 5, height = 5, device = cairo_pdf)
 
@@ -14576,13 +14583,13 @@ origin_summary <- complex_evidence %>% dplyr::count(origin) %>% dplyr::mutate(pc
 p_origin <- ggplot(origin_summary, aes(x = origin, y = n, fill = origin)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(n, " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("trimer_only" = "#66C2A5", "tetramer_only" = "#FC8D62", "both" = "#8DA0CB"), guide = "none") +
+  scale_fill_manual(values = c("trimer_only" = "#C1D1B8", "tetramer_only" = "#7D9A72", "both" = "#3D4D3A"), guide = "none") +
   labs(title = "Complex origin (seed type)", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
         panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_complex_origin.pdf"), p_origin, width = sq_size, height = sq_size, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_complex_origin.pdf"), p_origin, width = 2, height = sq_size, device = cairo_pdf)
 
 
 # --- QC Plot 3: Score distributions (density) ---
@@ -14709,13 +14716,13 @@ hiq_summary <- complex_evidence %>%
 p_hiq <- ggplot(hiq_summary, aes(x = label, y = n, fill = label)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(n, " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("High (ipTM >= 0.7)" = "#4DAF4A", "Low (ipTM < 0.7)" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("High (ipTM >= 0.7)" = "#C1D1B8", "Low (ipTM < 0.7)" = "#D32F2F"), guide = "none") +
   labs(title = "Interface quality distribution", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
         panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_interface_quality.pdf"), p_hiq, width = sq_size, height = sq_size, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_interface_quality.pdf"), p_hiq, width = 2, height = sq_size, device = cairo_pdf)
 
 
 
