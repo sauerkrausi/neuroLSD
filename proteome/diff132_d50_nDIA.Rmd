@@ -13167,7 +13167,7 @@ if (nrow(org_tier_matrix) > 1 && ncol(org_tier_matrix) > 1) {
     fontsize = 6,
     cellwidth = 12,
     cellheight = 12,
-    border_color = "black",
+    border_color = NA,
     filename = file.path(out_dir_trimer, "qc", "heatmap_organelle_tier_composition.pdf"),
     width = 6,
     height = 6
@@ -13622,7 +13622,7 @@ if (nrow(org_tier_matrix_tet) > 1 && ncol(org_tier_matrix_tet) > 1) {
     color = colorRampPalette(c("white", "dodgerblue3"))(50),
     main = "Tetramers: organelle × tier composition",
     fontsize = 6,
-    border_color = "black",
+    border_color = NA,
     cellheight = 12,
     cellwidth = 12,
     filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_tier_composition.pdf"),
@@ -13901,7 +13901,7 @@ stoich_plot_df <- data.frame(
 p_stoich <- ggplot(stoich_plot_df, aes(x = category, y = n, fill = type)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = n), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("ComplexPortal match" = "#4DAF4A", "With multimeric subunit" = "#984EA3"), name = NULL) +
+  scale_fill_manual(values = c("ComplexPortal match" = "#A8BFA0", "With multimeric subunit" = "#4A5D45"), name = NULL) +
   labs(title = "Stoichiometry validation: trimers and tetramers", x = NULL, y = "Count") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
@@ -13925,14 +13925,14 @@ stoich_prop_df <- data.frame(
 p_stoich_prop <- ggplot(stoich_prop_df, aes(x = level, y = n, fill = type)) +
   geom_col(color = "black", linewidth = 0.3, position = "stack") +
   geom_text(aes(label = paste0(n, " (", pct, "%)")), position = position_stack(vjust = 0.5), size = 2) +
-  scale_fill_manual(values = c("Without multimeric" = "#B3B3B3", "With multimeric" = "#984EA3"), name = NULL) +
+  scale_fill_manual(values = c("Without multimeric" = "grey90", "With multimeric" = "#A8BFA0"), name = NULL) +
   labs(title = "ComplexPortal-matched: stoichiometry breakdown", x = NULL, y = "Count") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
         panel.border = element_rect(color = "black", fill = NA), 
         legend.position = "top", legend.key.size = unit(0.3, "cm"))
 
-ggsave(file.path(out_dir_ppi_dual, "qc", "barplot_stoichiometry_proportion.pdf"), p_stoich_prop, width = 3, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc", "barplot_stoichiometry_proportion.pdf"), p_stoich_prop, width = 2, height = 5, device = cairo_pdf)
 
 
 ```
@@ -14809,7 +14809,7 @@ if (nrow(org_origin_matrix) > 1 && ncol(org_origin_matrix) > 0) {
     fontsize = 6,
     cellwidth = 12,
     cellheight = 12,
-    border_color = "black",
+    border_color = NA,
     filename = file.path(out_dir_complex, "qc", "heatmap_organelle_origin.pdf"),
     width = 4,
     height = 6
