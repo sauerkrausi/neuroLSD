@@ -1605,8 +1605,8 @@ LSDgene_Abundance <- ggplot(plot_df, aes(x = neuron, y = value, fill = condition
     color = "red"
   ) +
   facet_wrap(~Genes, scales = "free_y") +
-  scale_fill_manual(values = c("mean_ctrl" = "grey70", "mean_ko" = "steelblue")) +
-  scale_color_manual(values = c("mean_ctrl" = "grey40", "mean_ko" = "steelblue4")) +
+  scale_fill_manual(values = c("mean_ctrl" = "grey70", "mean_ko" = "dodgerblue3")) +
+  scale_color_manual(values = c("mean_ctrl" = "grey40", "mean_ko" = "dodgerblue4")) +
   labs(
     title = "LSD Protein Abundance (ctrl vs KO)",
     x = "Neuron Type",
@@ -1628,7 +1628,7 @@ plot_df_ctrl <- df_clean_heatmap %>%
 
 LSDgene_Abundance_ctrl <- ggplot(plot_df_ctrl, aes(x = reorder(Genes, -value), y = value, fill = neuron)) +
   geom_bar(stat = "summary", fun = mean, position = position_dodge(width = 0.7), width = 0.7) +
-  scale_fill_manual(values = c("iN" = "grey70", "iDA" = "steelblue")) +
+  scale_fill_manual(values = c("iN" = "grey70", "iDA" = "dodgerblue3")) +
   labs(title = "LSD Protein Abundance in Control Neurons", x = "LSD Gene", y = "Abundance (raw)", fill = "Neuron Type") +
   theme_bw() +
   theme(legend.position = "bottom", 
@@ -12153,7 +12153,7 @@ tier_comparison_long <- tier_comparison %>%
 p_tier_prepost <- ggplot(tier_comparison_long, aes(x = confidence_tier, y = n, fill = stage)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = scales::comma(n)), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Pre-filter" = "grey70", "Post-filter" = "steelblue"), name = NULL) +
+  scale_fill_manual(values = c("Pre-filter" = "grey70", "Post-filter" = "dodgerblue3"), name = NULL) +
   labs(title = "Confidence tier distribution: pre vs post neuronal proteome filter", x = NULL, y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
@@ -12179,7 +12179,7 @@ ggsave(file.path(out_dir_baseline, "qc", "barplot_source_distribution_baseline.p
 
 # --- QC Plot 3: Node degree distribution ---
 p_degree_hist <- ggplot(degree_df, aes(x = degree)) +
-  geom_histogram(binwidth = 1, fill = "steelblue", color = "black", linewidth = 0.2) +
+  geom_histogram(binwidth = 1, fill = "dodgerblue3", color = "black", linewidth = 0.2) +
   scale_x_continuous(limits = c(0, quantile(degree_df$degree, 0.99))) +
   labs(title = paste0("Node degree distribution (n = ", nrow(degree_df), " proteins)"), x = "Degree (number of interactions)", y = "Count") +
   theme_bw(base_size = 6) +
@@ -12190,7 +12190,7 @@ ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree.pdf"), p_degree_
 
 # Log-scale version
 p_degree_log <- ggplot(degree_df, aes(x = degree)) +
-  geom_histogram(binwidth = 0.1, fill = "steelblue", color = "black", linewidth = 0.2) +
+  geom_histogram(binwidth = 0.1, fill = "dodgerblue3", color = "black", linewidth = 0.2) +
   scale_x_log10() +
   scale_y_log10() +
   labs(title = "Node degree distribution (log-log)", x = "Degree (log10)", y = "Count (log10)") +
@@ -12549,7 +12549,7 @@ degree_with_scores <- baseline_ppi %>%
   )
 
 p_degree_vs_afm <- ggplot(degree_with_scores, aes(x = degree, y = mean_AFMprob)) +
-  geom_point(alpha = 0.3, size = 0.8, color = "steelblue") +
+  geom_point(alpha = 0.3, size = 0.8, color = "dodgerblue3") +
   geom_smooth(method = "loess", se = TRUE, color = "red", linewidth = 0.5) +
   labs(title = "Node degree vs mean AFMprob", x = "Degree", y = "Mean AFMprob of edges") +
   theme_bw(base_size = 6) +
@@ -12558,7 +12558,7 @@ p_degree_vs_afm <- ggplot(degree_with_scores, aes(x = degree, y = mean_AFMprob))
 ggsave(file.path(out_dir_baseline, "qc", "scatter_degree_vs_AFMprob.pdf"), p_degree_vs_afm, width = 4, height = 3.5, device = cairo_pdf)
 
 p_degree_vs_rf <- ggplot(degree_with_scores, aes(x = degree, y = mean_RFprob)) +
-  geom_point(alpha = 0.3, size = 0.8, color = "steelblue") +
+  geom_point(alpha = 0.3, size = 0.8, color = "dodgerblue3") +
   geom_smooth(method = "loess", se = TRUE, color = "red", linewidth = 0.5) +
   labs(title = "Node degree vs mean RFprob", x = "Degree", y = "Mean RFprob of edges") +
   theme_bw(base_size = 6) +
@@ -13162,7 +13162,7 @@ if (nrow(org_tier_matrix) > 1 && ncol(org_tier_matrix) > 1) {
     org_tier_matrix,
     display_numbers = TRUE,
     number_format = "%d",
-    color = colorRampPalette(c("white", "steelblue"))(50),
+    color = colorRampPalette(c("white", "dodgerblue3"))(50),
     main = "Trimers: organelle × tier composition",
     fontsize = 6,
     cellwidth = 12,
@@ -13619,7 +13619,7 @@ if (nrow(org_tier_matrix_tet) > 1 && ncol(org_tier_matrix_tet) > 1) {
     org_tier_matrix_tet,
     display_numbers = TRUE,
     number_format = "%d",
-    color = colorRampPalette(c("white", "steelblue"))(50),
+    color = colorRampPalette(c("white", "dodgerblue3"))(50),
     main = "Tetramers: organelle × tier composition",
     fontsize = 6,
     border_color = "black",
@@ -14563,7 +14563,7 @@ sq_size <- 5
 
 # --- QC Plot 1: Complex size distribution ---
 p_size_dist <- ggplot(complex_evidence, aes(x = complex_size)) +
-  geom_histogram(binwidth = 1, fill = "steelblue", color = "black", linewidth = 0.3) +
+  geom_histogram(binwidth = 1, fill = "dodgerblue3", color = "black", linewidth = 0.3) +
   labs(title = "Complex size distribution", x = "Complex size (proteins)", y = "Count") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -14804,7 +14804,7 @@ if (nrow(org_origin_matrix) > 1 && ncol(org_origin_matrix) > 0) {
     org_origin_matrix,
     display_numbers = TRUE,
     number_format = "%d",
-    color = colorRampPalette(c("white", "steelblue"))(50),
+    color = colorRampPalette(c("white", "dodgerblue3"))(50),
     main = "Complexes: organelle x origin",
     fontsize = 6,
     cellwidth = 12,
@@ -16445,7 +16445,7 @@ plot_radar_diseaseclass <- function(radar_data, disease_class, neuron_type, rada
   if (neuron_type == "iN") {
     line_colors <- colorRampPalette(c("grey30", "grey70"))(n_genotypes)
   } else {
-    line_colors <- colorRampPalette(c("navy", "steelblue"))(n_genotypes)
+    line_colors <- colorRampPalette(c("navy", "dodgerblue3"))(n_genotypes)
   }
   fill_colors <- adjustcolor(line_colors, alpha.f = 0.1)
   
@@ -19033,7 +19033,7 @@ make_chimerax_script <- function(proteins_df, complex_name) {
   )
   for (i in seq_len(nrow(proteins_df))) {
     chain_id <- LETTERS[i]
-    color <- if (proteins_df$is_broken[i]) "red" else "steelblue"
+    color <- if (proteins_df$is_broken[i]) "red" else "dodgerblue3"
     lfc <- if (!is.na(proteins_df$log2FC[i])) round(proteins_df$log2FC[i], 2) else "NA"
     lines <- c(lines, 
       paste0("# Chain ", chain_id, ": ", proteins_df$Gene[i], " (log2FC=", lfc, ", broken=", proteins_df$is_broken[i], ")"),
@@ -19379,7 +19379,7 @@ generate_chimerax_script <- function(complex_id, genotype, neuron,
     "",
     "# --- Color scheme ---",
     "# WT structure: grey for retained, red for broken chain(s)",
-    "# KO structure: steelblue",
+    "# KO structure: dodgerblue3",
     "",
     "color #1 darkgrey"
   )
@@ -19391,7 +19391,7 @@ generate_chimerax_script <- function(complex_id, genotype, neuron,
   
   lines <- c(lines,
     "",
-    "color #2 steelblue",
+    "color #2 dodgerblue3",
     "",
     "# --- Display settings ---",
     "set bgColor white",
@@ -19416,7 +19416,7 @@ generate_chimerax_script <- function(complex_id, genotype, neuron,
     paste0("# matchmaker #2 to #1"),
     paste0("# color #1 darkgrey"),
     paste0("# color #1/", paste(broken_chains, collapse = " red; color #1/"), " red"),
-    paste0("# color #2 steelblue"),
+    paste0("# color #2 dodgerblue3"),
     paste0("# set bgColor white"),
     paste0("# lighting soft"),
     paste0("# view orient")
@@ -21795,7 +21795,7 @@ message("Generating baseline visualizations...")
 
 # Degree distribution
 p_degree_dist <- ggplot(node_metrics_baseline, aes(x = degree)) +
-geom_histogram(bins = 50, fill = "steelblue", color = "black", linewidth = 0.2) +
+geom_histogram(bins = 50, fill = "dodgerblue3", color = "black", linewidth = 0.2) +
 geom_vline(xintercept = degree_threshold_top10, linetype = "dashed", color = "red", linewidth = 0.5) +
 annotate("text", x = degree_threshold_top10 + 5, y = Inf, label = "Top 10%", vjust = 2, hjust = 0, size = 2.5, color = "red") +
 scale_x_log10() +
