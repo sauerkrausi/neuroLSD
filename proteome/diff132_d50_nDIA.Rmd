@@ -11856,7 +11856,7 @@ message("Generating score scatter plots...")
 overlap_for_scatter <- master_ppi %>% dplyr::filter(in_both_predictions)
 
 p_afm_spoc <- ggplot(overlap_for_scatter, aes(x = AFMprob, y = SPOC_score)) +
-  geom_point(alpha = 0.3, size = 0.5, color = "steelblue") +
+  geom_point(alpha = 0.3, size = 0.5, color = "dodgerblue3") +
   geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
   labs(title = paste0("AFMprob vs SPOC (n=", nrow(overlap_for_scatter), ", r=", round(cor(overlap_for_scatter$AFMprob, overlap_for_scatter$SPOC_score, use = "complete.obs"), 2), ")"), x = "AFMprob (Baker)", y = "SPOC score (Predictomes.org)") +
   theme_bw(base_size = 6) +
@@ -11867,7 +11867,7 @@ ggsave(file.path(out_dir_ppi_dual, "qc/plots", "scatter_AFMprob_vs_SPOC.pdf"), p
 
 # AFMprob vs ipTM
 p_afm_iptm <- ggplot(overlap_for_scatter, aes(x = AFMprob, y = ipTM_max)) +
-  geom_point(alpha = 0.3, size = 0.5, color = "steelblue") +
+  geom_point(alpha = 0.3, size = 0.5, color = "dodgerblue3") +
   geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
   labs(title = paste0("AFMprob vs ipTM (n=", nrow(overlap_for_scatter), ", r=", round(cor(overlap_for_scatter$AFMprob, overlap_for_scatter$ipTM_max, use = "complete.obs"), 2), ")"), x = "AFMprob (Baker)", y = "ipTM max (Predictomes.org)") +
   theme_bw(base_size = 6) +
@@ -13111,7 +13111,7 @@ cp_summary <- data.frame(
 p_cp_validation <- ggplot(cp_summary, aes(x = category, y = n, fill = category)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Strict match (3/3)" = "#4DAF4A", "Relaxed match (2/3)" = "#FFFF33", "Novel (no match)" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Strict match (3/3)" = "#D32F2F", "Relaxed match (2/3)" = "#FF8A80", "Novel (no match)" = "#FFEBEE"), guide = "none") +
   labs(title = "Trimer validation against ComplexPortal", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
@@ -13138,7 +13138,7 @@ scores_by_cp <- trimer_evidence %>%
 p_scores_by_cp <- ggplot(scores_by_cp, aes(x = cp_status, y = score_value, fill = cp_status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
   facet_wrap(~score_type, scales = "free_y") +
-  scale_fill_manual(values = c("Strict (3/3)" = "#4DAF4A", "Relaxed (2/3)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Strict (3/3)" = "#D32F2F", "Relaxed (2/3)" = "#FF8A80", "Novel" = "#FFEBEE"), guide = "none") +
   labs(title = "Trimer scores by ComplexPortal validation status", x = NULL, y = "Score") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
@@ -13577,7 +13577,7 @@ cp_summary_tet <- tetramer_evidence %>%
 p_cp_tet <- ggplot(cp_summary_tet, aes(x = cp_status, y = n, fill = cp_status)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Strict (4/4)" = "#4DAF4A", "Relaxed (3/4)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Strict (4/4)" = "#D32F2F", "Relaxed (3/4)" = "#FF8A80", "Novel" = "#FFEBEE"), guide = "none") +
   labs(title = "Tetramer validation against ComplexPortal", x = NULL, y = "Number of tetramers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
@@ -13595,7 +13595,7 @@ scores_by_cp_tet <- tetramer_evidence %>%
 p_scores_cp_tet <- ggplot(scores_by_cp_tet, aes(x = cp_status, y = score_value, fill = cp_status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
   facet_wrap(~score_type, scales = "free_y", ncol = 3) +
-  scale_fill_manual(values = c("Strict (4/4)" = "#4DAF4A", "Relaxed (3/4)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Strict (4/4)" = "#D32F2F", "Relaxed (3/4)" = "#FF8A80", "Novel" = "#FFEBEE"), guide = "none") +
   labs(title = "Tetramer scores by ComplexPortal status", x = NULL, y = "Score") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
@@ -14664,7 +14664,7 @@ cp_summary_complex <- complex_evidence %>%
 p_cp_complex <- ggplot(cp_summary_complex, aes(x = cp_status, y = n, fill = cp_status)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(n, " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Strict" = "#4DAF4A", "Relaxed (>=50%)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Strict" = "#D32F2F", "Relaxed (>=50%)" = "#FF8A80", "Novel" = "#FFEBEE"), guide = "none") +
   labs(title = "Complex validation against ComplexPortal", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
