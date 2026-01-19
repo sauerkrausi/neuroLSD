@@ -12188,18 +12188,6 @@ p_degree_hist <- ggplot(degree_df, aes(x = degree)) +
 
 ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree.pdf"), p_degree_hist, width = 4, height = 4, device = cairo_pdf)
 
-# Log-scale version
-p_degree_log <- ggplot(degree_df, aes(x = degree)) +
-  geom_histogram(binwidth = 0.1, fill = "dodgerblue3", color = "black", linewidth = 0.2) +
-  scale_x_log10() +
-  scale_y_log10() +
-  labs(title = "Node degree distribution (log-log)", x = "Degree (log10)", y = "Count (log10)") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA))
-
-ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_loglog.pdf"), p_degree_log, width = 4, height = 4, device = cairo_pdf)
-
 
 # --- QC Plot 4: Score distributions by tier (baseline) ---
 score_cols <- c("RFprob", "AFMprob", "SPOC_score", "ipTM_max")
@@ -12256,7 +12244,7 @@ plot_score_density_by_organelle <- function(df, score_col, org_colors, out_dir) 
           panel.border = element_rect(color = "black", fill = NA), 
           legend.key.size = unit(0.25, "cm"), legend.position = "right")
   
-  ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")), p, width = 7, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")), p, width = 5, height = 4, device = cairo_pdf)
 }
 
 for (sc in score_cols) {
@@ -12505,6 +12493,7 @@ total_degree <- degree_by_tier %>%
   dplyr::group_by(gene) %>%
   dplyr::summarise(total_degree = sum(degree), .groups = "drop")
 
+
 # Plot 1: Degree distribution faceted by tier
 p_degree_by_tier <- ggplot(degree_by_tier, aes(x = degree, fill = confidence_tier)) +
   geom_histogram(binwidth = 1, color = "black", linewidth = 0.2) +
@@ -12515,7 +12504,8 @@ p_degree_by_tier <- ggplot(degree_by_tier, aes(x = degree, fill = confidence_tie
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), strip.background = element_rect(fill = "white", color = "black"))
 
-ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_by_tier.pdf"), p_degree_by_tier, width = 4, height = 6, device = cairo_pdf)
+ggsave(file.path(out_dir_baseline, "qc", "histogram_node_degree_by_tier.pdf"), p_degree_by_tier, width = 3, height = 6, device = cairo_pdf)
+
 
 # Plot 2: For high-degree nodes, what's their tier composition?
 high_degree_genes <- total_degree %>% dplyr::filter(total_degree >= 10) %>% dplyr::pull(gene)
@@ -12534,6 +12524,7 @@ hub_tier_summary <- tier_composition_hubs %>%
 
 message("Hub proteins (degree >= 10) tier composition:")
 print(hub_tier_summary)
+
 
 # Plot 3: Mean score vs degree
 degree_with_scores <- baseline_ppi %>%
