@@ -14940,6 +14940,7 @@ library(data.table)
 library(pheatmap)
 library(RColorBrewer)
 library(ggrepel)
+# install.packages("ggtern")
 library(ggtern)  # for ternary plots
 library(scales)
 library(igraph)
@@ -15948,10 +15949,11 @@ p_5_4 <- ggplot(vuln_by_dc, aes(x = level, y = mean_frac, fill = DiseaseClass)) 
 save_plot_with_sourcedata(p_5_4, "plots/disease_class/barplot_vuln_comparison_levels", vuln_by_dc, width = 12, height = 6)
 
 message("Module 5 complete: Complex vulnerability analysis")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 6: Ternary Plots
+## Ternary Plots
+```{r}
 # -----------------------------------------------------------------------------
 # Purpose: Visualize PPI loss distribution across 3 annotation categories
 # Creates both user-selected triplets and all possible combinations
@@ -16083,10 +16085,11 @@ for (triplet in all_triplets) {
 }
 
 message("Module 6 complete: Ternary plots")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 7: Per-KO QC Plots
+## Per-KO QC Plots
+```{r}
 # -----------------------------------------------------------------------------
 # Purpose: QC plots per genotype x neuron to verify accuracy doesn't drop in KO context
 # Includes: bubble plots, per-annotation barplots, tier distribution checks
@@ -16178,12 +16181,11 @@ p_7_3 <- ggplot(tier_vuln, aes(x = genotype, y = frac_lost, fill = confidence_ti
 save_plot_with_sourcedata(p_7_3, "plots/global/barplot_loss_by_tier", tier_vuln, width = 12, height = 8)
 
 message("Module 7 complete: Per-KO QC plots")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 8: Master Summary Statistics
-# -----------------------------------------------------------------------------
-
+## Master Summary Statistics
+```{r}
 message("Generating master summary statistics...")
 
 # Combine all summaries into master table
@@ -16263,10 +16265,12 @@ write_csv(global_summary, file.path(out_dir_vuln, "tables", "global_summary_for_
 message("  Saved: global_summary_for_methods.csv")
 
 message("Module 8 complete: Master summary statistics")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 9: User-Defined Ternary Plot Function
+
+## User-Defined Ternary Plot Function
+```{r}
 # -----------------------------------------------------------------------------
 # Purpose: Provide function for user to create custom ternary plots
 # Usage: plot_custom_ternary(c("Mito", "Lysosome", "SynGO"), neuron = "iDA")
