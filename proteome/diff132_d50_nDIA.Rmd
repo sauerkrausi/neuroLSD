@@ -3525,8 +3525,8 @@ plot_diff_markers <- function(genes, data, title_text) {
   if (nrow(plot_df) == 0) return(NULL)
   
   ggplot(plot_df, aes(x = genotype, y = mean_intensity, fill = neuron)) +
-    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-    geom_errorbar(aes(ymin = mean_intensity - sd_intensity, ymax = mean_intensity + sd_intensity), position = position_dodge(width = 0.8), width = 0.2) +
+    geom_bar(stat = "identity", position = position_dodge(width = 1), width = 0.7) +
+    geom_errorbar(aes(ymin = mean_intensity - sd_intensity, ymax = mean_intensity + sd_intensity), position = position_dodge(width = 1), width = 0.2) +
     scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80")) +
     facet_wrap(~Genes, scales = "free_y") +
     labs(title = title_text, x = "Genotype", y = "Mean Intensity") +
@@ -3566,8 +3566,8 @@ calc_annotation_avg_log2 <- function(genes, data) {
 # --- Helper function: plot annotation average (log2)
 plot_annotation_avg_log2 <- function(data, title_text) {
   ggplot(data, aes(x = genotype, y = log2_intensity, fill = neuron)) +
-    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-    geom_errorbar(aes(ymin = log2_intensity - log2_sem_lower, ymax = log2_intensity + log2_sem_upper), position = position_dodge(width = 0.8), width = 0.2) +
+    geom_bar(stat = "identity", position = position_dodge(width = 1), width = 0.7) +
+    geom_errorbar(aes(ymin = log2_intensity - log2_sem_lower, ymax = log2_intensity + log2_sem_upper), position = position_dodge(width = 1), width = 0.2) +
     scale_fill_manual(values = c("iN" = "grey60", "iDA" = "grey80")) +
     labs(title = title_text, x = "Genotype", y = expression(log[2](Mean~Intensity))) +
     theme_bw(base_size = 6) +
@@ -15417,9 +15417,9 @@ disease_org_summary <- ko_summary_by_organelle %>%
   )
 
 p_2_7 <- ggplot(disease_org_summary, aes(x = shared_organelle, y = mean_frac_lost, fill = DiseaseClass)) +
-  geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
+  geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
   geom_errorbar(aes(ymin = mean_frac_lost - se_frac_lost, ymax = mean_frac_lost + se_frac_lost),
-                position = position_dodge(width = 0.8), width = 0.3, linewidth = 0.3) +
+                position = position_dodge(width = 1), width = 0.3, linewidth = 0.3) +
   facet_wrap(~~shared_organelle, ncol = 1) +
   scale_fill_manual(values = disease_class_palette) +
   labs(x = "Organelle annotation", y = "Mean fraction PPIs lost",
@@ -15634,9 +15634,9 @@ trimer_cp_summary <- trimer_ko_states %>%
   )
 
 p_3_5 <- ggplot(trimer_cp_summary, aes(x = genotype, y = frac_disrupted, fill = cp_status)) +
-  geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
+  geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
   facet_wrap(~neuron, ncol = 1) +
-  scale_fill_manual(values = c(CP_strict = "#4DAF4A", CP_relaxed = "#377EB8", de_novo = "#E41A1C"),
+  scale_fill_manual(values = c(CP_strict = "#D32F2F", CP_relaxed = "#FF8A80", de_novo = "#FFEBEE"),
                     name = "Validation") +
   labs(x = NULL, y = "Fraction disrupted", title = "Trimer disruption by ComplexPortal status") +
   theme_bw(base_size = 6) +
@@ -15659,7 +15659,7 @@ trimer_tier_summary <- trimer_ko_states %>%
   )
 
 p_3_6 <- ggplot(trimer_tier_summary, aes(x = genotype, y = frac_disrupted, fill = tier_composition)) +
-  geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
+  geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
   facet_wrap(~neuron, ncol = 1) +
   scale_fill_brewer(palette = "Set2", name = "Tier composition") +
   labs(x = NULL, y = "Fraction disrupted", title = "Trimer disruption by confidence tier") +
@@ -15802,9 +15802,9 @@ tetramer_cp_summary <- tetramer_ko_states %>%
   )
 
 p_4_5 <- ggplot(tetramer_cp_summary, aes(x = genotype, y = frac_disrupted, fill = cp_status)) +
-  geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
+  geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
   facet_wrap(~neuron, ncol = 1) +
-  scale_fill_manual(values = c(CP_strict = "#4DAF4A", CP_relaxed = "#377EB8", de_novo = "#E41A1C")) +
+  scale_fill_manual(values = c(CP_strict = "#D32F2F", CP_relaxed = "#FF8A80", de_novo = "#FFEBEE")) +
   labs(x = NULL, y = "Fraction disrupted", title = "Tetramer disruption by ComplexPortal status") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
@@ -15910,13 +15910,13 @@ p_5_3 <- ggplot(complex_scatter, aes(x = iN, y = iDA)) +
   geom_point(aes(fill = DiseaseClass), shape = 21, size = 3, stroke = 0.5) +
   geom_text_repel(aes(label = genotype), size = 2.5, max.overlaps = 30) +
   scale_fill_manual(values = disease_class_palette) +
-  coord_fixed(ratio = 1) +
+  coord_fixed(ratio = 3) +
   labs(x = "Fraction disrupted (iN)", y = "Fraction disrupted (iDA)",
        title = "Complex vulnerability: iN vs iDA") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
-save_plot_with_sourcedata(p_5_3, "plots/global/scatter_complex_vuln_iN_vs_iDA", complex_scatter, width = 7, height = 6)
+save_plot_with_sourcedata(p_5_3, "plots/global/scatter_complex_vuln_iN_vs_iDA", complex_scatter, width = 6, height = 6)
 
 # --- 5.4 Disease class average vulnerability comparison: PPI vs Trimer vs Tetramer vs Complex ---
 vuln_comparison <- dplyr::bind_rows(
@@ -16109,7 +16109,7 @@ for (geno in unique(ko_summary_by_organelle$genotype)) {
   if (nrow(plot_data) == 0) next
 
   p <- ggplot(plot_data, aes(x = reorder(shared_organelle, -frac_lost), y = frac_lost, fill = neuron)) +
-    geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
+    geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
     scale_fill_manual(values = neuron_palette) +
     labs(x = "Organelle", y = "Fraction PPIs lost",
          title = paste0("PPI loss by organelle: ", geno)) +
@@ -16171,7 +16171,7 @@ tier_vuln <- ko_edge_states %>%
   )
 
 p_7_3 <- ggplot(tier_vuln, aes(x = genotype, y = frac_lost, fill = confidence_tier)) +
-  geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
+  geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
   facet_wrap(~neuron, ncol = 1) +
   scale_fill_manual(values = c(gold = "#FFD700", silver = "#C0C0C0"), name = "Tier") +
   labs(x = NULL, y = "Fraction PPIs lost",
