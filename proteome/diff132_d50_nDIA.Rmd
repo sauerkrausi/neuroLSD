@@ -15668,12 +15668,11 @@ p_3_6 <- ggplot(trimer_tier_summary, aes(x = genotype, y = frac_disrupted, fill 
 save_plot_with_sourcedata(p_3_6, "plots/global/barplot_trimer_by_tier", trimer_tier_summary, width = 12, height = 8)
 
 message("Module 3 complete: Trimer vulnerability analysis")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 4: Tetramer Vulnerability Analysis
-# -----------------------------------------------------------------------------
-
+## Tetramer Vulnerability Analysis
+```{r}
 message("Analyzing tetramer vulnerability...")
 
 tetramer_genes <- tetramer_evidence %>%
@@ -15808,12 +15807,11 @@ p_4_5 <- ggplot(tetramer_cp_summary, aes(x = genotype, y = frac_disrupted, fill 
 save_plot_with_sourcedata(p_4_5, "plots/global/barplot_tetramer_by_cp_status", tetramer_cp_summary, width = 12, height = 8)
 
 message("Module 4 complete: Tetramer vulnerability analysis")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 5: Complex Vulnerability Analysis
-# -----------------------------------------------------------------------------
-
+## Complex Vulnerability Analysis
+```{r}
 message("Analyzing complex vulnerability...")
 
 # Parse complex members
