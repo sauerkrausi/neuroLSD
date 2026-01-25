@@ -14980,7 +14980,7 @@ organelle_colors <- setNames(
 )
 
 # --- Directory Setup ---
-out_dir_vuln <- file.path(out_dir_PPI, "KOxNeuron_eval")
+out_dir_vuln <- file.path(out_dir_ppi_dual, "KOxNeuron_eval")
 dir.create(file.path(out_dir_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/ternary"), recursive = TRUE, showWarnings = FALSE)
