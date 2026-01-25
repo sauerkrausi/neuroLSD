@@ -14923,6 +14923,7 @@ message("Done. Generated ", nrow(complexes_to_plot), " network plots.")
 
 
 # KO x Neuron PPI Vulnerability Analysis
+## Setup and Configuration
 ```{r}
 # =============================================================================
 # Purpose: Analyze PPI/trimer/tetramer/complex vulnerability across 23 LSD KOs
@@ -14931,7 +14932,7 @@ message("Done. Generated ", nrow(complexes_to_plot), " network plots.")
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Module 0: Setup and Configuration
+# Setup and Configuration
 # -----------------------------------------------------------------------------
 
 library(tidyverse)
@@ -15029,10 +15030,11 @@ get_shared_organelles <- function(df, org_tags) {
   }
   shared
 }
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 1: Build KO Edge States Table
+## Build KO Edge States Table
+```{r}
 # -----------------------------------------------------------------------------
 # Purpose: For each PPI edge (gold+silver), determine state per KO x neuron
 # State: "lost" if either partner log2FC < drop_thresh, else "retained"
@@ -15166,12 +15168,12 @@ ko_summary_by_organelle <- ko_edge_states %>%
 write_csv(ko_summary_by_organelle, file.path(out_dir_vuln, "tables", "ko_summary_by_organelle.csv"))
 
 message("Module 1 complete: KO edge states table built")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 2: PPI Vulnerability Visualizations
-# -----------------------------------------------------------------------------
 
+## PPI Vulnerability Visualizations
+```{r}
 message("Generating PPI vulnerability visualizations...")
 
 # --- 2.1 Stacked Barplot: Lost/Retained per KO x Neuron (absolute counts) ---
@@ -15476,10 +15478,11 @@ p_2_8_norm <- ggplot(pie_data_normalized, aes(x = DiseaseClass, y = loss_rate, f
 save_plot_with_sourcedata(p_2_8_norm, "plots/disease_class/barplot_loss_rate_normalized", pie_data_normalized, width = 10, height = 5)
 
 message("Module 2 complete: PPI vulnerability visualizations")
+```
 
 
-# -----------------------------------------------------------------------------
-# Module 3: Trimer Vulnerability Analysis
+## Trimer Vulnerability Analysis
+```{r}
 # -----------------------------------------------------------------------------
 # Purpose: Determine which trimers are disrupted per KO x neuron
 # A trimer is "disrupted" if any of its 3 edges is lost (any member log2FC < thresh)
