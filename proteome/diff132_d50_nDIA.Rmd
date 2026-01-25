@@ -3429,7 +3429,7 @@ d50_ascd_ann_plot <- ggplot(ascd_avg_ann_fc_summary, aes(x = group, y = avg_log2
   geom_line(aes(group = 1), color = "red", linewidth = 0.9) +
   geom_point(color = "red", size = 0.8) +
   facet_wrap(~ neuron, scales = "free_x") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
@@ -3463,7 +3463,7 @@ d50_ascd_ann_plot_top6 <- ggplot(ascd_top6_summary, aes(x = group, y = avg_log2F
   geom_line(aes(group = 1), color = "red", linewidth = 0.9) +
   geom_point(color = "red", size = 0.8) +
   facet_wrap(~ neuron, scales = "free_x") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
@@ -3635,7 +3635,7 @@ d50_vATPase_plot <- ggplot(vatpase_long_df, aes(x = group, y = log2FC, group = G
             aes(x = group, y = avg_log2FC, group = 1),
             color = "red", size = 1.2, inherit.aes = FALSE) +
   facet_wrap(~neuron, scales = "free_x") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
@@ -3763,7 +3763,7 @@ make_vatpase_color_table <- function(
       ) +
       scale_x_continuous(breaks = c(domain_vec[1], 0, domain_vec[2])) +
       labs(x = "log2FC", y = NULL, title = NULL) +
-      theme_minimal(base_size = 8) +
+      theme_minimal(base_size = 6) +
       theme(
         panel.grid = element_blank(),
         axis.text.y = element_blank(),
@@ -3863,7 +3863,7 @@ d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = G
             aes(x = group, y = avg_log2FC, group = 1),
             color = "red", size = 1.2, inherit.aes = FALSE) +
   facet_wrap(~neuron, scales = "free_x") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
@@ -3926,7 +3926,7 @@ d50_svdocking_plot <- ggplot(svdocking_summary,
   geom_line(color = "red", linewidth = 0.9) +
   geom_point(color = "red", size = 0.8) +
   facet_wrap(~ neuron, scales = "free_x") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid = element_blank()
@@ -7176,7 +7176,7 @@ plot_bar_corr_per_annotation_multi <- function(corr_mat, selected_genotypes, ann
         title = paste("Annotation Correlation for", geno),
         x = "Annotation", y = "Pearson Correlation (±SEM)"
       ) +
-      theme_bw(base_size = 8) +
+      theme_bw(base_size = 6) +
       theme(
         axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
         panel.grid = element_blank()
@@ -10119,7 +10119,7 @@ ggplot(umap_long, aes(V1, V2, color = Membership)) +
   facet_wrap(~ Organelle, ncol = 4) +
   labs(title = "UMAP: Organelle Membership by Protein",
        x = "UMAP1", y = "UMAP2", color = "Member") +
-  theme_bw(base_size = 8)
+  theme_bw(base_size = 6)
 
 
 
@@ -15192,7 +15192,7 @@ p_2_1 <- ggplot(plot_data_2_1, aes(x = genotype, y = n, fill = state)) +
   facet_wrap(~neuron, ncol = 1, scales = "free_y") +
   scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
   labs(x = NULL, y = "Number of PPI edges", title = "PPI edge states per KO (absolute)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
@@ -15217,7 +15217,7 @@ p_2_2 <- ggplot(plot_data_2_2, aes(x = genotype, y = pct, fill = state)) +
   facet_wrap(~neuron, ncol = 1) +
   scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
   labs(x = NULL, y = "Percentage of PPI edges", title = "PPI edge states per KO (percentage)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
@@ -15399,7 +15399,7 @@ p_2_6 <- ggplot(scatter_data, aes(x = iN, y = iDA)) +
   coord_fixed(ratio = 1) +
   labs(x = "Fraction lost PPIs (iN)", y = "Fraction lost PPIs (iDA)",
        title = "PPI vulnerability: iN vs iDA") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
 save_plot_with_sourcedata(p_2_6, "plots/global/scatter_ppi_loss_iN_vs_iDA", scatter_data, width = 7, height = 6)
@@ -15420,11 +15420,11 @@ p_2_7 <- ggplot(disease_org_summary, aes(x = shared_organelle, y = mean_frac_los
   geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
   geom_errorbar(aes(ymin = mean_frac_lost - se_frac_lost, ymax = mean_frac_lost + se_frac_lost),
                 position = position_dodge(width = 0.8), width = 0.3, linewidth = 0.3) +
-  facet_wrap(~neuron, ncol = 1) +
+  facet_wrap(~~shared_organelle, ncol = 1) +
   scale_fill_manual(values = disease_class_palette) +
   labs(x = "Organelle annotation", y = "Mean fraction PPIs lost",
        title = "Disease class vulnerability by organelle") +
-  theme_bw(base_size = 7) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -15458,11 +15458,11 @@ pie_data_normalized <- pie_data %>%
 for (nt in c("iN", "iDA")) {
   pd <- pie_data %>% dplyr::filter(neuron == nt)
   p_pie <- ggplot(pd, aes(x = "", y = pct, fill = DiseaseClass)) +
-    geom_col(width = 1, color = "white") +
+    geom_col(width = 1, color = "black") +
     coord_polar(theta = "y") +
     scale_fill_manual(values = disease_class_palette) +
     labs(title = paste0("Lost PPIs by disease class (", nt, ")")) +
-    theme_void(base_size = 8) +
+    theme_void(base_size = 6) +
     theme(legend.position = "right")
 
   save_plot_with_sourcedata(p_pie, paste0("plots/disease_class/pie_lost_ppi_", nt), pd, width = 6, height = 5)
@@ -15474,7 +15474,7 @@ p_2_8_norm <- ggplot(pie_data_normalized, aes(x = DiseaseClass, y = loss_rate, f
   facet_wrap(~neuron) +
   scale_fill_manual(values = disease_class_palette, guide = "none") +
   labs(x = NULL, y = "Loss rate (%)", title = "PPI loss rate by disease class (normalized)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1)
@@ -15568,7 +15568,7 @@ p_3_2 <- ggplot(plot_data_3_2, aes(x = genotype, y = n, fill = state)) +
   facet_wrap(~neuron, ncol = 1, scales = "free_y") +
   scale_fill_manual(values = c(intact = "grey80", disrupted = "#C51B7D")) +
   labs(x = NULL, y = "Number of trimers", title = "Trimer states per KO (absolute)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -15591,7 +15591,7 @@ p_3_3 <- ggplot(plot_data_3_3, aes(x = genotype, y = pct, fill = state)) +
   facet_wrap(~neuron, ncol = 1) +
   scale_fill_manual(values = c(intact = "grey80", disrupted = "#C51B7D")) +
   labs(x = NULL, y = "Percentage of trimers", title = "Trimer states per KO (percentage)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -15613,7 +15613,7 @@ p_3_4 <- ggplot(trimer_scatter, aes(x = iN, y = iDA)) +
   coord_fixed(ratio = 1) +
   labs(x = "Fraction disrupted (iN)", y = "Fraction disrupted (iDA)",
        title = "Trimer vulnerability: iN vs iDA") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
 save_plot_with_sourcedata(p_3_4, "plots/global/scatter_trimer_vuln_iN_vs_iDA", trimer_scatter, width = 7, height = 6)
@@ -15639,7 +15639,7 @@ p_3_5 <- ggplot(trimer_cp_summary, aes(x = genotype, y = frac_disrupted, fill = 
   scale_fill_manual(values = c(CP_strict = "#4DAF4A", CP_relaxed = "#377EB8", de_novo = "#E41A1C"),
                     name = "Validation") +
   labs(x = NULL, y = "Fraction disrupted", title = "Trimer disruption by ComplexPortal status") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -15663,7 +15663,7 @@ p_3_6 <- ggplot(trimer_tier_summary, aes(x = genotype, y = frac_disrupted, fill 
   facet_wrap(~neuron, ncol = 1) +
   scale_fill_brewer(palette = "Set2", name = "Tier composition") +
   labs(x = NULL, y = "Fraction disrupted", title = "Trimer disruption by confidence tier") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -15745,7 +15745,7 @@ p_4_2 <- ggplot(plot_data_4_2, aes(x = genotype, y = n, fill = state)) +
   facet_wrap(~neuron, ncol = 1, scales = "free_y") +
   scale_fill_manual(values = c(intact = "grey80", disrupted = "#C51B7D")) +
   labs(x = NULL, y = "Number of tetramers", title = "Tetramer states per KO (absolute)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
 
 save_plot_with_sourcedata(p_4_2, "plots/global/barplot_tetramer_states_absolute", plot_data_4_2, width = 10, height = 8)
@@ -15763,7 +15763,7 @@ p_4_3 <- ggplot(plot_data_4_3, aes(x = genotype, y = pct, fill = state)) +
   facet_wrap(~neuron, ncol = 1) +
   scale_fill_manual(values = c(intact = "grey80", disrupted = "#C51B7D")) +
   labs(x = NULL, y = "Percentage of tetramers", title = "Tetramer states per KO (percentage)") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
 
 save_plot_with_sourcedata(p_4_3, "plots/global/barplot_tetramer_states_percentage", plot_data_4_3, width = 10, height = 8)
@@ -15781,7 +15781,7 @@ p_4_4 <- ggplot(tetramer_scatter, aes(x = iN, y = iDA)) +
   coord_fixed(ratio = 1) +
   labs(x = "Fraction disrupted (iN)", y = "Fraction disrupted (iDA)",
        title = "Tetramer vulnerability: iN vs iDA") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
 save_plot_with_sourcedata(p_4_4, "plots/global/scatter_tetramer_vuln_iN_vs_iDA", tetramer_scatter, width = 7, height = 6)
@@ -15806,7 +15806,7 @@ p_4_5 <- ggplot(tetramer_cp_summary, aes(x = genotype, y = frac_disrupted, fill 
   facet_wrap(~neuron, ncol = 1) +
   scale_fill_manual(values = c(CP_strict = "#4DAF4A", CP_relaxed = "#377EB8", de_novo = "#E41A1C")) +
   labs(x = NULL, y = "Fraction disrupted", title = "Tetramer disruption by ComplexPortal status") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
 
 save_plot_with_sourcedata(p_4_5, "plots/global/barplot_tetramer_by_cp_status", tetramer_cp_summary, width = 12, height = 8)
@@ -15895,7 +15895,7 @@ p_5_2 <- ggplot(plot_data_5_2, aes(x = genotype, y = n, fill = state)) +
   facet_wrap(~neuron, ncol = 1, scales = "free_y") +
   scale_fill_manual(values = c(intact = "grey80", disrupted = "#C51B7D")) +
   labs(x = NULL, y = "Number of complexes", title = "Complex states per KO") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
 
 save_plot_with_sourcedata(p_5_2, "plots/global/barplot_complex_states", plot_data_5_2, width = 10, height = 8)
@@ -15913,7 +15913,7 @@ p_5_3 <- ggplot(complex_scatter, aes(x = iN, y = iDA)) +
   coord_fixed(ratio = 1) +
   labs(x = "Fraction disrupted (iN)", y = "Fraction disrupted (iDA)",
        title = "Complex vulnerability: iN vs iDA") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(panel.grid = element_blank())
 
 save_plot_with_sourcedata(p_5_3, "plots/global/scatter_complex_vuln_iN_vs_iDA", complex_scatter, width = 7, height = 6)
@@ -15937,14 +15937,14 @@ vuln_by_dc <- vuln_comparison %>%
   )
 
 p_5_4 <- ggplot(vuln_by_dc, aes(x = level, y = mean_frac, fill = DiseaseClass)) +
-  geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.2) +
+  geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
   geom_errorbar(aes(ymin = mean_frac - se_frac, ymax = mean_frac + se_frac),
-                position = position_dodge(width = 0.8), width = 0.3, linewidth = 0.3) +
+                position = position_dodge(width = 1), width = 0.3, linewidth = 0.3) +
   facet_wrap(~neuron) +
   scale_fill_manual(values = disease_class_palette) +
   labs(x = "Analysis level", y = "Mean fraction disrupted",
        title = "Disease class vulnerability across PPI/Trimer/Tetramer/Complex") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     legend.key.size = unit(0.4, "cm")
@@ -16019,7 +16019,7 @@ make_ternary_plot <- function(df_org_summary, org1, org2, org3, neuron_filter = 
     labs(title = paste0("PPI loss: ", org1, " / ", org2, " / ", org3,
                         ifelse(!is.null(neuron_filter), paste0(" (", neuron_filter, ")"), ""),
                         ifelse(!is.null(dc_filter), paste0(" - ", dc_filter), ""))) +
-    theme_bw(base_size = 8) +
+    theme_bw(base_size = 6) +
     theme_showarrows() +
     theme(legend.key.size = unit(0.4, "cm"))
 
@@ -16113,7 +16113,7 @@ for (geno in unique(ko_summary_by_organelle$genotype)) {
     scale_fill_manual(values = neuron_palette) +
     labs(x = "Organelle", y = "Fraction PPIs lost",
          title = paste0("PPI loss by organelle: ", geno)) +
-    theme_bw(base_size = 8) +
+    theme_bw(base_size = 6) +
     theme(
       panel.grid = element_blank(),
       axis.text.x = element_text(angle = 45, hjust = 1)
@@ -16150,7 +16150,7 @@ for (geno in unique(bubble_data$genotype)) {
     coord_fixed(ratio = 1) +
     labs(x = "Fraction lost (iN)", y = "Fraction lost (iDA)",
          title = paste0("PPI loss by organelle: ", geno)) +
-    theme_bw(base_size = 8) +
+    theme_bw(base_size = 6) +
     theme(panel.grid = element_blank())
 
   suppressMessages({
@@ -16176,7 +16176,7 @@ p_7_3 <- ggplot(tier_vuln, aes(x = genotype, y = frac_lost, fill = confidence_ti
   scale_fill_manual(values = c(gold = "#FFD700", silver = "#C0C0C0"), name = "Tier") +
   labs(x = NULL, y = "Fraction PPIs lost",
        title = "PPI loss rate by confidence tier") +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1)
@@ -21410,7 +21410,7 @@ p_timecourse_bars <- ggplot(timecourse_summary, aes(x = day, y = n_lost, fill = 
     x = "Differentiation day",
     y = "Number of lost PPIs"
   ) +
-  theme_bw(base_size = 8) +
+  theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(),
     panel.border = element_rect(color = "black", fill = NA),
