@@ -14987,6 +14987,10 @@ dir.create(file.path(out_dir_vuln, "plots/ternary"), recursive = TRUE, showWarni
 dir.create(file.path(out_dir_vuln, "plots/disease_class"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "tables"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/plots/global"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/plots/ternary"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/plots/disease_class"), recursive = TRUE, showWarnings = FALSE)
 
 # --- Helper Functions ---
 
