@@ -16337,8 +16337,8 @@ message("=======================================================================
 
 
 # v3
-
-```{r module0-setup}
+## Setup and Configuration
+```{r{}
 # =============================================================================
 # Libraries
 # =============================================================================
@@ -16481,13 +16481,12 @@ save_heatmap_square <- function(mat, filename, title = "", row_annot = NULL, col
 message("Module 0 complete: Setup done")
 ```
 
----
 
-# Module 1: Build KO Edge States Table
 
+## Build KO Edge States Table
 ```{r module1-edge-states}
 # =============================================================================
-# Module 1: Build KO Edge States Table
+# Build KO Edge States Table
 # =============================================================================
 message("Building KO edge states table...")
 
@@ -16581,17 +16580,12 @@ shared_long <- ko_edge_states %>%
 message("Module 1 complete: KO edge states table built")
 ```
 
----
 
-# Module 2: PPI Vulnerability Visualizations
-
-```{r module2-ppi-visualizations}
-# =============================================================================
-# Module 2: PPI Vulnerability Visualizations
-# =============================================================================
+## PPI Vulnerability Visualizations
+```{r}
+# Plot Barplots of lost PPIs (absolute)
 message("Generating PPI vulnerability visualizations...")
 
-# --- 2.1 Stacked Barplot: absolute counts ---
 plot_data_2_1 <- ko_edge_states %>%
   dplyr::group_by(genotype, neuron, state) %>%
   dplyr::summarise(n = n(), .groups = "drop") %>%
@@ -16605,12 +16599,16 @@ p_2_1 <- ggplot(plot_data_2_1, aes(x = genotype, y = n, fill = state)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         strip.background = element_rect(fill = "white"), legend.position = "right")
+
 save_plot_with_sourcedata(p_2_1, "plots/global/barplot_ppi_states_absolute", plot_data_2_1, width = 10, height = 8)
 
-# --- 2.2 Stacked Barplot: percentage ---
+
 plot_data_2_2 <- ko_edge_states %>%
-  dplyr::group_by(genotype, neuron, state) %>% dplyr::summarise(n = n(), .groups = "drop") %>%
-  dplyr::group_by(genotype, neuron) %>% dplyr::mutate(pct = n / sum(n) * 100) %>% dplyr::ungroup() %>%
+  dplyr::group_by(genotype, neuron, state) %>%
+  dplyr::summarise(n = n(), .groups = "drop") %>%
+  dplyr::group_by(genotype, neuron) %>%
+  dplyr::mutate(pct = n / sum(n) * 100) %>%
+  dplyr::ungroup() %>%
   dplyr::mutate(state = factor(state, levels = c("retained", "lost", "unknown")))
 
 p_2_2 <- ggplot(plot_data_2_2, aes(x = genotype, y = pct, fill = state)) +
@@ -16621,48 +16619,71 @@ p_2_2 <- ggplot(plot_data_2_2, aes(x = genotype, y = pct, fill = state)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         strip.background = element_rect(fill = "white"), legend.position = "right")
+
 save_plot_with_sourcedata(p_2_2, "plots/global/barplot_ppi_states_percentage", plot_data_2_2, width = 10, height = 8)
 
-# --- 2.3 KO x KO correlation heatmap function ---
+# module2-ko-correlation-heatmap-function
 make_ko_correlation_heatmap <- function(df_states, neuron_filter, suffix, out_dir) {
+
   lost_df <- df_states %>%
     dplyr::filter(neuron == neuron_filter) %>%
     dplyr::transmute(genotype, key, lost = as.integer(state == "lost"))
+
   if (nrow(lost_df) == 0) return(invisible(NULL))
 
   lost_wide <- tidyr::pivot_wider(lost_df, names_from = key, values_from = lost, values_fill = 0)
-  lost_mat <- as.data.frame(lost_wide); rownames(lost_mat) <- lost_mat$genotype; lost_mat$genotype <- NULL
+  lost_mat <- as.data.frame(lost_wide)
+  rownames(lost_mat) <- lost_mat$genotype
+  lost_mat$genotype <- NULL
+
   if (nrow(lost_mat) < 2 || ncol(lost_mat) < 2) return(invisible(NULL))
 
   rho <- cor(t(as.matrix(lost_mat)), method = "spearman", use = "pairwise.complete.obs")
 
-  # Row annotation
   annotation_df <- data.frame(genotype = rownames(rho), stringsAsFactors = FALSE) %>%
     dplyr::left_join(disease_map %>% mutate(genotype = sub("_(iN|iDA)$", "", sample)), by = "genotype") %>%
     dplyr::distinct(genotype, .keep_all = TRUE)
   rownames(annotation_df) <- annotation_df$genotype
-  row_annot <- annotation_df %>% dplyr::select(DiseaseClass)
+  annotation_df <- annotation_df %>% dplyr::select(DiseaseClass)
 
-  # Save source data
+  ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(annotation_df$DiseaseClass)))])
+
   write_csv(as.data.frame(rho) %>% rownames_to_column("genotype"),
             file.path(out_dir, "sourcedata", paste0("heatmap_ko_corr_", suffix, "_sourcedata.csv")))
 
-  # Heatmap with ComplexHeatmap
-  col_fun <- colorRamp2(seq(-1, 1, length.out = 101), colorRampPalette(rev(brewer.pal(11, "RdBu")))(101))
-  save_heatmap_square(rho, file.path(out_dir, "plots/global", paste0("heatmap_ko_corr_", suffix, ".pdf")),
-                       title = paste0("KO x KO correlation (", neuron_filter, ")"),
-                       row_annot = row_annot, col_annot = row_annot, col_fun = col_fun,
-                       width = 10, height = 9, cell_size = 12)
+  pdf(file.path(out_dir, "plots/global", paste0("heatmap_ko_corr_", suffix, ".pdf")), width = 10, height = 9)
+  pheatmap::pheatmap(
+    mat = rho,
+    color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(101),
+    breaks = seq(-1, 1, length.out = 102),
+    clustering_distance_rows = as.dist(1 - rho),
+    clustering_distance_cols = as.dist(1 - rho),
+    clustering_method = "ward.D2",
+    annotation_col = annotation_df,
+    annotation_row = annotation_df,
+    annotation_colors = ann_colors,
+    main = paste0("KO x KO correlation (", neuron_filter, ")"),
+    fontsize = 7,
+    cellwidth = 12, cellheight = 12,
+    border_color = NA
+  )
+  dev.off()
+  message("  Saved: heatmap_ko_corr_", suffix, ".pdf")
 }
 
+
+# module2-ko-correlation-heatmaps
 make_ko_correlation_heatmap(ko_edge_states, "iN", "iN", out_dir_vuln)
 make_ko_correlation_heatmap(ko_edge_states, "iDA", "iDA", out_dir_vuln)
 
-# --- 2.4 Combined iN + iDA correlation heatmap ---
+
+# Combined Correlation plot 
 lost_long_combined <- ko_edge_states %>%
   dplyr::mutate(lost = as.integer(state == "lost")) %>%
   dplyr::select(genotype_neuron, genotype, neuron, key, lost)
+
 lost_wide_combined <- tidyr::pivot_wider(lost_long_combined, names_from = key, values_from = lost, values_fill = 0)
+
 rn_comb <- lost_wide_combined$genotype_neuron
 X_comb <- as.matrix(lost_wide_combined[, setdiff(names(lost_wide_combined), c("genotype_neuron", "genotype", "neuron"))])
 rownames(X_comb) <- rn_comb
@@ -16674,59 +16695,93 @@ if (nrow(X_comb) >= 2 && ncol(X_comb) >= 2) {
     dplyr::mutate(neuron = sub("^.+_", "", genotype_neuron)) %>%
     dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
   rownames(annotation_comb) <- annotation_comb$genotype_neuron
-  row_annot_comb <- annotation_comb %>% dplyr::select(neuron, DiseaseClass)
+  annotation_comb <- annotation_comb %>% dplyr::select(neuron, DiseaseClass)
+
+  ann_colors_comb <- list(
+    neuron = neuron_palette,
+    DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(annotation_comb$DiseaseClass)))]
+  )
 
   write_csv(as.data.frame(rho_comb) %>% rownames_to_column("genotype_neuron"),
             file.path(out_dir_vuln, "sourcedata", "heatmap_ko_corr_combined_sourcedata.csv"))
 
-  col_fun <- colorRamp2(seq(-1, 1, length.out = 101), colorRampPalette(rev(brewer.pal(11, "RdBu")))(101))
-  save_heatmap_square(rho_comb, file.path(out_dir_vuln, "plots/global", "heatmap_ko_corr_combined.pdf"),
-                       title = "KO x KO correlation (combined iN + iDA)", row_annot = row_annot_comb,
-                       col_annot = row_annot_comb, col_fun = col_fun, width = 14, height = 13, cell_size = 8)
+  pdf(file.path(out_dir_vuln, "plots/global", "heatmap_ko_corr_combined.pdf"), width = 14, height = 13)
+  pheatmap::pheatmap(
+    mat = rho_comb,
+    color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(101),
+    breaks = seq(-1, 1, length.out = 102),
+    clustering_distance_rows = as.dist(1 - rho_comb),
+    clustering_distance_cols = as.dist(1 - rho_comb),
+    clustering_method = "ward.D2",
+    annotation_col = annotation_comb,
+    annotation_row = annotation_comb,
+    annotation_colors = ann_colors_comb,
+    main = "KO x KO correlation (combined iN + iDA)",
+    fontsize = 5,
+    cellwidth = 8, cellheight = 8,
+    border_color = NA
+  )
+  dev.off()
+  message("  Saved: heatmap_ko_corr_combined.pdf")
 }
 
-# --- 2.5 Heatmap: organelle x KO ---
+
+# Helper functions: organelle-ko-heatmap-function}
+
 make_organelle_ko_heatmap <- function(df_summary, neuron_filter, suffix, out_dir) {
+
   hm_data <- df_summary %>%
     dplyr::filter(neuron == neuron_filter) %>%
     dplyr::select(genotype, shared_organelle, frac_lost) %>%
     tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost, values_fill = NA)
+
   if (nrow(hm_data) < 2) return(invisible(NULL))
 
-  hm_mat <- as.matrix(hm_data[, -1]); rownames(hm_mat) <- hm_data$genotype
+  hm_mat <- as.matrix(hm_data[, -1])
+  rownames(hm_mat) <- hm_data$genotype
 
   annotation_row <- data.frame(genotype = rownames(hm_mat), stringsAsFactors = FALSE) %>%
     dplyr::left_join(disease_map %>% mutate(genotype = sub("_(iN|iDA)$", "", sample)), by = "genotype") %>%
     dplyr::distinct(genotype, .keep_all = TRUE)
   rownames(annotation_row) <- annotation_row$genotype
-  row_annot <- annotation_row %>% dplyr::select(DiseaseClass)
+  annotation_row <- annotation_row %>% dplyr::select(DiseaseClass)
+
+  ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(annotation_row$DiseaseClass)))])
 
   write_csv(hm_data, file.path(out_dir, "sourcedata", paste0("heatmap_organelle_ko_", suffix, "_sourcedata.csv")))
 
-save_heatmap_square(
-  hm_mat,
-  file.path(out_dir, "plots/global",
-            paste0("heatmap_organelle_ko_", suffix, ".pdf")),
-  title = paste0("Fraction PPIs lost by organelle (", neuron_filter, ")"),
-  row_annot = row_annot,
-  color = colorRampPalette(c("white", "#C51B7D"))(100),
-  border_color = NA,
-  fontsize = 6,
-  cellwidth = 10,
-  cellheight = 10,
-  width = 12,
-  height = 10
-)
+  pdf(file.path(out_dir, "plots/global", paste0("heatmap_organelle_ko_", suffix, ".pdf")), width = 12, height = 10)
+  pheatmap::pheatmap(
+    mat = hm_mat,
+    color = colorRampPalette(c("white", "#C51B7D"))(100),
+    border_color = NA,
+    fontsize = 6,
+    cellwidth = 10,
+    cellheight = 10,
+    cluster_rows = TRUE, cluster_cols = TRUE,
+    clustering_method = "ward.D2",
+    annotation_row = annotation_row,
+    annotation_colors = ann_colors,
+    main = paste0("Fraction PPIs lost by organelle (", neuron_filter, ")"),
+  )
+  dev.off()
+  message("  Saved: heatmap_organelle_ko_", suffix, ".pdf")
 }
 
+
+# call Helper functions to make heatmaps organelles / neuron
 make_organelle_ko_heatmap(ko_summary_by_organelle, "iN", "iN", out_dir_vuln)
 make_organelle_ko_heatmap(ko_summary_by_organelle, "iDA", "iDA", out_dir_vuln)
 
-# --- 2.6 Scatter plot: iN vs iDA (SQUARE) ---
+
+# create scatter plot of iN vs iDA
 scatter_data <- ko_summary_global %>%
   dplyr::select(genotype, neuron, frac_lost, DiseaseClass) %>%
   tidyr::pivot_wider(names_from = neuron, values_from = frac_lost) %>%
-  dplyr::mutate(diff = abs(iDA - iN), deviation = ifelse(diff <= 0.05, "within_band", "outside_band"))
+  dplyr::mutate(
+    diff = abs(iDA - iN),
+    deviation = ifelse(diff <= 0.05, "within_band", "outside_band")
+  )
 
 axis_max <- max(c(scatter_data$iN, scatter_data$iDA), na.rm = TRUE) * 1.1
 axis_lim <- c(0, axis_max)
@@ -16741,38 +16796,54 @@ p_2_6 <- ggplot(scatter_data, aes(x = iN, y = iDA)) +
   scale_shape_manual(values = c(within_band = 21, outside_band = 24), name = "Deviation") +
   coord_fixed(ratio = 1, xlim = axis_lim, ylim = axis_lim, clip = "on") +
   labs(x = "Fraction lost PPIs (iN)", y = "Fraction lost PPIs (iDA)", title = "PPI vulnerability: iN vs iDA") +
-  theme_bw(base_size = 6) + theme(panel.grid = element_blank())
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank())
+
 save_plot_with_sourcedata(p_2_6, "plots/global/scatter_ppi_loss_iN_vs_iDA", scatter_data, width = 5.5, height = 5.5)
 
-# --- 2.7 Barplot: Disease class by annotation (SEPARATE iN and iDA) ---
+
+# disease-organelle-barplots
 disease_org_summary <- ko_summary_by_organelle %>%
   dplyr::filter(!is.na(DiseaseClass)) %>%
   dplyr::group_by(DiseaseClass, neuron, shared_organelle) %>%
-  dplyr::summarise(mean_frac_lost = mean(frac_lost, na.rm = TRUE),
-                   se_frac_lost = sd(frac_lost, na.rm = TRUE) / sqrt(n()), n_kos = n(), .groups = "drop")
+  dplyr::summarise(
+    mean_frac_lost = mean(frac_lost, na.rm = TRUE),
+    se_frac_lost = sd(frac_lost, na.rm = TRUE) / sqrt(n()),
+    n_kos = n(),
+    .groups = "drop"
+  )
 
 for (nt in c("iN", "iDA")) {
   plot_data_2_7 <- disease_org_summary %>% dplyr::filter(neuron == nt)
+
   p_2_7 <- ggplot(plot_data_2_7, aes(x = DiseaseClass, y = mean_frac_lost, fill = DiseaseClass)) +
     geom_col(color = "black", linewidth = 0.2) +
-    geom_errorbar(aes(ymin = mean_frac_lost - se_frac_lost, ymax = mean_frac_lost + se_frac_lost), width = 0.3, linewidth = 0.3) +
+    geom_errorbar(aes(ymin = mean_frac_lost - se_frac_lost, ymax = mean_frac_lost + se_frac_lost),
+                  width = 0.3, linewidth = 0.3) +
     facet_wrap(~shared_organelle, scales = "free_y") +
     scale_fill_manual(values = disease_class_palette, guide = "none") +
     labs(x = NULL, y = "Mean fraction PPIs lost", title = paste0("Disease class vulnerability by organelle (", nt, ")")) +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1), strip.background = element_rect(fill = "white"))
+    theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1),
+          strip.background = element_rect(fill = "white"))
+
   save_plot_with_sourcedata(p_2_7, paste0("plots/disease_class/barplot_disease_organelle_vuln_", nt), plot_data_2_7, width = 14, height = 10)
 }
 
-# --- 2.8 Pie charts and normalized loss rate ---
+
+# pie-charts
 pie_data <- ko_edge_states %>%
   dplyr::filter(state == "lost", !is.na(DiseaseClass)) %>%
-  dplyr::group_by(neuron, DiseaseClass) %>% dplyr::summarise(n_lost = n(), .groups = "drop") %>%
-  dplyr::group_by(neuron) %>% dplyr::mutate(pct = n_lost / sum(n_lost) * 100) %>% dplyr::ungroup()
+  dplyr::group_by(neuron, DiseaseClass) %>%
+  dplyr::summarise(n_lost = n(), .groups = "drop") %>%
+  dplyr::group_by(neuron) %>%
+  dplyr::mutate(pct = n_lost / sum(n_lost) * 100) %>%
+  dplyr::ungroup()
 
 total_ppis_by_dc <- ko_edge_states %>%
   dplyr::filter(!is.na(DiseaseClass)) %>%
-  dplyr::group_by(neuron, DiseaseClass) %>% dplyr::summarise(total_ppis = n(), .groups = "drop")
+  dplyr::group_by(neuron, DiseaseClass) %>%
+  dplyr::summarise(total_ppis = n(), .groups = "drop")
 
 pie_data_normalized <- pie_data %>%
   dplyr::left_join(total_ppis_by_dc, by = c("neuron", "DiseaseClass")) %>%
@@ -16781,27 +16852,32 @@ pie_data_normalized <- pie_data %>%
 for (nt in c("iN", "iDA")) {
   pd <- pie_data %>% dplyr::filter(neuron == nt)
   p_pie <- ggplot(pd, aes(x = "", y = pct, fill = DiseaseClass)) +
-    geom_col(width = 1, color = "black") + coord_polar(theta = "y") +
+    geom_col(width = 1, color = "black") +
+    coord_polar(theta = "y") +
     scale_fill_manual(values = disease_class_palette) +
     labs(title = paste0("Lost PPIs by disease class (", nt, ")")) +
-    theme_void(base_size = 6) + theme(legend.position = "right")
+    theme_void(base_size = 6) +
+    theme(legend.position = "right")
+
   save_plot_with_sourcedata(p_pie, paste0("plots/disease_class/pie_lost_ppi_", nt), pd, width = 6, height = 5)
 }
 
 p_2_8_norm <- ggplot(pie_data_normalized, aes(x = DiseaseClass, y = loss_rate, fill = DiseaseClass)) +
-  geom_col(color = "black", linewidth = 0.2) + facet_wrap(~neuron) +
+  geom_col(color = "black", linewidth = 0.2) +
+  facet_wrap(~neuron) +
   scale_fill_manual(values = disease_class_palette, guide = "none") +
   labs(x = NULL, y = "Loss rate (%)", title = "PPI loss rate by disease class (normalized)") +
-  theme_bw(base_size = 6) + theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
+
 save_plot_with_sourcedata(p_2_8_norm, "plots/disease_class/barplot_loss_rate_normalized", pie_data_normalized, width = 10, height = 5)
 
 message("Module 2 complete: PPI vulnerability visualizations")
 ```
 
----
 
-# Module 3: Trimer Vulnerability Analysis
 
+## Trimer Vulnerability Analysis
 ```{r module3-trimer}
 # =============================================================================
 # Module 3: Trimer Vulnerability Analysis
@@ -16869,10 +16945,9 @@ save_plot_with_sourcedata(p_3_4, "plots/global/scatter_trimer_vuln_iN_vs_iDA", t
 message("Module 3 complete: Trimer vulnerability analysis")
 ```
 
----
 
-# Module 4: Tetramer Vulnerability Analysis
 
+##  Tetramer Vulnerability Analysis
 ```{r module4-tetramer}
 # =============================================================================
 # Module 4: Tetramer Vulnerability Analysis
@@ -16928,10 +17003,9 @@ save_plot_with_sourcedata(p_4_4, "plots/global/scatter_tetramer_vuln_iN_vs_iDA",
 message("Module 4 complete: Tetramer vulnerability analysis")
 ```
 
----
 
-# Module 5: Complex Vulnerability Analysis
 
+## Complex Vulnerability Analysis
 ```{r module5-complex}
 # =============================================================================
 # Module 5: Complex Vulnerability Analysis
