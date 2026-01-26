@@ -15661,7 +15661,7 @@ trimer_tier_summary <- trimer_ko_states %>%
 p_3_6 <- ggplot(trimer_tier_summary, aes(x = genotype, y = frac_disrupted, fill = tier_composition)) +
   geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
   facet_wrap(~neuron, ncol = 1) +
-  scale_fill_brewer(palette = "Set2", name = "Tier composition") +
+  scale_fill_brewer(palette = "RdYlBu", name = "Tier composition") +
   labs(x = NULL, y = "Fraction disrupted", title = "Trimer disruption by confidence tier") +
   theme_bw(base_size = 6) +
   theme(
@@ -16121,7 +16121,7 @@ for (geno in unique(ko_summary_by_organelle$genotype)) {
 
   suppressMessages({
     ggsave(file.path(out_dir_vuln, "plots/by_ko", paste0("barplot_ppi_loss_", geno, ".pdf")),
-           p, width = 10, height = 5, device = cairo_pdf)
+           p, width = 5, height = 5, device = cairo_pdf)
     write_csv(plot_data, file.path(out_dir_vuln, "sourcedata", paste0("barplot_ppi_loss_", geno, "_sourcedata.csv")))
   })
 }
@@ -16155,7 +16155,7 @@ for (geno in unique(bubble_data$genotype)) {
 
   suppressMessages({
     ggsave(file.path(out_dir_vuln, "plots/by_ko", paste0("bubble_ppi_loss_", geno, ".pdf")),
-           p, width = 7, height = 6, device = cairo_pdf)
+           p, width = 6, height = 6, device = cairo_pdf)
     write_csv(pd, file.path(out_dir_vuln, "sourcedata", paste0("bubble_ppi_loss_", geno, "_sourcedata.csv")))
   })
 }
