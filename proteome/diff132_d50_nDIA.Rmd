@@ -16987,6 +16987,7 @@ complex_summary_ko <- complex_ko_states %>%
   dplyr::summarise(total_complexes = dplyr::n(), n_disrupted = sum(state == "disrupted"), frac_disrupted = n_disrupted / total_complexes, .groups = "drop")
 readr::write_csv(complex_summary_ko, file.path(out_dir_vuln, "tables", "complex_summary_ko.csv"))
 
+# --- PLOTS --- #
 # Scatter (SQUARE)
 complex_scatter <- complex_summary_ko %>%
   dplyr::select(genotype, neuron, frac_disrupted, DiseaseClass) %>%
@@ -17028,7 +17029,7 @@ for (nt in c("iN", "iDA")) {
     ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           strip.background = ggplot2::element_rect(fill = "white"))
 
-  save_plot_with_sourcedata(p, paste0("plots/disease_class/barplot_complex_disease_organelle_", nt), plot_data, width = 14, height = 10)
+  save_plot_with_sourcedata(p, paste0("plots/disease_class/barplot_complex_disease_organelle_", nt), plot_data, width = 10, height = 10)
 }
 
 message("Module 5 complete: Complex vulnerability analysis")
@@ -17040,7 +17041,7 @@ message("Module 5 complete: Complex vulnerability analysis")
 ## Ternary Plots
 ```{r ternary}
 # =============================================================================
-# Ternary Plots (using Ternary package, NOT ggtern)
+# Ternary Plots 
 # =============================================================================
 message("Generating ternary plots...")
 
