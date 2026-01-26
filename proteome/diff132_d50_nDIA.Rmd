@@ -15893,17 +15893,18 @@ message("Module 7 complete: Radar plots")
 
 
 ## Module 8: KO x Neuron Extended Analysis
-Bubble plots + Annotation-level barplots for lost PPI/trimers/tetramers/complexes
+Bubble plots + Per-KO barplots for lost PPI/trimers/tetramers/complexes by annotation
 
 ```{r module8}
 # =============================================================================
 # Module 8: KO x Neuron Extended Analysis
 # - Bubble plots: iN vs iDA for all metrics
-# - Barplots: Lost PPI/trimers/tetramers/complexes per annotation (iN and iDA separate)
+# - Barplots: Lost PPI/trimers/tetramers/complexes per annotation, per KO (separate iN/iDA)
 # =============================================================================
 message("Module 8: KO x Neuron Extended Analysis...")
 
 dir.create(file.path(out_dir_vuln, "plots/KOxNeuron"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "plots/KOxNeuron/by_annotation"), recursive = TRUE, showWarnings = FALSE)
 
 # -----------------------------------------------------------------------------
 # 8.1 Bubble plots: iN vs iDA comparison
@@ -15987,62 +15988,39 @@ save_plot_with_sourcedata(p_bubble_complex, "plots/KOxNeuron/bubble_complex_iN_v
 
 
 # -----------------------------------------------------------------------------
-# 8.2 Barplots: Lost structures per annotation (separate iN and iDA)
+# 8.2 Per-KO Barplots by Annotation (separate iN and iDA)
+# Same style as global eval: KO on x-axis, faceted by annotation
 # -----------------------------------------------------------------------------
 
-# --- 8.2.1 Lost PPI per annotation ---
-ppi_by_annotation <- ko_summary_by_organelle %>%
+# --- 8.2.1 Lost PPI per KO, faceted by annotation ---
+# ko_summary_by_organelle already has: genotype, neuron, shared_organelle, n_lost, frac_lost
+ppi_ko_by_annot <- ko_summary_by_organelle %>%
   dplyr::filter(!is.na(shared_organelle)) %>%
-  dplyr::group_by(neuron, shared_organelle) %>%
-  dplyr::summarise(
-    mean_frac_lost = mean(frac_lost, na.rm = TRUE),
-    total_lost = sum(n_lost, na.rm = TRUE),
-    total_edges = sum(n_edges, na.rm = TRUE),
-    n_kos = dplyr::n(),
-    .groups = "drop"
-  )
+  dplyr::left_join(disease_map %>% dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>% dplyr::distinct(genotype, DiseaseClass), by = "genotype")
 
 for (nt in c("iN", "iDA")) {
-  plot_data <- ppi_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(mean_frac_lost))
+  plot_data <- ppi_ko_by_annot %>% dplyr::filter(neuron == nt)
 
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, mean_frac_lost), y = mean_frac_lost)) +
-    ggplot2::geom_col(fill = "dodgerblue3", color = "black", linewidth = 0.2) +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = NULL, y = "Mean fraction PPIs lost", title = paste0("Lost PPIs per annotation (", nt, ")")) +
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_lost, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction PPIs lost", title = paste0("Lost PPIs per KO by annotation (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank())
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4),
+                   strip.background = ggplot2::element_rect(fill = "white"))
 
-  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_ppi_by_annotation_", nt), plot_data, width = 5, height = 6)
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_ppi_perKO_", nt), plot_data, width = 14, height = 10)
 }
 
-# --- 8.2.2 Lost Trimers per annotation ---
-trimer_by_annotation <- trimer_ko_states %>%
+
+# --- 8.2.2 Lost Trimers per KO, faceted by annotation ---
+trimer_ko_by_annot <- trimer_ko_states %>%
   dplyr::filter(!is.na(shared_organelle)) %>%
-  dplyr::group_by(neuron, shared_organelle) %>%
-  dplyr::summarise(
-    n_total = dplyr::n(),
-    n_disrupted = sum(state == "disrupted"),
-    frac_disrupted = n_disrupted / n_total,
-    .groups = "drop"
-  )
-
-for (nt in c("iN", "iDA")) {
-  plot_data <- trimer_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(frac_disrupted))
-
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, frac_disrupted), y = frac_disrupted)) +
-    ggplot2::geom_col(fill = "#C51B7D", color = "black", linewidth = 0.2) +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = NULL, y = "Fraction trimers disrupted", title = paste0("Lost Trimers per annotation (", nt, ")")) +
-    ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank())
-
-  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_trimer_by_annotation_", nt), plot_data, width = 5, height = 6)
-}
-
-# --- 8.2.3 Lost Tetramers per annotation ---
-tetramer_by_annotation <- tetramer_ko_states %>%
-  dplyr::filter(!is.na(shared_organelle)) %>%
-  dplyr::group_by(neuron, shared_organelle) %>%
+  dplyr::group_by(genotype, neuron, shared_organelle, DiseaseClass) %>%
   dplyr::summarise(
     n_total = dplyr::n(),
     n_disrupted = sum(state == "disrupted"),
@@ -16051,22 +16029,58 @@ tetramer_by_annotation <- tetramer_ko_states %>%
   )
 
 for (nt in c("iN", "iDA")) {
-  plot_data <- tetramer_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(frac_disrupted))
+  plot_data <- trimer_ko_by_annot %>% dplyr::filter(neuron == nt)
 
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, frac_disrupted), y = frac_disrupted)) +
-    ggplot2::geom_col(fill = "#7570B3", color = "black", linewidth = 0.2) +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = NULL, y = "Fraction tetramers disrupted", title = paste0("Lost Tetramers per annotation (", nt, ")")) +
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_disrupted, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction trimers disrupted", title = paste0("Lost Trimers per KO by annotation (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank())
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4),
+                   strip.background = ggplot2::element_rect(fill = "white"))
 
-  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_tetramer_by_annotation_", nt), plot_data, width = 5, height = 6)
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_trimer_perKO_", nt), plot_data, width = 14, height = 10)
 }
 
-# --- 8.2.4 Lost Complexes per annotation ---
-complex_by_annotation <- complex_ko_states %>%
+
+# --- 8.2.3 Lost Tetramers per KO, faceted by annotation ---
+tetramer_ko_by_annot <- tetramer_ko_states %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(genotype, neuron, shared_organelle, DiseaseClass) %>%
+  dplyr::summarise(
+    n_total = dplyr::n(),
+    n_disrupted = sum(state == "disrupted"),
+    frac_disrupted = n_disrupted / n_total,
+    .groups = "drop"
+  )
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- tetramer_ko_by_annot %>% dplyr::filter(neuron == nt)
+
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_disrupted, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction tetramers disrupted", title = paste0("Lost Tetramers per KO by annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4),
+                   strip.background = ggplot2::element_rect(fill = "white"))
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_tetramer_perKO_", nt), plot_data, width = 14, height = 10)
+}
+
+
+# --- 8.2.4 Lost Complexes per KO, faceted by annotation ---
+complex_ko_by_annot <- complex_ko_states %>%
   dplyr::filter(!is.na(dominant_organelles)) %>%
-  dplyr::group_by(neuron, dominant_organelles) %>%
+  dplyr::group_by(genotype, neuron, dominant_organelles, DiseaseClass) %>%
   dplyr::summarise(
     n_total = dplyr::n(),
     n_disrupted = sum(state == "disrupted"),
@@ -16075,61 +16089,188 @@ complex_by_annotation <- complex_ko_states %>%
   )
 
 for (nt in c("iN", "iDA")) {
-  plot_data <- complex_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(frac_disrupted))
+  plot_data <- complex_ko_by_annot %>% dplyr::filter(neuron == nt)
 
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(dominant_organelles, frac_disrupted), y = frac_disrupted)) +
-    ggplot2::geom_col(fill = "#E6AB02", color = "black", linewidth = 0.2) +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = NULL, y = "Fraction complexes disrupted", title = paste0("Lost Complexes per annotation (", nt, ")")) +
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_disrupted, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~dominant_organelles, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction complexes disrupted", title = paste0("Lost Complexes per KO by annotation (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank())
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4),
+                   strip.background = ggplot2::element_rect(fill = "white"))
 
-  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_complex_by_annotation_", nt), plot_data, width = 5, height = 6)
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_complex_perKO_", nt), plot_data, width = 14, height = 10)
 }
 
 
 # -----------------------------------------------------------------------------
-# 8.3 Combined heatmaps: Annotation x Metric (iN and iDA)
+# 8.3 Heatmaps: KO x Annotation (iN and iDA separately)
 # -----------------------------------------------------------------------------
 
-# Combine all metrics by annotation into single heatmap
 for (nt in c("iN", "iDA")) {
 
-  ppi_dat <- ppi_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::select(shared_organelle, mean_frac_lost) %>% dplyr::rename(annotation = shared_organelle, PPI = mean_frac_lost)
-  tri_dat <- trimer_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::select(shared_organelle, frac_disrupted) %>% dplyr::rename(annotation = shared_organelle, Trimer = frac_disrupted)
-  tet_dat <- tetramer_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::select(shared_organelle, frac_disrupted) %>% dplyr::rename(annotation = shared_organelle, Tetramer = frac_disrupted)
-  cpx_dat <- complex_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::select(dominant_organelles, frac_disrupted) %>% dplyr::rename(annotation = dominant_organelles, Complex = frac_disrupted)
+  # PPI heatmap
+  ppi_hm_data <- ppi_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, shared_organelle, frac_lost) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost, values_fill = NA)
 
-  combined_dat <- ppi_dat %>%
-    dplyr::full_join(tri_dat, by = "annotation") %>%
-    dplyr::full_join(tet_dat, by = "annotation") %>%
-    dplyr::full_join(cpx_dat, by = "annotation") %>%
-    dplyr::filter(!is.na(annotation))
+  if (nrow(ppi_hm_data) >= 2 && ncol(ppi_hm_data) >= 3) {
+    hm_mat <- as.matrix(ppi_hm_data[, -1])
+    rownames(hm_mat) <- ppi_hm_data$genotype
 
-  hm_mat <- as.matrix(combined_dat[, -1])
-  rownames(hm_mat) <- combined_dat$annotation
-  hm_mat[is.na(hm_mat)] <- 0
+    row_annot <- disease_map %>%
+      dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+      dplyr::distinct(genotype, DiseaseClass) %>%
+      dplyr::filter(genotype %in% rownames(hm_mat))
+    rownames(row_annot) <- row_annot$genotype
+    row_annot <- row_annot %>% dplyr::select(DiseaseClass)
+    row_annot <- row_annot[rownames(hm_mat), , drop = FALSE]
 
-  if (nrow(hm_mat) >= 2 && ncol(hm_mat) >= 2) {
-    readr::write_csv(combined_dat, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_annotation_metrics_", nt, "_sourcedata.csv")))
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
 
     pheatmap::pheatmap(
       hm_mat,
       color = colorRampPalette(c("white", "#C51B7D"))(100),
       cluster_rows = TRUE,
-      cluster_cols = FALSE,
-      display_numbers = TRUE,
-      number_format = "%.2f",
+      cluster_cols = TRUE,
+      clustering_method = "ward.D2",
+      display_numbers = FALSE,
       fontsize = 6,
-      fontsize_number = 5,
-      cellwidth = 20,
+      cellwidth = 10,
       cellheight = 10,
       border_color = NA,
-      main = paste0("Disruption by annotation and structure type (", nt, ")"),
-      filename = file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_annotation_metrics_", nt, ".pdf")),
-      width = 5, height = 8
+      annotation_row = row_annot,
+      annotation_colors = ann_colors,
+      main = paste0("Fraction PPIs lost by KO x annotation (", nt, ")"),
+      filename = file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_ppi_KO_annotation_", nt, ".pdf")),
+      width = 12, height = 10
     )
-    message("  Saved: heatmap_annotation_metrics_", nt, ".pdf")
+    message("  Saved: heatmap_ppi_KO_annotation_", nt, ".pdf")
+  }
+
+  # Trimer heatmap
+  trimer_hm_data <- trimer_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, shared_organelle, frac_disrupted) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_disrupted, values_fill = NA)
+
+  if (nrow(trimer_hm_data) >= 2 && ncol(trimer_hm_data) >= 3) {
+    hm_mat <- as.matrix(trimer_hm_data[, -1])
+    rownames(hm_mat) <- trimer_hm_data$genotype
+
+    row_annot <- disease_map %>%
+      dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+      dplyr::distinct(genotype, DiseaseClass) %>%
+      dplyr::filter(genotype %in% rownames(hm_mat))
+    rownames(row_annot) <- row_annot$genotype
+    row_annot <- row_annot %>% dplyr::select(DiseaseClass)
+    row_annot <- row_annot[rownames(hm_mat), , drop = FALSE]
+
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    pheatmap::pheatmap(
+      hm_mat,
+      color = colorRampPalette(c("white", "#7570B3"))(100),
+      cluster_rows = TRUE,
+      cluster_cols = TRUE,
+      clustering_method = "ward.D2",
+      display_numbers = FALSE,
+      fontsize = 6,
+      cellwidth = 10,
+      cellheight = 10,
+      border_color = NA,
+      annotation_row = row_annot,
+      annotation_colors = ann_colors,
+      main = paste0("Fraction trimers disrupted by KO x annotation (", nt, ")"),
+      filename = file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_trimer_KO_annotation_", nt, ".pdf")),
+      width = 12, height = 10
+    )
+    message("  Saved: heatmap_trimer_KO_annotation_", nt, ".pdf")
+  }
+
+  # Tetramer heatmap
+  tetramer_hm_data <- tetramer_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, shared_organelle, frac_disrupted) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_disrupted, values_fill = NA)
+
+  if (nrow(tetramer_hm_data) >= 2 && ncol(tetramer_hm_data) >= 3) {
+    hm_mat <- as.matrix(tetramer_hm_data[, -1])
+    rownames(hm_mat) <- tetramer_hm_data$genotype
+
+    row_annot <- disease_map %>%
+      dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+      dplyr::distinct(genotype, DiseaseClass) %>%
+      dplyr::filter(genotype %in% rownames(hm_mat))
+    rownames(row_annot) <- row_annot$genotype
+    row_annot <- row_annot %>% dplyr::select(DiseaseClass)
+    row_annot <- row_annot[rownames(hm_mat), , drop = FALSE]
+
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    pheatmap::pheatmap(
+      hm_mat,
+      color = colorRampPalette(c("white", "#E6AB02"))(100),
+      cluster_rows = TRUE,
+      cluster_cols = TRUE,
+      clustering_method = "ward.D2",
+      display_numbers = FALSE,
+      fontsize = 6,
+      cellwidth = 10,
+      cellheight = 10,
+      border_color = NA,
+      annotation_row = row_annot,
+      annotation_colors = ann_colors,
+      main = paste0("Fraction tetramers disrupted by KO x annotation (", nt, ")"),
+      filename = file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_tetramer_KO_annotation_", nt, ".pdf")),
+      width = 12, height = 10
+    )
+    message("  Saved: heatmap_tetramer_KO_annotation_", nt, ".pdf")
+  }
+
+  # Complex heatmap
+  complex_hm_data <- complex_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, dominant_organelles, frac_disrupted) %>%
+    tidyr::pivot_wider(names_from = dominant_organelles, values_from = frac_disrupted, values_fill = NA)
+
+  if (nrow(complex_hm_data) >= 2 && ncol(complex_hm_data) >= 3) {
+    hm_mat <- as.matrix(complex_hm_data[, -1])
+    rownames(hm_mat) <- complex_hm_data$genotype
+
+    row_annot <- disease_map %>%
+      dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+      dplyr::distinct(genotype, DiseaseClass) %>%
+      dplyr::filter(genotype %in% rownames(hm_mat))
+    rownames(row_annot) <- row_annot$genotype
+    row_annot <- row_annot %>% dplyr::select(DiseaseClass)
+    row_annot <- row_annot[rownames(hm_mat), , drop = FALSE]
+
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    pheatmap::pheatmap(
+      hm_mat,
+      color = colorRampPalette(c("white", "#1B9E77"))(100),
+      cluster_rows = TRUE,
+      cluster_cols = TRUE,
+      clustering_method = "ward.D2",
+      display_numbers = FALSE,
+      fontsize = 6,
+      cellwidth = 10,
+      cellheight = 10,
+      border_color = NA,
+      annotation_row = row_annot,
+      annotation_colors = ann_colors,
+      main = paste0("Fraction complexes disrupted by KO x annotation (", nt, ")"),
+      filename = file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_complex_KO_annotation_", nt, ".pdf")),
+      width = 12, height = 10
+    )
+    message("  Saved: heatmap_complex_KO_annotation_", nt, ".pdf")
   }
 }
 
@@ -16137,15 +16278,13 @@ for (nt in c("iN", "iDA")) {
 # -----------------------------------------------------------------------------
 # 8.4 Save summary tables
 # -----------------------------------------------------------------------------
-readr::write_csv(ppi_by_annotation, file.path(out_dir_vuln, "tables", "ppi_by_annotation_summary.csv"))
-readr::write_csv(trimer_by_annotation, file.path(out_dir_vuln, "tables", "trimer_by_annotation_summary.csv"))
-readr::write_csv(tetramer_by_annotation, file.path(out_dir_vuln, "tables", "tetramer_by_annotation_summary.csv"))
-readr::write_csv(complex_by_annotation, file.path(out_dir_vuln, "tables", "complex_by_annotation_summary.csv"))
+readr::write_csv(ppi_ko_by_annot, file.path(out_dir_vuln, "tables", "ppi_ko_by_annotation.csv"))
+readr::write_csv(trimer_ko_by_annot, file.path(out_dir_vuln, "tables", "trimer_ko_by_annotation.csv"))
+readr::write_csv(tetramer_ko_by_annot, file.path(out_dir_vuln, "tables", "tetramer_ko_by_annotation.csv"))
+readr::write_csv(complex_ko_by_annot, file.path(out_dir_vuln, "tables", "complex_ko_by_annotation.csv"))
 
 message("Module 8 complete: KO x Neuron Extended Analysis")
 ```
-
-
 
 # Module 9: Master Summary Statistics
 ```{r module9-summary}
