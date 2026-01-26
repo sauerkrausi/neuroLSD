@@ -15259,7 +15259,7 @@ make_ko_correlation_heatmap <- function(df_states, neuron_filter, suffix) {
   write_csv(as.data.frame(rho) %>% rownames_to_column("genotype"),
             file.path(out_dir_vuln, "sourcedata", paste0("heatmap_ko_corr_", suffix, "_sourcedata.csv")))
 
-  pheatmap(
+  pheatmap::pheatmap(
     mat = rho,
     color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(101),
     breaks = seq(-1, 1, length.out = 102),
@@ -15270,11 +15270,12 @@ make_ko_correlation_heatmap <- function(df_states, neuron_filter, suffix) {
     annotation_row = annotation_df,
     annotation_colors = ann_colors,
     main = paste0("KO x KO correlation (", neuron_filter, ")"),
-    fontsize = 7,
-    cellwidth = 12, cellheight = 12,
+    fontsize = 6,
+    cellwidth = 8, 
+    cellheight = 8,
     border_color = NA,
     filename = file.path(out_dir_vuln, paste0("plots/global/heatmap_ko_corr_", suffix, ".pdf")),
-    width = 10, height = 9
+    width = 9, height = 9
 
   )
   message("  Saved: heatmap_ko_corr_", suffix, ".pdf")
@@ -15312,7 +15313,7 @@ if (nrow(X_comb) >= 2 && ncol(X_comb) >= 2) {
   write_csv(as.data.frame(rho_comb) %>% rownames_to_column("genotype_neuron"),
             file.path(out_dir_vuln, "sourcedata", "heatmap_ko_corr_combined_sourcedata.csv"))
 
-  pheatmap(
+  pheatmap::pheatmap(
     mat = rho_comb,
     color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(101),
     breaks = seq(-1, 1, length.out = 102),
@@ -15324,7 +15325,8 @@ if (nrow(X_comb) >= 2 && ncol(X_comb) >= 2) {
     annotation_colors = ann_colors_comb,
     main = "KO x KO correlation (combined iN + iDA)",
     fontsize = 5,
-    cellwidth = 8, cellheight = 8,
+    cellwidth = 8, 
+    cellheight = 8,
     border_color = NA,
     filename = file.path(out_dir_vuln, "plots/global/heatmap_ko_corr_combined.pdf"),
     width = 14, height = 13
@@ -15357,7 +15359,7 @@ make_organelle_ko_heatmap <- function(df_summary, neuron_filter, suffix) {
 
   write_csv(hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_organelle_ko_", suffix, "_sourcedata.csv")))
 
-  pheatmap(
+  pheatmap::pheatmap(
     mat = hm_mat,
     color = colorRampPalette(c("white", "#FEE0D2", "#FC9272", "#DE2D26"))(50),
     na_col = "grey95",
@@ -15366,9 +15368,10 @@ make_organelle_ko_heatmap <- function(df_summary, neuron_filter, suffix) {
     annotation_row = annotation_row,
     annotation_colors = ann_colors,
     main = paste0("Fraction PPIs lost by organelle (", neuron_filter, ")"),
-    fontsize = 7,
-    cellwidth = 14, cellheight = 10,
-    border_color = "grey80",
+    fontsize = 6,
+    cellwidth = 10, 
+    cellheight = 10,
+    border_color = NA,
     filename = file.path(out_dir_vuln, paste0("plots/global/heatmap_organelle_ko_", suffix, ".pdf")),
     width = 12, height = 10
   )
@@ -15405,6 +15408,7 @@ p_2_6 <- ggplot(scatter_data, aes(x = iN, y = iDA)) +
 save_plot_with_sourcedata(p_2_6, "plots/global/scatter_ppi_loss_iN_vs_iDA", scatter_data, width = 7, height = 6)
 
 
+
 # --- 2.7 Barplot: Disease class average vulnerability by annotation ---
 disease_org_summary <- ko_summary_by_organelle %>%
   dplyr::filter(!is.na(DiseaseClass)) %>%
@@ -15418,8 +15422,8 @@ disease_org_summary <- ko_summary_by_organelle %>%
 
 p_2_7 <- ggplot(disease_org_summary, aes(x = shared_organelle, y = mean_frac_lost, fill = DiseaseClass)) +
   geom_col(position = position_dodge(width = 1), color = "black", linewidth = 0.2) +
-  geom_errorbar(aes(ymin = mean_frac_lost - se_frac_lost, ymax = mean_frac_lost + se_frac_lost),
-                position = position_dodge(width = 1), width = 0.3, linewidth = 0.3) +
+  # geom_errorbar(aes(ymin = mean_frac_lost - se_frac_lost, ymax = mean_frac_lost + se_frac_lost),
+  #               position = position_dodge(width = 1), width = 0.3, linewidth = 0.3) +
   facet_wrap(~~shared_organelle, ncol = 1) +
   scale_fill_manual(values = disease_class_palette) +
   labs(x = "Organelle annotation", y = "Mean fraction PPIs lost",
@@ -15432,7 +15436,7 @@ p_2_7 <- ggplot(disease_org_summary, aes(x = shared_organelle, y = mean_frac_los
     legend.key.size = unit(0.4, "cm")
   )
 
-save_plot_with_sourcedata(p_2_7, "plots/disease_class/barplot_disease_organelle_vuln", disease_org_summary, width = 14, height = 10)
+save_plot_with_sourcedata(p_2_7, "plots/disease_class/barplot_disease_organelle_vuln", disease_org_summary, width = 12, height = 10)
 
 
 # --- 2.8 Pie charts: PPI loss distribution by disease class ---
@@ -15480,7 +15484,7 @@ p_2_8_norm <- ggplot(pie_data_normalized, aes(x = DiseaseClass, y = loss_rate, f
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-save_plot_with_sourcedata(p_2_8_norm, "plots/disease_class/barplot_loss_rate_normalized", pie_data_normalized, width = 10, height = 5)
+save_plot_with_sourcedata(p_2_8_norm, "plots/disease_class/barplot_loss_rate_normalized", pie_data_normalized, width = 7, height = 5)
 
 message("Module 2 complete: PPI vulnerability visualizations")
 ```
