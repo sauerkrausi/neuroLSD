@@ -16184,16 +16184,44 @@ message("Module 9 complete: Master summary statistics")
 
 
 
-## Ceramide Pathway Disruption Analysis
-```{r module10-ceramide}
+## Module 9: Ceramide Pathway Disruption Analysis
+Compare PPI/complex disruption across sphingolipidosis genes
+
+```{r module9}
 # =============================================================================
-# Module 10: Ceramide Pathway Disruption Analysis
+# Module 9: Ceramide Pathway Disruption Analysis
 # =============================================================================
-message("Running ceramide pathway disruption analysis...")
+#
+# Hypothesis: Enzymes proximal to ceramide (ASAH1, GBA1, SMPD1) show
+# convergent PPI/complex disruption despite acting on different substrates,
+# because they all affect ceramide homeostasis.
+#
+# Approach:
+# 1. Encode sphingolipid pathway as branch + depth from ceramide
+# 2. Compute Jaccard similarity of lost PPIs between all sphingolipidosis KOs
+# 3. Compute correlation of complex disruption profiles
+# 4. Test if ceramide-proximal enzymes cluster together
+# 5. Identify shared disrupted complexes (ceramide-sensitive machinery)
+#
+# Key comparisons:
+# - ASAH1 vs GBA1: Both affect ceramide, opposite directions
+# - HEXA vs HEXB: Same substrate (GM2), positive control
+# - GBA1 vs SMPD1: Both produce ceramide, different branches
+#
+# Jaccard similarity rationale:
+# - Measures overlap of binary sets (lost vs not lost)
+# - PPI loss is binary (edge lost or not)
+# - Handles sparse data well (most PPIs are not lost in any given KO)
+# - Intuitive: intersection / union = fraction of affected PPIs shared
+# =============================================================================
+message("Module 9: Ceramide Pathway Disruption Analysis...")
 
 out_dir_ceramide <- file.path(out_dir_vuln, "ceramide_pathway")
 dir.create(out_dir_ceramide, recursive = TRUE, showWarnings = FALSE)
 
+# -----------------------------------------------------------------------------
+# 9.1 Define pathway structure
+# -----------------------------------------------------------------------------
 sphingo_pathway <- data.frame(
   gene = c("HEXA", "HEXB", "GBA1", "SMPD1", "ASAH1", "PSAP"),
   branch = c("ganglioside", "ganglioside", "glucocerebroside", "sphingomyelin", "downstream", "activator"),
@@ -16203,40 +16231,79 @@ sphingo_pathway <- data.frame(
   disease = c("Tay-Sachs", "Sandhoff", "Gaucher", "Niemann-Pick", "Farber", "Saposin deficiency"),
   stringsAsFactors = FALSE
 )
-message("  Sphingolipidosis pathway genes: ", paste(sphingo_pathway$gene, collapse = ", "))
 
+message("Sphingolipidosis pathway genes:")
+print(sphingo_pathway)
+readr::write_csv(sphingo_pathway, file.path(out_dir_ceramide, "sphingo_pathway_definition.csv"))
+
+
+# -----------------------------------------------------------------------------
+# 9.2 Extract PPI loss profiles for sphingolipidosis KOs
+# -----------------------------------------------------------------------------
 sphingo_genes <- sphingo_pathway$gene
 sphingo_edge_states <- ko_edge_states %>% dplyr::filter(genotype %in% sphingo_genes)
-message("  Edge states for sphingolipidosis KOs: ", nrow(sphingo_edge_states))
+message("Edge states for sphingolipidosis KOs: ", nrow(sphingo_edge_states))
 
+# Binary loss matrix: rows = PPI edges (key), cols = genotype_neuron
 sphingo_loss_wide <- sphingo_edge_states %>%
   dplyr::select(key, genotype, neuron, state) %>%
   dplyr::mutate(lost = as.integer(state == "lost"), sample = paste(genotype, neuron, sep = "_")) %>%
   dplyr::select(key, sample, lost) %>%
   tidyr::pivot_wider(names_from = sample, values_from = lost, values_fill = 0)
-message("  PPI loss matrix: ", nrow(sphingo_loss_wide), " edges x ", ncol(sphingo_loss_wide) - 1, " samples")
 
-# Jaccard similarity
+message("PPI loss matrix: ", nrow(sphingo_loss_wide), " edges x ", ncol(sphingo_loss_wide) - 1, " samples")
+
+
+# -----------------------------------------------------------------------------
+# 9.3 Compute pairwise Jaccard similarity of lost PPIs
+# -----------------------------------------------------------------------------
 compute_jaccard <- function(x, y) {
-  intersection <- sum(x == 1 & y == 1); union <- sum(x == 1 | y == 1)
-  if (union == 0) return(NA); return(intersection / union)
+  intersection <- sum(x == 1 & y == 1)
+  union <- sum(x == 1 | y == 1)
+  if (union == 0) return(NA)
+  return(intersection / union)
 }
 
 sample_cols <- setdiff(colnames(sphingo_loss_wide), "key")
 loss_mat <- as.matrix(sphingo_loss_wide[, sample_cols])
+
 n_samples <- length(sample_cols)
 jaccard_mat <- matrix(NA, n_samples, n_samples, dimnames = list(sample_cols, sample_cols))
-for (i in 1:n_samples) { for (j in 1:n_samples) { jaccard_mat[i, j] <- compute_jaccard(loss_mat[, i], loss_mat[, j]) } }
 
-write_csv(as.data.frame(jaccard_mat) %>% rownames_to_column("sample"), file.path(out_dir_ceramide, "jaccard_similarity_matrix.csv"))
+for (i in 1:n_samples) {
+  for (j in 1:n_samples) {
+    jaccard_mat[i, j] <- compute_jaccard(loss_mat[, i], loss_mat[, j])
+  }
+}
 
-# Heatmap with ComplexHeatmap (square cells, numbers)
-col_fun_jaccard <- colorRamp2(c(0, 0.5, 1), c("white", "#92C5DE", "#2166AC"))
-save_heatmap_square(jaccard_mat, file.path(out_dir_ceramide, "jaccard_similarity_heatmap.pdf"),
-                     title = "Jaccard similarity of lost PPIs\n(Sphingolipidosis KOs)", col_fun = col_fun_jaccard,
-                     width = 7, height = 7, cell_size = 18, show_numbers = TRUE, number_fmt = "%.2f")
+message("Jaccard similarity matrix computed")
+readr::write_csv(as.data.frame(jaccard_mat) %>% tibble::rownames_to_column("sample"), file.path(out_dir_ceramide, "jaccard_similarity_matrix.csv"))
 
-# Key comparisons
+
+# -----------------------------------------------------------------------------
+# 9.4 Compute correlation of complex disruption profiles
+# -----------------------------------------------------------------------------
+# Get complex-level disruption for sphingolipidosis KOs
+# Use complex_ko_states which has per-complex state info
+sphingo_complex_summary <- complex_ko_states %>%
+  dplyr::filter(genotype %in% sphingo_genes) %>%
+  dplyr::mutate(sample = paste(genotype, neuron, sep = "_")) %>%
+  dplyr::group_by(complex_id, sample) %>%
+  dplyr::summarise(frac_affected = mean(frac_affected, na.rm = TRUE), .groups = "drop")
+
+sphingo_complex_wide <- sphingo_complex_summary %>%
+  tidyr::pivot_wider(names_from = sample, values_from = frac_affected, values_fill = 0)
+
+complex_mat <- as.matrix(sphingo_complex_wide[, -1])
+correlation_mat <- cor(complex_mat, use = "pairwise.complete.obs")
+
+message("Complex disruption correlation matrix computed")
+readr::write_csv(as.data.frame(correlation_mat) %>% tibble::rownames_to_column("sample"), file.path(out_dir_ceramide, "complex_correlation_matrix.csv"))
+
+
+# -----------------------------------------------------------------------------
+# 9.5 Key comparisons
+# -----------------------------------------------------------------------------
 comparisons <- list(
   "HEXA_vs_HEXB" = list(a = "HEXA", b = "HEXB", hypothesis = "Same substrate (GM2), expect high similarity"),
   "GBA1_vs_SMPD1" = list(a = "GBA1", b = "SMPD1", hypothesis = "Both produce ceramide, different branches"),
@@ -16247,8 +16314,11 @@ comparisons <- list(
 )
 
 get_pair_similarity <- function(gene_a, gene_b, sim_mat, neuron = "iN") {
-  sample_a <- paste(gene_a, neuron, sep = "_"); sample_b <- paste(gene_b, neuron, sep = "_")
-  if (sample_a %in% rownames(sim_mat) && sample_b %in% colnames(sim_mat)) { return(sim_mat[sample_a, sample_b]) }
+  sample_a <- paste(gene_a, neuron, sep = "_")
+  sample_b <- paste(gene_b, neuron, sep = "_")
+  if (sample_a %in% rownames(sim_mat) && sample_b %in% colnames(sim_mat)) {
+    return(sim_mat[sample_a, sample_b])
+  }
   return(NA)
 }
 
@@ -16257,49 +16327,283 @@ comparison_results <- data.frame(
   hypothesis = sapply(comparisons, function(x) x$hypothesis),
   jaccard_iN = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, jaccard_mat, "iN")),
   jaccard_iDA = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, jaccard_mat, "iDA")),
+  corr_iN = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, correlation_mat, "iN")),
+  corr_iDA = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, correlation_mat, "iDA")),
   stringsAsFactors = FALSE
 )
-write_csv(comparison_results, file.path(out_dir_ceramide, "key_comparisons_summary.csv"))
 
-message("Module 10 complete: Ceramide pathway analysis")
+message("\nKey pathway comparisons:")
+print(comparison_results)
+
+
+# -----------------------------------------------------------------------------
+# 9.6 Visualize similarity matrices
+# -----------------------------------------------------------------------------
+
+# Jaccard similarity heatmap
+pheatmap::pheatmap(
+  jaccard_mat,
+  color = colorRampPalette(c("white", "#2166AC"))(100),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  fontsize = 6,
+  fontsize_number = 5,
+  border_color = NA,
+  main = "Jaccard similarity of lost PPIs\n(Sphingolipidosis KOs)",
+  filename = file.path(out_dir_ceramide, "jaccard_similarity_heatmap.pdf"),
+  width = 6, height = 6
+)
+
+# Complex correlation heatmap
+pheatmap::pheatmap(
+  correlation_mat,
+  color = colorRampPalette(c("#B2182B", "white", "#2166AC"))(100),
+  breaks = seq(-1, 1, length.out = 101),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  fontsize = 6,
+  fontsize_number = 5,
+  border_color = NA,
+  main = "Correlation of complex disruption\n(Sphingolipidosis KOs)",
+  filename = file.path(out_dir_ceramide, "complex_correlation_heatmap.pdf"),
+  width = 6, height = 6
+)
+
+
+# -----------------------------------------------------------------------------
+# 9.7 Pathway distance vs similarity analysis
+# -----------------------------------------------------------------------------
+pathway_dist <- function(gene_a, gene_b, pathway_df) {
+  depth_a <- pathway_df$depth_from_ceramide[pathway_df$gene == gene_a]
+  depth_b <- pathway_df$depth_from_ceramide[pathway_df$gene == gene_b]
+  if (length(depth_a) == 0 || length(depth_b) == 0) return(NA)
+  return(abs(depth_a - depth_b))
+}
+
+all_pairs <- expand.grid(gene_a = sphingo_genes, gene_b = sphingo_genes, stringsAsFactors = FALSE) %>%
+  dplyr::filter(gene_a < gene_b) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    pathway_distance = pathway_dist(gene_a, gene_b, sphingo_pathway),
+    same_branch = sphingo_pathway$branch[sphingo_pathway$gene == gene_a] == sphingo_pathway$branch[sphingo_pathway$gene == gene_b],
+    jaccard_iN = get_pair_similarity(gene_a, gene_b, jaccard_mat, "iN"),
+    jaccard_iDA = get_pair_similarity(gene_a, gene_b, jaccard_mat, "iDA"),
+    corr_iN = get_pair_similarity(gene_a, gene_b, correlation_mat, "iN"),
+    corr_iDA = get_pair_similarity(gene_a, gene_b, correlation_mat, "iDA")
+  ) %>%
+  dplyr::ungroup()
+
+readr::write_csv(all_pairs, file.path(out_dir_ceramide, "pathway_distance_vs_similarity.csv"))
+
+# Plot pathway distance vs Jaccard similarity
+p_dist_jaccard <- ggplot2::ggplot(all_pairs, ggplot2::aes(x = pathway_distance, y = jaccard_iN)) +
+  ggplot2::geom_point(ggplot2::aes(color = same_branch), size = 3, alpha = 0.8) +
+  ggplot2::geom_smooth(method = "lm", se = TRUE, color = "grey40", linetype = "dashed") +
+  ggrepel::geom_text_repel(ggplot2::aes(label = paste(gene_a, gene_b, sep = "-")), size = 2, max.overlaps = 20) +
+  ggplot2::scale_color_manual(values = c("FALSE" = "#E41A1C", "TRUE" = "#377EB8"), name = "Same branch") +
+  ggplot2::labs(x = "Pathway distance (steps from ceramide)", y = "Jaccard similarity (lost PPIs)", title = "Sphingolipidosis: pathway distance vs PPI disruption similarity") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+ggplot2::ggsave(file.path(out_dir_ceramide, "pathway_distance_vs_jaccard.pdf"), p_dist_jaccard, width = 5, height = 4, device = cairo_pdf)
+
+
+# -----------------------------------------------------------------------------
+# 9.8 Background comparison
+# -----------------------------------------------------------------------------
+sphingo_samples_iN <- paste(sphingo_genes, "iN", sep = "_")
+sphingo_samples_iN <- sphingo_samples_iN[sphingo_samples_iN %in% sample_cols]
+
+sphingo_pairs <- c()
+for (i in 1:(length(sphingo_samples_iN) - 1)) {
+  for (j in (i + 1):length(sphingo_samples_iN)) {
+    sphingo_pairs <- c(sphingo_pairs, jaccard_mat[sphingo_samples_iN[i], sphingo_samples_iN[j]])
+  }
+}
+
+asah1_gba1_jaccard <- get_pair_similarity("ASAH1", "GBA1", jaccard_mat, "iN")
+
+message("\n--- Ceramide convergence test ---")
+message("ASAH1 vs GBA1 Jaccard (iN): ", round(asah1_gba1_jaccard, 3))
+message("Mean sphingolipidosis pair Jaccard: ", round(mean(sphingo_pairs, na.rm = TRUE), 3))
+message("Range: ", round(min(sphingo_pairs, na.rm = TRUE), 3), " - ", round(max(sphingo_pairs, na.rm = TRUE), 3))
+
+
+# -----------------------------------------------------------------------------
+# 9.9 Shared disrupted complexes for high-similarity pairs
+# -----------------------------------------------------------------------------
+jaccard_threshold <- 0.25
+
+high_sim_pairs <- all_pairs %>%
+  dplyr::filter(jaccard_iN > jaccard_threshold) %>%
+  dplyr::arrange(dplyr::desc(jaccard_iN))
+
+message("\nHigh-similarity pairs (Jaccard > ", jaccard_threshold, "):")
+print(high_sim_pairs %>% dplyr::select(gene_a, gene_b, jaccard_iN))
+
+get_shared_complexes <- function(gene_a, gene_b, complex_states) {
+  disrupted_a <- complex_states %>%
+    dplyr::filter(genotype == gene_a, state == "disrupted") %>%
+    dplyr::pull(complex_id) %>% unique()
+
+  disrupted_b <- complex_states %>%
+    dplyr::filter(genotype == gene_b, state == "disrupted") %>%
+    dplyr::pull(complex_id) %>% unique()
+
+  shared <- intersect(disrupted_a, disrupted_b)
+  return(shared)
+}
+
+shared_complexes_list <- list()
+for (i in seq_len(nrow(high_sim_pairs))) {
+  pair <- high_sim_pairs[i, ]
+  shared <- get_shared_complexes(pair$gene_a, pair$gene_b, complex_ko_states)
+  if (length(shared) > 0) {
+    shared_complexes_list[[paste(pair$gene_a, pair$gene_b, sep = "_vs_")]] <- data.frame(
+      gene_pair = paste(pair$gene_a, pair$gene_b, sep = "_vs_"),
+      complex_id = shared,
+      stringsAsFactors = FALSE
+    )
+  }
+}
+
+if (length(shared_complexes_list) > 0) {
+  shared_complexes_all <- dplyr::bind_rows(shared_complexes_list)
+  readr::write_csv(shared_complexes_all, file.path(out_dir_ceramide, "shared_disrupted_high_similarity_pairs.csv"))
+
+  message("\nShared disrupted complexes by pair:")
+  print(shared_complexes_all %>% dplyr::count(gene_pair, name = "n_shared_complexes"))
+}
+
+
+# -----------------------------------------------------------------------------
+# 9.10 Three-way intersection: ASAH1 ∩ GBA1 ∩ SMPD1 (ceramide core)
+# -----------------------------------------------------------------------------
+asah1_disrupted <- complex_ko_states %>%
+  dplyr::filter(genotype == "ASAH1", state == "disrupted") %>%
+  dplyr::pull(complex_id) %>% unique()
+
+gba1_disrupted <- complex_ko_states %>%
+  dplyr::filter(genotype == "GBA1", state == "disrupted") %>%
+  dplyr::pull(complex_id) %>% unique()
+
+smpd1_disrupted <- complex_ko_states %>%
+  dplyr::filter(genotype == "SMPD1", state == "disrupted") %>%
+  dplyr::pull(complex_id) %>% unique()
+
+ceramide_core <- Reduce(intersect, list(asah1_disrupted, gba1_disrupted, smpd1_disrupted))
+
+message("\n--- Ceramide core complexes (ASAH1 ∩ GBA1 ∩ SMPD1) ---")
+message("  ASAH1 disrupted: ", length(asah1_disrupted))
+message("  GBA1 disrupted: ", length(gba1_disrupted))
+message("  SMPD1 disrupted: ", length(smpd1_disrupted))
+message("  Three-way intersection: ", length(ceramide_core))
+
+if (length(ceramide_core) > 0) {
+  ceramide_core_details <- complex_ko_states %>%
+    dplyr::filter(complex_id %in% ceramide_core) %>%
+    dplyr::distinct(complex_id, complex_size, dominant_organelles)
+
+  readr::write_csv(ceramide_core_details, file.path(out_dir_ceramide, "ceramide_core_complexes.csv"))
+
+  message("\nCeramide core complexes:")
+  print(ceramide_core_details)
+}
+
+
+# -----------------------------------------------------------------------------
+# 9.11 Summary table
+# -----------------------------------------------------------------------------
+summary_table <- comparison_results %>%
+  dplyr::mutate(
+    interpretation = dplyr::case_when(
+      jaccard_iN > 0.5 ~ "High similarity",
+      jaccard_iN > 0.3 ~ "Moderate similarity",
+      jaccard_iN > 0.1 ~ "Low similarity",
+      TRUE ~ "Minimal similarity"
+    )
+  )
+
+readr::write_csv(summary_table, file.path(out_dir_ceramide, "key_comparisons_summary.csv"))
+
+message("\n=== Module 9: Ceramide pathway analysis complete ===")
+message("Output: ", out_dir_ceramide)
+message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite different mechanisms?")
 ```
 
----
 
-# Module 11: OXPHOS Vulnerability Analysis
+## Module 10: OXPHOS Vulnerability Analysis
+Mitochondrial and OXPHOS PPI vulnerability in LSD mutants
 
-```{r module11-oxphos}
+```{r module10}
 # =============================================================================
-# Module 11: OXPHOS Vulnerability Analysis in Sphingolipidoses
+# Module 10: OXPHOS Vulnerability Analysis in Sphingolipidoses
 # =============================================================================
-message("Running OXPHOS vulnerability analysis...")
+#
+# Rationale: Sphingolipid metabolism disruption affects mitochondrial function.
+# Ceramide accumulation can impair electron transport chain and OXPHOS.
+# This module examines:
+# 1. Lost PPIs in mito/OXPHOS annotations across all KOs
+# 2. Comparison between sphingolipidosis genes and other disease classes
+# 3. Heatmaps showing KO x mito-annotation vulnerability
+# =============================================================================
+message("Module 10: OXPHOS Vulnerability Analysis...")
 
 out_dir_mito <- file.path(out_dir_vuln, "mito_oxphos_vulnerability")
 dir.create(file.path(out_dir_mito, "plots"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_mito, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_mito, "tables"), recursive = TRUE, showWarnings = FALSE)
 
+# Define mito-related annotations
 mito_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+
+# Sphingolipidosis genes of interest
 sphingolipidosis_genes <- c("ASAH1", "GBA1", "SMPD1", "HEXA", "HEXB", "PSAP")
 ceramide_core_genes <- c("ASAH1", "GBA1", "SMPD1")
 
-mito_ppi_summary <- ko_summary_by_organelle %>% dplyr::filter(shared_organelle %in% mito_annotations)
 
-if (nrow(mito_ppi_summary) > 0) {
-  write_csv(mito_ppi_summary, file.path(out_dir_mito, "tables", "ppi_mito_summary.csv"))
+# -----------------------------------------------------------------------------
+# 10.1 Filter PPI summary to mito annotations
+# -----------------------------------------------------------------------------
+mito_ppi_summary <- ko_summary_by_organelle %>%
+  dplyr::filter(shared_organelle %in% mito_annotations)
 
+if (nrow(mito_ppi_summary) == 0) {
+  message("  No mito annotation data found. Skipping Module 10.")
+} else {
+
+  readr::write_csv(mito_ppi_summary, file.path(out_dir_mito, "tables", "ppi_mito_summary.csv"))
+  message("  Mito PPI summary: ", nrow(mito_ppi_summary), " rows")
+
+
+  # ---------------------------------------------------------------------------
+  # 10.2 Heatmaps: KO x mito-annotation (lost PPIs)
+  # ---------------------------------------------------------------------------
   for (neuron_type in c("iN", "iDA")) {
+
     heatmap_data <- mito_ppi_summary %>%
       dplyr::filter(neuron == neuron_type) %>%
       dplyr::select(genotype, shared_organelle, n_lost) %>%
       tidyr::pivot_wider(names_from = shared_organelle, values_from = n_lost, values_fill = 0)
 
-    if (nrow(heatmap_data) < 2 || ncol(heatmap_data) < 2) next
+    if (nrow(heatmap_data) < 2 || ncol(heatmap_data) < 2) {
+      message("  Insufficient data for heatmap (", neuron_type, ")")
+      next
+    }
 
-    hm_mat <- as.matrix(heatmap_data[, -1]); rownames(hm_mat) <- heatmap_data$genotype
-    row_order <- rowSums(hm_mat) %>% sort(decreasing = TRUE) %>% names()
+    hm_mat <- as.matrix(heatmap_data[, -1])
+    rownames(hm_mat) <- heatmap_data$genotype
+
+    # Order rows by total lost PPIs (descending)
+    row_totals <- rowSums(hm_mat, na.rm = TRUE)
+    row_order <- names(sort(row_totals, decreasing = TRUE))
     hm_mat <- hm_mat[row_order, , drop = FALSE]
 
+    # Row annotation: disease class
     row_annot <- disease_map %>%
       dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
       dplyr::select(genotype, DiseaseClass) %>%
@@ -16309,16 +16613,205 @@ if (nrow(mito_ppi_summary) > 0) {
     row_annot <- row_annot %>% dplyr::select(DiseaseClass)
     row_annot <- row_annot[rownames(hm_mat), , drop = FALSE]
 
-    write_csv(as.data.frame(hm_mat) %>% rownames_to_column("genotype"), file.path(out_dir_mito, "sourcedata", paste0("ppi_mito_heatmap_", neuron_type, ".csv")))
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
 
-    col_fun_mito <- colorRamp2(c(0, max(hm_mat, na.rm = TRUE) / 2, max(hm_mat, na.rm = TRUE)), c("grey90", "#FC9272", "#C51B7D"))
-    save_heatmap_square(hm_mat, file.path(out_dir_mito, "plots", paste0("ppi_mito_heatmap_", neuron_type, ".pdf")),
-                         title = paste0("Lost Mito PPIs - ", neuron_type), row_annot = row_annot, col_fun = col_fun_mito,
-                         width = 8, height = 10, cell_size = 8, cluster_rows = FALSE, cluster_cols = FALSE)
+    readr::write_csv(as.data.frame(hm_mat) %>% tibble::rownames_to_column("genotype"),
+              file.path(out_dir_mito, "sourcedata", paste0("ppi_mito_heatmap_", neuron_type, ".csv")))
+
+    # pheatmap with no clustering (manual order by total lost)
+    pheatmap::pheatmap(
+      hm_mat,
+      color = colorRampPalette(c("grey95", "#FC9272", "#C51B7D"))(100),
+      cluster_rows = FALSE,
+      cluster_cols = TRUE,
+      display_numbers = TRUE,
+      number_format = "%.0f",
+      fontsize = 6,
+      fontsize_number = 5,
+      cellwidth = 15,
+      cellheight = 10,
+      border_color = NA,
+      annotation_row = row_annot,
+      annotation_colors = ann_colors,
+      main = paste0("Lost Mito/OXPHOS PPIs - ", neuron_type, "\n(ordered by total lost)"),
+      filename = file.path(out_dir_mito, "plots", paste0("heatmap_mito_lost_ppi_", neuron_type, ".pdf")),
+      width = 8, height = 12
+    )
+    message("  Saved: heatmap_mito_lost_ppi_", neuron_type, ".pdf")
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 10.3 Heatmap: fraction lost (normalized)
+  # ---------------------------------------------------------------------------
+  for (neuron_type in c("iN", "iDA")) {
+
+    heatmap_data_frac <- mito_ppi_summary %>%
+      dplyr::filter(neuron == neuron_type) %>%
+      dplyr::select(genotype, shared_organelle, frac_lost) %>%
+      tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost, values_fill = 0)
+
+    if (nrow(heatmap_data_frac) < 2 || ncol(heatmap_data_frac) < 2) next
+
+    hm_mat_frac <- as.matrix(heatmap_data_frac[, -1])
+    rownames(hm_mat_frac) <- heatmap_data_frac$genotype
+
+    # Order by mean fraction lost
+    row_means <- rowMeans(hm_mat_frac, na.rm = TRUE)
+    row_order <- names(sort(row_means, decreasing = TRUE))
+    hm_mat_frac <- hm_mat_frac[row_order, , drop = FALSE]
+
+    row_annot_frac <- disease_map %>%
+      dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+      dplyr::select(genotype, DiseaseClass) %>%
+      dplyr::distinct(genotype, .keep_all = TRUE) %>%
+      dplyr::filter(genotype %in% rownames(hm_mat_frac))
+    rownames(row_annot_frac) <- row_annot_frac$genotype
+    row_annot_frac <- row_annot_frac %>% dplyr::select(DiseaseClass)
+    row_annot_frac <- row_annot_frac[rownames(hm_mat_frac), , drop = FALSE]
+
+    ann_colors_frac <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot_frac$DiseaseClass)))])
+
+    readr::write_csv(as.data.frame(hm_mat_frac) %>% tibble::rownames_to_column("genotype"),
+              file.path(out_dir_mito, "sourcedata", paste0("ppi_mito_heatmap_frac_", neuron_type, ".csv")))
+
+    pheatmap::pheatmap(
+      hm_mat_frac,
+      color = colorRampPalette(c("white", "#FC9272", "#C51B7D"))(100),
+      cluster_rows = FALSE,
+      cluster_cols = TRUE,
+      display_numbers = TRUE,
+      number_format = "%.2f",
+      fontsize = 6,
+      fontsize_number = 5,
+      cellwidth = 15,
+      cellheight = 10,
+      border_color = NA,
+      annotation_row = row_annot_frac,
+      annotation_colors = ann_colors_frac,
+      main = paste0("Fraction Mito/OXPHOS PPIs lost - ", neuron_type),
+      filename = file.path(out_dir_mito, "plots", paste0("heatmap_mito_frac_lost_", neuron_type, ".pdf")),
+      width = 8, height = 12
+    )
+    message("  Saved: heatmap_mito_frac_lost_", neuron_type, ".pdf")
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 10.4 Barplot: total mito PPIs lost by disease class
+  # ---------------------------------------------------------------------------
+  mito_by_disease <- mito_ppi_summary %>%
+    dplyr::filter(!is.na(DiseaseClass), DiseaseClass %in% disease_class_order) %>%
+    dplyr::mutate(DiseaseClass = factor(DiseaseClass, levels = disease_class_order)) %>%
+    dplyr::group_by(DiseaseClass, neuron) %>%
+    dplyr::summarise(
+      total_lost = sum(n_lost, na.rm = TRUE),
+      mean_frac_lost = mean(frac_lost, na.rm = TRUE),
+      n_kos = dplyr::n_distinct(genotype),
+      .groups = "drop"
+    )
+
+  p_mito_disease <- ggplot2::ggplot(mito_by_disease, ggplot2::aes(x = DiseaseClass, y = mean_frac_lost, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~neuron) +
+    ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
+    ggplot2::labs(x = NULL, y = "Mean fraction mito PPIs lost", title = "Mito/OXPHOS vulnerability by disease class") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+  ggplot2::ggsave(file.path(out_dir_mito, "plots", "barplot_mito_disease_class.pdf"), p_mito_disease, width = 6, height = 4, device = cairo_pdf)
+  readr::write_csv(mito_by_disease, file.path(out_dir_mito, "tables", "mito_by_disease_summary.csv"))
+
+
+  # ---------------------------------------------------------------------------
+  # 10.5 Sphingolipidosis focus: compare ceramide-core vs other sphingo
+  # ---------------------------------------------------------------------------
+  sphingo_mito <- mito_ppi_summary %>%
+    dplyr::filter(genotype %in% sphingolipidosis_genes) %>%
+    dplyr::mutate(group = dplyr::case_when(
+      genotype %in% ceramide_core_genes ~ "Ceramide-proximal",
+      TRUE ~ "Upstream"
+    ))
+
+  if (nrow(sphingo_mito) > 0) {
+    sphingo_mito_summary <- sphingo_mito %>%
+      dplyr::group_by(genotype, neuron, group) %>%
+      dplyr::summarise(
+        total_lost = sum(n_lost, na.rm = TRUE),
+        mean_frac_lost = mean(frac_lost, na.rm = TRUE),
+        .groups = "drop"
+      )
+
+    p_sphingo_mito <- ggplot2::ggplot(sphingo_mito_summary, ggplot2::aes(x = reorder(genotype, -mean_frac_lost), y = mean_frac_lost, fill = group)) +
+      ggplot2::geom_col(color = "black", linewidth = 0.2) +
+      ggplot2::facet_wrap(~neuron) +
+      ggplot2::scale_fill_manual(values = c("Ceramide-proximal" = "#D53E4F", "Upstream" = "#FEE08B"), name = "Position") +
+      ggplot2::labs(x = NULL, y = "Mean fraction mito PPIs lost", title = "Sphingolipidosis: Mito/OXPHOS vulnerability") +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+    ggplot2::ggsave(file.path(out_dir_mito, "plots", "barplot_sphingo_mito.pdf"), p_sphingo_mito, width = 5, height = 4, device = cairo_pdf)
+    readr::write_csv(sphingo_mito_summary, file.path(out_dir_mito, "tables", "sphingo_mito_summary.csv"))
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 10.6 Detailed heatmap: OXPHOS subcompartments
+  # ---------------------------------------------------------------------------
+  oxphos_detail <- mito_ppi_summary %>%
+    dplyr::filter(shared_organelle %in% c("OXPHOS", "mtComplexI", "MitoMatrix", "MitoIMS"))
+
+  if (nrow(oxphos_detail) > 0) {
+    for (neuron_type in c("iN", "iDA")) {
+      heatmap_oxphos <- oxphos_detail %>%
+        dplyr::filter(neuron == neuron_type) %>%
+        dplyr::select(genotype, shared_organelle, frac_lost) %>%
+        tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost, values_fill = 0)
+
+      if (nrow(heatmap_oxphos) < 2 || ncol(heatmap_oxphos) < 2) next
+
+      hm_mat_oxphos <- as.matrix(heatmap_oxphos[, -1])
+      rownames(hm_mat_oxphos) <- heatmap_oxphos$genotype
+
+      row_means_oxphos <- rowMeans(hm_mat_oxphos, na.rm = TRUE)
+      row_order_oxphos <- names(sort(row_means_oxphos, decreasing = TRUE))
+      hm_mat_oxphos <- hm_mat_oxphos[row_order_oxphos, , drop = FALSE]
+
+      row_annot_oxphos <- disease_map %>%
+        dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+        dplyr::select(genotype, DiseaseClass) %>%
+        dplyr::distinct(genotype, .keep_all = TRUE) %>%
+        dplyr::filter(genotype %in% rownames(hm_mat_oxphos))
+      rownames(row_annot_oxphos) <- row_annot_oxphos$genotype
+      row_annot_oxphos <- row_annot_oxphos %>% dplyr::select(DiseaseClass)
+      row_annot_oxphos <- row_annot_oxphos[rownames(hm_mat_oxphos), , drop = FALSE]
+
+      ann_colors_oxphos <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot_oxphos$DiseaseClass)))])
+
+      pheatmap::pheatmap(
+        hm_mat_oxphos,
+        color = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+        cluster_rows = FALSE,
+        cluster_cols = TRUE,
+        display_numbers = TRUE,
+        number_format = "%.2f",
+        fontsize = 6,
+        fontsize_number = 5,
+        cellwidth = 20,
+        cellheight = 10,
+        border_color = NA,
+        annotation_row = row_annot_oxphos,
+        annotation_colors = ann_colors_oxphos,
+        main = paste0("OXPHOS subcompartment vulnerability - ", neuron_type),
+        filename = file.path(out_dir_mito, "plots", paste0("heatmap_oxphos_detail_", neuron_type, ".pdf")),
+        width = 6, height = 12
+      )
+      message("  Saved: heatmap_oxphos_detail_", neuron_type, ".pdf")
+    }
   }
 }
 
-message("Module 11 complete: OXPHOS vulnerability analysis")
+message("Module 10 complete: OXPHOS vulnerability analysis")
 ```
 
 
