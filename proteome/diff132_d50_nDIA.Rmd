@@ -16385,42 +16385,6 @@ message("Module 8 complete: KO x Neuron Extended Analysis")
 
 
 
-# Module 9: Master Summary Statistics
-```{r module9-summary}
-# =============================================================================
-# Module 9: Master Summary Statistics
-# =============================================================================
-message("Generating master summary statistics...")
-
-master_stats <- ko_summary_global %>%
-  dplyr::select(genotype, neuron, DiseaseClass, total_edges, n_lost, frac_lost) %>%
-  dplyr::rename(ppi_total = total_edges, ppi_lost = n_lost, ppi_frac_lost = frac_lost) %>%
-  dplyr::left_join(trimer_summary_ko %>% dplyr::select(genotype, neuron, total_trimers, n_disrupted, frac_disrupted) %>% dplyr::rename(trimer_total = total_trimers, trimer_disrupted = n_disrupted, trimer_frac = frac_disrupted), by = c("genotype", "neuron")) %>%
-  dplyr::left_join(tetramer_summary_ko %>% dplyr::select(genotype, neuron, total_tetramers, n_disrupted, frac_disrupted) %>% dplyr::rename(tetramer_total = total_tetramers, tetramer_disrupted = n_disrupted, tetramer_frac = frac_disrupted), by = c("genotype", "neuron")) %>%
-  dplyr::left_join(complex_summary_ko %>% dplyr::select(genotype, neuron, total_complexes, n_disrupted, frac_disrupted) %>% dplyr::rename(complex_total = total_complexes, complex_disrupted = n_disrupted, complex_frac = frac_disrupted), by = c("genotype", "neuron"))
-
-write_csv(master_stats, file.path(out_dir_vuln, "tables", "master_vulnerability_stats.csv"))
-message("  Saved: master_vulnerability_stats.csv")
-
-dc_summary <- master_stats %>%
-  dplyr::filter(!is.na(DiseaseClass)) %>%
-  dplyr::group_by(DiseaseClass, neuron) %>%
-  dplyr::summarise(n_kos = n(), mean_ppi_frac_lost = mean(ppi_frac_lost, na.rm = TRUE), sd_ppi_frac_lost = sd(ppi_frac_lost, na.rm = TRUE),
-                   mean_trimer_frac = mean(trimer_frac, na.rm = TRUE), sd_trimer_frac = sd(trimer_frac, na.rm = TRUE),
-                   mean_tetramer_frac = mean(tetramer_frac, na.rm = TRUE), sd_tetramer_frac = sd(tetramer_frac, na.rm = TRUE),
-                   mean_complex_frac = mean(complex_frac, na.rm = TRUE), sd_complex_frac = sd(complex_frac, na.rm = TRUE), .groups = "drop")
-write_csv(dc_summary, file.path(out_dir_vuln, "tables", "disease_class_vulnerability_summary.csv"))
-
-global_summary <- tibble(
-  metric = c("Total PPIs (gold+silver)", "Total trimers", "Total tetramers", "Total complexes", "KO genotypes", "Neuron types", "Drop threshold (log2FC)", "Avg PPI loss rate (iN)", "Avg PPI loss rate (iDA)"),
-  value = c(nrow(baseline_filtered), nrow(trimer_evidence), nrow(tetramer_evidence), nrow(complex_evidence), length(unique(ko_summary_global$genotype)), 2, drop_thresh, mean(master_stats$ppi_frac_lost[master_stats$neuron == "iN"], na.rm = TRUE), mean(master_stats$ppi_frac_lost[master_stats$neuron == "iDA"], na.rm = TRUE))
-)
-write_csv(global_summary, file.path(out_dir_vuln, "tables", "global_summary_for_methods.csv"))
-
-message("Module 9 complete: Master summary statistics")
-```
-
-
 
 ## Module 9: Ceramide Pathway Disruption Analysis
 Compare PPI/complex disruption across sphingolipidosis genes
@@ -17056,45 +17020,36 @@ message("Module 10 complete: OXPHOS vulnerability analysis")
 ## Module 11: PPI Network Connectivity Analysis
 Network topology disruption analysis per KO x neuron
 
-```{r module11}
+```{r module11_network}
 # =============================================================================
 # Module 11: PPI Network Connectivity Analysis
 # Quantify network topology disruption per KO x neuron
 # =============================================================================
-#
-# Structure:
-# - Step 0: Build baseline network and compute topology
-# - M1: Hub vulnerability analysis
-# - M2: Network fragmentation analysis
-# - M3: Inter-organelle bridge disruption
-# - M4: Disease class convergence
-# =============================================================================
-message("Module 11: PPI Network Connectivity Analysis...")
+message("\n", strrep("=", 70))
+message("MODULE 11: PPI Network Connectivity Analysis")
+message(strrep("=", 70))
 
-out_dir_network <- file.path(out_dir_vuln, "network_analysis")
+library(igraph)
+library(corrplot)
+
+# --- Output directories ---
+out_dir_network <- file.path(out_dir_vuln, "Network_evaluation")
 dir.create(file.path(out_dir_network, "Step0_baseline"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_network, "M1_hub_vulnerability"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_network, "M2_fragmentation"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_network, "M3_interorganelle_bridges"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_network, "M3_interorganelle_bridges/per_KO"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_network, "M4_disease_convergence"), recursive = TRUE, showWarnings = FALSE)
-
-# Use baseline_filtered from Module 1 (gold + silver PPIs)
-# If not available, recreate it
-if (!exists("baseline_filtered")) {
-  baseline_filtered <- baseline_ppi %>% dplyr::filter(confidence_tier %in% conf_tiers_use)
-}
 
 
 # =============================================================================
 # STEP 0: BUILD BASELINE NETWORK & COMPUTE TOPOLOGY
 # =============================================================================
-message("\n", strrep("=", 70))
-message("STEP 0: Building baseline network and computing topology")
-message(strrep("=", 70))
+message("\n--- STEP 0: Building baseline network ---")
 
 # --- 0.1 Create igraph object from baseline edges ---
 baseline_net <- igraph::graph_from_data_frame(
-  d = baseline_filtered %>% dplyr::select(Gene1, Gene2, key),
+  d = baseline_filtered %>% dplyr::select(Gene1, Gene2, key, confidence_tier),
   directed = FALSE,
   vertices = data.frame(name = unique(c(baseline_filtered$Gene1, baseline_filtered$Gene2)), stringsAsFactors = FALSE)
 )
@@ -17103,61 +17058,49 @@ message("Baseline network: ", igraph::vcount(baseline_net), " proteins, ", igrap
 
 
 # --- 0.2 Add organelle annotations to nodes ---
-# Filter organelle tags to exclude redundant ones
-organelle_tags_exclude <- c("EndoLyso", "Autophagy_det")
-organelle_tags_net <- setdiff(organelle_tags, organelle_tags_exclude)
+organelle_tags_network <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus", "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs", "Presynaptic", "Postsynaptic", "EndoLyso", "EarlyEndosome", "RecyclingEndosome", "SVfusion", "Svendocytosis", "Svexocytosis", "vATPase")
 
-# Build gene -> organelle mapping from complete_data_annotated_day50
-# Check which organelle columns exist
-existing_org_cols <- intersect(organelle_tags_net, names(complete_data_annotated_day50))
+# Build gene -> organelle mapping
+annot_cols_present <- intersect(organelle_tags_network, colnames(complete_data_annotated_day50))
+gene_annotations <- complete_data_annotated_day50 %>%
+  dplyr::select(Genes, all_of(annot_cols_present)) %>%
+  tidyr::pivot_longer(cols = all_of(annot_cols_present), names_to = "annotation", values_to = "present") %>%
+  dplyr::filter(present == TRUE | present == 1) %>%
+  dplyr::select(Genes, annotation)
 
-if (length(existing_org_cols) > 0) {
-  gene_annotations <- complete_data_annotated_day50 %>%
-    dplyr::select(Genes, all_of(existing_org_cols)) %>%
-    tidyr::pivot_longer(cols = all_of(existing_org_cols), names_to = "annotation", values_to = "present") %>%
-    dplyr::filter(present == TRUE | present == 1) %>%
-    dplyr::select(Genes, annotation)
+gene_primary_annotation <- gene_annotations %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(annotations = paste(annotation, collapse = ";"), primary_annotation = dplyr::first(annotation), n_annotations = dplyr::n(), .groups = "drop")
 
-  gene_primary_annotation <- gene_annotations %>%
-    dplyr::group_by(Genes) %>%
-    dplyr::summarise(annotations = paste(annotation, collapse = ";"), primary_annotation = dplyr::first(annotation), n_annotations = dplyr::n(), .groups = "drop")
-} else {
-  gene_primary_annotation <- data.frame(Genes = character(0), annotations = character(0), primary_annotation = character(0), n_annotations = integer(0))
-}
-
-# Define organelle colors dynamically
-all_annotations_net <- unique(gene_primary_annotation$primary_annotation)
-all_annotations_net <- all_annotations_net[!is.na(all_annotations_net) & all_annotations_net != "Unannotated"]
-organelle_colors_net <- setNames(colorRampPalette(RColorBrewer::brewer.pal(11, "Set3"))(length(all_annotations_net)), all_annotations_net)
+# Define organelle colors using RdBu palette
+all_annotations <- unique(gene_primary_annotation$primary_annotation)
+all_annotations <- all_annotations[!is.na(all_annotations) & all_annotations != "Unannotated"]
+organelle_colors_network <- setNames(colorRampPalette(RColorBrewer::brewer.pal(11, "RdBu"))(length(all_annotations)), all_annotations)
 
 # Add to network vertices
-igraph::V(baseline_net)$primary_annotation <- gene_primary_annotation$primary_annotation[match(igraph::V(baseline_net)$name, gene_primary_annotation$Genes)]
-igraph::V(baseline_net)$all_annotations <- gene_primary_annotation$annotations[match(igraph::V(baseline_net)$name, gene_primary_annotation$Genes)]
-igraph::V(baseline_net)$n_annotations <- gene_primary_annotation$n_annotations[match(igraph::V(baseline_net)$name, gene_primary_annotation$Genes)]
+V(baseline_net)$primary_annotation <- gene_primary_annotation$primary_annotation[match(V(baseline_net)$name, gene_primary_annotation$Genes)]
+V(baseline_net)$all_annotations <- gene_primary_annotation$annotations[match(V(baseline_net)$name, gene_primary_annotation$Genes)]
+V(baseline_net)$n_annotations <- gene_primary_annotation$n_annotations[match(V(baseline_net)$name, gene_primary_annotation$Genes)]
 
-# Fill NA with "Unannotated"
-igraph::V(baseline_net)$primary_annotation[is.na(igraph::V(baseline_net)$primary_annotation)] <- "Unannotated"
-igraph::V(baseline_net)$all_annotations[is.na(igraph::V(baseline_net)$all_annotations)] <- "Unannotated"
-igraph::V(baseline_net)$n_annotations[is.na(igraph::V(baseline_net)$n_annotations)] <- 0
+V(baseline_net)$primary_annotation[is.na(V(baseline_net)$primary_annotation)] <- "Unannotated"
+V(baseline_net)$all_annotations[is.na(V(baseline_net)$all_annotations)] <- "Unannotated"
+V(baseline_net)$n_annotations[is.na(V(baseline_net)$n_annotations)] <- 0
 
 
 # --- 0.3 Compute node-level topology metrics ---
 message("Computing node topology metrics...")
 
-igraph::V(baseline_net)$degree <- igraph::degree(baseline_net)
-igraph::V(baseline_net)$betweenness <- igraph::betweenness(baseline_net, normalized = TRUE)
-igraph::V(baseline_net)$clustering_coef <- igraph::transitivity(baseline_net, type = "local")
+V(baseline_net)$degree <- igraph::degree(baseline_net)
+V(baseline_net)$betweenness <- igraph::betweenness(baseline_net, normalized = TRUE)
+V(baseline_net)$clustering_coef <- igraph::transitivity(baseline_net, type = "local")
 
-# Identify hubs: top 10% and top 5% by degree
-degree_threshold_top10 <- quantile(igraph::V(baseline_net)$degree, 0.90, na.rm = TRUE)
-degree_threshold_top5 <- quantile(igraph::V(baseline_net)$degree, 0.95, na.rm = TRUE)
-igraph::V(baseline_net)$is_hub_top10 <- igraph::V(baseline_net)$degree >= degree_threshold_top10
-igraph::V(baseline_net)$is_hub_top5 <- igraph::V(baseline_net)$degree >= degree_threshold_top5
+degree_threshold_top10 <- quantile(V(baseline_net)$degree, 0.90, na.rm = TRUE)
+degree_threshold_top5 <- quantile(V(baseline_net)$degree, 0.95, na.rm = TRUE)
+V(baseline_net)$is_hub_top10 <- V(baseline_net)$degree >= degree_threshold_top10
+V(baseline_net)$is_hub_top5 <- V(baseline_net)$degree >= degree_threshold_top5
 
 message("  Hub threshold (top 10%): degree >= ", degree_threshold_top10)
-message("  Hub threshold (top 5%): degree >= ", degree_threshold_top5)
-message("  Number of top-10% hubs: ", sum(igraph::V(baseline_net)$is_hub_top10))
-message("  Number of top-5% hubs: ", sum(igraph::V(baseline_net)$is_hub_top5))
+message("  Number of top-10% hubs: ", sum(V(baseline_net)$is_hub_top10))
 
 
 # --- 0.4 Compute connected components ---
@@ -17165,7 +17108,7 @@ components_baseline <- igraph::components(baseline_net)
 message("  Connected components: ", components_baseline$no)
 message("  Largest component size: ", max(components_baseline$csize), " proteins (", round(max(components_baseline$csize)/igraph::vcount(baseline_net)*100, 1), "%)")
 
-igraph::V(baseline_net)$component_id <- components_baseline$membership
+V(baseline_net)$component_id <- components_baseline$membership
 
 
 # --- 0.5 Classify edges as intra- vs inter-organelle ---
@@ -17187,22 +17130,21 @@ edge_df <- igraph::as_data_frame(baseline_net, what = "edges") %>%
     annotation_pair = ifelse(annotation_from <= annotation_to, paste(annotation_from, annotation_to, sep = "::"), paste(annotation_to, annotation_from, sep = "::"))
   )
 
-igraph::E(baseline_net)$edge_type <- edge_df$edge_type
-igraph::E(baseline_net)$annotation_pair <- edge_df$annotation_pair
+E(baseline_net)$edge_type <- edge_df$edge_type
+E(baseline_net)$annotation_pair <- edge_df$annotation_pair
 
 edge_type_summary <- table(edge_df$edge_type)
 message("  Intra-organelle edges: ", edge_type_summary["intra"])
 message("  Inter-organelle edges: ", edge_type_summary["inter"])
-message("  Unknown (unannotated): ", edge_type_summary["unknown"])
 
 
 # --- 0.6 Build inter-organelle edge matrix (baseline) ---
-all_annots <- unique(c(edge_df$annotation_from, edge_df$annotation_to))
-all_annots <- all_annots[!is.na(all_annots) & all_annots != "Unannotated"]
-
 annotation_pairs_all <- edge_df %>%
-  dplyr::filter(edge_type %in% c("intra", "inter"), annotation_from != "Unannotated", annotation_to != "Unannotated") %>%
+  dplyr::filter(edge_type %in% c("intra", "inter")) %>%
   dplyr::count(annotation_from, annotation_to, name = "n_edges")
+
+all_annots <- unique(c(edge_df$annotation_from, edge_df$annotation_to))
+all_annots <- all_annots[all_annots != "Unannotated"]
 
 inter_matrix_baseline <- matrix(0, nrow = length(all_annots), ncol = length(all_annots), dimnames = list(all_annots, all_annots))
 
@@ -17218,15 +17160,15 @@ for (i in seq_len(nrow(annotation_pairs_all))) {
 
 # --- 0.7 Save baseline topology summaries ---
 node_metrics_baseline <- data.frame(
-  Gene = igraph::V(baseline_net)$name,
-  degree = igraph::V(baseline_net)$degree,
-  betweenness = igraph::V(baseline_net)$betweenness,
-  clustering_coef = igraph::V(baseline_net)$clustering_coef,
-  is_hub_top10 = igraph::V(baseline_net)$is_hub_top10,
-  is_hub_top5 = igraph::V(baseline_net)$is_hub_top5,
-  primary_annotation = igraph::V(baseline_net)$primary_annotation,
-  all_annotations = igraph::V(baseline_net)$all_annotations,
-  component_id = igraph::V(baseline_net)$component_id,
+  Gene = V(baseline_net)$name,
+  degree = V(baseline_net)$degree,
+  betweenness = V(baseline_net)$betweenness,
+  clustering_coef = V(baseline_net)$clustering_coef,
+  is_hub_top10 = V(baseline_net)$is_hub_top10,
+  is_hub_top5 = V(baseline_net)$is_hub_top5,
+  primary_annotation = V(baseline_net)$primary_annotation,
+  all_annotations = V(baseline_net)$all_annotations,
+  component_id = V(baseline_net)$component_id,
   stringsAsFactors = FALSE
 ) %>% dplyr::arrange(dplyr::desc(degree))
 
@@ -17240,17 +17182,16 @@ baseline_summary <- list(
   n_components = components_baseline$no,
   largest_component_size = max(components_baseline$csize),
   largest_component_pct = round(max(components_baseline$csize)/igraph::vcount(baseline_net)*100, 2),
-  n_hubs_top10 = sum(igraph::V(baseline_net)$is_hub_top10),
-  n_hubs_top5 = sum(igraph::V(baseline_net)$is_hub_top5),
+  n_hubs_top10 = sum(V(baseline_net)$is_hub_top10),
+  n_hubs_top5 = sum(V(baseline_net)$is_hub_top5),
   hub_degree_threshold_top10 = degree_threshold_top10,
   hub_degree_threshold_top5 = degree_threshold_top5,
   n_intra_edges = as.numeric(edge_type_summary["intra"]),
   n_inter_edges = as.numeric(edge_type_summary["inter"]),
-  mean_degree = mean(igraph::V(baseline_net)$degree),
-  median_degree = median(igraph::V(baseline_net)$degree),
-  max_degree = max(igraph::V(baseline_net)$degree)
+  mean_degree = mean(V(baseline_net)$degree),
+  median_degree = median(V(baseline_net)$degree),
+  max_degree = max(V(baseline_net)$degree)
 )
-
 saveRDS(baseline_summary, file.path(out_dir_network, "Step0_baseline", "baseline_summary.rds"))
 
 
@@ -17267,47 +17208,112 @@ p_degree_dist <- ggplot2::ggplot(node_metrics_baseline, ggplot2::aes(x = degree)
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank())
 
-ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 4, height = 3, device = cairo_pdf)
+ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
 
-# Degree by annotation
-p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(primary_annotation != "Unannotated"),
-                                      ggplot2::aes(x = reorder(primary_annotation, degree, median), y = degree, fill = primary_annotation)) +
+# Degree by annotation (using RdBu colors)
+p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(primary_annotation != "Unannotated"), ggplot2::aes(x = reorder(primary_annotation, degree, median), y = degree, fill = primary_annotation)) +
   ggplot2::geom_boxplot(outlier.size = 0.3, linewidth = 0.3) +
   ggplot2::scale_y_log10() +
+  ggplot2::scale_fill_manual(values = organelle_colors_network, guide = "none") +
   ggplot2::coord_flip() +
-  ggplot2::labs(title = "Degree by annotation", x = NULL, y = "Degree (log10)") +
+  ggplot2::labs(title = "Degree distribution by annotation", x = NULL, y = "Degree (log10)") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank(), legend.position = "none")
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
 
 ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 6, device = cairo_pdf)
 
-# Inter-organelle heatmap
+# Inter-organelle heatmap (no numbers)
 annots_with_edges <- rownames(inter_matrix_baseline)[rowSums(inter_matrix_baseline) > 10]
 inter_matrix_filtered <- inter_matrix_baseline[annots_with_edges, annots_with_edges]
 
 if (nrow(inter_matrix_filtered) >= 2) {
+  pdf(file.path(out_dir_network, "Step0_baseline", "heatmap_inter_organelle_baseline.pdf"), width = 10, height = 9)
   pheatmap::pheatmap(
     inter_matrix_filtered,
     scale = "none",
     color = colorRampPalette(c("white", "dodgerblue", "dodgerblue4"))(100),
     cluster_rows = TRUE,
     cluster_cols = TRUE,
-    display_numbers = TRUE,
-    number_format = "%.0f",
+    display_numbers = FALSE,
     fontsize = 6,
-    fontsize_number = 5,
-    cellwidth = 12,
-    cellheight = 12,
+    cellwidth = 10,
+    cellheight = 10,
     border_color = NA,
-    main = "Baseline inter-organelle edge counts",
-    filename = file.path(out_dir_network, "Step0_baseline", "heatmap_inter_organelle_baseline.pdf"),
-    width = 10, height = 9
+    main = "Baseline inter-organelle edge counts"
   )
+  dev.off()
+  message("  Saved: heatmap_inter_organelle_baseline.pdf")
 }
 
 # Top hubs table
-top_hubs <- node_metrics_baseline %>% dplyr::filter(is_hub_top5) %>% dplyr::slice_head(n = 50)
+top_hubs <- node_metrics_baseline %>%
+  dplyr::filter(is_hub_top5) %>%
+  dplyr::arrange(dplyr::desc(degree)) %>%
+  dplyr::slice_head(n = 50)
+
 readr::write_csv(top_hubs, file.path(out_dir_network, "Step0_baseline", "top_hubs_baseline.csv"))
+
+
+# --- 0.9 Annotation-level network visualizations ---
+message("Building annotation-level summary network...")
+
+annotation_edge_counts <- edge_df %>%
+  dplyr::filter(annotation_from != "Unannotated", annotation_to != "Unannotated") %>%
+  dplyr::group_by(annotation_from, annotation_to) %>%
+  dplyr::summarise(n_edges = dplyr::n(), .groups = "drop") %>%
+  dplyr::filter(n_edges >= 15)
+
+annotation_node_sizes <- gene_primary_annotation %>%
+  dplyr::filter(primary_annotation != "Unannotated") %>%
+  dplyr::count(primary_annotation, name = "n_proteins")
+
+inter_annotation_edges <- annotation_edge_counts %>%
+  dplyr::filter(annotation_from != annotation_to)
+
+connected_annots <- unique(c(inter_annotation_edges$annotation_from, inter_annotation_edges$annotation_to))
+
+annotation_node_sizes_connected <- annotation_node_sizes %>%
+  dplyr::filter(primary_annotation %in% connected_annots)
+
+annot_net_no_loops <- igraph::graph_from_data_frame(
+  d = inter_annotation_edges,
+  directed = FALSE,
+  vertices = annotation_node_sizes_connected
+)
+
+V(annot_net_no_loops)$size <- sqrt(V(annot_net_no_loops)$n_proteins) * 2
+V(annot_net_no_loops)$color <- organelle_colors_network[V(annot_net_no_loops)$name]
+V(annot_net_no_loops)$color[is.na(V(annot_net_no_loops)$color)] <- "grey70"
+V(annot_net_no_loops)$label <- V(annot_net_no_loops)$name
+V(annot_net_no_loops)$label.cex <- 0.5
+V(annot_net_no_loops)$label.color <- "black"
+E(annot_net_no_loops)$width <- log10(E(annot_net_no_loops)$n_edges + 1) * 1.5
+E(annot_net_no_loops)$color <- "grey60"
+
+# FR layout
+pdf(file.path(out_dir_network, "Step0_baseline", "network_annotation_level.pdf"), width = 10, height = 10)
+set.seed(42)
+layout_fr <- igraph::layout_with_fr(annot_net_no_loops)
+node_colors <- organelle_colors_network[V(annot_net_no_loops)$name]
+node_colors[is.na(node_colors)] <- "grey70"
+plot(annot_net_no_loops, layout = layout_fr, vertex.frame.color = "black", vertex.frame.width = 0.5, edge.curved = 0.1, main = "Annotation-level PPI network\n(node size = # proteins, edge width = # PPIs)")
+dev.off()
+
+# Circular layout
+pdf(file.path(out_dir_network, "Step0_baseline", "network_annotation_circular.pdf"), width = 10, height = 10)
+layout_circle <- igraph::layout_in_circle(annot_net_no_loops)
+plot(annot_net_no_loops, layout = layout_circle, vertex.size = sqrt(V(annot_net_no_loops)$n_proteins) * 1.3, vertex.label.dist = 1, vertex.label.cex = 0.4, vertex.frame.color = "black", vertex.frame.width = 0.5, edge.curved = 0.2, main = "Annotation-level PPI network (circular)\n(node size = # proteins, edge width = # PPIs)")
+dev.off()
+message("  Saved: network_annotation_circular.pdf")
+
+annotation_network_summary <- data.frame(
+  annotation = V(annot_net_no_loops)$name,
+  n_proteins = V(annot_net_no_loops)$n_proteins,
+  degree_in_annot_net = igraph::degree(annot_net_no_loops),
+  stringsAsFactors = FALSE
+) %>% dplyr::arrange(dplyr::desc(n_proteins))
+
+readr::write_csv(annotation_network_summary, file.path(out_dir_network, "Step0_baseline", "annotation_network_summary.csv"))
 
 message("Step 0 complete.")
 
@@ -17315,12 +17321,9 @@ message("Step 0 complete.")
 # =============================================================================
 # MODULE 1: HUB VULNERABILITY
 # =============================================================================
-message("\n", strrep("=", 70))
-message("MODULE 1: Hub Vulnerability Analysis")
-message(strrep("=", 70))
+message("\n--- MODULE 1: Hub Vulnerability Analysis ---")
 
-baseline_degree <- data.frame(Gene = igraph::V(baseline_net)$name, baseline_degree = igraph::V(baseline_net)$degree,
-                               is_hub_top10 = igraph::V(baseline_net)$is_hub_top10, is_hub_top5 = igraph::V(baseline_net)$is_hub_top5, stringsAsFactors = FALSE)
+baseline_degree <- data.frame(Gene = V(baseline_net)$name, baseline_degree = V(baseline_net)$degree, is_hub_top10 = V(baseline_net)$is_hub_top10, is_hub_top5 = V(baseline_net)$is_hub_top5, stringsAsFactors = FALSE)
 
 hub_vulnerability_list <- list()
 ko_neuron_combos <- ko_edge_states %>% dplyr::distinct(genotype, neuron)
@@ -17335,7 +17338,7 @@ for (i in seq_len(nrow(ko_neuron_combos))) {
 
   if (nrow(retained_edges) > 0) {
     retained_net <- igraph::graph_from_data_frame(retained_edges, directed = FALSE, vertices = data.frame(name = unique(c(retained_edges$Gene1, retained_edges$Gene2))))
-    retained_degree <- data.frame(Gene = igraph::V(retained_net)$name, retained_degree = igraph::degree(retained_net), stringsAsFactors = FALSE)
+    retained_degree <- data.frame(Gene = V(retained_net)$name, retained_degree = igraph::degree(retained_net), stringsAsFactors = FALSE)
   } else {
     retained_degree <- data.frame(Gene = character(0), retained_degree = integer(0), stringsAsFactors = FALSE)
   }
@@ -17356,7 +17359,6 @@ for (i in seq_len(nrow(ko_neuron_combos))) {
 hub_vulnerability_all <- dplyr::bind_rows(hub_vulnerability_list)
 readr::write_csv(hub_vulnerability_all, file.path(out_dir_network, "M1_hub_vulnerability", "hub_vulnerability_all_proteins.csv"))
 
-# Summary per KO x neuron
 hub_vuln_summary <- hub_vulnerability_all %>%
   dplyr::filter(is_hub_top10) %>%
   dplyr::group_by(genotype, neuron) %>%
@@ -17368,16 +17370,20 @@ hub_vuln_summary <- hub_vulnerability_all %>%
     n_hubs_50pct_lost = sum(frac_degree_lost >= 0.5, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  dplyr::left_join(disease_map %>% dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>% dplyr::distinct(genotype, DiseaseClass), by = "genotype") %>%
+  dplyr::left_join(disease_map, by = c("genotype" = "sample")) %>%
   dplyr::arrange(dplyr::desc(mean_frac_lost))
 
 readr::write_csv(hub_vuln_summary, file.path(out_dir_network, "M1_hub_vulnerability", "hub_vulnerability_summary.csv"))
 
-# Recurrently vulnerable hubs
 recurrent_vulnerable_hubs <- hub_vulnerability_all %>%
   dplyr::filter(is_hub_top10, frac_degree_lost >= 0.3) %>%
   dplyr::group_by(Gene) %>%
-  dplyr::summarise(n_KOs_affected = dplyr::n_distinct(genotype), mean_frac_lost = mean(frac_degree_lost), baseline_degree = dplyr::first(baseline_degree), .groups = "drop") %>%
+  dplyr::summarise(
+    n_KOs_affected = dplyr::n_distinct(genotype),
+    mean_frac_lost = mean(frac_degree_lost),
+    baseline_degree = dplyr::first(baseline_degree),
+    .groups = "drop"
+  ) %>%
   dplyr::filter(n_KOs_affected >= 3) %>%
   dplyr::arrange(dplyr::desc(n_KOs_affected), dplyr::desc(mean_frac_lost))
 
@@ -17395,7 +17401,6 @@ p_hub_vuln_bar <- ggplot2::ggplot(hub_vuln_summary, ggplot2::aes(x = reorder(gen
 
 ggplot2::ggsave(file.path(out_dir_network, "M1_hub_vulnerability", "barplot_hub_vulnerability_per_KO.pdf"), p_hub_vuln_bar, width = 6, height = 4, device = cairo_pdf)
 
-# Scatter iN vs iDA
 hub_vuln_wide <- hub_vuln_summary %>%
   dplyr::select(genotype, neuron, mean_frac_lost, DiseaseClass) %>%
   tidyr::pivot_wider(names_from = neuron, values_from = mean_frac_lost)
@@ -17405,6 +17410,7 @@ p_hub_scatter <- ggplot2::ggplot(hub_vuln_wide, ggplot2::aes(x = iN, y = iDA, fi
   ggplot2::geom_point(shape = 21, size = 3, stroke = 0.3) +
   ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 20) +
   ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  ggplot2::coord_fixed(ratio = 1) +
   ggplot2::labs(title = "Hub vulnerability: iN vs iDA", x = "Mean % degree lost (iN)", y = "Mean % degree lost (iDA)") +
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank())
@@ -17417,9 +17423,7 @@ message("Module 1 complete.")
 # =============================================================================
 # MODULE 2: NETWORK FRAGMENTATION
 # =============================================================================
-message("\n", strrep("=", 70))
-message("MODULE 2: Network Fragmentation Analysis")
-message(strrep("=", 70))
+message("\n--- MODULE 2: Network Fragmentation Analysis ---")
 
 fragmentation_list <- list()
 
@@ -17432,12 +17436,13 @@ for (i in seq_len(nrow(ko_neuron_combos))) {
     dplyr::select(Gene1, Gene2)
 
   if (nrow(retained_edges) > 0) {
-    retained_net <- igraph::graph_from_data_frame(retained_edges, directed = FALSE, vertices = data.frame(name = igraph::V(baseline_net)$name))
+    retained_net <- igraph::graph_from_data_frame(retained_edges, directed = FALSE, vertices = data.frame(name = V(baseline_net)$name))
     comp <- igraph::components(retained_net)
     orphans <- sum(igraph::degree(retained_net) == 0)
 
     frag_metrics <- data.frame(
-      genotype = geno, neuron = nt,
+      genotype = geno,
+      neuron = nt,
       n_components = comp$no,
       largest_component_size = max(comp$csize),
       largest_component_pct = max(comp$csize) / igraph::vcount(retained_net) * 100,
@@ -17450,7 +17455,8 @@ for (i in seq_len(nrow(ko_neuron_combos))) {
     )
   } else {
     frag_metrics <- data.frame(
-      genotype = geno, neuron = nt,
+      genotype = geno,
+      neuron = nt,
       n_components = igraph::vcount(baseline_net),
       largest_component_size = 1,
       largest_component_pct = 1 / igraph::vcount(baseline_net) * 100,
@@ -17472,7 +17478,7 @@ fragmentation_all <- dplyr::bind_rows(fragmentation_list) %>%
     delta_largest_pct = baseline_summary$largest_component_pct - largest_component_pct,
     fragmentation_score = (delta_components / baseline_summary$n_components) + (delta_largest_pct / 100) + (orphan_pct / 100)
   ) %>%
-  dplyr::left_join(disease_map %>% dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>% dplyr::distinct(genotype, DiseaseClass), by = "genotype") %>%
+  dplyr::left_join(disease_map, by = c("genotype" = "sample")) %>%
   dplyr::arrange(dplyr::desc(fragmentation_score))
 
 readr::write_csv(fragmentation_all, file.path(out_dir_network, "M2_fragmentation", "fragmentation_metrics.csv"))
@@ -17485,18 +17491,29 @@ p_frag_bar <- ggplot2::ggplot(fragmentation_all, ggplot2::aes(x = reorder(genoty
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
 
-ggplot2::ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_fragmentation_per_KO.pdf"), p_frag_bar, width = 5, height = 4, device = cairo_pdf)
+ggplot2::ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_fragmentation_per_KO.pdf"), p_frag_bar, width = 4.5, height = 4, device = cairo_pdf)
 
 p_frag_scatter <- ggplot2::ggplot(fragmentation_all, ggplot2::aes(x = n_orphans, y = delta_components, fill = DiseaseClass)) +
   ggplot2::geom_point(shape = 21, size = 3, stroke = 0.3) +
   ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 20) +
   ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
-  ggplot2::facet_wrap(~neuron) +
-  ggplot2::labs(title = "Network fragmentation: orphans vs new components", x = "Number of orphaned proteins", y = "Delta Components (vs baseline)") +
+  ggplot2::facet_wrap(~ neuron) +
+  ggplot2::labs(title = "Network fragmentation: orphans vs new components", x = "Number of orphaned proteins", y = "Delta components (vs baseline)") +
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank())
 
 ggplot2::ggsave(file.path(out_dir_network, "M2_fragmentation", "scatter_orphans_vs_components.pdf"), p_frag_scatter, width = 7, height = 3.5, device = cairo_pdf)
+
+# Largest component barplot
+p_lcc <- ggplot2::ggplot(fragmentation_all, ggplot2::aes(x = reorder(genotype, largest_component_pct), y = largest_component_pct, fill = neuron)) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
+  ggplot2::geom_hline(yintercept = baseline_summary$largest_component_pct, linetype = "dashed", color = "red", linewidth = 0.5) +
+  ggplot2::scale_fill_manual(values = neuron_palette, name = "Neuron") +
+  ggplot2::labs(title = "Largest connected component after KO", subtitle = paste0("Baseline: ", round(baseline_summary$largest_component_pct, 1), "%"), x = NULL, y = "% of network in largest component") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+ggplot2::ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_largest_component.pdf"), p_lcc, width = 4.5, height = 4, device = cairo_pdf)
 
 message("Module 2 complete.")
 
@@ -17504,9 +17521,7 @@ message("Module 2 complete.")
 # =============================================================================
 # MODULE 3: INTER-ORGANELLE BRIDGE DISRUPTION
 # =============================================================================
-message("\n", strrep("=", 70))
-message("MODULE 3: Inter-organelle Bridge Analysis")
-message(strrep("=", 70))
+message("\n--- MODULE 3: Inter-organelle Bridge Analysis ---")
 
 inter_organelle_ko_list <- list()
 
@@ -17539,11 +17554,10 @@ for (i in seq_len(nrow(ko_neuron_combos))) {
 
 inter_organelle_ko_all <- dplyr::bind_rows(inter_organelle_ko_list) %>%
   tidyr::separate(annotation_pair, into = c("annot_A", "annot_B"), sep = "::", remove = FALSE) %>%
-  dplyr::left_join(disease_map %>% dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>% dplyr::distinct(genotype, DiseaseClass), by = "genotype")
+  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
 
 readr::write_csv(inter_organelle_ko_all, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_edges_per_KO.csv"))
 
-# Summary: most disrupted annotation pairs
 inter_organelle_summary <- inter_organelle_ko_all %>%
   dplyr::group_by(annotation_pair, annot_A, annot_B) %>%
   dplyr::summarise(
@@ -17557,11 +17571,30 @@ inter_organelle_summary <- inter_organelle_ko_all %>%
 
 readr::write_csv(inter_organelle_summary, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_summary.csv"))
 
-# Mean loss matrix for heatmap
+
+# --- 3.3 Build inter-organelle loss matrix ---
+build_inter_matrix_ko <- function(inter_ko_df, all_annots) {
+  mat <- matrix(NA, nrow = length(all_annots), ncol = length(all_annots), dimnames = list(all_annots, all_annots))
+
+  for (j in seq_len(nrow(inter_ko_df))) {
+    a1 <- inter_ko_df$annot_A[j]
+    a2 <- inter_ko_df$annot_B[j]
+    if (a1 %in% all_annots && a2 %in% all_annots) {
+      mat[a1, a2] <- inter_ko_df$frac_lost[j]
+      mat[a2, a1] <- inter_ko_df$frac_lost[j]
+    }
+  }
+  # Set diagonal to NA (blank)
+  diag(mat) <- NA
+  return(mat)
+}
+
 annots_for_matrix <- unique(c(inter_organelle_ko_all$annot_A, inter_organelle_ko_all$annot_B))
 annots_for_matrix <- annots_for_matrix[!is.na(annots_for_matrix) & annots_for_matrix != "Unannotated"]
 
-mean_loss_matrix <- matrix(0, nrow = length(annots_for_matrix), ncol = length(annots_for_matrix), dimnames = list(annots_for_matrix, annots_for_matrix))
+
+# --- 3.4 Global heatmap (mean loss across all KOs) ---
+mean_loss_matrix <- matrix(NA, nrow = length(annots_for_matrix), ncol = length(annots_for_matrix), dimnames = list(annots_for_matrix, annots_for_matrix))
 
 for (ap in unique(inter_organelle_summary$annotation_pair)) {
   row_data <- inter_organelle_summary %>% dplyr::filter(annotation_pair == ap)
@@ -17572,32 +17605,129 @@ for (ap in unique(inter_organelle_summary$annotation_pair)) {
     mean_loss_matrix[a2, a1] <- row_data$mean_frac_lost
   }
 }
+diag(mean_loss_matrix) <- NA
 
 pairs_with_edges <- inter_organelle_summary %>% dplyr::filter(total_baseline >= 5) %>% dplyr::pull(annotation_pair)
-annots_with_edges <- unique(c(inter_organelle_summary$annot_A[inter_organelle_summary$annotation_pair %in% pairs_with_edges],
-                               inter_organelle_summary$annot_B[inter_organelle_summary$annotation_pair %in% pairs_with_edges]))
+annots_with_edges <- unique(c(inter_organelle_summary$annot_A[inter_organelle_summary$annotation_pair %in% pairs_with_edges], inter_organelle_summary$annot_B[inter_organelle_summary$annotation_pair %in% pairs_with_edges]))
 mean_loss_matrix_filtered <- mean_loss_matrix[annots_with_edges, annots_with_edges]
 
 if (nrow(mean_loss_matrix_filtered) >= 2) {
-  pheatmap::pheatmap(
-    mean_loss_matrix_filtered,
-    scale = "none",
-    color = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
-    breaks = seq(0, max(mean_loss_matrix_filtered, na.rm = TRUE) * 1.1, length.out = 101),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    display_numbers = TRUE,
-    number_format = "%.2f",
-    fontsize = 6,
-    fontsize_number = 5,
-    cellwidth = 10,
-    cellheight = 10,
-    border_color = NA,
-    main = "Mean fraction inter-organelle edges lost (all KOs)",
-    filename = file.path(out_dir_network, "M3_interorganelle_bridges", "heatmap_mean_inter_organelle_loss.pdf"),
-    width = 10, height = 9
-  )
+  # Split heatmap: lower=color, upper=numbers
+  pdf(file.path(out_dir_network, "M3_interorganelle_bridges", "heatmap_mean_inter_organelle_loss.pdf"), width = 6, height = 6)
+
+  # Replace NA with 0 for corrplot (it handles NA poorly)
+  mat_for_plot <- mean_loss_matrix_filtered
+  mat_for_plot[is.na(mat_for_plot)] <- 0
+
+  corrplot::corrplot(mat_for_plot,
+           method = "color",
+           type = "lower",
+           col = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+           is.corr = FALSE,
+           cl.lim = c(0, max(mat_for_plot, na.rm = TRUE)),
+           tl.col = "black",
+           tl.cex = 0.5,
+           cl.cex = 0.5,
+           diag = FALSE,
+           title = "Mean fraction inter-organelle edges lost (all KOs)",
+           mar = c(0, 0, 2, 0))
+
+  corrplot::corrplot(mat_for_plot,
+           method = "number",
+           type = "upper",
+           col = "black",
+           is.corr = FALSE,
+           number.cex = 0.4,
+           tl.pos = "n",
+           cl.pos = "n",
+           diag = FALSE,
+           add = TRUE)
+  dev.off()
+  message("  Saved: heatmap_mean_inter_organelle_loss.pdf")
 }
+
+
+# --- 3.5 Per-KO heatmaps (ALL KOs x neuron types) ---
+message("Generating per-KO inter-organelle heatmaps...")
+
+all_kos <- unique(ko_neuron_combos$genotype)
+
+for (geno in all_kos) {
+  for (nt in c("iN", "iDA")) {
+    inter_ko_df <- inter_organelle_ko_all %>%
+      dplyr::filter(genotype == geno, neuron == nt)
+
+    if (nrow(inter_ko_df) < 2) next
+
+    mat_ko <- build_inter_matrix_ko(inter_ko_df, annots_with_edges)
+
+    # Replace NA with 0 for corrplot
+    mat_ko_plot <- mat_ko
+    mat_ko_plot[is.na(mat_ko_plot)] <- 0
+
+    # Check if matrix has enough non-zero values
+    if (sum(mat_ko_plot > 0, na.rm = TRUE) < 3) next
+
+    # Reorder by hierarchical clustering if possible
+    if (nrow(mat_ko_plot) >= 3 && sum(rowSums(mat_ko_plot, na.rm = TRUE) > 0) >= 3) {
+      mat_for_dist <- mat_ko_plot
+      mat_for_dist[mat_for_dist == 0] <- 0.001
+      hc <- hclust(as.dist(1 - mat_for_dist), method = "ward.D2")
+      mat_ko_ordered <- mat_ko_plot[hc$order, hc$order]
+    } else {
+      mat_ko_ordered <- mat_ko_plot
+    }
+
+    pdf(file.path(out_dir_network, "M3_interorganelle_bridges/per_KO", paste0("heatmap_", geno, "_", nt, ".pdf")), width = 6, height = 6)
+
+    corrplot::corrplot(mat_ko_ordered,
+             method = "color",
+             type = "lower",
+             col = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+             is.corr = FALSE,
+             cl.lim = c(0, 1),
+             tl.col = "black",
+             tl.cex = 0.5,
+             cl.cex = 0.5,
+             diag = FALSE,
+             title = paste0("Inter-organelle edge loss: ", geno, " ", nt),
+             mar = c(0, 0, 2, 0))
+
+    corrplot::corrplot(mat_ko_ordered,
+             method = "number",
+             type = "upper",
+             col = "black",
+             is.corr = FALSE,
+             number.cex = 0.35,
+             tl.pos = "n",
+             cl.pos = "n",
+             diag = FALSE,
+             add = TRUE)
+    dev.off()
+
+    # Save source data
+    readr::write_csv(as.data.frame(mat_ko) %>% tibble::rownames_to_column("annotation"),
+              file.path(out_dir_network, "M3_interorganelle_bridges/per_KO", paste0("sourcedata_", geno, "_", nt, ".csv")))
+  }
+}
+message("  Saved per-KO heatmaps for all ", length(all_kos), " KOs")
+
+
+# --- 3.6 Barplot: top disrupted annotation pairs ---
+top_pairs <- inter_organelle_summary %>%
+  dplyr::filter(total_baseline >= 10) %>%
+  dplyr::slice_head(n = 20)
+
+p_top_pairs <- ggplot2::ggplot(top_pairs, ggplot2::aes(x = reorder(annotation_pair, mean_frac_lost), y = mean_frac_lost)) +
+  ggplot2::geom_col(fill = "#D53E4F", color = "black", linewidth = 0.2) +
+  ggplot2::geom_text(ggplot2::aes(label = paste0("n=", round(total_baseline))), hjust = -0.1, size = 2) +
+  ggplot2::coord_flip() +
+  ggplot2::scale_y_continuous(labels = scales::percent, expand = ggplot2::expansion(mult = c(0, 0.15))) +
+  ggplot2::labs(title = "Most disrupted inter-organelle connections", subtitle = "Mean % edges lost across all KOs", x = NULL, y = "Mean % edges lost") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_top_disrupted_pairs.pdf"), p_top_pairs, width = 5, height = 5, device = cairo_pdf)
 
 # Total inter-organelle disruption per KO
 inter_organelle_total <- inter_organelle_ko_all %>%
@@ -17622,7 +17752,7 @@ p_inter_ranked <- ggplot2::ggplot(inter_organelle_total, ggplot2::aes(x = reorde
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
 
-ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_inter_organelle_ranked.pdf"), p_inter_ranked, width = 5, height = 4, device = cairo_pdf)
+ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_inter_organelle_ranked.pdf"), p_inter_ranked, width = 4.5, height = 4, device = cairo_pdf)
 
 message("Module 3 complete.")
 
@@ -17630,28 +17760,37 @@ message("Module 3 complete.")
 # =============================================================================
 # MODULE 4: DISEASE CLASS CONVERGENCE
 # =============================================================================
-message("\n", strrep("=", 70))
-message("MODULE 4: Disease Class Convergence Analysis")
-message(strrep("=", 70))
+message("\n--- MODULE 4: Disease Class Convergence Analysis ---")
 
-# Hub vulnerability by disease class
+# Aggregate metrics by disease class
 hub_by_disease <- hub_vuln_summary %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
   dplyr::group_by(DiseaseClass, neuron) %>%
-  dplyr::summarise(n_KOs = dplyr::n(), mean_hub_vuln = mean(mean_frac_lost, na.rm = TRUE), sd_hub_vuln = sd(mean_frac_lost, na.rm = TRUE), .groups = "drop")
+  dplyr::summarise(
+    n_KOs = dplyr::n(),
+    mean_hub_vuln = mean(mean_frac_lost, na.rm = TRUE),
+    sd_hub_vuln = sd(mean_frac_lost, na.rm = TRUE),
+    .groups = "drop"
+  )
 
-# Fragmentation by disease class
 frag_by_disease <- fragmentation_all %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
   dplyr::group_by(DiseaseClass, neuron) %>%
-  dplyr::summarise(n_KOs = dplyr::n(), mean_frag_score = mean(fragmentation_score, na.rm = TRUE), sd_frag_score = sd(fragmentation_score, na.rm = TRUE), mean_orphan_pct = mean(orphan_pct, na.rm = TRUE), .groups = "drop")
+  dplyr::summarise(
+    n_KOs = dplyr::n(),
+    mean_frag_score = mean(fragmentation_score, na.rm = TRUE),
+    sd_frag_score = sd(fragmentation_score, na.rm = TRUE),
+    mean_orphan_pct = mean(orphan_pct, na.rm = TRUE),
+    .groups = "drop"
+  )
 
-# Inter-organelle loss by disease class
 inter_by_disease <- inter_organelle_ko_all %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
   dplyr::group_by(DiseaseClass, neuron, annotation_pair) %>%
   dplyr::summarise(mean_frac_lost = mean(frac_lost, na.rm = TRUE), .groups = "drop") %>%
   dplyr::group_by(DiseaseClass, neuron) %>%
   dplyr::summarise(mean_inter_loss = mean(mean_frac_lost, na.rm = TRUE), .groups = "drop")
 
-# Combine all metrics
 disease_convergence <- hub_by_disease %>%
   dplyr::left_join(frag_by_disease %>% dplyr::select(DiseaseClass, neuron, mean_frag_score, mean_orphan_pct), by = c("DiseaseClass", "neuron")) %>%
   dplyr::left_join(inter_by_disease, by = c("DiseaseClass", "neuron")) %>%
@@ -17671,15 +17810,47 @@ disease_long <- disease_convergence %>%
 
 p_disease_bar <- ggplot2::ggplot(disease_long, ggplot2::aes(x = DiseaseClass, y = value, fill = neuron)) +
   ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
-  ggplot2::facet_wrap(~metric, scales = "free_y", ncol = 3) +
+  ggplot2::facet_wrap(~ metric, scales = "free_y", ncol = 3) +
   ggplot2::scale_fill_manual(values = neuron_palette, name = "Neuron") +
   ggplot2::labs(title = "Network disruption metrics by disease class", x = NULL, y = "Score") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), strip.background = ggplot2::element_rect(fill = "white", color = "black"))
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), strip.background = ggplot2::element_rect(fill = "white"))
 
 ggplot2::ggsave(file.path(out_dir_network, "M4_disease_convergence", "barplot_disease_metrics.pdf"), p_disease_bar, width = 8, height = 4, device = cairo_pdf)
 
-# Combined genotype metrics
+# Disease-specific inter-organelle vulnerability
+inter_by_disease_pair <- inter_organelle_ko_all %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::group_by(DiseaseClass, annotation_pair) %>%
+  dplyr::summarise(
+    mean_frac_lost = mean(frac_lost, na.rm = TRUE),
+    n_baseline = mean(n_baseline, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::filter(n_baseline >= 5) %>%
+  dplyr::arrange(DiseaseClass, dplyr::desc(mean_frac_lost))
+
+readr::write_csv(inter_by_disease_pair, file.path(out_dir_network, "M4_disease_convergence", "inter_organelle_by_disease.csv"))
+
+# Top 5 most vulnerable pairs per disease class
+top_pairs_by_disease <- inter_by_disease_pair %>%
+  dplyr::group_by(DiseaseClass) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup()
+
+p_top_by_disease <- ggplot2::ggplot(top_pairs_by_disease, ggplot2::aes(x = annotation_pair, y = mean_frac_lost, fill = DiseaseClass)) +
+  ggplot2::geom_col(color = "black", linewidth = 0.2) +
+  ggplot2::facet_wrap(~ DiseaseClass, scales = "free_x", ncol = 2) +
+  ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::coord_flip() +
+  ggplot2::labs(title = "Top vulnerable inter-organelle connections by disease class", x = NULL, y = "Mean % edges lost") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"))
+
+ggplot2::ggsave(file.path(out_dir_network, "M4_disease_convergence", "barplot_top_pairs_by_disease.pdf"), p_top_by_disease, width = 7, height = 6, device = cairo_pdf)
+
+# Genotype-level metrics table
 genotype_metrics <- hub_vuln_summary %>%
   dplyr::select(genotype, neuron, mean_frac_lost, DiseaseClass) %>%
   dplyr::rename(hub_vuln = mean_frac_lost) %>%
@@ -17687,18 +17858,6 @@ genotype_metrics <- hub_vuln_summary %>%
   dplyr::left_join(inter_organelle_total %>% dplyr::select(genotype, neuron, weighted_frac_lost) %>% dplyr::rename(inter_loss = weighted_frac_lost), by = c("genotype", "neuron"))
 
 readr::write_csv(genotype_metrics, file.path(out_dir_network, "M4_disease_convergence", "genotype_all_metrics.csv"))
-
-# Scatter plots
-p_geno_scatter_hf <- ggplot2::ggplot(genotype_metrics, ggplot2::aes(x = hub_vuln, y = fragmentation_score, fill = DiseaseClass, shape = neuron)) +
-  ggplot2::geom_point(size = 3, stroke = 0.3, alpha = 0.8) +
-  ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 25, seed = 42) +
-  ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
-  ggplot2::scale_shape_manual(values = c(iN = 21, iDA = 24), name = "Neuron") +
-  ggplot2::labs(title = "Hub vulnerability vs Fragmentation", x = "Mean hub vulnerability", y = "Fragmentation score") +
-  ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank())
-
-ggplot2::ggsave(file.path(out_dir_network, "M4_disease_convergence", "scatter_hubvuln_vs_frag.pdf"), p_geno_scatter_hf, width = 5.5, height = 4, device = cairo_pdf)
 
 message("Module 4 complete.")
 
@@ -17710,17 +17869,55 @@ message("\n", strrep("=", 70))
 message("MODULE 11: NETWORK CONNECTIVITY ANALYSIS COMPLETE")
 message(strrep("=", 70))
 message("\nOutputs saved to: ", out_dir_network)
-message("\nDirectory structure:")
-message("  Step0_baseline/     - Baseline network topology")
-message("  M1_hub_vulnerability/   - Hub degree loss analysis")
-message("  M2_fragmentation/       - Network component analysis")
-message("  M3_interorganelle_bridges/ - Cross-compartment connectivity")
-message("  M4_disease_convergence/    - Disease class aggregation")
-message("\nKey findings:")
-message("  - Baseline: ", baseline_summary$n_proteins, " proteins, ", baseline_summary$n_edges, " edges")
-message("  - Top hubs (5%): ", baseline_summary$n_hubs_top5, " proteins with degree >= ", baseline_summary$hub_degree_threshold_top5)
-message("  - Baseline components: ", baseline_summary$n_components, " (largest: ", baseline_summary$largest_component_pct, "%)")
-message("  - Inter-organelle edges: ", baseline_summary$n_inter_edges)
+message("  Step0_baseline/          - Baseline network topology")
+message("  M1_hub_vulnerability/    - Hub degree loss analysis")
+message("  M2_fragmentation/        - Network component analysis")
+message("  M3_interorganelle_bridges/ - Cross-compartment connectivity (incl. per-KO heatmaps)")
+message("  M4_disease_convergence/  - Disease class aggregation")
+```
+
+
+
+## Module 12: Master Summary Statistics
+```{r summary}
+# =============================================================================
+# Module 12: Master Summary Statistics
+# =============================================================================
+message("Generating master summary statistics...")
+
+# Master stats: combine PPI, trimer, tetramer, complex per KO x neuron
+master_stats <- ko_summary_global %>%
+  dplyr::select(genotype, neuron, DiseaseClass, total_edges, n_lost, frac_lost) %>%
+  dplyr::rename(ppi_total = total_edges, ppi_lost = n_lost, ppi_frac_lost = frac_lost) %>%
+  dplyr::left_join(trimer_summary_ko %>% dplyr::select(genotype, neuron, total_trimers, n_disrupted, frac_disrupted) %>% dplyr::rename(trimer_total = total_trimers, trimer_disrupted = n_disrupted, trimer_frac = frac_disrupted), by = c("genotype", "neuron")) %>%
+  dplyr::left_join(tetramer_summary_ko %>% dplyr::select(genotype, neuron, total_tetramers, n_disrupted, frac_disrupted) %>% dplyr::rename(tetramer_total = total_tetramers, tetramer_disrupted = n_disrupted, tetramer_frac = frac_disrupted), by = c("genotype", "neuron")) %>%
+  dplyr::left_join(complex_summary_ko %>% dplyr::select(genotype, neuron, total_complexes, n_disrupted, frac_disrupted) %>% dplyr::rename(complex_total = total_complexes, complex_disrupted = n_disrupted, complex_frac = frac_disrupted), by = c("genotype", "neuron"))
+
+readr::write_csv(master_stats, file.path(out_dir_vuln, "tables", "master_vulnerability_stats.csv"))
+message("  Saved: master_vulnerability_stats.csv")
+
+# Disease class summary
+dc_summary <- master_stats %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::group_by(DiseaseClass, neuron) %>%
+  dplyr::summarise(n_kos = dplyr::n(), mean_ppi_frac_lost = mean(ppi_frac_lost, na.rm = TRUE), sd_ppi_frac_lost = sd(ppi_frac_lost, na.rm = TRUE),
+                   mean_trimer_frac = mean(trimer_frac, na.rm = TRUE), sd_trimer_frac = sd(trimer_frac, na.rm = TRUE),
+                   mean_tetramer_frac = mean(tetramer_frac, na.rm = TRUE), sd_tetramer_frac = sd(tetramer_frac, na.rm = TRUE),
+                   mean_complex_frac = mean(complex_frac, na.rm = TRUE), sd_complex_frac = sd(complex_frac, na.rm = TRUE), .groups = "drop")
+readr::write_csv(dc_summary, file.path(out_dir_vuln, "tables", "disease_class_vulnerability_summary.csv"))
+message("  Saved: disease_class_vulnerability_summary.csv")
+
+# Global summary for methods section
+global_summary <- tibble::tibble(
+  metric = c("Total PPIs (gold+silver)", "Total trimers", "Total tetramers", "Total complexes", "KO genotypes", "Neuron types", "Drop threshold (log2FC)", "Avg PPI loss rate (iN)", "Avg PPI loss rate (iDA)", "Avg trimer disruption (iN)", "Avg trimer disruption (iDA)", "Avg tetramer disruption (iN)", "Avg tetramer disruption (iDA)", "Avg complex disruption (iN)", "Avg complex disruption (iDA)"),
+  value = c(nrow(baseline_filtered), nrow(trimer_evidence), nrow(tetramer_evidence), nrow(complex_evidence), length(unique(ko_summary_global$genotype)), 2, drop_thresh, mean(master_stats$ppi_frac_lost[master_stats$neuron == "iN"], na.rm = TRUE), mean(master_stats$ppi_frac_lost[master_stats$neuron == "iDA"], na.rm = TRUE), mean(master_stats$trimer_frac[master_stats$neuron == "iN"], na.rm = TRUE), mean(master_stats$trimer_frac[master_stats$neuron == "iDA"], na.rm = TRUE), mean(master_stats$tetramer_frac[master_stats$neuron == "iN"], na.rm = TRUE), mean(master_stats$tetramer_frac[master_stats$neuron == "iDA"], na.rm = TRUE), mean(master_stats$complex_frac[master_stats$neuron == "iN"], na.rm = TRUE), mean(master_stats$complex_frac[master_stats$neuron == "iDA"], na.rm = TRUE))
+)
+readr::write_csv(global_summary, file.path(out_dir_vuln, "tables", "global_summary_for_methods.csv"))
+message("  Saved: global_summary_for_methods.csv")
+
+message("Module 12 complete: Master summary statistics")
+message("\n=== KO Vulnerability Analysis Complete ===")
+message("Output directory: ", out_dir_vuln)
 ```
 
 
@@ -25252,7 +25449,7 @@ pheatmap::pheatmap(
   breaks = seq(0, max(mean_loss_matrix_filtered, na.rm = TRUE) * 1.1, length.out = 101),
   cluster_rows = TRUE,
   cluster_cols = TRUE,
-  display_numbers = TRUE,
+  display_numbers = FALSE,
   number_format = "%.2f",
   fontsize = 6,
   fontsize_number = 5,
