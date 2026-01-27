@@ -15350,7 +15350,7 @@ for (nt in c("iN", "iDA")) {
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           strip.background = ggplot2::element_rect(fill = "white"))
 
-  save_plot_with_sourcedata(p_2_7, paste0("plots/disease_class/barplot_disease_organelle_vuln_", nt), plot_data_2_7, width = 14, height = 10)
+  save_plot_with_sourcedata(p_2_7, paste0("plots/disease_class/barplot_disease_organelle_vuln_", nt), plot_data_2_7, width = 10, height = 10)
 }
 
 message("Module 2 complete: PPI vulnerability visualizations")
@@ -15454,11 +15454,12 @@ for (nt in c("iN", "iDA")) {
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           strip.background = ggplot2::element_rect(fill = "white"))
 
-  save_plot_with_sourcedata(p, paste0("plots/disease_class/barplot_trimer_disease_organelle_", nt), plot_data, width = 14, height = 10)
+  save_plot_with_sourcedata(p, paste0("plots/disease_class/barplot_trimer_disease_organelle_", nt), plot_data, width = 10, height = 10)
 }
 
 message("Module 3 complete: Trimer vulnerability analysis")
 ```
+
 
 
 ## Module 4: Tetramer Vulnerability Analysis
@@ -15587,6 +15588,7 @@ complex_summary_ko <- complex_ko_states %>%
   dplyr::summarise(total_complexes = dplyr::n(), n_disrupted = sum(state == "disrupted"), frac_disrupted = n_disrupted / total_complexes, .groups = "drop")
 readr::write_csv(complex_summary_ko, file.path(out_dir_vuln, "tables", "complex_summary_ko.csv"))
 
+
 # --- PLOTS --- #
 # Scatter (SQUARE)
 complex_scatter <- complex_summary_ko %>%
@@ -15602,7 +15604,8 @@ p_5_3 <- ggplot2::ggplot(complex_scatter, ggplot2::aes(x = iN, y = iDA)) +
   ggplot2::scale_fill_manual(values = disease_class_palette) +
   ggplot2::coord_fixed(ratio = 1, xlim = axis_lim_cpx, ylim = axis_lim_cpx, clip = "on") +
   ggplot2::labs(x = "Fraction disrupted (iN)", y = "Fraction disrupted (iDA)", title = "Complex vulnerability: iN vs iDA") +
-  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::theme_bw(base_size = 6) + 
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
 save_plot_with_sourcedata(p_5_3, "plots/global/scatter_complex_vuln_iN_vs_iDA", complex_scatter, width = 5.5, height = 5.5)
 
 # --- Complex disease-organelle barplots (NO error bars, faceted by organelle) ---
@@ -15626,7 +15629,9 @@ for (nt in c("iN", "iDA")) {
     ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
     ggplot2::labs(x = NULL, y = "Fraction complexes disrupted", title = paste0("Complex disruption by disease class and organelle (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(), 
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           strip.background = ggplot2::element_rect(fill = "white"))
 
   save_plot_with_sourcedata(p, paste0("plots/disease_class/barplot_complex_disease_organelle_", nt), plot_data, width = 10, height = 10)
