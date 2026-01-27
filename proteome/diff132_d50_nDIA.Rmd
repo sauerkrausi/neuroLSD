@@ -15013,6 +15013,7 @@ message("Module 0 complete: Setup done")
 ```
 
 
+
 ## Module 1: Build KO Edge States Table
 ```{r edge_states}
 # =============================================================================
@@ -15111,6 +15112,7 @@ message("Module 1 complete: KO edge states table built")
 ```
 
 
+
 ## Module 2: PPI Vulnerability Visualizations
 ```{r ppi_viz}
 # =============================================================================
@@ -15150,8 +15152,11 @@ p_2_2 <- ggplot2::ggplot(plot_data_2_2, ggplot2::aes(x = genotype, y = pct, fill
   ggplot2::scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
   ggplot2::labs(x = NULL, y = "Percentage of PPI edges", title = "PPI edge states per KO (percentage)") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
-        strip.background = ggplot2::element_rect(fill = "white"), legend.position = "right")
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank(), 
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
+        strip.background = ggplot2::element_rect(fill = "white"), 
+    legend.position = "right")
 
 save_plot_with_sourcedata(p_2_2, "plots/global/barplot_ppi_states_percentage", plot_data_2_2, width = 10, height = 8)
 
@@ -15314,7 +15319,8 @@ p_2_6 <- ggplot2::ggplot(scatter_data, ggplot2::aes(x = iN, y = iDA)) +
   ggplot2::coord_fixed(ratio = 1, xlim = axis_lim, ylim = axis_lim, clip = "on") +
   ggplot2::labs(x = "Fraction lost PPIs (iN)", y = "Fraction lost PPIs (iDA)", title = "PPI vulnerability: iN vs iDA") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank())
 
 save_plot_with_sourcedata(p_2_6, "plots/global/scatter_ppi_loss_iN_vs_iDA", scatter_data, width = 5.5, height = 5.5)
 
@@ -15339,7 +15345,9 @@ for (nt in c("iN", "iDA")) {
     ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
     ggplot2::labs(x = NULL, y = "Mean fraction PPIs lost", title = paste0("Disease class vulnerability by organelle (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(), 
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           strip.background = ggplot2::element_rect(fill = "white"))
 
   save_plot_with_sourcedata(p_2_7, paste0("plots/disease_class/barplot_disease_organelle_vuln_", nt), plot_data_2_7, width = 14, height = 10)
