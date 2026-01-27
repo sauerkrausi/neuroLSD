@@ -15357,6 +15357,7 @@ message("Module 2 complete: PPI vulnerability visualizations")
 ```
 
 
+
 ## Module 3: Trimer Vulnerability Analysis
 ```{r trimer}
 # =============================================================================
@@ -15402,7 +15403,9 @@ p_3_2 <- ggplot2::ggplot(plot_data_3_2, ggplot2::aes(x = genotype, y = n, fill =
   ggplot2::scale_fill_manual(values = c(intact = "grey80", disrupted = "#C51B7D")) +
   ggplot2::labs(x = NULL, y = "Number of trimers", title = "Trimer states per KO (absolute)") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), strip.background = ggplot2::element_rect(fill = "white"))
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank(), 
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), strip.background = ggplot2::element_rect(fill = "white"))
 
 save_plot_with_sourcedata(p_3_2, "plots/global/barplot_trimer_states_absolute", plot_data_3_2, width = 10, height = 8)
 
@@ -15420,7 +15423,8 @@ p_3_4 <- ggplot2::ggplot(trimer_scatter, ggplot2::aes(x = iN, y = iDA)) +
   ggplot2::scale_fill_manual(values = disease_class_palette) +
   ggplot2::coord_fixed(ratio = 1, xlim = axis_lim_tri, ylim = axis_lim_tri, clip = "on") +
   ggplot2::labs(x = "Fraction disrupted (iN)", y = "Fraction disrupted (iDA)", title = "Trimer vulnerability: iN vs iDA") +
-  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::theme_bw(base_size = 6) + 
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
 
 save_plot_with_sourcedata(p_3_4, "plots/global/scatter_trimer_vuln_iN_vs_iDA", trimer_scatter, width = 5.5, height = 5.5)
 
@@ -15445,7 +15449,9 @@ for (nt in c("iN", "iDA")) {
     ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
     ggplot2::labs(x = NULL, y = "Fraction trimers disrupted", title = paste0("Trimer disruption by disease class and organelle (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(), 
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           strip.background = ggplot2::element_rect(fill = "white"))
 
   save_plot_with_sourcedata(p, paste0("plots/disease_class/barplot_trimer_disease_organelle_", nt), plot_data, width = 14, height = 10)
@@ -15505,7 +15511,9 @@ p_4_4 <- ggplot2::ggplot(tetramer_scatter, ggplot2::aes(x = iN, y = iDA)) +
   ggplot2::scale_fill_manual(values = disease_class_palette) +
   ggplot2::coord_fixed(ratio = 1, xlim = axis_lim_tet, ylim = axis_lim_tet, clip = "on") +
   ggplot2::labs(x = "Fraction disrupted (iN)", y = "Fraction disrupted (iDA)", title = "Tetramer vulnerability: iN vs iDA") +
-  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::theme_bw(base_size = 6) + 
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
 save_plot_with_sourcedata(p_4_4, "plots/global/scatter_tetramer_vuln_iN_vs_iDA", tetramer_scatter, width = 5.5, height = 5.5)
 
 # --- Tetramer disease-organelle barplots (NO error bars, faceted by organelle) ---
@@ -15529,7 +15537,8 @@ for (nt in c("iN", "iDA")) {
     ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
     ggplot2::labs(x = NULL, y = "Fraction tetramers disrupted", title = paste0("Tetramer disruption by disease class and organelle (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), 
+                   axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           strip.background = ggplot2::element_rect(fill = "white"))
 
   save_plot_with_sourcedata(p, paste0("plots/disease_class/barplot_tetramer_disease_organelle_", nt), plot_data, width = 14, height = 10)
