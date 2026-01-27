@@ -17477,9 +17477,10 @@ fragmentation_all <- dplyr::bind_rows(fragmentation_list) %>%
   dplyr::mutate(
     delta_components = n_components - baseline_summary$n_components,
     delta_largest_pct = baseline_summary$largest_component_pct - largest_component_pct,
-    fragmentation_score = (delta_components / baseline_summary$n_components) + (delta_largest_pct / 100) + (orphan_pct / 100)
+    fragmentation_score = (delta_components / baseline_summary$n_components) + (delta_largest_pct / 100) + (orphan_pct / 100),
+    sample = paste0(genotype, "_", neuron)
   ) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample")) %>%
+  dplyr::left_join(disease_map, by = "sample") %>%
   dplyr::arrange(dplyr::desc(fragmentation_score))
 
 readr::write_csv(fragmentation_all, file.path(out_dir_network, "M2_fragmentation", "fragmentation_metrics.csv"))
@@ -17555,7 +17556,8 @@ for (i in seq_len(nrow(ko_neuron_combos))) {
 
 inter_organelle_ko_all <- dplyr::bind_rows(inter_organelle_ko_list) %>%
   tidyr::separate(annotation_pair, into = c("annot_A", "annot_B"), sep = "::", remove = FALSE) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+  dplyr::mutate(sample = paste0(genotype, "_", neuron)) %>%
+  dplyr::left_join(disease_map, by = "sample")
 
 readr::write_csv(inter_organelle_ko_all, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_edges_per_KO.csv"))
 
@@ -17833,10 +17835,10 @@ inter_by_disease_pair <- inter_organelle_ko_all %>%
 
 readr::write_csv(inter_by_disease_pair, file.path(out_dir_network, "M4_disease_convergence", "inter_organelle_by_disease.csv"))
 
-# Top 5 most vulnerable pairs per disease class
+# Top 10 most vulnerable pairs per disease class
 top_pairs_by_disease <- inter_by_disease_pair %>%
   dplyr::group_by(DiseaseClass) %>%
-  dplyr::slice_head(n = 5) %>%
+  dplyr::slice_head(n = 10) %>%
   dplyr::ungroup()
 
 p_top_by_disease <- ggplot2::ggplot(top_pairs_by_disease, ggplot2::aes(x = annotation_pair, y = mean_frac_lost, fill = DiseaseClass)) +
