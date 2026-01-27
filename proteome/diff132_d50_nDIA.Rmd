@@ -14667,7 +14667,7 @@ p_cp_complex <- ggplot(cp_summary_complex, aes(x = cp_status, y = n, fill = cp_s
 
 ggsave(file.path(out_dir_complex, "qc", "barplot_complexportal_validation.pdf"), p_cp_complex, width = sq_size, height = sq_size, device = cairo_pdf)
 
-
+ath(out_dir_complex, "qc", "barplot_complexport)al_validation.pdf"), p_cp_complex, width = sq_size, height = sq_size, device = cairo_pdf)
 # --- QC Plot 7: Complexes per dominant organelle ---
 complex_by_org <- complex_evidence %>%
   dplyr::filter(!is.na(dominant_organelles)) %>%
@@ -17370,7 +17370,8 @@ hub_vuln_summary <- hub_vulnerability_all %>%
     n_hubs_50pct_lost = sum(frac_degree_lost >= 0.5, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample")) %>%
+  dplyr::mutate(sample = paste0(genotype, "_", neuron)) %>%
+  dplyr::left_join(disease_map, by = "sample") %>%
   dplyr::arrange(dplyr::desc(mean_frac_lost))
 
 readr::write_csv(hub_vuln_summary, file.path(out_dir_network, "M1_hub_vulnerability", "hub_vulnerability_summary.csv"))
@@ -17410,7 +17411,7 @@ p_hub_scatter <- ggplot2::ggplot(hub_vuln_wide, ggplot2::aes(x = iN, y = iDA, fi
   ggplot2::geom_point(shape = 21, size = 3, stroke = 0.3) +
   ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 20) +
   ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
-  ggplot2::coord_fixed(ratio = 1) +
+  ggplot2::coord_fixed(ratio = 3) +
   ggplot2::labs(title = "Hub vulnerability: iN vs iDA", x = "Mean % degree lost (iN)", y = "Mean % degree lost (iDA)") +
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank())
