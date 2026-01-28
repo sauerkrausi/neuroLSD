@@ -16725,71 +16725,71 @@ if (n_tags_tet > 0) {
 }
 
 
-# --- 8.7.4 Complex Confidence Boxplots (mean of all constituent PPIs) ---
-message("  Complex confidence boxplots...")
+# # --- 8.7.4 Complex Confidence Boxplots (mean of all constituent PPIs) ---
+# message("  Complex confidence boxplots...")
+# 
+# # For complexes, we need to aggregate confidence across all edges in each complex
+# # complex_ko_states should have complex_id - we need to link back to edges
+# 
+# if (exists("complex_edges_baseline") && nrow(complex_edges_baseline) > 0) {
+#   # Get confidence for each edge in complexes
+#   complex_edge_conf <- complex_edges_baseline %>%
+#     dplyr::select(complex_id, key) %>%
+#     dplyr::left_join(ko_edge_states %>% dplyr::select(key, RFprob, AFMprob, CFprob) %>% dplyr::distinct(), by = "key")
+# 
+#   # Compute mean confidence per complex
+#   complex_mean_conf <- complex_edge_conf %>%
+#     dplyr::group_by(complex_id) %>%
+#     dplyr::summarise(
+#       mean_RFprob = mean(RFprob, na.rm = TRUE),
+#       mean_AFMprob = mean(AFMprob, na.rm = TRUE),
+#       mean_CFprob = mean(CFprob, na.rm = TRUE),
+#       .groups = "drop"
+#     )
+# 
+#   # Join with complex_ko_states
+#   complex_confidence <- complex_ko_states %>%
+#     dplyr::select(complex_id, genotype, neuron, state, dominant_organelles) %>%
+#     dplyr::left_join(complex_mean_conf, by = "complex_id") %>%
+#     dplyr::filter(state %in% c("intact", "disrupted"), !is.na(dominant_organelles)) %>%
+#     dplyr::mutate(state = dplyr::recode(state, "intact" = "retained", "disrupted" = "lost"), state = factor(state, levels = c("retained", "lost"))) %>%
+#     dplyr::rename(tag = dominant_organelles)
+# 
+#   plot_complex_confidence_boxplot <- function(df, geno, nt, score_col, out_dir, org_colors) {
+#     df_subset <- df %>% dplyr::filter(genotype == geno, neuron == nt, !is.na(.data[[score_col]]))
+#     if (nrow(df_subset) < 3) return(invisible(NULL))
+# 
+#     ko_label <- paste0(geno, "_", nt)
+# 
+#     p <- ggplot2::ggplot(df_subset, ggplot2::aes(x = reorder(tag, .data[[score_col]], median, na.rm = TRUE), y = .data[[score_col]], fill = tag)) +
+#       ggplot2::geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.5, linewidth = 0.3) +
+#       ggplot2::facet_wrap(~state, nrow = 1) +
+#       ggplot2::scale_fill_manual(values = org_colors, guide = "none") +
+#       ggplot2::labs(title = paste0("Complex ", score_col, " (mean of all PPIs)"), subtitle = ko_label, x = NULL, y = score_col) +
+#       ggplot2::theme_bw(base_size = 6) +
+#       ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+# 
+#     ggplot2::ggsave(file.path(out_dir, paste0(ko_label, "_complex_boxplot_", score_col, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
+#   }
+# 
+#   n_tags_cpx <- length(unique(complex_confidence$tag))
+#   if (n_tags_cpx > 0) {
+#     organelle_colors_cpx <- setNames(colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_tags_cpx), sort(unique(complex_confidence$tag)))
+#     ko_neuron_combos_cpx <- complex_confidence %>% dplyr::distinct(genotype, neuron)
+#     for (i in seq_len(nrow(ko_neuron_combos_cpx))) {
+#       geno <- ko_neuron_combos_cpx$genotype[i]
+#       nt <- ko_neuron_combos_cpx$neuron[i]
+#       for (score in c("mean_RFprob", "mean_AFMprob", "mean_CFprob")) {
+#         plot_complex_confidence_boxplot(complex_confidence, geno, nt, score, file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble/confidence"), organelle_colors_cpx)
+#       }
+#     }
+#   }
+# } else {
+#   message("  complex_edges_baseline not found - skipping complex confidence boxplots")
+# }
 
-# For complexes, we need to aggregate confidence across all edges in each complex
-# complex_ko_states should have complex_id - we need to link back to edges
 
-if (exists("complex_edges_baseline") && nrow(complex_edges_baseline) > 0) {
-  # Get confidence for each edge in complexes
-  complex_edge_conf <- complex_edges_baseline %>%
-    dplyr::select(complex_id, key) %>%
-    dplyr::left_join(ko_edge_states %>% dplyr::select(key, RFprob, AFMprob, CFprob) %>% dplyr::distinct(), by = "key")
-
-  # Compute mean confidence per complex
-  complex_mean_conf <- complex_edge_conf %>%
-    dplyr::group_by(complex_id) %>%
-    dplyr::summarise(
-      mean_RFprob = mean(RFprob, na.rm = TRUE),
-      mean_AFMprob = mean(AFMprob, na.rm = TRUE),
-      mean_CFprob = mean(CFprob, na.rm = TRUE),
-      .groups = "drop"
-    )
-
-  # Join with complex_ko_states
-  complex_confidence <- complex_ko_states %>%
-    dplyr::select(complex_id, genotype, neuron, state, dominant_organelles) %>%
-    dplyr::left_join(complex_mean_conf, by = "complex_id") %>%
-    dplyr::filter(state %in% c("intact", "disrupted"), !is.na(dominant_organelles)) %>%
-    dplyr::mutate(state = dplyr::recode(state, "intact" = "retained", "disrupted" = "lost"), state = factor(state, levels = c("retained", "lost"))) %>%
-    dplyr::rename(tag = dominant_organelles)
-
-  plot_complex_confidence_boxplot <- function(df, geno, nt, score_col, out_dir, org_colors) {
-    df_subset <- df %>% dplyr::filter(genotype == geno, neuron == nt, !is.na(.data[[score_col]]))
-    if (nrow(df_subset) < 3) return(invisible(NULL))
-
-    ko_label <- paste0(geno, "_", nt)
-
-    p <- ggplot2::ggplot(df_subset, ggplot2::aes(x = reorder(tag, .data[[score_col]], median, na.rm = TRUE), y = .data[[score_col]], fill = tag)) +
-      ggplot2::geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.5, linewidth = 0.3) +
-      ggplot2::facet_wrap(~state, nrow = 1) +
-      ggplot2::scale_fill_manual(values = org_colors, guide = "none") +
-      ggplot2::labs(title = paste0("Complex ", score_col, " (mean of all PPIs)"), subtitle = ko_label, x = NULL, y = score_col) +
-      ggplot2::theme_bw(base_size = 6) +
-      ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-
-    ggplot2::ggsave(file.path(out_dir, paste0(ko_label, "_complex_boxplot_", score_col, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
-  }
-
-  n_tags_cpx <- length(unique(complex_confidence$tag))
-  if (n_tags_cpx > 0) {
-    organelle_colors_cpx <- setNames(colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_tags_cpx), sort(unique(complex_confidence$tag)))
-    ko_neuron_combos_cpx <- complex_confidence %>% dplyr::distinct(genotype, neuron)
-    for (i in seq_len(nrow(ko_neuron_combos_cpx))) {
-      geno <- ko_neuron_combos_cpx$genotype[i]
-      nt <- ko_neuron_combos_cpx$neuron[i]
-      for (score in c("mean_RFprob", "mean_AFMprob", "mean_CFprob")) {
-        plot_complex_confidence_boxplot(complex_confidence, geno, nt, score, file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble/confidence"), organelle_colors_cpx)
-      }
-    }
-  }
-} else {
-  message("  complex_edges_baseline not found - skipping complex confidence boxplots")
-}
-
-
-# --- 8.7.5 Summary table: confidence by state per KO x neuron ---
+# --- 8.7.4 Summary table: confidence by state per KO x neuron ---
 ko_neuron_conf_summary <- ko_ppi_profiles %>%
   dplyr::group_by(genotype, neuron, state) %>%
   dplyr::summarise(
