@@ -16609,9 +16609,14 @@ for (i in seq_len(nrow(ko_neuron_combos_ppi))) {
 # --- 8.7.2 Trimer Confidence Boxplots (mean of 3 constituent PPIs) ---
 message("  Trimer confidence boxplots...")
 
-# Compute mean confidence per trimer
+# Compute mean confidence per trimer - construct keys from gene names
 trimer_confidence <- trimer_ko_states %>%
-  dplyr::select(trimer_id, genotype, neuron, state, shared_organelle, key_AB, key_BC, key_AC) %>%
+  dplyr::select(trimer_id, genotype, neuron, state, shared_organelle, Gene1, Gene2, Gene3) %>%
+  dplyr::mutate(
+    key_AB = .make_undirected_key(Gene1, Gene2),
+    key_BC = .make_undirected_key(Gene2, Gene3),
+    key_AC = .make_undirected_key(Gene1, Gene3)
+  ) %>%
   # Join confidence for each edge
   dplyr::left_join(ko_edge_states %>% dplyr::select(key, RFprob, AFMprob, CFprob) %>% dplyr::distinct(), by = c("key_AB" = "key")) %>%
   dplyr::rename(RFprob_AB = RFprob, AFMprob_AB = AFMprob, CFprob_AB = CFprob) %>%
@@ -16662,9 +16667,17 @@ for (i in seq_len(nrow(ko_neuron_combos_tri))) {
 # --- 8.7.3 Tetramer Confidence Boxplots (mean of 6 constituent PPIs) ---
 message("  Tetramer confidence boxplots...")
 
-# Compute mean confidence per tetramer
+# Compute mean confidence per tetramer - construct keys from gene names
 tetramer_confidence <- tetramer_ko_states %>%
-  dplyr::select(tetramer_id, genotype, neuron, state, shared_organelle, key_AB, key_AC, key_AD, key_BC, key_BD, key_CD) %>%
+  dplyr::select(tetramer_id, genotype, neuron, state, shared_organelle, Gene1, Gene2, Gene3, Gene4) %>%
+  dplyr::mutate(
+    key_AB = .make_undirected_key(Gene1, Gene2),
+    key_AC = .make_undirected_key(Gene1, Gene3),
+    key_AD = .make_undirected_key(Gene1, Gene4),
+    key_BC = .make_undirected_key(Gene2, Gene3),
+    key_BD = .make_undirected_key(Gene2, Gene4),
+    key_CD = .make_undirected_key(Gene3, Gene4)
+  ) %>%
   dplyr::left_join(ko_edge_states %>% dplyr::select(key, RFprob, AFMprob, CFprob) %>% dplyr::distinct(), by = c("key_AB" = "key")) %>% dplyr::rename(RFprob_AB = RFprob, AFMprob_AB = AFMprob, CFprob_AB = CFprob) %>%
   dplyr::left_join(ko_edge_states %>% dplyr::select(key, RFprob, AFMprob, CFprob) %>% dplyr::distinct(), by = c("key_AC" = "key")) %>% dplyr::rename(RFprob_AC = RFprob, AFMprob_AC = AFMprob, CFprob_AC = CFprob) %>%
   dplyr::left_join(ko_edge_states %>% dplyr::select(key, RFprob, AFMprob, CFprob) %>% dplyr::distinct(), by = c("key_AD" = "key")) %>% dplyr::rename(RFprob_AD = RFprob, AFMprob_AD = AFMprob, CFprob_AD = CFprob) %>%
@@ -16680,6 +16693,7 @@ tetramer_confidence <- tetramer_ko_states %>%
   dplyr::mutate(state = dplyr::recode(state, "intact" = "retained", "disrupted" = "lost"), state = factor(state, levels = c("retained", "lost"))) %>%
   dplyr::rename(tag = shared_organelle)
 
+# Plotting function call for tetramers
 plot_tetramer_confidence_boxplot <- function(df, geno, nt, score_col, out_dir, org_colors) {
   df_subset <- df %>% dplyr::filter(genotype == geno, neuron == nt, !is.na(.data[[score_col]]))
   if (nrow(df_subset) < 5) return(invisible(NULL))
