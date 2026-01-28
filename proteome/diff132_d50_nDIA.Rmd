@@ -18493,7 +18493,9 @@ p_multi_bars <- ggplot2::ggplot(timecourse_multi_summary, ggplot2::aes(x = Day, 
   ggplot2::scale_fill_manual(values = neuron_palette, name = "Neuron") +
   ggplot2::labs(title = "Lost PPIs across genotypes (d30 vs d50)", x = "Day", y = "Number of lost PPIs") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"))
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank(), 
+    strip.background = ggplot2::element_rect(fill = "white"))
 
 ggplot2::ggsave(file.path(out_dir_timecourse_multi, "plots/global", "bars_lost_ppis_all_genotypes.pdf"), p_multi_bars, width = 8, height = 4, device = cairo_pdf)
 
@@ -18510,7 +18512,8 @@ p_lines_genotype <- ggplot2::ggplot(timecourse_multi_summary_numeric, ggplot2::a
   ggplot2::scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
   ggplot2::labs(title = "PPI loss trajectory comparison", x = "Day", y = "Number of lost PPIs") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank())
 
 ggplot2::ggsave(file.path(out_dir_timecourse_multi, "plots/global", "lines_lost_ppis_genotype_comparison.pdf"), p_lines_genotype, width = 5, height = 4, device = cairo_pdf)
 
@@ -18543,7 +18546,17 @@ for (nt in c("iN", "iDA")) {
   rownames(heatmap_mat) <- heatmap_data$tag
 
   pdf(file.path(out_dir_timecourse_multi, "plots/global", paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")), width = 8, height = 10)
-  pheatmap::pheatmap(heatmap_mat, scale = "none", color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 8, cellheight = 8, border_color = NA, main = paste0("Lost PPIs by annotation (all genotypes) - ", nt))
+  pheatmap::pheatmap(
+    heatmap_mat, 
+    scale = "none", 
+    color = colorRampPalette(c("white", "#C51B7D"))(100), 
+    cluster_rows = TRUE, 
+    cluster_cols = TRUE, 
+    fontsize = 6, 
+    cellwidth = 10, 
+    cellheight = 10, 
+    border_color = NA, 
+    main = paste0("Lost PPIs by annotation (all genotypes) - ", nt))
   dev.off()
 }
 
@@ -18585,7 +18598,7 @@ for (geno in genotypes_tc) {
     rownames(heatmap_mat) <- heatmap_data$tag
 
     pdf(file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("heatmap_lost_ppis_by_annotation_", geno, "_", nt, ".pdf")), width = 4, height = 8)
-    pheatmap::pheatmap(heatmap_mat, scale = "none", color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = FALSE, fontsize = 6, cellwidth = 10, cellheight = 8, border_color = NA, main = paste0("Lost PPIs - ", geno, " ", nt))
+    pheatmap::pheatmap(heatmap_mat, scale = "none", color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Lost PPIs - ", geno, " ", nt))
     dev.off()
   }
 }
@@ -18901,7 +18914,17 @@ for (nt in c("iN", "iDA")) {
   rownames(heatmap_mat) <- heatmap_data$tag
 
   pdf(file.path(out_dir_timecourse_asah1, "plots", paste0("heatmap_lost_ppis_by_annotation_", nt, ".pdf")), width = 5, height = 8)
-  pheatmap::pheatmap(heatmap_mat, scale = "none", color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = FALSE, fontsize = 6, cellwidth = 10, cellheight = 8, border_color = NA, main = paste0("Lost PPIs by annotation - ASAH1 ", nt))
+  pheatmap::pheatmap(
+    heatmap_mat, 
+    scale = "none", 
+    color = colorRampPalette(c("white", "#C51B7D"))(100), 
+    cluster_rows = TRUE, 
+    cluster_cols = FALSE, 
+    fontsize = 6, 
+    cellwidth = 10, 
+    cellheight = 10, 
+    border_color = NA, 
+    main = paste0("Lost PPIs by annotation - ASAH1 ", nt))
   dev.off()
 }
 
