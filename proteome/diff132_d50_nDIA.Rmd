@@ -14962,7 +14962,6 @@ neuron_palette <- c(iN = "grey60", iDA = "grey80")
 
 organelle_tags <- c(
   "Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS",
-
 "mtComplexI", "Golgi", "Lysosome", "ER", "Cytoplasm", "Nucleus",
   "Autophagy", "SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
   "Presynaptic", "Postsynaptic", "EndoLyso", "EarlyEndosome",
