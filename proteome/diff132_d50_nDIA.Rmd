@@ -6116,6 +6116,8 @@ annotation_cols <- c("MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComp
 # --- 3. Call function, name genotype 
 plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols)
 
+
+# all possible KOs. ok i could have written a loop i guess......
 plot_volcano(complete_data_annotated_day50, genotype = "ASAH1", annotation_cols)
 plot_volcano(complete_data_annotated_day50, genotype = "ATP13A2", annotation_cols)
 plot_volcano(complete_data_annotated_day50, genotype = "CLN3", annotation_cols)
