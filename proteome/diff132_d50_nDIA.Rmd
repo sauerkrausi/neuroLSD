@@ -5999,7 +5999,7 @@ plot_volcano <- function(df, genotype, annotation_cols, out_dir = out_dir_d50_vo
   # Prep data
   prep_data <- function(fc_col, q_col) {
     data <- df %>%
-      select(Genes, all_of(fc_col), all_of(q_col), all_of(annotation_cols))
+      dplyr::select(Genes, all_of(fc_col), all_of(q_col), all_of(annotation_cols))
     colnames(data)[2:3] <- c("log2FC", "negLogQ")
     data <- filter(data, !is.na(negLogQ) & negLogQ > 0)
     data$annotation <- apply(data[, annotation_cols], 1, function(x) {
@@ -6050,7 +6050,7 @@ plot_volcano <- function(df, genotype, annotation_cols, out_dir = out_dir_d50_vo
   # Correlation plot
   make_corr <- function(top_hits) {
   data_corr <- df %>%
-    select(Genes, all_of(fc_iN), all_of(fc_iDA), all_of(annotation_cols))
+    dplyr::select(Genes, all_of(fc_iN), all_of(fc_iDA), all_of(annotation_cols))
   colnames(data_corr)[2:3] <- c("log2FC_iN", "log2FC_iDA")
   
   # Assign annotations
@@ -18598,7 +18598,17 @@ for (geno in genotypes_tc) {
     rownames(heatmap_mat) <- heatmap_data$tag
 
     pdf(file.path(out_dir_timecourse_multi, "plots/by_genotype", paste0("heatmap_lost_ppis_by_annotation_", geno, "_", nt, ".pdf")), width = 4, height = 8)
-    pheatmap::pheatmap(heatmap_mat, scale = "none", color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Lost PPIs - ", geno, " ", nt))
+    pheatmap::pheatmap(
+      heatmap_mat, 
+      scale = "none", 
+      color = colorRampPalette(c("white", "#C51B7D"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = FALSE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      main = paste0("Lost PPIs - ", geno, " ", nt))
     dev.off()
   }
 }
