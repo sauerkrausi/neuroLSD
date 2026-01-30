@@ -5983,7 +5983,7 @@ ggsave(file.path(out_dir_d50_violins,
 # --------------------------------------------------- #
 # Volcano Plot Function for LSD Organelle Proteomics 
 # This function creates Volcano plots of genotype of choice => both iN and iDA as separate plots
-# Also plots iN vs iDA and maintains the TOP highlights and annotations form the volcano plot for direct comprison 
+# Also plots iN vs iDA and maintains the TOP highlights and annotations form the volcano plot for direct comparison 
 # User defined genotype and annotations to highlight
 # --------------------------------------------------- #
 
@@ -6115,6 +6115,31 @@ annotation_cols <- c("MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtComp
 
 # --- 3. Call function, name genotype 
 plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols)
+
+plot_volcano(complete_data_annotated_day50, genotype = "ASAH1", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "ATP13A2", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "CLN3", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "CLN5", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "CLN6", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "CLN8", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "CTSD", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "CTSF", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "DNAJC5", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "GAA", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "GBA1", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "GRN", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "HEXA", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "HEXB", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "LIPA", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "MCOLN1", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "MFSD8", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "NPC1", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "NPC2", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "PPT1", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "PSAP", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "SMPD1", annotation_cols)
+plot_volcano(complete_data_annotated_day50, genotype = "TPP1", annotation_cols)
+
 
 ```
 
