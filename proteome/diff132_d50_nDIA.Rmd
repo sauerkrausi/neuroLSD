@@ -2866,8 +2866,8 @@ genotype_order_p_iN <- sig_df_p_iN %>% dplyr::group_by(Genotype) %>% dplyr::summ
 sig_df_p_iN$Genotype <- factor(sig_df_p_iN$Genotype, levels = genotype_order_p_iN)
 
 # Colors
-direction_colors_iDA <- c(Down = "#9ECAE1", Up = "#FC9272")
-direction_colors_iN <- c(Down = "#3182BD", Up = "#DE2D26")
+direction_colors_iDA <- c(Down = "#9ECAE1", Up = "#F28B72")
+direction_colors_iN <- c(Down = "#2A77AD", Up = "#CC4221")
 
 # Plot q-value iDA
 p_sig_q_iDA <- ggplot2::ggplot(sig_df_q_iDA, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iDA) + ggplot2::labs(x = NULL, y = "Significant proteins (q < 0.05)", fill = NULL, title = "iDA") + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
