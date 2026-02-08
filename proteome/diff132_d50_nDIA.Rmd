@@ -2798,6 +2798,7 @@ p_IDlost_stack <- ggplot2::ggplot(lostIDs_df, ggplot2::aes(x = Genotype, y = Cou
 ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "lost_proteins_stacked_barplot.pdf"), p_IDlost_stack, width = 3.5, height = 3)
 
 
+
 ## based on sig levels p and q levels
 # Significance thresholds
 q_threshold <- -log10(0.05)  # 1.3
@@ -2843,29 +2844,46 @@ count_sig_proteins <- function(data, sig_type = "q") {
 
 # Count for q-values
 sig_df_q <- count_sig_proteins(complete_data_annotated_day50, sig_type = "q")
-sig_df_q$Category <- paste(sig_df_q$Neuron, sig_df_q$Direction, sep = "_")
+sig_df_q_iDA <- sig_df_q %>% dplyr::filter(Neuron == "iDA")
+sig_df_q_iN <- sig_df_q %>% dplyr::filter(Neuron == "iN")
 
 # Count for p-values
 sig_df_p <- count_sig_proteins(complete_data_annotated_day50, sig_type = "p")
-sig_df_p$Category <- paste(sig_df_p$Neuron, sig_df_p$Direction, sep = "_")
+sig_df_p_iDA <- sig_df_p %>% dplyr::filter(Neuron == "iDA")
+sig_df_p_iN <- sig_df_p %>% dplyr::filter(Neuron == "iN")
 
-# Order genotypes by total significant proteins
-genotype_order_q <- sig_df_q %>% dplyr::group_by(Genotype) %>% dplyr::summarise(Total = sum(Count), .groups = "drop") %>% dplyr::arrange(dplyr::desc(Total)) %>% dplyr::pull(Genotype)
-sig_df_q$Genotype <- factor(sig_df_q$Genotype, levels = genotype_order_q)
+# Order genotypes by total
+genotype_order_q_iDA <- sig_df_q_iDA %>% dplyr::group_by(Genotype) %>% dplyr::summarise(Total = sum(Count), .groups = "drop") %>% dplyr::arrange(dplyr::desc(Total)) %>% dplyr::pull(Genotype)
+sig_df_q_iDA$Genotype <- factor(sig_df_q_iDA$Genotype, levels = genotype_order_q_iDA)
 
-genotype_order_p <- sig_df_p %>% dplyr::group_by(Genotype) %>% dplyr::summarise(Total = sum(Count), .groups = "drop") %>% dplyr::arrange(dplyr::desc(Total)) %>% dplyr::pull(Genotype)
-sig_df_p$Genotype <- factor(sig_df_p$Genotype, levels = genotype_order_p)
+genotype_order_q_iN <- sig_df_q_iN %>% dplyr::group_by(Genotype) %>% dplyr::summarise(Total = sum(Count), .groups = "drop") %>% dplyr::arrange(dplyr::desc(Total)) %>% dplyr::pull(Genotype)
+sig_df_q_iN$Genotype <- factor(sig_df_q_iN$Genotype, levels = genotype_order_q_iN)
+
+genotype_order_p_iDA <- sig_df_p_iDA %>% dplyr::group_by(Genotype) %>% dplyr::summarise(Total = sum(Count), .groups = "drop") %>% dplyr::arrange(dplyr::desc(Total)) %>% dplyr::pull(Genotype)
+sig_df_p_iDA$Genotype <- factor(sig_df_p_iDA$Genotype, levels = genotype_order_p_iDA)
+
+genotype_order_p_iN <- sig_df_p_iN %>% dplyr::group_by(Genotype) %>% dplyr::summarise(Total = sum(Count), .groups = "drop") %>% dplyr::arrange(dplyr::desc(Total)) %>% dplyr::pull(Genotype)
+sig_df_p_iN$Genotype <- factor(sig_df_p_iN$Genotype, levels = genotype_order_p_iN)
 
 # Colors
-category_colors <- c(iDA_Down = "#9ECAE1", iN_Down = "#3182BD", iDA_Up = "#FC9272", iN_Up = "#DE2D26")
+direction_colors_iDA <- c(Down = "#9ECAE1", Up = "#FC9272")
+direction_colors_iN <- c(Down = "#3182BD", Up = "#DE2D26")
 
-# Plot q-value version
-p_sig_q <- ggplot2::ggplot(sig_df_q, ggplot2::aes(x = Genotype, y = Count, fill = Category)) + ggplot2::geom_col(position = "dodge") + ggplot2::scale_fill_manual(values = category_colors) + ggplot2::labs(x = NULL, y = "Significant proteins (q < 0.05)", fill = NULL) + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
-ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_qvalue_stacked_barplot.pdf"), p_sig_q, width = 3.5, height = 3)
+# Plot q-value iDA
+p_sig_q_iDA <- ggplot2::ggplot(sig_df_q_iDA, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iDA) + ggplot2::labs(x = NULL, y = "Significant proteins (q < 0.05)", fill = NULL, title = "iDA") + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
+ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_qvalue_iDA_barplot.pdf"), p_sig_q_iDA, width = 3.5, height = 3)
 
-# Plot p-value version
-p_sig_p <- ggplot2::ggplot(sig_df_p, ggplot2::aes(x = Genotype, y = Count, fill = Category)) + ggplot2::geom_col(position = "dodge") + ggplot2::scale_fill_manual(values = category_colors) + ggplot2::labs(x = NULL, y = "Significant proteins (p < 0.05)", fill = NULL) + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
-ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_pvalue_stacked_barplot.pdf"), p_sig_p, width = 3.5, height = 3)
+# Plot q-value iN
+p_sig_q_iN <- ggplot2::ggplot(sig_df_q_iN, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iN) + ggplot2::labs(x = NULL, y = "Significant proteins (q < 0.05)", fill = NULL, title = "iN") + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
+ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_qvalue_iN_barplot.pdf"), p_sig_q_iN, width = 3.5, height = 3)
+
+# Plot p-value iDA
+p_sig_p_iDA <- ggplot2::ggplot(sig_df_p_iDA, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iDA) + ggplot2::labs(x = NULL, y = "Significant proteins (p < 0.05)", fill = NULL, title = "iDA") + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
+ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_pvalue_iDA_barplot.pdf"), p_sig_p_iDA, width = 3.5, height = 3)
+
+# Plot p-value iN
+p_sig_p_iN <- ggplot2::ggplot(sig_df_p_iN, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iN) + ggplot2::labs(x = NULL, y = "Significant proteins (p < 0.05)", fill = NULL, title = "iN") + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
+ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_pvalue_iN_barplot.pdf"), p_sig_p_iN, width = 3.5, height = 3)
 
 
 ```
