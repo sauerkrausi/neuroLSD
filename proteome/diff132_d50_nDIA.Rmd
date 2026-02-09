@@ -11849,6 +11849,682 @@ message("Annotations added and saved.")
 
 ```
 
+# PPI Analysis v3 - Modular Chunks
+## Chunk 1: Input Paths and CORUM Loading
+```{r ppi_v3_paths_and_corum}
+# =============================================================================
+# PPI v3: Input Paths and CORUM Database Loading
+# =============================================================================
+
+# --- Input paths (update as needed) ---
+path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
+path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
+path_intact_tsv <- "/Users/felix/Desktop/ppi/interact.tsv"
+path_corum <- "/Users/felix/Desktop/ppi/coreComplexes.txt"  # UPDATE: download from https://mips.helmholtz-muenchen.de/corum/download/coreComplexes.txt.zip
+
+# --- Load CORUM database ---
+message("Loading CORUM database...")
+corum_raw <- data.table::fread(path_corum, sep = "\t", header = TRUE, quote = "", data.table = FALSE)
+
+# Filter to human complexes only
+corum_human <- corum_raw %>%
+
+dplyr::filter(Organism == "Human") %>%
+  dplyr::select(ComplexID, ComplexName, `subunits(Gene name)`) %>%
+  dplyr::rename(complex_id = ComplexID, complex_name = ComplexName, subunits_gene = `subunits(Gene name)`)
+
+# Expand to pairwise edges within each complex
+corum_edges <- corum_human %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(genes = list(trimws(unlist(strsplit(subunits_gene, ";"))))) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(genes = purrr::map(genes, ~ .x[.x != "" & !is.na(.x)])) %>%
+  dplyr::filter(purrr::map_int(genes, length) >= 2) %>%
+  dplyr::mutate(
+    edge_pairs = purrr::map(genes, function(g) {
+      if (length(g) < 2) return(data.frame(Gene1 = character(), Gene2 = character()))
+      pairs <- t(combn(sort(unique(g)), 2))
+      data.frame(Gene1 = pairs[, 1], Gene2 = pairs[, 2], stringsAsFactors = FALSE)
+    })
+  ) %>%
+  tidyr::unnest(edge_pairs) %>%
+  dplyr::mutate(key = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::select(key, complex_id, complex_name) %>%
+  dplyr::distinct()
+
+# Collapse multiple complexes per edge (edge can be in multiple complexes)
+corum_edge_lookup <- corum_edges %>%
+  dplyr::group_by(key) %>%
+  dplyr::summarise(
+    corum_complex_ids = paste(unique(complex_id), collapse = ";"),
+    corum_complex_names = paste(unique(complex_name), collapse = ";"),
+    n_corum_complexes = dplyr::n_distinct(complex_id),
+    .groups = "drop"
+  )
+
+message("  CORUM complexes (human): ", nrow(corum_human))
+message("  CORUM unique edges: ", nrow(corum_edge_lookup))
+```
+
+
+## Chunk 2: Master PPI v3 Creation with Filter Columns
+```{r ppi_v3_master_creation}
+# =============================================================================
+# PPI v3: Master PPI Table with Individual Filter Columns
+# =============================================================================
+
+# --- Load Predictome80 ---
+message("Loading Predictome80...")
+predictome80_raw <- data.table::fread(path_predictome80, sep = "\t", header = TRUE, skip = 28, fill = TRUE, quote = "", data.table = FALSE)
+predictome80_raw <- predictome80_raw[!grepl("^#", predictome80_raw$Protein1), ]
+
+predictome80 <- predictome80_raw %>%
+  dplyr::transmute(
+    Protein1 = Protein1,
+    Protein2 = Protein2,
+    Gene1 = sub("_HUMAN$", "", Gene1),
+    Gene2 = sub("_HUMAN$", "", Gene2),
+    RFprob = suppressWarnings(as.numeric(RFprob)),
+    AFprob = suppressWarnings(as.numeric(AFprob)),
+    AFMprob = suppressWarnings(as.numeric(AFMprob)),
+    CFprob = suppressWarnings(as.numeric(CFprob)),
+    STRING = suppressWarnings(as.numeric(STRING)),
+    confDBs = confDBs,
+    allDBs = allDBs,
+    Source = Source,
+    PDBtemp = PDBtemp,
+    Locality1 = Locality1,
+    Locality2 = Locality2,
+    key = .make_undirected_key(Protein1, Protein2)
+  ) %>%
+  dplyr::distinct(key, .keep_all = TRUE) %>%
+  dplyr::mutate(in_Predictome80 = TRUE)
+
+message("  Predictome80: ", nrow(predictome80), " unique edges")
+
+# --- Parse filter columns from P80 ---
+predictome80 <- predictome80 %>%
+  dplyr::mutate(
+    # Parse allDBs for BIOGRID and STRING
+    filter_BIOGRID = dplyr::case_when(
+      grepl("BIOGRID", allDBs, ignore.case = TRUE) ~ "present",
+      TRUE ~ "none"
+    ),
+    filter_STRING = dplyr::case_when(
+      grepl("STRING", allDBs, ignore.case = TRUE) ~ "present",
+      TRUE ~ "none"
+    ),
+    # PDB template status
+    filter_PDB = dplyr::case_when(
+      PDBtemp == "exact" ~ "exact",
+      PDBtemp == "homolog" ~ "homolog",
+      TRUE ~ "none"
+    )
+  )
+
+# --- Load Predictomes.org 16k ---
+message("Loading Predictomes.org 16k...")
+predictomes16k_raw <- readr::read_csv(path_predictomes16k, show_col_types = FALSE)
+
+predictomes16k <- predictomes16k_raw %>%
+  dplyr::transmute(
+    Protein1 = Entry1,
+    Protein2 = Entry2,
+    Gene1_16k = Gene1,
+    Gene2_16k = Gene2,
+    SPOC_score = as.numeric(SPOC_score),
+    FDR_pct = as.numeric(FDR),
+    ipTM_max = as.numeric(ipTM_max),
+    KIRC_score = as.numeric(KIRC_score),
+    BioGRID_count = as.numeric(BioGRID),
+    STRING_16k = as.numeric(STRING_score),
+    key = .make_undirected_key(Protein1, Protein2)
+  ) %>%
+  dplyr::distinct(key, .keep_all = TRUE) %>%
+  dplyr::mutate(in_Predictomes16k = TRUE)
+
+message("  Predictomes16k: ", nrow(predictomes16k), " unique edges")
+
+# --- Load IntAct (experimental validation) ---
+message("Loading IntAct...")
+intact_raw <- data.table::fread(path_intact_tsv, sep = "\t", header = TRUE, quote = "", fill = TRUE, data.table = FALSE)
+
+intact <- intact_raw %>%
+  dplyr::filter(`Taxid interactor A` == "taxid:9606(human)" & `Taxid interactor B` == "taxid:9606(human)") %>%
+  dplyr::transmute(
+    Protein1 = sub("uniprotkb:", "", `#ID(s) interactor A`),
+    Protein2 = sub("uniprotkb:", "", `ID(s) interactor B`),
+    mi_score = as.numeric(sub(".*score:", "", `Confidence value(s)`)),
+    key = .make_undirected_key(Protein1, Protein2)
+  ) %>%
+  dplyr::filter(mi_score >= 0.5) %>%
+  dplyr::group_by(key) %>%
+  dplyr::summarise(mi_score_max = max(mi_score, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(in_IntAct = TRUE)
+
+message("  IntAct (MI>=0.5): ", nrow(intact), " unique edges")
+
+# --- Merge all sources ---
+message("Merging prediction sources...")
+master_ppi_v3 <- predictome80 %>%
+  dplyr::select(key, Protein1, Protein2, Gene1, Gene2, RFprob, AFprob, AFMprob, CFprob, STRING,
+                confDBs, allDBs, Source, Locality1, Locality2, in_Predictome80,
+                filter_BIOGRID, filter_STRING, filter_PDB) %>%
+  dplyr::full_join(
+    predictomes16k %>% dplyr::select(key, Gene1_16k, Gene2_16k, SPOC_score, FDR_pct, ipTM_max,
+                                      KIRC_score, BioGRID_count, STRING_16k, in_Predictomes16k),
+    by = "key"
+  ) %>%
+  dplyr::left_join(intact %>% dplyr::select(key, mi_score_max, in_IntAct), by = "key")
+
+# Fill missing flags
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::mutate(
+    in_Predictome80 = tidyr::replace_na(in_Predictome80, FALSE),
+    in_Predictomes16k = tidyr::replace_na(in_Predictomes16k, FALSE),
+    in_IntAct = tidyr::replace_na(in_IntAct, FALSE),
+    in_both_predictions = in_Predictome80 & in_Predictomes16k,
+    # Fill filter columns for edges only in 16k
+    filter_BIOGRID = dplyr::case_when(
+      !is.na(filter_BIOGRID) ~ filter_BIOGRID,
+      BioGRID_count > 0 ~ "present",
+      TRUE ~ "none"
+    ),
+    filter_STRING = dplyr::case_when(
+      !is.na(filter_STRING) ~ filter_STRING,
+      STRING_16k > 0 ~ "present",
+      TRUE ~ "none"
+    ),
+    filter_PDB = tidyr::replace_na(filter_PDB, "none")
+  )
+
+# Fill Gene names from 16k if missing
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::mutate(
+    Gene1 = dplyr::coalesce(Gene1, Gene1_16k),
+    Gene2 = dplyr::coalesce(Gene2, Gene2_16k)
+  )
+
+message("  Merged master table: ", nrow(master_ppi_v3), " unique edges")
+```
+
+
+## Chunk 3: Add CORUM and ComplexPortal Filter Columns
+```{r ppi_v3_corum_complexportal}
+# =============================================================================
+# PPI v3: Add CORUM and ComplexPortal Annotations
+# =============================================================================
+
+# --- Add CORUM lookup ---
+message("Adding CORUM annotations...")
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::left_join(corum_edge_lookup, by = "key") %>%
+  dplyr::mutate(
+    filter_CORUM = dplyr::case_when(
+      !is.na(corum_complex_ids) ~ "present",
+      TRUE ~ "none"
+    )
+  )
+
+message("  Edges in CORUM: ", sum(master_ppi_v3$filter_CORUM == "present"))
+
+# --- Add ComplexPortal annotations ---
+# (Assuming complexportal lookup already exists from previous code)
+# If not, load ComplexPortal here similarly to CORUM
+
+# Check if complexportal columns already exist
+if (!"complexportal_strict" %in% names(master_ppi_v3)) {
+  message("Loading ComplexPortal annotations...")
+  # NOTE: Add ComplexPortal loading here if not already in pipeline
+  # For now, assume it will be merged later or already exists
+  master_ppi_v3$filter_ComplexPortal <- "none"
+} else {
+  master_ppi_v3 <- master_ppi_v3 %>%
+    dplyr::mutate(
+      filter_ComplexPortal = dplyr::case_when(
+        complexportal_strict == TRUE ~ "strict",
+        complexportal_relaxed == TRUE ~ "relaxed",
+        TRUE ~ "none"
+      )
+    )
+}
+
+message("  ComplexPortal strict: ", sum(master_ppi_v3$filter_ComplexPortal == "strict", na.rm = TRUE))
+message("  ComplexPortal relaxed: ", sum(master_ppi_v3$filter_ComplexPortal == "relaxed", na.rm = TRUE))
+```
+
+
+## Chunk 4: Support Score Computation
+```{r ppi_v3_support_score}
+# =============================================================================
+# PPI v3: Compute Weighted Support Score
+# =============================================================================
+# Scoring:
+#   PDB: exact=3, homolog=1, none=0
+#   ComplexPortal: strict=3, relaxed=1, none=0
+#   STRING: present=1, none=0
+#   BIOGRID: present=1, none=0
+#   CORUM: present=1, none=0
+# Max possible = 3 + 3 + 1 + 1 + 1 = 9
+
+message("Computing support scores...")
+
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::mutate(
+    score_PDB = dplyr::case_when(
+      filter_PDB == "exact" ~ 3L,
+      filter_PDB == "homolog" ~ 1L,
+      TRUE ~ 0L
+    ),
+    score_ComplexPortal = dplyr::case_when(
+      filter_ComplexPortal == "strict" ~ 3L,
+      filter_ComplexPortal == "relaxed" ~ 1L,
+      TRUE ~ 0L
+    ),
+    score_STRING = ifelse(filter_STRING == "present", 1L, 0L),
+    score_BIOGRID = ifelse(filter_BIOGRID == "present", 1L, 0L),
+    score_CORUM = ifelse(filter_CORUM == "present", 1L, 0L),
+
+    # Total support score
+    support_score = score_PDB + score_ComplexPortal + score_STRING + score_BIOGRID + score_CORUM,
+
+    # Count of databases supporting (unweighted)
+    n_databases_supporting = (filter_PDB != "none") + (filter_ComplexPortal != "none") +
+                              (filter_STRING != "none") + (filter_BIOGRID != "none") +
+                              (filter_CORUM != "none")
+  )
+
+# Summary
+support_summary <- master_ppi_v3 %>%
+  dplyr::summarise(
+    total_edges = dplyr::n(),
+    edges_PDB_exact = sum(filter_PDB == "exact"),
+    edges_PDB_homolog = sum(filter_PDB == "homolog"),
+    edges_ComplexPortal_strict = sum(filter_ComplexPortal == "strict"),
+    edges_ComplexPortal_relaxed = sum(filter_ComplexPortal == "relaxed"),
+    edges_STRING = sum(filter_STRING == "present"),
+    edges_BIOGRID = sum(filter_BIOGRID == "present"),
+    edges_CORUM = sum(filter_CORUM == "present"),
+    mean_support_score = round(mean(support_score), 2),
+    median_support_score = median(support_score),
+    max_support_score = max(support_score)
+  )
+
+message("\nSupport score summary:")
+print(as.data.frame(t(support_summary)))
+
+# Distribution
+score_dist <- master_ppi_v3 %>%
+  dplyr::count(support_score, name = "n_edges") %>%
+  dplyr::mutate(pct = round(100 * n_edges / sum(n_edges), 1))
+
+message("\nSupport score distribution:")
+print(score_dist)
+```
+
+
+## Chunk 5: Confidence Tier Assignment (Gold-Only)
+```{r ppi_v3_confidence_tiers}
+# =============================================================================
+# PPI v3: Confidence Tier Assignment
+# =============================================================================
+# Gold criteria (same as before):
+#   - in both prediction sources (convergent evidence)
+#   - OR high structural + coevolution (AFMprob >= 0.9 AND RFprob >= 0.9)
+#   - OR high omics integration (SPOC >= 0.95)
+
+message("Assigning confidence tiers...")
+
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::mutate(
+    confidence_tier = dplyr::case_when(
+      in_both_predictions ~ "gold",
+      AFMprob >= 0.9 & RFprob >= 0.9 ~ "gold",
+      SPOC_score >= 0.95 ~ "gold",
+      AFMprob >= 0.8 ~ "silver",
+      RFprob >= 0.8 ~ "silver",
+      SPOC_score >= 0.9 ~ "silver",
+      TRUE ~ "bronze"
+    ),
+    confidence_tier_rationale = dplyr::case_when(
+      in_both_predictions ~ "both_prediction_sources",
+      AFMprob >= 0.9 & RFprob >= 0.9 ~ "P80_high_structural_and_coevol",
+      SPOC_score >= 0.95 ~ "16k_high_omics",
+      AFMprob >= 0.8 ~ "P80_good_structural",
+      RFprob >= 0.8 ~ "P80_good_coevol",
+      SPOC_score >= 0.9 ~ "16k_good_omics",
+      TRUE ~ "low_conf"
+    ),
+    has_experimental_validation = in_IntAct
+  )
+
+tier_summary <- master_ppi_v3 %>%
+  dplyr::count(confidence_tier, confidence_tier_rationale) %>%
+  dplyr::arrange(confidence_tier, dplyr::desc(n))
+
+message("\nConfidence tier summary:")
+print(tier_summary)
+
+# Support score by tier
+support_by_tier <- master_ppi_v3 %>%
+  dplyr::group_by(confidence_tier) %>%
+  dplyr::summarise(
+    n = dplyr::n(),
+    mean_support = round(mean(support_score), 2),
+    median_support = median(support_score),
+    pct_in_CORUM = round(100 * mean(filter_CORUM == "present"), 1),
+    pct_PDB_struct = round(100 * mean(filter_PDB != "none"), 1),
+    .groups = "drop"
+  )
+
+message("\nSupport by tier:")
+print(support_by_tier)
+```
+
+
+## Chunk 6: Gold-Only Baseline Filtering
+```{r ppi_v3_gold_baseline}
+# =============================================================================
+# PPI v3: Gold-Only Baseline Filtering
+# =============================================================================
+
+message("Filtering to gold tier only...")
+
+# Filter to gold tier
+master_ppi_gold <- master_ppi_v3 %>%
+  dplyr::filter(confidence_tier == "gold")
+
+message("  Gold tier edges: ", nrow(master_ppi_gold))
+
+# Filter to neuronal proteome
+# (Assumes neuronal_genes exists from proteome loading)
+n_pre <- nrow(master_ppi_gold)
+n_gene1_in <- sum(master_ppi_gold$Gene1 %in% neuronal_genes)
+n_gene2_in <- sum(master_ppi_gold$Gene2 %in% neuronal_genes)
+n_both_in <- sum(master_ppi_gold$Gene1 %in% neuronal_genes & master_ppi_gold$Gene2 %in% neuronal_genes)
+
+message("\nProteome overlap (gold tier):")
+message("  Gene1 in proteome: ", n_gene1_in, " (", round(100 * n_gene1_in / n_pre, 1), "%)")
+message("  Gene2 in proteome: ", n_gene2_in, " (", round(100 * n_gene2_in / n_pre, 1), "%)")
+message("  Both in proteome: ", n_both_in, " (", round(100 * n_both_in / n_pre, 1), "%)")
+
+baseline_ppi_v3 <- master_ppi_gold %>%
+  dplyr::filter(Gene1 %in% neuronal_genes & Gene2 %in% neuronal_genes)
+
+message("\nBaseline PPI (gold, neuronal): ", nrow(baseline_ppi_v3), " edges")
+
+# Support score distribution in baseline
+baseline_support_dist <- baseline_ppi_v3 %>%
+  dplyr::count(support_score, name = "n_edges") %>%
+  dplyr::mutate(pct = round(100 * n_edges / sum(n_edges), 1))
+
+message("\nBaseline support score distribution:")
+print(baseline_support_dist)
+
+# Replace old baseline_filtered with new gold-only version
+baseline_filtered <- baseline_ppi_v3
+```
+
+
+## Chunk 7: Localization Majority Computation for Complexes
+```{r ppi_v3_localization_majority}
+# =============================================================================
+# PPI v3: Localization Majority Computation
+# =============================================================================
+# For each complex/trimer/tetramer, compute dominant compartment and agreement %
+
+# Define organelle priority groups (for majority voting)
+organelle_groups <- list(
+  Mito = c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", "mtCI_AF"),
+  ER = c("ER"),
+  Golgi = c("Golgi"),
+  Lysosome = c("Lysosome", "EndoLyso"),
+  Endosome = c("EarlyEndosome", "RecyclingEndosome", "EndoDetailLoac", "Endo_iN_curated_Hundley"),
+  Autophagy = c("Autophagy", "Autophagy_det"),
+  Synapse = c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic", "SVfusion", "Svendocytosis", "Svexocytosis"),
+  Nucleus = c("Nucleus"),
+  Cytoplasm = c("Cytoplasm")
+)
+
+# Function to compute localization majority for a set of genes
+compute_localization_majority <- function(genes, protein_annotations) {
+  # protein_annotations should have columns: Gene, and organelle tag columns (TRUE/FALSE)
+
+  gene_annotations <- protein_annotations %>%
+    dplyr::filter(Gene %in% genes)
+
+  if (nrow(gene_annotations) == 0) {
+    return(list(
+      dominant_compartment = NA_character_,
+      compartment_agreement_pct = NA_real_,
+      n_genes_annotated = 0L,
+      compartment_counts = NA_character_
+    ))
+  }
+
+  # Count genes per compartment group
+  compartment_counts <- sapply(names(organelle_groups), function(grp) {
+    tags <- organelle_groups[[grp]]
+    existing_cols <- intersect(tags, names(gene_annotations))
+    if (length(existing_cols) == 0) return(0L)
+    sum(rowSums(gene_annotations[, existing_cols, drop = FALSE] == TRUE, na.rm = TRUE) > 0)
+  })
+
+  n_annotated <- nrow(gene_annotations)
+  max_count <- max(compartment_counts)
+  dominant <- names(compartment_counts)[which.max(compartment_counts)]
+  agreement_pct <- round(100 * max_count / n_annotated, 1)
+
+  counts_str <- paste(names(compartment_counts)[compartment_counts > 0],
+                      compartment_counts[compartment_counts > 0],
+                      sep = ":", collapse = ";")
+
+  list(
+    dominant_compartment = dominant,
+    compartment_agreement_pct = agreement_pct,
+    n_genes_annotated = n_annotated,
+    compartment_counts = counts_str
+  )
+}
+
+# Example usage for trimers:
+# trimer_localization <- trimers_baseline %>%
+#   dplyr::rowwise() %>%
+#   dplyr::mutate(
+#     loc_info = list(compute_localization_majority(c(Gene1, Gene2, Gene3), protein_organelle_annotations))
+#   ) %>%
+#   dplyr::ungroup() %>%
+#   dplyr::mutate(
+#     dominant_compartment = purrr::map_chr(loc_info, "dominant_compartment"),
+#     compartment_agreement_pct = purrr::map_dbl(loc_info, "compartment_agreement_pct"),
+#     compartment_counts = purrr::map_chr(loc_info, "compartment_counts")
+#   ) %>%
+#   dplyr::select(-loc_info)
+```
+
+
+## Chunk 8: Top-Down Complex Prioritization
+```{r ppi_v3_topdown_prioritization}
+# =============================================================================
+# PPI v3: Top-Down Complex Prioritization
+# =============================================================================
+# Identify PPIs/trimers/tetramers that are in known complexes (ComplexPortal, CORUM, PDB)
+# Use this to prioritize which structures to build/extend
+
+# --- Function: Score a set of edges by support ---
+score_edge_set <- function(edges_df, master_ppi_with_scores) {
+
+  # edges_df should have column 'key'
+  # Returns summary of support for the edge set
+
+  matched <- master_ppi_with_scores %>%
+    dplyr::filter(key %in% edges_df$key)
+
+  if (nrow(matched) == 0) {
+    return(list(
+      n_edges = 0L,
+      mean_support = NA_real_,
+      total_support = 0L,
+      n_in_CORUM = 0L,
+      n_in_ComplexPortal = 0L,
+      n_with_PDB = 0L
+    ))
+  }
+
+  list(
+    n_edges = nrow(matched),
+    mean_support = round(mean(matched$support_score), 2),
+    total_support = sum(matched$support_score),
+    n_in_CORUM = sum(matched$filter_CORUM == "present"),
+    n_in_ComplexPortal = sum(matched$filter_ComplexPortal != "none"),
+    n_with_PDB = sum(matched$filter_PDB != "none")
+  )
+}
+
+# --- Prioritize trimers by support ---
+prioritize_trimers <- function(trimers_df, master_ppi_with_scores) {
+  # trimers_df should have Gene1, Gene2, Gene3
+
+  trimers_scored <- trimers_df %>%
+    dplyr::mutate(
+      key_AB = .make_undirected_key(Gene1, Gene2),
+      key_BC = .make_undirected_key(Gene2, Gene3),
+      key_AC = .make_undirected_key(Gene1, Gene3)
+    ) %>%
+    dplyr::left_join(master_ppi_with_scores %>% dplyr::select(key, support_score, filter_CORUM, filter_ComplexPortal, filter_PDB) %>% dplyr::rename(support_AB = support_score, corum_AB = filter_CORUM, cp_AB = filter_ComplexPortal, pdb_AB = filter_PDB), by = c("key_AB" = "key")) %>%
+    dplyr::left_join(master_ppi_with_scores %>% dplyr::select(key, support_score, filter_CORUM, filter_ComplexPortal, filter_PDB) %>% dplyr::rename(support_BC = support_score, corum_BC = filter_CORUM, cp_BC = filter_ComplexPortal, pdb_BC = filter_PDB), by = c("key_BC" = "key")) %>%
+    dplyr::left_join(master_ppi_with_scores %>% dplyr::select(key, support_score, filter_CORUM, filter_ComplexPortal, filter_PDB) %>% dplyr::rename(support_AC = support_score, corum_AC = filter_CORUM, cp_AC = filter_ComplexPortal, pdb_AC = filter_PDB), by = c("key_AC" = "key")) %>%
+    dplyr::mutate(
+      trimer_support_total = tidyr::replace_na(support_AB, 0) + tidyr::replace_na(support_BC, 0) + tidyr::replace_na(support_AC, 0),
+      trimer_support_mean = trimer_support_total / 3,
+      n_edges_in_CORUM = (corum_AB == "present") + (corum_BC == "present") + (corum_AC == "present"),
+      n_edges_in_ComplexPortal = (cp_AB != "none") + (cp_BC != "none") + (cp_AC != "none"),
+      n_edges_with_PDB = (pdb_AB != "none") + (pdb_BC != "none") + (pdb_AC != "none"),
+      # Flag: all edges in same known complex?
+      all_in_known_complex = (n_edges_in_CORUM == 3) | (n_edges_in_ComplexPortal == 3)
+    ) %>%
+    dplyr::arrange(dplyr::desc(trimer_support_total), dplyr::desc(all_in_known_complex))
+
+  return(trimers_scored)
+}
+
+# --- Prioritize tetramers similarly ---
+prioritize_tetramers <- function(tetramers_df, master_ppi_with_scores) {
+  # tetramers_df should have Gene1, Gene2, Gene3, Gene4
+  # 6 edges: AB, AC, AD, BC, BD, CD
+
+  tetramers_scored <- tetramers_df %>%
+    dplyr::mutate(
+      key_AB = .make_undirected_key(Gene1, Gene2),
+      key_AC = .make_undirected_key(Gene1, Gene3),
+      key_AD = .make_undirected_key(Gene1, Gene4),
+      key_BC = .make_undirected_key(Gene2, Gene3),
+      key_BD = .make_undirected_key(Gene2, Gene4),
+      key_CD = .make_undirected_key(Gene3, Gene4)
+    )
+
+  # Join support scores for each edge
+  edge_keys <- c("key_AB", "key_AC", "key_AD", "key_BC", "key_BD", "key_CD")
+
+  for (ek in edge_keys) {
+    suffix <- sub("key_", "", ek)
+    tetramers_scored <- tetramers_scored %>%
+      dplyr::left_join(
+        master_ppi_with_scores %>%
+          dplyr::select(key, support_score) %>%
+          dplyr::rename(!!paste0("support_", suffix) := support_score),
+        by = setNames("key", ek)
+      )
+  }
+
+  tetramers_scored <- tetramers_scored %>%
+    dplyr::mutate(
+      tetramer_support_total = tidyr::replace_na(support_AB, 0) + tidyr::replace_na(support_AC, 0) +
+                               tidyr::replace_na(support_AD, 0) + tidyr::replace_na(support_BC, 0) +
+                               tidyr::replace_na(support_BD, 0) + tidyr::replace_na(support_CD, 0),
+      tetramer_support_mean = tetramer_support_total / 6
+    ) %>%
+    dplyr::arrange(dplyr::desc(tetramer_support_total))
+
+  return(tetramers_scored)
+}
+
+message("Top-down prioritization functions defined.")
+```
+
+
+## Chunk 9: QC Plots for Filter Distribution
+```{r ppi_v3_qc_plots, fig.width=10, fig.height=8}
+# =============================================================================
+# PPI v3: QC Plots for Filter Distribution
+# =============================================================================
+
+# --- Plot 1: Filter distribution in baseline ---
+filter_counts <- baseline_ppi_v3 %>%
+  dplyr::summarise(
+    PDB_exact = sum(filter_PDB == "exact"),
+    PDB_homolog = sum(filter_PDB == "homolog"),
+    ComplexPortal_strict = sum(filter_ComplexPortal == "strict"),
+    ComplexPortal_relaxed = sum(filter_ComplexPortal == "relaxed"),
+    STRING = sum(filter_STRING == "present"),
+    BIOGRID = sum(filter_BIOGRID == "present"),
+    CORUM = sum(filter_CORUM == "present")
+  ) %>%
+  tidyr::pivot_longer(everything(), names_to = "filter", values_to = "n_edges")
+
+p_filters <- ggplot(filter_counts, aes(x = reorder(filter, -n_edges), y = n_edges, fill = filter)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_edges), vjust = -0.3, size = 3) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Database/Structure Support in Baseline PPIs (Gold Tier)",
+       x = "Filter", y = "Number of Edges") +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none")
+
+print(p_filters)
+
+# --- Plot 2: Support score distribution ---
+p_support <- ggplot(baseline_ppi_v3, aes(x = factor(support_score))) +
+  geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 3) +
+  labs(title = "Support Score Distribution (Gold Tier Baseline)",
+       subtitle = "Max = 9 (PDB exact + ComplexPortal strict + STRING + BIOGRID + CORUM)",
+       x = "Support Score", y = "Number of Edges") +
+  theme_minimal(base_size = 10)
+
+print(p_support)
+
+# --- Plot 3: Venn-style overlap of major filters ---
+# (Simplified: just show co-occurrence counts)
+cooccurrence <- baseline_ppi_v3 %>%
+  dplyr::mutate(
+    has_PDB = filter_PDB != "none",
+    has_CP = filter_ComplexPortal != "none",
+    has_CORUM = filter_CORUM == "present"
+  ) %>%
+  dplyr::count(has_PDB, has_CP, has_CORUM, name = "n_edges") %>%
+  dplyr::mutate(
+    label = paste0(
+      ifelse(has_PDB, "PDB", ""),
+      ifelse(has_PDB & (has_CP | has_CORUM), "+", ""),
+      ifelse(has_CP, "CP", ""),
+      ifelse(has_CP & has_CORUM, "+", ""),
+      ifelse(has_CORUM, "CORUM", ""),
+      ifelse(!has_PDB & !has_CP & !has_CORUM, "None", "")
+    )
+  )
+
+message("\nStructural/Complex DB co-occurrence:")
+print(cooccurrence %>% dplyr::arrange(dplyr::desc(n_edges)))
+
+# Save outputs
+readr::write_csv(master_ppi_v3, file.path(out_dir_ppi_dual, "tables", "master_ppi_v3.csv"))
+readr::write_csv(baseline_ppi_v3, file.path(out_dir_baseline, "tables", "baseline_ppi_v3_gold.csv"))
+readr::write_csv(filter_counts, file.path(out_dir_baseline, "qc", "filter_distribution_v3.csv"))
+
+message("\nPPI v3 outputs saved.")
+```
+
 
 
 # QC vizualiztions on dual PPI database evidence
@@ -12054,6 +12730,114 @@ message("QC plots complete. Saved to: ", file.path(out_dir_ppi_dual, "qc/plots")
 
 
 ```
+
+## Chunk 10: Add Organelle Annotations to master_ppi_v3
+```{r ppi_v3_organelle_annotations}
+# =============================================================================
+# PPI v3: Add Subcellular Annotations
+# =============================================================================
+# This chunk adds organelle columns (_prot1, _prot2) to master_ppi_v3
+# Requires: binary_matrix (gene x organelle boolean matrix)
+
+message("Adding subcellular annotations to master_ppi_v3...")
+
+# Get organelle tags from binary_matrix
+organelle_tags <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+gene_to_org <- binary_matrix %>% dplyr::select(Genes, all_of(organelle_tags))
+
+# Add annotations for Gene1
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::left_join(gene_to_org, by = c("Gene1" = "Genes")) %>%
+  dplyr::rename_with(~paste0(.x, "_prot1"), all_of(organelle_tags))
+
+# Add annotations for Gene2
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::left_join(gene_to_org, by = c("Gene2" = "Genes")) %>%
+  dplyr::rename_with(~paste0(.x, "_prot2"), all_of(organelle_tags))
+
+# Count annotations
+n_gene1_annotated <- sum(!is.na(master_ppi_v3[[paste0(organelle_tags[1], "_prot1")]]))
+n_gene2_annotated <- sum(!is.na(master_ppi_v3[[paste0(organelle_tags[1], "_prot2")]]))
+message("  Gene1 with annotations: ", n_gene1_annotated, " / ", nrow(master_ppi_v3))
+message("  Gene2 with annotations: ", n_gene2_annotated, " / ", nrow(master_ppi_v3))
+```
+
+
+## Chunk 11: Create shared_long for master_ppi_v3
+```{r ppi_v3_shared_long}
+# =============================================================================
+# PPI v3: Create Shared Organelle Edge Table
+# =============================================================================
+
+message("Creating shared organelle edge table for master_ppi_v3...")
+
+org1_cols <- paste0(organelle_tags, "_prot1")
+org2_cols <- paste0(organelle_tags, "_prot2")
+existing_org1_cols <- intersect(org1_cols, colnames(master_ppi_v3))
+existing_org2_cols <- intersect(org2_cols, colnames(master_ppi_v3))
+
+shared_long_master_v3 <- {
+  if (length(existing_org1_cols) == 0 || length(existing_org2_cols) == 0) {
+    message("No organelle columns found, creating empty shared_long_master_v3")
+    data.frame(key = character(0), tag = character(0), stringsAsFactors = FALSE)
+  } else {
+    m1 <- master_ppi_v3[, existing_org1_cols, drop = FALSE] %>%
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>%
+      as.data.frame()
+    m2 <- master_ppi_v3[, existing_org2_cols, drop = FALSE] %>%
+      lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>%
+      as.data.frame()
+    shared_mat <- as.matrix(m1) & as.matrix(m2)
+    existing_tags <- sub("_prot1$", "", existing_org1_cols)
+
+    dplyr::bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
+      idx <- which(shared_mat[i, ])
+      if (!length(idx)) return(NULL)
+      data.frame(key = master_ppi_v3$key[i], tag = existing_tags[idx], stringsAsFactors = FALSE)
+    }))
+  }
+}
+
+message("  Shared organelle edges: ", nrow(shared_long_master_v3))
+```
+
+
+## Chunk 12: Gold-Only Baseline with Organelle Columns
+```{r ppi_v3_baseline_gold_annotated}
+# =============================================================================
+# PPI v3: Gold-Only Baseline with Full Annotations
+# =============================================================================
+# Creates baseline_filtered (gold tier, neuronal, with organelle + support_score)
+
+message("Creating gold-only baseline with full annotations...")
+
+# Filter to gold tier
+master_ppi_gold_v3 <- master_ppi_v3 %>%
+  dplyr::filter(confidence_tier == "gold")
+
+message("  Gold tier edges: ", nrow(master_ppi_gold_v3))
+
+# Filter to neuronal proteome
+baseline_ppi_v3 <- master_ppi_gold_v3 %>%
+  dplyr::filter(Gene1 %in% neuronal_genes & Gene2 %in% neuronal_genes)
+
+message("  Baseline PPI (gold, neuronal): ", nrow(baseline_ppi_v3), " edges")
+
+# Replace baseline_filtered for downstream compatibility
+baseline_filtered <- baseline_ppi_v3
+
+# Support score distribution
+support_dist <- baseline_filtered %>%
+  dplyr::count(support_score, name = "n_edges") %>%
+  dplyr::mutate(pct = round(100 * n_edges / sum(n_edges), 1))
+
+message("\nBaseline support score distribution:")
+print(support_dist)
+
+# Save
+readr::write_csv(baseline_filtered, file.path(out_dir_baseline, "tables", "baseline_filtered_v3_gold.csv"))
+```
+
 
 
 
@@ -14571,6 +15355,175 @@ message("Updated complex evidence saved.")
 ```
 
 
+## Chunk 13: Propagate Support Score to Trimers
+```{r ppi_v3_trimer_support}
+# =============================================================================
+# PPI v3: Add Support Score to Trimers
+# =============================================================================
+# Computes mean support_score across 3 edges per trimer
+
+message("Adding support scores to trimers...")
+
+# Create lookup for support scores
+support_lookup <- baseline_filtered %>%
+  dplyr::select(key, support_score, filter_BIOGRID, filter_STRING, filter_PDB, filter_ComplexPortal, filter_CORUM,
+                corum_complex_ids, corum_complex_names)
+
+# Add keys and join support scores
+trimers_baseline <- trimers_baseline %>%
+  dplyr::mutate(
+    key_AB = .make_undirected_key(Gene1, Gene2),
+    key_BC = .make_undirected_key(Gene2, Gene3),
+    key_AC = .make_undirected_key(Gene1, Gene3)
+  ) %>%
+  dplyr::left_join(support_lookup %>% dplyr::select(key, support_score) %>% dplyr::rename(support_AB = support_score), by = c("key_AB" = "key")) %>%
+  dplyr::left_join(support_lookup %>% dplyr::select(key, support_score) %>% dplyr::rename(support_BC = support_score), by = c("key_BC" = "key")) %>%
+  dplyr::left_join(support_lookup %>% dplyr::select(key, support_score) %>% dplyr::rename(support_AC = support_score), by = c("key_AC" = "key")) %>%
+  dplyr::mutate(
+    support_AB = tidyr::replace_na(support_AB, 0),
+    support_BC = tidyr::replace_na(support_BC, 0),
+    support_AC = tidyr::replace_na(support_AC, 0),
+    trimer_support_total = support_AB + support_BC + support_AC,
+    trimer_support_mean = round(trimer_support_total / 3, 2)
+  )
+
+# Also add filter flags (any edge has the filter)
+trimers_baseline <- trimers_baseline %>%
+  dplyr::left_join(support_lookup %>% dplyr::select(key, filter_CORUM, corum_complex_ids) %>% dplyr::rename(corum_AB = filter_CORUM, corum_ids_AB = corum_complex_ids), by = c("key_AB" = "key")) %>%
+  dplyr::left_join(support_lookup %>% dplyr::select(key, filter_CORUM, corum_complex_ids) %>% dplyr::rename(corum_BC = filter_CORUM, corum_ids_BC = corum_complex_ids), by = c("key_BC" = "key")) %>%
+  dplyr::left_join(support_lookup %>% dplyr::select(key, filter_CORUM, corum_complex_ids) %>% dplyr::rename(corum_AC = filter_CORUM, corum_ids_AC = corum_complex_ids), by = c("key_AC" = "key")) %>%
+  dplyr::mutate(
+    n_edges_in_CORUM = (corum_AB == "present") + (corum_BC == "present") + (corum_AC == "present"),
+    trimer_in_known_complex = n_edges_in_CORUM == 3
+  )
+
+# Summary
+trimer_support_summary <- trimers_baseline %>%
+  dplyr::summarise(
+    n_trimers = dplyr::n(),
+    mean_support = round(mean(trimer_support_mean, na.rm = TRUE), 2),
+    n_all_in_CORUM = sum(trimer_in_known_complex, na.rm = TRUE),
+    pct_all_in_CORUM = round(100 * mean(trimer_in_known_complex, na.rm = TRUE), 1)
+  )
+
+message("\nTrimer support summary:")
+print(trimer_support_summary)
+```
+
+
+## Chunk 14: Propagate Support Score to Tetramers
+```{r ppi_v3_tetramer_support}
+# =============================================================================
+# PPI v3: Add Support Score to Tetramers
+# =============================================================================
+# Computes mean support_score across 6 edges per tetramer
+
+message("Adding support scores to tetramers...")
+
+# Add keys
+tetramers_baseline <- tetramers_baseline %>%
+  dplyr::mutate(
+    key_AB = .make_undirected_key(Gene1, Gene2),
+    key_AC = .make_undirected_key(Gene1, Gene3),
+    key_AD = .make_undirected_key(Gene1, Gene4),
+    key_BC = .make_undirected_key(Gene2, Gene3),
+    key_BD = .make_undirected_key(Gene2, Gene4),
+    key_CD = .make_undirected_key(Gene3, Gene4)
+  )
+
+# Join support scores for each edge
+edge_suffixes <- c("AB", "AC", "AD", "BC", "BD", "CD")
+for (suf in edge_suffixes) {
+  key_col <- paste0("key_", suf)
+  support_col <- paste0("support_", suf)
+  tetramers_baseline <- tetramers_baseline %>%
+    dplyr::left_join(
+      support_lookup %>% dplyr::select(key, support_score) %>% dplyr::rename(!!support_col := support_score),
+      by = setNames("key", key_col)
+    )
+}
+
+# Compute totals
+tetramers_baseline <- tetramers_baseline %>%
+  dplyr::mutate(
+    across(starts_with("support_"), ~tidyr::replace_na(.x, 0)),
+    tetramer_support_total = support_AB + support_AC + support_AD + support_BC + support_BD + support_CD,
+    tetramer_support_mean = round(tetramer_support_total / 6, 2)
+  )
+
+# Summary
+tetramer_support_summary <- tetramers_baseline %>%
+  dplyr::summarise(
+    n_tetramers = dplyr::n(),
+    mean_support = round(mean(tetramer_support_mean, na.rm = TRUE), 2),
+    max_support = max(tetramer_support_total, na.rm = TRUE)
+  )
+
+message("\nTetramer support summary:")
+print(tetramer_support_summary)
+```
+
+
+## Chunk 15: Propagate Support Score to Complexes
+```{r ppi_v3_complex_support}
+# =============================================================================
+# PPI v3: Add Support Score to Complexes
+# =============================================================================
+# Computes mean support_score across all edges within each complex
+
+message("Adding support scores to complexes...")
+
+# Get edges per complex from complexes_baseline
+# complexes_baseline has Gene, community_id
+
+complex_edges_with_support <- complexes_baseline %>%
+  dplyr::group_by(community_id) %>%
+  dplyr::filter(dplyr::n() >= 2) %>%
+  dplyr::summarise(genes = list(Gene), .groups = "drop") %>%
+  dplyr::mutate(
+    edges = purrr::map(genes, function(g) {
+      if (length(g) < 2) return(data.frame(Gene1 = character(), Gene2 = character()))
+      pairs <- t(combn(sort(unique(g)), 2))
+      data.frame(Gene1 = pairs[, 1], Gene2 = pairs[, 2], stringsAsFactors = FALSE)
+    })
+  ) %>%
+  tidyr::unnest(edges) %>%
+  dplyr::mutate(key = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::left_join(support_lookup %>% dplyr::select(key, support_score), by = "key")
+
+# Aggregate per complex
+complex_support_summary <- complex_edges_with_support %>%
+  dplyr::group_by(community_id) %>%
+  dplyr::summarise(
+    n_edges = dplyr::n(),
+    n_edges_with_support = sum(!is.na(support_score)),
+    complex_support_total = sum(support_score, na.rm = TRUE),
+    complex_support_mean = round(mean(support_score, na.rm = TRUE), 2),
+    .groups = "drop"
+  )
+
+# Join to complexes_summary (or create if not exists)
+if (exists("complexes_summary")) {
+  complexes_summary <- complexes_summary %>%
+    dplyr::left_join(complex_support_summary, by = "community_id")
+} else {
+  complexes_summary <- complex_support_summary
+}
+
+message("\nComplex support summary:")
+print(summary(complexes_summary$complex_support_mean))
+
+# Distribution plot
+if (nrow(complexes_summary) > 0) {
+  p_complex_support <- ggplot(complexes_summary, aes(x = complex_support_mean)) +
+    geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
+    labs(title = "Complex Support Score Distribution", x = "Mean Support Score", y = "Number of Complexes") +
+    theme_minimal(base_size = 10)
+  print(p_complex_support)
+}
+```
+
+
 
 
 # QC: Trimer and Tetramer enrichment per organelle
@@ -15034,6 +15987,167 @@ for (i in seq_len(nrow(complexes_to_plot))) {
 }
 
 message("Done. Generated ", nrow(complexes_to_plot), " network plots.")
+```
+
+
+## Chunk 16: Update ko_edge_states with Support Score
+```{r ppi_v3_ko_edge_states_support}
+# =============================================================================
+# PPI v3: Add Support Score to ko_edge_states
+# =============================================================================
+# Ensures downstream vulnerability analysis has access to support_score
+
+message("Adding support score to ko_edge_states...")
+
+# Join support_score and filter columns to ko_edge_states
+ko_edge_states <- ko_edge_states %>%
+  dplyr::left_join(
+    baseline_filtered %>%
+      dplyr::select(key, support_score, n_databases_supporting,
+                    filter_BIOGRID, filter_STRING, filter_PDB, filter_ComplexPortal, filter_CORUM,
+                    corum_complex_ids, corum_complex_names),
+    by = "key"
+  )
+
+# Summary by support score
+ko_support_summary <- ko_edge_states %>%
+  dplyr::group_by(support_score) %>%
+  dplyr::summarise(
+    n_edges = dplyr::n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    frac_lost = round(n_lost / n_edges, 3),
+    .groups = "drop"
+  )
+
+message("\nEdge loss rate by support score:")
+print(ko_support_summary)
+```
+
+
+## Chunk 17: QC - Support Score vs Vulnerability
+```{r ppi_v3_support_vs_vuln_qc, fig.width=8, fig.height=6}
+# =============================================================================
+# PPI v3: QC Plot - Does higher support = lower vulnerability?
+# =============================================================================
+# Hypothesis: Edges with more database support may be more robust
+
+message("Generating support score vs vulnerability QC plots...")
+
+# Overall: support score vs frac_lost
+support_vuln <- ko_edge_states %>%
+  dplyr::filter(!is.na(support_score)) %>%
+  dplyr::group_by(support_score, neuron) %>%
+  dplyr::summarise(
+    n_edges = dplyr::n(),
+    n_lost = sum(state == "lost", na.rm = TRUE),
+    frac_lost = n_lost / n_edges,
+    .groups = "drop"
+  )
+
+p_support_vuln <- ggplot(support_vuln, aes(x = factor(support_score), y = frac_lost, fill = neuron)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_edges, y = frac_lost + 0.02), position = position_dodge(0.9), size = 2, vjust = 0) +
+  scale_fill_manual(values = c("iN" = "#4DAF4A", "iDA" = "#984EA3")) +
+  labs(title = "PPI Vulnerability by Support Score",
+       subtitle = "Numbers show edge count per group",
+       x = "Support Score", y = "Fraction Lost") +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "top")
+
+print(p_support_vuln)
+
+# By filter type
+filter_vuln <- ko_edge_states %>%
+  dplyr::filter(!is.na(state)) %>%
+  dplyr::summarise(
+    frac_lost_PDB_exact = mean(state == "lost" & filter_PDB == "exact", na.rm = TRUE) / mean(filter_PDB == "exact", na.rm = TRUE),
+    frac_lost_PDB_homolog = mean(state == "lost" & filter_PDB == "homolog", na.rm = TRUE) / mean(filter_PDB == "homolog", na.rm = TRUE),
+    frac_lost_CORUM = mean(state == "lost" & filter_CORUM == "present", na.rm = TRUE) / mean(filter_CORUM == "present", na.rm = TRUE),
+    frac_lost_no_support = mean(state == "lost" & support_score == 0, na.rm = TRUE) / mean(support_score == 0, na.rm = TRUE)
+  )
+
+message("\nVulnerability by filter type:")
+print(t(filter_vuln))
+
+# Save QC table
+readr::write_csv(support_vuln, file.path(out_dir_vuln, "qc", "support_score_vulnerability.csv"))
+```
+
+
+## Chunk 18: Update trimer_ko_states with Support Score
+```{r ppi_v3_trimer_ko_states_support}
+# =============================================================================
+# PPI v3: Add Support Score to trimer_ko_states
+# =============================================================================
+
+message("Adding support score to trimer_ko_states...")
+
+# Create trimer support lookup from trimers_baseline
+trimer_support_lookup <- trimers_baseline %>%
+  dplyr::select(trimer_id, trimer_support_mean, trimer_support_total, n_edges_in_CORUM, trimer_in_known_complex)
+
+# Join to trimer_ko_states
+if (exists("trimer_ko_states") && "trimer_id" %in% names(trimer_ko_states)) {
+  trimer_ko_states <- trimer_ko_states %>%
+    dplyr::left_join(trimer_support_lookup, by = "trimer_id")
+
+  message("  Added support scores to ", nrow(trimer_ko_states), " trimer states")
+
+  # Summary
+  trimer_state_support <- trimer_ko_states %>%
+    dplyr::group_by(state) %>%
+    dplyr::summarise(
+      n = dplyr::n(),
+      mean_support = round(mean(trimer_support_mean, na.rm = TRUE), 2),
+      pct_in_known_complex = round(100 * mean(trimer_in_known_complex, na.rm = TRUE), 1),
+      .groups = "drop"
+    )
+
+  message("\nTrimer support by state:")
+  print(trimer_state_support)
+}
+```
+
+
+## Chunk 19: Update complex_ko_states with Support Score
+```{r ppi_v3_complex_ko_states_support}
+# =============================================================================
+# PPI v3: Add Support Score to complex_ko_states
+# =============================================================================
+
+message("Adding support score to complex_ko_states...")
+
+# Create complex support lookup
+complex_support_lookup <- complexes_summary %>%
+  dplyr::select(community_id, complex_support_mean, complex_support_total)
+
+# Join to complex_ko_states (community_id or complex_id)
+if (exists("complex_ko_states")) {
+  # Check which ID column exists
+  id_col <- if ("community_id" %in% names(complex_ko_states)) "community_id" else "complex_id"
+
+  if (id_col == "complex_id") {
+    complex_support_lookup <- complex_support_lookup %>%
+      dplyr::rename(complex_id = community_id)
+  }
+
+  complex_ko_states <- complex_ko_states %>%
+    dplyr::left_join(complex_support_lookup, by = id_col)
+
+  message("  Added support scores to ", nrow(complex_ko_states), " complex states")
+
+  # Summary
+  complex_state_support <- complex_ko_states %>%
+    dplyr::group_by(state) %>%
+    dplyr::summarise(
+      n = dplyr::n(),
+      mean_support = round(mean(complex_support_mean, na.rm = TRUE), 2),
+      .groups = "drop"
+    )
+
+  message("\nComplex support by state:")
+  print(complex_state_support)
+}
 ```
 
 
