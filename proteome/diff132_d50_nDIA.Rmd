@@ -11998,23 +11998,18 @@ message("  Predictomes16k: ", nrow(predictomes16k), " unique edges")
 message("Loading IntAct...")
 intact_raw <- data.table::fread(path_intact_tsv, sep = "\t", header = TRUE, quote = "", fill = TRUE, data.table = FALSE)
 
-# Check actual column names
-message("IntAct columns: ", paste(names(intact_raw)[1:5], collapse = ", "))
-
-# Get the first column name (it has # prefix)
-col_A <- names(intact_raw)[1]  # Should be "# ID(s) interactor A"
-col_B <- names(intact_raw)[2]  # Should be "ID(s) interactor B"
+col_A <- names(intact_raw)[1]
+col_B <- names(intact_raw)[2]
 
 intact <- intact_raw %>%
   dplyr::filter(`Taxid interactor A` == "taxid:9606(human)" & `Taxid interactor B` == "taxid:9606(human)") %>%
-  dplyr::transmute(
+  dplyr::mutate(
     Protein1 = sub("uniprotkb:", "", .data[[col_A]]),
     Protein2 = sub("uniprotkb:", "", .data[[col_B]]),
     mi_score = as.numeric(sub(".*score:", "", `Confidence value(s)`))
   ) %>%
-  dplyr::filter(!is.na(Protein1), !is.na(Protein2), Protein1 != "", Protein2 != "") %>%
-  dplyr::mutate(key = .make_undirected_key(Protein1, Protein2)) %>%
   dplyr::filter(mi_score >= 0.5) %>%
+  dplyr::mutate(key = .make_undirected_key(Protein1, Protein2)) %>%
   dplyr::group_by(key) %>%
   dplyr::summarise(mi_score_max = max(mi_score, na.rm = TRUE), .groups = "drop") %>%
   dplyr::mutate(in_IntAct = TRUE)
@@ -12022,7 +12017,7 @@ intact <- intact_raw %>%
 message("  IntAct (MI>=0.5): ", nrow(intact), " unique edges")
 message("  Key class: ", class(intact$key))
 
-# --- Merge all sources ---
+# --- Merge sources (no IntAct) ---
 message("Merging prediction sources...")
 master_ppi_v3 <- predictome80 %>%
   dplyr::select(key, Protein1, Protein2, Gene1, Gene2, RFprob, AFprob, AFMprob, CFprob, STRING,
@@ -12032,17 +12027,15 @@ master_ppi_v3 <- predictome80 %>%
     predictomes16k %>% dplyr::select(key, Gene1_16k, Gene2_16k, SPOC_score, FDR_pct, ipTM_max,
                                       KIRC_score, BioGRID_count, STRING_16k, in_Predictomes16k),
     by = "key"
-  ) %>%
-  dplyr::left_join(intact %>% dplyr::select(key, mi_score_max, in_IntAct), by = "key")
+  )
 
 # Fill missing flags
 master_ppi_v3 <- master_ppi_v3 %>%
   dplyr::mutate(
     in_Predictome80 = tidyr::replace_na(in_Predictome80, FALSE),
     in_Predictomes16k = tidyr::replace_na(in_Predictomes16k, FALSE),
-    in_IntAct = tidyr::replace_na(in_IntAct, FALSE),
+    in_IntAct = FALSE,
     in_both_predictions = in_Predictome80 & in_Predictomes16k,
-    # Fill filter columns for edges only in 16k
     filter_BIOGRID = dplyr::case_when(
       !is.na(filter_BIOGRID) ~ filter_BIOGRID,
       BioGRID_count > 0 ~ "present",
