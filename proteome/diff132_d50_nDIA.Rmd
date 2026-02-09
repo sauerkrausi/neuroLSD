@@ -11856,6 +11856,11 @@ message("Annotations added and saved.")
 # PPI v3: Input Paths and CORUM Database Loading
 # =============================================================================
 
+# --- Step 0: Setup output directory ---
+out_dir_ppi_dual <- file.path(out_dir_PPI, "ppi_dual_evidence")
+dir.create(file.path(out_dir_ppi_dual, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_ppi_dual, "qc"), recursive = TRUE, showWarnings = FALSE)
+
 # --- Input paths (update as needed) ---
 path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
 path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
@@ -12166,30 +12171,6 @@ if (exists("corum_edge_lookup") && nrow(corum_edge_lookup) > 0) {
 }
 
 message("  Edges in CORUM: ", sum(master_ppi_v3$filter_CORUM == "present"))
-
-# --- Add ComplexPortal annotations ---
-# (Assuming complexportal lookup already exists from previous code)
-# If not, load ComplexPortal here similarly to CORUM
-
-# Check if complexportal columns already exist
-if (!"complexportal_strict" %in% names(master_ppi_v3)) {
-  message("Loading ComplexPortal annotations...")
-  # NOTE: Add ComplexPortal loading here if not already in pipeline
-  # For now, assume it will be merged later or already exists
-  master_ppi_v3$filter_ComplexPortal <- "none"
-} else {
-  master_ppi_v3 <- master_ppi_v3 %>%
-    dplyr::mutate(
-      filter_ComplexPortal = dplyr::case_when(
-        complexportal_strict == TRUE ~ "strict",
-        complexportal_relaxed == TRUE ~ "relaxed",
-        TRUE ~ "none"
-      )
-    )
-}
-
-message("  ComplexPortal strict: ", sum(master_ppi_v3$filter_ComplexPortal == "strict", na.rm = TRUE))
-message("  ComplexPortal relaxed: ", sum(master_ppi_v3$filter_ComplexPortal == "relaxed", na.rm = TRUE))
 ```
 
 
