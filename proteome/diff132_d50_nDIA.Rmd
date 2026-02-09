@@ -12022,7 +12022,7 @@ ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_database_support.pdf"), 
 p_support_dist <- ggplot(master_ppi_v3, aes(x = factor(support_score))) +
   geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
   geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
-  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9", x = "Support Score", y = "Number of edges") +
+  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9 ||| PDB: exact=3, homolog=1 | ComplexPortal: strict=3, relaxed=1 | STRING, BIOGRID, CORUM: present=1", x = "Support Score", y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
