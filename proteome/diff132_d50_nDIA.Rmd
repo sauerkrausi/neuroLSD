@@ -12683,6 +12683,1508 @@ message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 
 
 
+# Module 4: Tetramer Detection and Validation
+Detects 4-cliques from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
+Requires: baseline_ppi_v3 from Module 2, g (graph), corum_complex_members, complexportal
+
+## Chunk 1: Tetramer Detection (Gold-Only)
+```{r tetramer_detection}
+# =============================================================================
+# Tetramers: Detection from Gold-Tier Baseline (4-cliques)
+# =============================================================================
+
+# --- Setup ---
+out_dir_tetramer <- file.path(out_dir_ppi_dual, "tetramers")
+dir.create(file.path(out_dir_tetramer, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tetramer, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Find 4-cliques ---
+message("=== Finding tetramers (4-cliques) ===")
+
+cliques_4 <- igraph::cliques(g, min = 4, max = 4)
+message("4-cliques found: ", length(cliques_4))
+
+if (length(cliques_4) > 0) {
+  tetramers_df <- do.call(rbind, lapply(cliques_4, function(cl) {
+    genes <- sort(igraph::V(g)$name[cl])
+    data.frame(
+      tetramer_id = paste(genes, collapse = "::"),
+      Gene1 = genes[1], Gene2 = genes[2], Gene3 = genes[3], Gene4 = genes[4],
+      stringsAsFactors = FALSE
+    )
+  })) %>%
+    dplyr::distinct(tetramer_id, .keep_all = TRUE)
+
+  message("Unique tetramers: ", nrow(tetramers_df))
+} else {
+  message("No 4-cliques found. Creating empty tetramer table.")
+  tetramers_df <- data.frame(
+    tetramer_id = character(), Gene1 = character(), Gene2 = character(),
+    Gene3 = character(), Gene4 = character(), stringsAsFactors = FALSE
+  )
+}
+
+# --- Get edge keys (6 edges per tetramer) ---
+if (nrow(tetramers_df) > 0) {
+  message("Retrieving edge data for tetramers...")
+
+  tetramers_df <- tetramers_df %>%
+    dplyr::mutate(
+      edge1_key = .get_edge_key(Gene1, Gene2),
+      edge2_key = .get_edge_key(Gene1, Gene3),
+      edge3_key = .get_edge_key(Gene1, Gene4),
+      edge4_key = .get_edge_key(Gene2, Gene3),
+      edge5_key = .get_edge_key(Gene2, Gene4),
+      edge6_key = .get_edge_key(Gene3, Gene4)
+    )
+
+  # Join edge data for each of 6 edges
+  for (j in 1:6) {
+    edge_col <- paste0("edge", j, "_key")
+    suffix <- paste0("_e", j)
+    tetramers_df <- tetramers_df %>%
+      dplyr::left_join(edge_lookup %>% dplyr::rename_with(~paste0(.x, suffix), -edge_key),
+                       by = setNames("edge_key", edge_col))
+  }
+}
+```
+
+
+## Chunk 2: Tetramer Scoring and Validation
+```{r tetramer_scoring_validation}
+# =============================================================================
+# Tetramers: Scoring and Multi-Database Validation
+# =============================================================================
+
+if (nrow(tetramers_df) > 0) {
+  message("Computing tetramer scores...")
+
+  tetramers_df <- tetramers_df %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      mean_AFMprob = safe_mean(c(AFMprob_e1, AFMprob_e2, AFMprob_e3, AFMprob_e4, AFMprob_e5, AFMprob_e6)),
+      min_AFMprob = safe_min(c(AFMprob_e1, AFMprob_e2, AFMprob_e3, AFMprob_e4, AFMprob_e5, AFMprob_e6)),
+      mean_RFprob = safe_mean(c(RFprob_e1, RFprob_e2, RFprob_e3, RFprob_e4, RFprob_e5, RFprob_e6)),
+      min_RFprob = safe_min(c(RFprob_e1, RFprob_e2, RFprob_e3, RFprob_e4, RFprob_e5, RFprob_e6)),
+      mean_ipTM = safe_mean(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3, ipTM_max_e4, ipTM_max_e5, ipTM_max_e6)),
+      min_ipTM = safe_min(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3, ipTM_max_e4, ipTM_max_e5, ipTM_max_e6)),
+      mean_SPOC = safe_mean(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3, SPOC_score_e4, SPOC_score_e5, SPOC_score_e6)),
+      min_SPOC = safe_min(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3, SPOC_score_e4, SPOC_score_e5, SPOC_score_e6)),
+      # Support scores
+      support_total = sum(c(support_score_e1, support_score_e2, support_score_e3, support_score_e4, support_score_e5, support_score_e6), na.rm = TRUE),
+      support_mean = support_total / 6,
+      # Database flags per edge
+      n_edges_PDB = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3, filter_PDB_e4, filter_PDB_e5, filter_PDB_e6) != "none", na.rm = TRUE),
+      n_edges_PDB_exact = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3, filter_PDB_e4, filter_PDB_e5, filter_PDB_e6) == "exact", na.rm = TRUE),
+      n_edges_CORUM = sum(c(filter_CORUM_e1, filter_CORUM_e2, filter_CORUM_e3, filter_CORUM_e4, filter_CORUM_e5, filter_CORUM_e6) == "present", na.rm = TRUE),
+      n_edges_ComplexPortal = sum(c(filter_ComplexPortal_e1, filter_ComplexPortal_e2, filter_ComplexPortal_e3, filter_ComplexPortal_e4, filter_ComplexPortal_e5, filter_ComplexPortal_e6) != "none", na.rm = TRUE),
+      n_edges_STRING = sum(c(filter_STRING_e1, filter_STRING_e2, filter_STRING_e3, filter_STRING_e4, filter_STRING_e5, filter_STRING_e6) == "present", na.rm = TRUE),
+      n_edges_BIOGRID = sum(c(filter_BIOGRID_e1, filter_BIOGRID_e2, filter_BIOGRID_e3, filter_BIOGRID_e4, filter_BIOGRID_e5, filter_BIOGRID_e6) == "present", na.rm = TRUE)
+    ) %>%
+    dplyr::ungroup()
+
+  # --- Validation flags ---
+  tetramers_df <- tetramers_df %>%
+    dplyr::mutate(
+      all_edges_PDB = n_edges_PDB == 6,
+      all_edges_PDB_exact = n_edges_PDB_exact == 6,
+      all_edges_CORUM = n_edges_CORUM == 6,
+      all_edges_ComplexPortal = n_edges_ComplexPortal == 6,
+      all_edges_STRING = n_edges_STRING == 6,
+      all_edges_BIOGRID = n_edges_BIOGRID == 6,
+      # Majority (4+ of 6)
+      majority_PDB = n_edges_PDB >= 4,
+      majority_PDB_exact = n_edges_PDB_exact >= 4,
+      majority_CORUM = n_edges_CORUM >= 4,
+      majority_ComplexPortal = n_edges_ComplexPortal >= 4,
+      # Validation tier
+      validation_tier = dplyr::case_when(
+        all_edges_PDB_exact ~ "PDB_exact_6",
+        all_edges_CORUM | all_edges_ComplexPortal ~ "known_complex_6",
+        majority_PDB_exact ~ "PDB_exact_4plus",
+        majority_CORUM | majority_ComplexPortal ~ "known_complex_4plus",
+        n_edges_PDB >= 3 | n_edges_CORUM >= 3 | n_edges_ComplexPortal >= 3 ~ "partial_support_3plus",
+        n_edges_PDB >= 1 | n_edges_CORUM >= 1 | n_edges_ComplexPortal >= 1 ~ "partial_support",
+        TRUE ~ "novel"
+      )
+    )
+
+  # --- Get UniProt IDs ---
+  tetramers_df <- tetramers_df %>%
+    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein1 = uniprot), by = c("Gene1" = "gene")) %>%
+    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein2 = uniprot), by = c("Gene2" = "gene")) %>%
+    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein3 = uniprot), by = c("Gene3" = "gene")) %>%
+    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein4 = uniprot), by = c("Gene4" = "gene"))
+
+  # --- ComplexPortal exact match check ---
+  message("Checking ComplexPortal exact matches...")
+
+  .check_cp_match_4 <- function(p1, p2, p3, p4, complex_to_proteins) {
+    if (is.na(p1) || is.na(p2) || is.na(p3) || is.na(p4)) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+    proteins <- c(p1, p2, p3, p4)
+    for (i in seq_len(nrow(complex_to_proteins))) {
+      complex_proteins <- complex_to_proteins$proteins[[i]]
+      n_match <- sum(proteins %in% complex_proteins)
+      if (n_match == 4) return(list(strict = TRUE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+      if (n_match >= 3) return(list(strict = FALSE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+    }
+    return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+  }
+
+  cp_matches_4 <- purrr::pmap(list(tetramers_df$Protein1, tetramers_df$Protein2, tetramers_df$Protein3, tetramers_df$Protein4),
+                              ~ .check_cp_match_4(..1, ..2, ..3, ..4, complex_to_proteins))
+
+  tetramers_df$cp_strict_match <- purrr::map_lgl(cp_matches_4, "strict")
+  tetramers_df$cp_relaxed_match <- purrr::map_lgl(cp_matches_4, "relaxed")
+  tetramers_df$cp_matched_id <- purrr::map_chr(cp_matches_4, "complex_id")
+
+  message("  ComplexPortal strict (4/4): ", sum(tetramers_df$cp_strict_match))
+  message("  ComplexPortal relaxed (3/4): ", sum(tetramers_df$cp_relaxed_match))
+
+  # --- CORUM exact match check ---
+  message("Checking CORUM exact matches...")
+
+  if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+    .check_corum_match_4 <- function(g1, g2, g3, g4, corum_members) {
+      genes <- c(g1, g2, g3, g4)
+      for (i in seq_len(nrow(corum_members))) {
+        complex_genes <- corum_members$genes[[i]]
+        n_match <- sum(genes %in% complex_genes)
+        if (n_match == 4) return(list(strict = TRUE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+        if (n_match >= 3) return(list(strict = FALSE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+      }
+      return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
+    }
+
+    corum_matches_4 <- purrr::pmap(list(tetramers_df$Gene1, tetramers_df$Gene2, tetramers_df$Gene3, tetramers_df$Gene4),
+                                   ~ .check_corum_match_4(..1, ..2, ..3, ..4, corum_complex_members))
+
+    tetramers_df$corum_strict_match <- purrr::map_lgl(corum_matches_4, "strict")
+    tetramers_df$corum_relaxed_match <- purrr::map_lgl(corum_matches_4, "relaxed")
+    tetramers_df$corum_matched_id <- purrr::map_int(corum_matches_4, "complex_id")
+    tetramers_df$corum_matched_name <- purrr::map_chr(corum_matches_4, "complex_name")
+
+    message("  CORUM strict (4/4): ", sum(tetramers_df$corum_strict_match))
+    message("  CORUM relaxed (3/4): ", sum(tetramers_df$corum_relaxed_match))
+  } else {
+    tetramers_df$corum_strict_match <- FALSE
+    tetramers_df$corum_relaxed_match <- FALSE
+    tetramers_df$corum_matched_id <- NA_integer_
+    tetramers_df$corum_matched_name <- NA_character_
+  }
+
+  # --- Flag: in known complex ---
+  tetramers_df <- tetramers_df %>%
+    dplyr::mutate(
+      in_known_complex = cp_strict_match | corum_strict_match | all_edges_PDB_exact,
+      in_known_complex_relaxed = cp_relaxed_match | corum_relaxed_match | majority_PDB
+    )
+
+  message("\nTetramers in known complex (strict): ", sum(tetramers_df$in_known_complex))
+  message("Tetramers in known complex (relaxed): ", sum(tetramers_df$in_known_complex_relaxed))
+}
+```
+
+
+## Chunk 3: Tetramer QC Plots
+```{r tetramer_qc_plots, fig.width=8, fig.height=8}
+# =============================================================================
+# Tetramers: QC Plots
+# =============================================================================
+
+if (nrow(tetramers_df) > 0) {
+  # --- Plot 1: Database support barplot ---
+  db_support_tetramers <- data.frame(
+    database = c("PDB_any", "PDB_exact", "CORUM", "ComplexPortal", "STRING", "BIOGRID"),
+    all_6_edges = c(sum(tetramers_df$all_edges_PDB), sum(tetramers_df$all_edges_PDB_exact),
+                    sum(tetramers_df$all_edges_CORUM), sum(tetramers_df$all_edges_ComplexPortal),
+                    sum(tetramers_df$all_edges_STRING), sum(tetramers_df$all_edges_BIOGRID)),
+    majority_4plus = c(sum(tetramers_df$majority_PDB), sum(tetramers_df$majority_PDB_exact),
+                       sum(tetramers_df$majority_CORUM), sum(tetramers_df$majority_ComplexPortal),
+                       sum(tetramers_df$n_edges_STRING >= 4), sum(tetramers_df$n_edges_BIOGRID >= 4))
+  ) %>%
+    tidyr::pivot_longer(-database, names_to = "coverage", values_to = "n_tetramers")
+
+  p_db_tetramers <- ggplot(db_support_tetramers, aes(x = database, y = n_tetramers, fill = coverage)) +
+    geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+    geom_text(aes(label = n_tetramers), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("all_6_edges" = "#E41A1C", "majority_4plus" = "#377EB8"), name = "Coverage") +
+    labs(title = "Tetramer database support", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_database_support_tetramers.pdf"), p_db_tetramers, width = 5, height = 4, device = cairo_pdf)
+
+  # --- Plot 2: Validation tier distribution ---
+  validation_counts_tet <- tetramers_df %>%
+    dplyr::count(validation_tier) %>%
+    dplyr::mutate(validation_tier = factor(validation_tier,
+      levels = c("PDB_exact_6", "known_complex_6", "PDB_exact_4plus", "known_complex_4plus", "partial_support_3plus", "partial_support", "novel")))
+
+  p_validation_tet <- ggplot(validation_counts_tet, aes(x = validation_tier, y = n, fill = validation_tier)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+    scale_fill_brewer(palette = "RdYlGn", direction = -1, guide = "none") +
+    labs(title = "Tetramer validation tier distribution", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_validation_tiers.pdf"), p_validation_tet, width = 5, height = 4, device = cairo_pdf)
+
+  # --- Plot 3: Known complex status ---
+  known_summary_tet <- data.frame(
+    category = c("Known (strict)", "Known (relaxed only)", "Novel"),
+    n = c(sum(tetramers_df$in_known_complex),
+          sum(tetramers_df$in_known_complex_relaxed & !tetramers_df$in_known_complex),
+          sum(!tetramers_df$in_known_complex_relaxed))
+  ) %>%
+    dplyr::mutate(pct = round(100 * n / sum(n), 1))
+
+  p_known_tet <- ggplot(known_summary_tet, aes(x = category, y = n, fill = category)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("Known (strict)" = "#4DAF4A", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+    labs(title = "Tetramers: known vs novel complexes", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_vs_novel.pdf"), p_known_tet, width = 4, height = 4, device = cairo_pdf)
+
+  # --- Plot 4: Support score distribution ---
+  p_support_tetramer <- ggplot(tetramers_df, aes(x = support_mean)) +
+    geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
+    labs(title = "Tetramer mean support score distribution", x = "Mean support score (6 edges)", y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_tetramer, "qc", "histogram_support_score.pdf"), p_support_tetramer, width = 4, height = 3, device = cairo_pdf)
+
+  # --- Plot 5: Score distributions by validation status ---
+  scores_by_known_tet <- tetramers_df %>%
+    dplyr::mutate(status = ifelse(in_known_complex, "Known", "Novel")) %>%
+    dplyr::select(tetramer_id, status, mean_AFMprob, mean_ipTM, support_mean) %>%
+    tidyr::pivot_longer(c(mean_AFMprob, mean_ipTM, support_mean), names_to = "metric", values_to = "value")
+
+  p_scores_known_tet <- ggplot(scores_by_known_tet, aes(x = status, y = value, fill = status)) +
+    geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+    facet_wrap(~metric, scales = "free_y") +
+    scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), guide = "none") +
+    labs(title = "Tetramer scores by validation status", x = NULL, y = "Score") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          strip.background = element_rect(fill = "white", color = "black"))
+
+  ggsave(file.path(out_dir_tetramer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known_tet, width = 5, height = 3.5, device = cairo_pdf)
+}
+
+# --- Summary stats ---
+tetramer_stats <- data.frame(
+  metric = c("total_tetramers", "tetramers_PDB_exact_all6", "tetramers_CORUM_all6", "tetramers_ComplexPortal_all6",
+             "tetramers_in_known_complex", "tetramers_novel", "median_support_score", "median_mean_AFMprob"),
+  value = c(nrow(tetramers_df),
+            if(nrow(tetramers_df) > 0) sum(tetramers_df$all_edges_PDB_exact) else 0,
+            if(nrow(tetramers_df) > 0) sum(tetramers_df$all_edges_CORUM) else 0,
+            if(nrow(tetramers_df) > 0) sum(tetramers_df$all_edges_ComplexPortal) else 0,
+            if(nrow(tetramers_df) > 0) sum(tetramers_df$in_known_complex) else 0,
+            if(nrow(tetramers_df) > 0) sum(!tetramers_df$in_known_complex_relaxed) else 0,
+            if(nrow(tetramers_df) > 0) round(median(tetramers_df$support_mean, na.rm = TRUE), 2) else NA,
+            if(nrow(tetramers_df) > 0) round(median(tetramers_df$mean_AFMprob, na.rm = TRUE), 3) else NA)
+)
+
+readr::write_csv(tetramer_stats, file.path(out_dir_tetramer, "tables", "tetramer_stats.csv"))
+
+# --- Save tetramer evidence table ---
+if (nrow(tetramers_df) > 0) {
+  tetramer_evidence <- tetramers_df %>%
+    dplyr::select(
+      tetramer_id, Gene1, Gene2, Gene3, Gene4, Protein1, Protein2, Protein3, Protein4,
+      edge1_key, edge2_key, edge3_key, edge4_key, edge5_key, edge6_key,
+      mean_AFMprob, min_AFMprob, mean_RFprob, min_RFprob, mean_ipTM, min_ipTM, mean_SPOC, min_SPOC,
+      support_total, support_mean,
+      n_edges_PDB, n_edges_PDB_exact, n_edges_CORUM, n_edges_ComplexPortal, n_edges_STRING, n_edges_BIOGRID,
+      all_edges_PDB_exact, all_edges_CORUM, all_edges_ComplexPortal,
+      validation_tier,
+      cp_strict_match, cp_relaxed_match, cp_matched_id,
+      corum_strict_match, corum_relaxed_match, corum_matched_id, corum_matched_name,
+      in_known_complex, in_known_complex_relaxed
+    )
+} else {
+  tetramer_evidence <- data.frame()
+}
+
+readr::write_csv(tetramer_evidence, file.path(out_dir_tetramer, "tables", "tetramer_evidence.csv"))
+
+message("\nModule 4 complete. ", nrow(tetramer_evidence), " tetramers saved")
+if (nrow(tetramer_evidence) > 0) {
+  message("  Known complex (strict): ", sum(tetramer_evidence$in_known_complex))
+  message("  Novel: ", sum(!tetramer_evidence$in_known_complex_relaxed))
+}
+message("QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
+```
+
+
+
+# Module 5: Complex Growing from Trimers and Tetramers
+Grows complexes by iteratively adding neighbors connected to ≥2 members
+Requires: baseline_ppi_v3, trimer_evidence, tetramer_evidence
+
+## Chunk 1: Build Adjacency and Growth Functions
+```{r complex_setup}
+# =============================================================================
+# Complex Growing: Setup
+# =============================================================================
+
+out_dir_complex <- file.path(out_dir_ppi_dual, "complexes")
+dir.create(file.path(out_dir_complex, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_complex, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+message("=== Complex Growing from Trimers/Tetramers ===")
+
+# --- Build adjacency list from gold-only baseline ---
+message("Building adjacency structures from baseline (gold-only)...")
+
+adj_list <- baseline_ppi_v3 %>%
+  dplyr::select(Gene1, Gene2) %>%
+  {
+    edges <- rbind(
+      data.frame(from = .$Gene1, to = .$Gene2, stringsAsFactors = FALSE),
+      data.frame(from = .$Gene2, to = .$Gene1, stringsAsFactors = FALSE)
+    )
+    split(edges$to, edges$from)
+  }
+
+message("Adjacency list: ", length(adj_list), " nodes")
+
+# --- Growth functions ---
+.grow_complex <- function(members, adj_list, min_edges = 2) {
+  all_neighbors <- unlist(adj_list[members])
+  if (is.null(all_neighbors) || length(all_neighbors) == 0) return(character(0))
+  neighbor_counts <- table(all_neighbors)
+  candidates <- names(neighbor_counts)[neighbor_counts >= min_edges]
+  candidates <- setdiff(candidates, members)
+  return(candidates)
+}
+
+.grow_complex_iterative <- function(seed_members, adj_list, min_edges = 2, max_size = 100) {
+  current <- seed_members
+  repeat {
+    if (length(current) >= max_size) break
+    candidates <- .grow_complex(current, adj_list, min_edges)
+    if (length(candidates) == 0) break
+    current <- c(current, candidates)
+  }
+  return(sort(current))
+}
+
+.overlap_fraction <- function(a, b) {
+  length(intersect(a, b)) / min(length(a), length(b))
+}
+```
+
+
+## Chunk 2: Grow Complexes from Seeds
+```{r complex_growing}
+# =============================================================================
+# Complex Growing: From Trimers and Tetramers
+# =============================================================================
+
+# --- Grow from trimers ---
+message("Growing complexes from trimers...")
+
+trimer_seeds <- trimer_evidence %>%
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(seed_members = list(c(Gene1, Gene2, Gene3))) %>%
+  dplyr::ungroup()
+
+grown_from_trimers <- trimer_seeds %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2)),
+    grown_size = length(grown_members),
+    complex_id = paste(sort(grown_members), collapse = "::")
+  ) %>%
+  dplyr::ungroup()
+
+message("  Trimers grown: ", nrow(grown_from_trimers))
+message("  Unique complexes from trimers: ", length(unique(grown_from_trimers$complex_id)))
+
+# --- Grow from tetramers ---
+message("Growing complexes from tetramers...")
+
+if (nrow(tetramer_evidence) > 0) {
+  tetramer_seeds <- tetramer_evidence %>%
+    dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(seed_members = list(c(Gene1, Gene2, Gene3, Gene4))) %>%
+    dplyr::ungroup()
+
+  grown_from_tetramers <- tetramer_seeds %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2)),
+      grown_size = length(grown_members),
+      complex_id = paste(sort(grown_members), collapse = "::")
+    ) %>%
+    dplyr::ungroup()
+
+  message("  Tetramers grown: ", nrow(grown_from_tetramers))
+  message("  Unique complexes from tetramers: ", length(unique(grown_from_tetramers$complex_id)))
+} else {
+  grown_from_tetramers <- data.frame(
+    tetramer_id = character(), grown_members = I(list()), grown_size = integer(),
+    complex_id = character(), stringsAsFactors = FALSE
+  )
+}
+
+# --- Internal QC: Trimer+1 vs Tetramer ---
+message("\n=== Internal QC: Trimer+1 vs Tetramer ===")
+
+trimer_plus_one <- grown_from_trimers %>% dplyr::filter(grown_size == 4)
+message("Trimers that grew to size 4: ", nrow(trimer_plus_one))
+
+if (nrow(tetramer_evidence) > 0 && nrow(trimer_plus_one) > 0) {
+  tetramer_ids <- tetramer_evidence %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(complex_id = paste(sort(c(Gene1, Gene2, Gene3, Gene4)), collapse = "::")) %>%
+    dplyr::pull(complex_id)
+
+  trimer_plus_one_overlap <- trimer_plus_one %>%
+    dplyr::mutate(matches_tetramer = complex_id %in% tetramer_ids)
+
+  message("  Trimer+1 matching de novo tetramers: ", sum(trimer_plus_one_overlap$matches_tetramer), " / ", nrow(trimer_plus_one_overlap))
+  message("  Match rate: ", round(100 * mean(trimer_plus_one_overlap$matches_tetramer), 1), "%")
+}
+
+# --- Combine and count seeds ---
+message("\nCombining complexes from all seeds...")
+
+all_grown <- dplyr::bind_rows(
+  grown_from_trimers %>% dplyr::select(complex_id, grown_members, grown_size) %>% dplyr::mutate(seed_type = "trimer"),
+  grown_from_tetramers %>% dplyr::select(complex_id, grown_members, grown_size) %>% dplyr::mutate(seed_type = "tetramer")
+)
+
+complex_seed_counts <- all_grown %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(
+    n_trimer_seeds = sum(seed_type == "trimer"),
+    n_tetramer_seeds = sum(seed_type == "tetramer"),
+    n_total_seeds = dplyr::n(),
+    .groups = "drop"
+  )
+
+unique_complexes <- all_grown %>%
+  dplyr::distinct(complex_id, .keep_all = TRUE) %>%
+  dplyr::left_join(complex_seed_counts, by = "complex_id")
+
+message("Unique complexes (before merging): ", nrow(unique_complexes))
+```
+
+
+## Chunk 3: Merge Overlapping Complexes
+```{r complex_merging}
+# =============================================================================
+# Complex Growing: Merge Overlapping Complexes (80% threshold)
+# =============================================================================
+
+message("Merging overlapping complexes (80% threshold)...")
+
+unique_complexes <- unique_complexes %>% dplyr::arrange(dplyr::desc(grown_size))
+
+merged_complexes <- list()
+used <- rep(FALSE, nrow(unique_complexes))
+
+for (i in seq_len(nrow(unique_complexes))) {
+  if (used[i]) next
+  current <- unique_complexes$grown_members[[i]]
+  current_seeds <- c(unique_complexes$n_trimer_seeds[i], unique_complexes$n_tetramer_seeds[i])
+
+  for (j in seq_len(nrow(unique_complexes))) {
+    if (i == j || used[j]) next
+    other <- unique_complexes$grown_members[[j]]
+    overlap <- .overlap_fraction(current, other)
+    if (overlap >= 0.8) {
+      current <- union(current, other)
+      current_seeds <- current_seeds + c(unique_complexes$n_trimer_seeds[j], unique_complexes$n_tetramer_seeds[j])
+      used[j] <- TRUE
+    }
+  }
+
+  merged_complexes[[length(merged_complexes) + 1]] <- list(
+    members = sort(current),
+    size = length(current),
+    n_trimer_seeds = current_seeds[1],
+    n_tetramer_seeds = current_seeds[2]
+  )
+  used[i] <- TRUE
+}
+
+message("Complexes after merging: ", length(merged_complexes))
+
+# --- Convert to dataframe ---
+complex_evidence <- dplyr::bind_rows(lapply(seq_along(merged_complexes), function(i) {
+  data.frame(
+    complex_id = paste(merged_complexes[[i]]$members, collapse = "::"),
+    complex_size = merged_complexes[[i]]$size,
+    n_trimer_seeds = merged_complexes[[i]]$n_trimer_seeds,
+    n_tetramer_seeds = merged_complexes[[i]]$n_tetramer_seeds,
+    members = I(list(merged_complexes[[i]]$members)),
+    stringsAsFactors = FALSE
+  )
+}))
+
+complex_evidence <- complex_evidence %>%
+  dplyr::mutate(complex_idx = dplyr::row_number()) %>%
+  dplyr::select(complex_idx, complex_id, complex_size, n_trimer_seeds, n_tetramer_seeds, members)
+
+message("Final complex count: ", nrow(complex_evidence))
+
+# Size distribution
+size_dist <- complex_evidence %>%
+  dplyr::count(complex_size, name = "n_complexes") %>%
+  dplyr::arrange(complex_size)
+
+message("\nComplex size distribution:")
+print(size_dist)
+```
+
+
+## Chunk 4: Add Support Scores and Validation
+```{r complex_scoring}
+# =============================================================================
+# Complex Growing: Support Scores and Validation
+# =============================================================================
+
+message("\nComputing support scores for complexes...")
+
+# Create support lookup
+support_lookup <- baseline_ppi_v3 %>%
+  dplyr::mutate(edge_key = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::select(edge_key, support_score, filter_BIOGRID, filter_STRING, filter_PDB, filter_ComplexPortal, filter_CORUM,
+                corum_complex_ids, corum_complex_names)
+
+# Function to compute support
+.compute_complex_support <- function(members, support_lookup) {
+  if (length(members) < 2) return(list(n_edges = 0, support_total = 0, support_mean = NA_real_))
+
+  pairs <- t(combn(sort(unique(members)), 2))
+  edge_keys <- apply(pairs, 1, function(p) .make_undirected_key(p[1], p[2]))
+
+  matched <- support_lookup %>% dplyr::filter(edge_key %in% edge_keys)
+
+  list(
+    n_edges = nrow(matched),
+    n_edges_possible = length(edge_keys),
+    support_total = sum(matched$support_score, na.rm = TRUE),
+    support_mean = if (nrow(matched) > 0) round(mean(matched$support_score, na.rm = TRUE), 2) else NA_real_,
+    n_in_CORUM = sum(matched$filter_CORUM == "present", na.rm = TRUE),
+    n_with_PDB = sum(matched$filter_PDB != "none", na.rm = TRUE),
+    n_in_ComplexPortal = sum(matched$filter_ComplexPortal != "none", na.rm = TRUE)
+  )
+}
+
+complex_evidence <- complex_evidence %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    support_info = list(.compute_complex_support(members, support_lookup)),
+    n_edges_in_baseline = support_info$n_edges,
+    n_edges_possible = support_info$n_edges_possible,
+    edge_coverage = round(n_edges_in_baseline / n_edges_possible, 2),
+    complex_support_total = support_info$support_total,
+    complex_support_mean = support_info$support_mean,
+    n_edges_in_CORUM = support_info$n_in_CORUM,
+    n_edges_with_PDB = support_info$n_with_PDB,
+    n_edges_in_ComplexPortal = support_info$n_in_ComplexPortal,
+    pct_edges_CORUM = round(100 * n_edges_in_CORUM / n_edges_in_baseline, 1),
+    pct_edges_PDB = round(100 * n_edges_with_PDB / n_edges_in_baseline, 1)
+  ) %>%
+  dplyr::select(-support_info) %>%
+  dplyr::ungroup()
+
+message("Mean complex support score: ", round(mean(complex_evidence$complex_support_mean, na.rm = TRUE), 2))
+
+# --- ComplexPortal validation ---
+message("\nValidating complexes against ComplexPortal...")
+
+if (exists("complex_to_proteins") && exists("uniprot_lookup")) {
+  .check_complex_match_any <- function(members, complex_to_proteins, uniprot_lookup) {
+    uniprots <- uniprot_lookup$uniprot[match(members, uniprot_lookup$gene)]
+    uniprots <- uniprots[!is.na(uniprots)]
+
+    if (length(uniprots) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_, match_fraction = 0))
+
+    best_match <- list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_, match_fraction = 0)
+
+    for (i in seq_len(nrow(complex_to_proteins))) {
+      complex_proteins <- complex_to_proteins$proteins[[i]]
+      n_match <- sum(uniprots %in% complex_proteins)
+      match_frac <- n_match / length(uniprots)
+
+      if (match_frac > best_match$match_fraction) {
+        best_match$match_fraction <- match_frac
+        best_match$complex_id <- complex_to_proteins$complex_id[i]
+        best_match$strict <- (n_match == length(uniprots) && n_match == length(complex_proteins))
+        best_match$relaxed <- (match_frac >= 0.5)
+      }
+    }
+    return(best_match)
+  }
+
+  complex_evidence <- complex_evidence %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      cp_match = list(.check_complex_match_any(members, complex_to_proteins, uniprot_lookup)),
+      cp_strict_match = cp_match$strict,
+      cp_relaxed_match = cp_match$relaxed,
+      cp_matched_id = cp_match$complex_id,
+      cp_match_fraction = round(cp_match$match_fraction, 2)
+    ) %>%
+    dplyr::select(-cp_match) %>%
+    dplyr::ungroup()
+
+  message("  ComplexPortal strict match: ", sum(complex_evidence$cp_strict_match))
+  message("  ComplexPortal relaxed match (>=50%): ", sum(complex_evidence$cp_relaxed_match))
+} else {
+  complex_evidence$cp_strict_match <- NA
+  complex_evidence$cp_relaxed_match <- NA
+  complex_evidence$cp_matched_id <- NA_character_
+  complex_evidence$cp_match_fraction <- NA_real_
+}
+
+# --- CORUM validation ---
+message("Validating complexes against CORUM...")
+
+if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  .check_corum_match_any <- function(members, corum_members) {
+    best_match <- list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_, match_fraction = 0)
+
+    for (i in seq_len(nrow(corum_members))) {
+      complex_genes <- corum_members$genes[[i]]
+      n_match <- sum(members %in% complex_genes)
+      match_frac <- n_match / length(members)
+
+      if (match_frac > best_match$match_fraction) {
+        best_match$match_fraction <- match_frac
+        best_match$complex_id <- corum_members$complex_id[i]
+        best_match$complex_name <- corum_members$complex_name[i]
+        best_match$strict <- (n_match == length(members) && n_match == length(complex_genes))
+        best_match$relaxed <- (match_frac >= 0.5)
+      }
+    }
+    return(best_match)
+  }
+
+  complex_evidence <- complex_evidence %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      corum_match = list(.check_corum_match_any(members, corum_complex_members)),
+      corum_strict_match = corum_match$strict,
+      corum_relaxed_match = corum_match$relaxed,
+      corum_matched_id = corum_match$complex_id,
+      corum_matched_name = corum_match$complex_name,
+      corum_match_fraction = round(corum_match$match_fraction, 2)
+    ) %>%
+    dplyr::select(-corum_match) %>%
+    dplyr::ungroup()
+
+  message("  CORUM strict match: ", sum(complex_evidence$corum_strict_match, na.rm = TRUE))
+  message("  CORUM relaxed match (>=50%): ", sum(complex_evidence$corum_relaxed_match, na.rm = TRUE))
+} else {
+  complex_evidence$corum_strict_match <- NA
+  complex_evidence$corum_relaxed_match <- NA
+  complex_evidence$corum_matched_id <- NA_integer_
+  complex_evidence$corum_matched_name <- NA_character_
+  complex_evidence$corum_match_fraction <- NA_real_
+}
+
+# --- Origin classification ---
+complex_evidence <- complex_evidence %>%
+  dplyr::mutate(
+    origin = dplyr::case_when(
+      n_trimer_seeds > 0 & n_tetramer_seeds > 0 ~ "both",
+      n_trimer_seeds > 0 ~ "trimer_only",
+      n_tetramer_seeds > 0 ~ "tetramer_only",
+      TRUE ~ "unknown"
+    ),
+    has_known_match = (cp_relaxed_match %in% TRUE) | (corum_relaxed_match %in% TRUE),
+    validation_status = dplyr::case_when(
+      (cp_strict_match %in% TRUE) | (corum_strict_match %in% TRUE) ~ "strict_match",
+      (cp_relaxed_match %in% TRUE) | (corum_relaxed_match %in% TRUE) ~ "relaxed_match",
+      TRUE ~ "novel"
+    )
+  )
+
+message("\nOrigin summary:")
+print(complex_evidence %>% dplyr::count(origin))
+```
+
+
+## Chunk 5: QC Plots
+```{r complex_qc_plots, fig.width=8, fig.height=8}
+# =============================================================================
+# Complex Growing: QC Plots
+# =============================================================================
+
+# --- Plot 1: Size distribution ---
+p_size <- ggplot(size_dist, aes(x = factor(complex_size), y = n_complexes)) +
+  geom_col(fill = "steelblue", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
+  labs(title = "Complex size distribution (grown from trimers/tetramers)", x = "Complex size", y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_size_distribution.pdf"), p_size, width = 6, height = 4, device = cairo_pdf)
+
+# --- Plot 2: Origin distribution ---
+origin_counts <- complex_evidence %>% dplyr::count(origin)
+
+p_origin <- ggplot(origin_counts, aes(x = origin, y = n, fill = origin)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(title = "Complex origin (seed type)", x = NULL, y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_origin.pdf"), p_origin, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- Plot 3: Validation status ---
+validation_counts <- complex_evidence %>% dplyr::count(validation_status) %>%
+  dplyr::mutate(pct = round(100 * n / sum(n), 1))
+
+p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill = validation_status)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(n, " (", pct, "%)")), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("strict_match" = "#4DAF4A", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
+  labs(title = "Complex validation status", x = NULL, y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- Plot 4: Support score by validation ---
+p_support_validation <- ggplot(complex_evidence, aes(x = validation_status, y = complex_support_mean, fill = validation_status)) +
+  geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+  scale_fill_manual(values = c("strict_match" = "#4DAF4A", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
+  labs(title = "Support score by validation status", x = NULL, y = "Mean support score") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "boxplot_support_by_validation.pdf"), p_support_validation, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- Plot 5: Database coverage barplot ---
+db_coverage <- data.frame(
+  database = c("PDB", "CORUM", "ComplexPortal"),
+  mean_pct = c(mean(complex_evidence$pct_edges_PDB, na.rm = TRUE),
+               mean(complex_evidence$pct_edges_CORUM, na.rm = TRUE),
+               mean(100 * complex_evidence$n_edges_in_ComplexPortal / complex_evidence$n_edges_in_baseline, na.rm = TRUE))
+)
+
+p_db_coverage <- ggplot(db_coverage, aes(x = database, y = mean_pct, fill = database)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(round(mean_pct, 1), "%")), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(title = "Mean % edges in database (per complex)", x = NULL, y = "Mean % edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_database_coverage.pdf"), p_db_coverage, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- Summary stats ---
+complex_stats <- data.frame(
+  metric = c("total_complexes", "complexes_size_3", "complexes_size_4", "complexes_size_5_10", "complexes_size_11_plus",
+             "max_complex_size", "median_complex_size", "mean_support_score",
+             "complexes_strict_match", "complexes_relaxed_match", "complexes_novel",
+             "complexes_from_trimer_only", "complexes_from_tetramer_only", "complexes_from_both"),
+  value = c(nrow(complex_evidence), sum(complex_evidence$complex_size == 3), sum(complex_evidence$complex_size == 4),
+            sum(complex_evidence$complex_size >= 5 & complex_evidence$complex_size <= 10),
+            sum(complex_evidence$complex_size >= 11), max(complex_evidence$complex_size), median(complex_evidence$complex_size),
+            round(mean(complex_evidence$complex_support_mean, na.rm = TRUE), 2),
+            sum(complex_evidence$validation_status == "strict_match"),
+            sum(complex_evidence$validation_status == "relaxed_match"),
+            sum(complex_evidence$validation_status == "novel"),
+            sum(complex_evidence$origin == "trimer_only"), sum(complex_evidence$origin == "tetramer_only"),
+            sum(complex_evidence$origin == "both"))
+)
+
+readr::write_csv(complex_stats, file.path(out_dir_complex, "tables", "complex_stats.csv"))
+
+# --- Save outputs ---
+complex_evidence_flat <- complex_evidence %>%
+  dplyr::mutate(members_str = sapply(members, paste, collapse = ";")) %>%
+  dplyr::select(-members)
+
+readr::write_csv(complex_evidence_flat, file.path(out_dir_complex, "tables", "complex_evidence.csv"))
+saveRDS(complex_evidence, file.path(out_dir_complex, "tables", "complex_evidence.rds"))
+
+message("\nModule 5 complete. ", nrow(complex_evidence), " complexes saved")
+message("  Strict match: ", sum(complex_evidence$validation_status == "strict_match"))
+message("  Novel: ", sum(complex_evidence$validation_status == "novel"))
+message("QC plots saved to: ", file.path(out_dir_complex, "qc"))
+```
+
+
+
+
+# Module 6: Top-Down vs Bottom-Up Comparison
+Flags detected structures that belong to known complexes
+Computes coverage metrics (ratio + missing proteins)
+Requires: baseline_ppi_v3, trimer_evidence, tetramer_evidence, complexes_summary, corum_complex_members
+
+## Chunk 1: Top-Down Complex Coverage
+```{r topdown_coverage}
+# =============================================================================
+# Top-Down: Compute Coverage of Known Complexes
+# =============================================================================
+
+# --- Setup ---
+out_dir_topdown <- file.path(out_dir_ppi_dual, "topdown_comparison")
+dir.create(file.path(out_dir_topdown, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_topdown, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+message("=== Top-down complex coverage analysis ===")
+
+# Get all detected proteins in baseline
+detected_proteins <- unique(c(baseline_ppi_v3$Gene1, baseline_ppi_v3$Gene2))
+message("Detected proteins in baseline: ", length(detected_proteins))
+
+# --- CORUM coverage ---
+if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  message("\nComputing CORUM coverage...")
+
+  corum_coverage <- corum_complex_members %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      detected_genes = list(intersect(genes, detected_proteins)),
+      n_detected = length(detected_genes),
+      n_total = n_subunits,
+      coverage_ratio = round(n_detected / n_total, 3),
+      coverage_pct = round(100 * n_detected / n_total, 1),
+      missing_genes = list(setdiff(genes, detected_proteins)),
+      n_missing = length(missing_genes),
+      missing_genes_str = paste(missing_genes, collapse = ";"),
+      detected_genes_str = paste(detected_genes, collapse = ";"),
+      # Coverage tier
+      coverage_tier = dplyr::case_when(
+        coverage_ratio == 1 ~ "complete",
+        coverage_ratio >= 0.8 ~ "high_80pct",
+        coverage_ratio >= 0.5 ~ "partial_50pct",
+        coverage_ratio > 0 ~ "low",
+        TRUE ~ "none"
+      )
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(complex_id, complex_name, n_total, n_detected, n_missing,
+                  coverage_ratio, coverage_pct, coverage_tier,
+                  detected_genes_str, missing_genes_str)
+
+  corum_coverage_summary <- corum_coverage %>%
+    dplyr::count(coverage_tier, name = "n_complexes") %>%
+    dplyr::mutate(pct = round(100 * n_complexes / sum(n_complexes), 1))
+
+  message("\nCORUM coverage summary:")
+  print(corum_coverage_summary)
+
+  # Complexes with any detected proteins
+  n_corum_detected <- sum(corum_coverage$n_detected > 0)
+  n_corum_complete <- sum(corum_coverage$coverage_tier == "complete")
+  n_corum_high <- sum(corum_coverage$coverage_tier == "high_80pct")
+
+  message("\nCORUM complexes detected: ", n_corum_detected, " / ", nrow(corum_coverage))
+  message("  Complete coverage: ", n_corum_complete)
+  message("  High coverage (>=80%): ", n_corum_high)
+}
+
+# --- ComplexPortal coverage ---
+message("\nComputing ComplexPortal coverage...")
+
+if (exists("cp_gene_members") && nrow(cp_gene_members) > 0) {
+  cp_coverage <- cp_gene_members %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      detected_genes = list(intersect(genes, detected_proteins)),
+      n_detected = length(detected_genes),
+      n_total = length(genes),
+      coverage_ratio = round(n_detected / n_total, 3),
+      coverage_pct = round(100 * n_detected / n_total, 1),
+      missing_genes = list(setdiff(genes, detected_proteins)),
+      n_missing = length(missing_genes),
+      missing_genes_str = paste(missing_genes, collapse = ";"),
+      detected_genes_str = paste(detected_genes, collapse = ";"),
+      coverage_tier = dplyr::case_when(
+        coverage_ratio == 1 ~ "complete",
+        coverage_ratio >= 0.8 ~ "high_80pct",
+        coverage_ratio >= 0.5 ~ "partial_50pct",
+        coverage_ratio > 0 ~ "low",
+        TRUE ~ "none"
+      )
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(complex_id, complex_name, n_total, n_detected, n_missing,
+                  coverage_ratio, coverage_pct, coverage_tier,
+                  detected_genes_str, missing_genes_str)
+
+  cp_coverage_summary <- cp_coverage %>%
+    dplyr::count(coverage_tier, name = "n_complexes") %>%
+    dplyr::mutate(pct = round(100 * n_complexes / sum(n_complexes), 1))
+
+  message("\nComplexPortal coverage summary:")
+  print(cp_coverage_summary)
+}
+```
+
+
+## Chunk 2: Flag Detected Structures
+```{r topdown_flagging}
+# =============================================================================
+# Top-Down: Flag PPIs/Trimers/Tetramers in Known Complexes
+# =============================================================================
+
+message("\nFlagging detected structures belonging to known complexes...")
+
+# --- Flag PPIs ---
+# Already have filter_CORUM and filter_ComplexPortal in baseline_ppi_v3
+baseline_ppi_v3 <- baseline_ppi_v3 %>%
+  dplyr::mutate(
+    in_known_complex_ppi = (filter_CORUM == "present") | (filter_ComplexPortal != "none") | (filter_PDB == "exact"),
+    known_complex_source = dplyr::case_when(
+      filter_PDB == "exact" & filter_CORUM == "present" & filter_ComplexPortal != "none" ~ "PDB+CORUM+CP",
+      filter_PDB == "exact" & filter_CORUM == "present" ~ "PDB+CORUM",
+      filter_PDB == "exact" & filter_ComplexPortal != "none" ~ "PDB+CP",
+      filter_CORUM == "present" & filter_ComplexPortal != "none" ~ "CORUM+CP",
+      filter_PDB == "exact" ~ "PDB",
+      filter_CORUM == "present" ~ "CORUM",
+      filter_ComplexPortal != "none" ~ "CP",
+      TRUE ~ "none"
+    )
+  )
+
+ppi_known_summary <- baseline_ppi_v3 %>%
+  dplyr::count(known_complex_source, name = "n_edges") %>%
+  dplyr::mutate(pct = round(100 * n_edges / sum(n_edges), 1)) %>%
+  dplyr::arrange(dplyr::desc(n_edges))
+
+message("\nPPI known complex membership:")
+print(ppi_known_summary)
+
+# --- Flag Trimers ---
+if (exists("trimer_evidence") && nrow(trimer_evidence) > 0) {
+  trimer_evidence <- trimer_evidence %>%
+    dplyr::mutate(
+      topdown_status = dplyr::case_when(
+        in_known_complex ~ "known_complex",
+        in_known_complex_relaxed ~ "partial_known",
+        TRUE ~ "novel"
+      )
+    )
+
+  trimer_topdown_summary <- trimer_evidence %>%
+    dplyr::count(topdown_status, name = "n_trimers") %>%
+    dplyr::mutate(pct = round(100 * n_trimers / sum(n_trimers), 1))
+
+  message("\nTrimer top-down status:")
+  print(trimer_topdown_summary)
+}
+
+# --- Flag Tetramers ---
+if (exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) {
+  tetramer_evidence <- tetramer_evidence %>%
+    dplyr::mutate(
+      topdown_status = dplyr::case_when(
+        in_known_complex ~ "known_complex",
+        in_known_complex_relaxed ~ "partial_known",
+        TRUE ~ "novel"
+      )
+    )
+
+  tetramer_topdown_summary <- tetramer_evidence %>%
+    dplyr::count(topdown_status, name = "n_tetramers") %>%
+    dplyr::mutate(pct = round(100 * n_tetramers / sum(n_tetramers), 1))
+
+  message("\nTetramer top-down status:")
+  print(tetramer_topdown_summary)
+}
+
+# --- Flag Bottom-Up Complexes ---
+if (exists("complexes_summary") && nrow(complexes_summary) > 0) {
+  complexes_summary <- complexes_summary %>%
+    dplyr::mutate(
+      topdown_status = dplyr::case_when(
+        has_known_match ~ "known_complex",
+        corum_overlap_n >= 2 | cp_overlap_n >= 2 ~ "partial_known",
+        TRUE ~ "novel"
+      )
+    )
+
+  complex_topdown_summary <- complexes_summary %>%
+    dplyr::count(topdown_status, name = "n_complexes") %>%
+    dplyr::mutate(pct = round(100 * n_complexes / sum(n_complexes), 1))
+
+  message("\nBottom-up complex top-down status:")
+  print(complex_topdown_summary)
+}
+```
+
+
+## Chunk 3: QC Plots
+```{r topdown_qc_plots, fig.width=8, fig.height=8}
+# =============================================================================
+# Top-Down: QC Plots
+# =============================================================================
+
+# --- Plot 1: CORUM coverage distribution ---
+if (exists("corum_coverage")) {
+  coverage_dist_corum <- corum_coverage %>%
+    dplyr::filter(n_detected > 0) %>%
+    dplyr::count(coverage_tier, name = "n_complexes") %>%
+    dplyr::mutate(coverage_tier = factor(coverage_tier, levels = c("complete", "high_80pct", "partial_50pct", "low")))
+
+  p_corum_coverage <- ggplot(coverage_dist_corum, aes(x = coverage_tier, y = n_complexes, fill = coverage_tier)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("complete" = "#4DAF4A", "high_80pct" = "#377EB8",
+                                  "partial_50pct" = "#FFFF33", "low" = "#E41A1C"), guide = "none") +
+    labs(title = "CORUM complex coverage in detected proteome", x = "Coverage tier", y = "Number of complexes") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_corum_coverage.pdf"), p_corum_coverage, width = 4, height = 3.5, device = cairo_pdf)
+
+  # Histogram of coverage ratios
+  p_corum_hist <- ggplot(corum_coverage %>% dplyr::filter(n_detected > 0), aes(x = coverage_pct)) +
+    geom_histogram(binwidth = 10, fill = "steelblue", color = "black", linewidth = 0.3) +
+    geom_vline(xintercept = c(50, 80, 100), linetype = "dashed", color = "red", linewidth = 0.3) +
+    labs(title = "CORUM coverage distribution", x = "Coverage (%)", y = "Number of complexes") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_topdown, "qc", "histogram_corum_coverage.pdf"), p_corum_hist, width = 4, height = 3, device = cairo_pdf)
+}
+
+# --- Plot 2: Coverage by complex size ---
+if (exists("corum_coverage")) {
+  coverage_by_size <- corum_coverage %>%
+    dplyr::filter(n_detected > 0) %>%
+    dplyr::mutate(size_bin = cut(n_total, breaks = c(0, 5, 10, 20, 50, Inf),
+                                  labels = c("2-5", "6-10", "11-20", "21-50", "50+"))) %>%
+    dplyr::group_by(size_bin) %>%
+    dplyr::summarise(
+      n_complexes = dplyr::n(),
+      mean_coverage = round(mean(coverage_pct), 1),
+      n_complete = sum(coverage_tier == "complete"),
+      pct_complete = round(100 * n_complete / n_complexes, 1),
+      .groups = "drop"
+    )
+
+  p_coverage_size <- ggplot(coverage_by_size, aes(x = size_bin, y = mean_coverage, fill = size_bin)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = paste0(mean_coverage, "%")), vjust = -0.3, size = 2) +
+    scale_fill_brewer(palette = "Blues", guide = "none") +
+    labs(title = "Mean CORUM coverage by complex size", x = "Complex size", y = "Mean coverage (%)") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_coverage_by_size.pdf"), p_coverage_size, width = 4, height = 3.5, device = cairo_pdf)
+}
+
+# --- Plot 3: PPI known complex source ---
+p_ppi_source <- ggplot(ppi_known_summary, aes(x = reorder(known_complex_source, -n_edges), y = n_edges, fill = known_complex_source)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(n_edges, " (", pct, "%)")), vjust = -0.3, size = 2, angle = 0) +
+  scale_fill_brewer(palette = "Set3", guide = "none") +
+  labs(title = "PPI edges by known complex source", x = NULL, y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_topdown, "qc", "barplot_ppi_known_source.pdf"), p_ppi_source, width = 5, height = 4, device = cairo_pdf)
+
+# --- Plot 4: Bottom-up vs Top-down comparison (stacked) ---
+comparison_df <- data.frame(
+  level = c("PPIs", "PPIs", "Trimers", "Trimers", "Tetramers", "Tetramers", "Complexes", "Complexes"),
+  status = c("Known", "Novel", "Known", "Novel", "Known", "Novel", "Known", "Novel"),
+  n = c(
+    sum(baseline_ppi_v3$in_known_complex_ppi),
+    sum(!baseline_ppi_v3$in_known_complex_ppi),
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$in_known_complex) else 0,
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(!trimer_evidence$in_known_complex) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$in_known_complex) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(!tetramer_evidence$in_known_complex) else 0,
+    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(complexes_summary$has_known_match, na.rm = TRUE) else 0,
+    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(!complexes_summary$has_known_match, na.rm = TRUE) else 0
+  )
+) %>%
+  dplyr::mutate(level = factor(level, levels = c("PPIs", "Trimers", "Tetramers", "Complexes")))
+
+p_comparison <- ggplot(comparison_df, aes(x = level, y = n, fill = status)) +
+  geom_col(position = "fill", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n), position = position_fill(vjust = 0.5), size = 2) +
+  scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), name = NULL) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Known vs novel by detection level", x = NULL, y = "Proportion") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+ggsave(file.path(out_dir_topdown, "qc", "barplot_known_vs_novel_all_levels.pdf"), p_comparison, width = 4, height = 4, device = cairo_pdf)
+
+# --- Summary stats ---
+topdown_stats <- data.frame(
+  metric = c("ppi_in_known_complex", "ppi_novel",
+             "trimers_in_known_complex", "trimers_novel",
+             "tetramers_in_known_complex", "tetramers_novel",
+             "complexes_matched", "complexes_novel",
+             "corum_complete_coverage", "corum_high_coverage", "corum_partial_coverage"),
+  value = c(
+    sum(baseline_ppi_v3$in_known_complex_ppi), sum(!baseline_ppi_v3$in_known_complex_ppi),
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$in_known_complex) else 0,
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(!trimer_evidence$in_known_complex) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$in_known_complex) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(!tetramer_evidence$in_known_complex) else 0,
+    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(complexes_summary$has_known_match, na.rm = TRUE) else 0,
+    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(!complexes_summary$has_known_match, na.rm = TRUE) else 0,
+    if(exists("corum_coverage")) sum(corum_coverage$coverage_tier == "complete") else 0,
+    if(exists("corum_coverage")) sum(corum_coverage$coverage_tier == "high_80pct") else 0,
+    if(exists("corum_coverage")) sum(corum_coverage$coverage_tier == "partial_50pct") else 0
+  )
+)
+
+readr::write_csv(topdown_stats, file.path(out_dir_topdown, "tables", "topdown_stats.csv"))
+
+# --- Save outputs ---
+if (exists("corum_coverage")) {
+  readr::write_csv(corum_coverage, file.path(out_dir_topdown, "tables", "corum_coverage.csv"))
+}
+if (exists("cp_coverage")) {
+  readr::write_csv(cp_coverage, file.path(out_dir_topdown, "tables", "complexportal_coverage.csv"))
+}
+readr::write_csv(ppi_known_summary, file.path(out_dir_topdown, "tables", "ppi_known_complex_summary.csv"))
+
+# Update baseline with flags
+readr::write_csv(baseline_ppi_v3, file.path(out_dir_baseline, "tables", "baseline_ppi_v3_gold_flagged.csv"))
+
+message("\nModule 6 complete.")
+message("  PPIs in known complex: ", sum(baseline_ppi_v3$in_known_complex_ppi), " / ", nrow(baseline_ppi_v3))
+if (exists("corum_coverage")) {
+  message("  CORUM complexes with complete coverage: ", sum(corum_coverage$coverage_tier == "complete"))
+}
+message("QC plots saved to: ", file.path(out_dir_topdown, "qc"))
+```
+
+
+
+# Module 7: Stoichiometry Analysis
+Analyzes stoichiometry of matched complexes from CORUM
+Requires: trimer_evidence, tetramer_evidence, corum_complex_members
+
+## Chunk 1: Parse CORUM Stoichiometry
+```{r stoich_parse}
+# =============================================================================
+# Stoichiometry: Parse CORUM Subunit Stoichiometry
+# =============================================================================
+
+# --- Setup ---
+out_dir_stoich <- file.path(out_dir_ppi_dual, "stoichiometry")
+dir.create(file.path(out_dir_stoich, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_stoich, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+message("=== Stoichiometry analysis ===")
+
+# --- Parse stoichiometry from CORUM ---
+if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  message("Parsing CORUM stoichiometry...")
+
+  corum_stoich <- corum_complex_members %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      # Parse stoichiometry: format is "1;1;2" matching genes
+      stoich_values = list({
+        if (is.null(stoich) || length(stoich) == 0 || all(is.na(stoich)) || all(stoich == "")) {
+          rep(1L, length(genes))
+        } else {
+          vals <- suppressWarnings(as.integer(stoich))
+          vals[is.na(vals)] <- 1L
+          if (length(vals) != length(genes)) rep(1L, length(genes)) else vals
+        }
+      }),
+      # Create gene-stoich mapping
+      gene_stoich = list(data.frame(gene = genes, copies = stoich_values, stringsAsFactors = FALSE)),
+      # Summary stats
+      n_unique_subunits = length(genes),
+      n_total_copies = sum(stoich_values),
+      has_multimeric = any(stoich_values > 1),
+      max_copies = max(stoich_values)
+    ) %>%
+    dplyr::ungroup()
+
+  # Summary
+  stoich_summary <- corum_stoich %>%
+    dplyr::summarise(
+      total_complexes = dplyr::n(),
+      n_with_multimeric = sum(has_multimeric),
+      pct_multimeric = round(100 * n_with_multimeric / total_complexes, 1),
+      n_homomeric_2plus = sum(max_copies >= 2),
+      n_homomeric_3plus = sum(max_copies >= 3),
+      n_homomeric_4plus = sum(max_copies >= 4)
+    )
+
+  message("\nCORUM stoichiometry summary:")
+  print(stoich_summary)
+} else {
+  message("CORUM not available, skipping stoichiometry analysis")
+  corum_stoich <- NULL
+}
+```
+
+
+## Chunk 2: Trimer Stoichiometry
+```{r stoich_trimers}
+# =============================================================================
+# Stoichiometry: Trimers Matched to CORUM
+# =============================================================================
+
+if (!is.null(corum_stoich) && exists("trimer_evidence") && nrow(trimer_evidence) > 0) {
+  message("\nAnalyzing trimer stoichiometry...")
+
+  # Get trimers with CORUM strict match
+  trimers_corum <- trimer_evidence %>%
+    dplyr::filter(corum_strict_match) %>%
+    dplyr::select(trimer_id, Gene1, Gene2, Gene3, corum_matched_id, corum_matched_name)
+
+  if (nrow(trimers_corum) > 0) {
+    # Join with CORUM stoichiometry
+    trimer_stoich <- trimers_corum %>%
+      dplyr::left_join(
+        corum_stoich %>% dplyr::select(complex_id, gene_stoich, has_multimeric, n_unique_subunits, n_total_copies),
+        by = c("corum_matched_id" = "complex_id")
+      )
+
+    # Get copies for each trimer protein
+    trimer_stoich <- trimer_stoich %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(
+        copies_g1 = {
+          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
+          else {
+            idx <- which(gene_stoich$gene == Gene1)
+            if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          }
+        },
+        copies_g2 = {
+          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
+          else {
+            idx <- which(gene_stoich$gene == Gene2)
+            if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          }
+        },
+        copies_g3 = {
+          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
+          else {
+            idx <- which(gene_stoich$gene == Gene3)
+            if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          }
+        },
+        trimer_has_multimeric = any(c(copies_g1, copies_g2, copies_g3) > 1, na.rm = TRUE),
+        trimer_total_copies = sum(c(copies_g1, copies_g2, copies_g3), na.rm = TRUE),
+        trimer_max_copies = max(c(copies_g1, copies_g2, copies_g3), na.rm = TRUE)
+      ) %>%
+      dplyr::ungroup()
+
+    # Summary
+    trimer_stoich_summary <- trimer_stoich %>%
+      dplyr::summarise(
+        n_trimers_matched = dplyr::n(),
+        n_with_multimeric = sum(trimer_has_multimeric, na.rm = TRUE),
+        pct_multimeric = round(100 * n_with_multimeric / n_trimers_matched, 1),
+        mean_total_copies = round(mean(trimer_total_copies, na.rm = TRUE), 1)
+      )
+
+    message("\nTrimer stoichiometry summary:")
+    print(trimer_stoich_summary)
+
+    # Save
+    readr::write_csv(trimer_stoich %>% dplyr::select(-gene_stoich),
+                     file.path(out_dir_stoich, "tables", "trimers_stoichiometry.csv"))
+  } else {
+    message("  No CORUM-matched trimers for stoichiometry analysis")
+    trimer_stoich <- NULL
+    trimer_stoich_summary <- NULL
+  }
+} else {
+  trimer_stoich <- NULL
+  trimer_stoich_summary <- NULL
+}
+```
+
+
+## Chunk 3: Tetramer Stoichiometry
+```{r stoich_tetramers}
+# =============================================================================
+# Stoichiometry: Tetramers Matched to CORUM
+# =============================================================================
+
+if (!is.null(corum_stoich) && exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) {
+  message("\nAnalyzing tetramer stoichiometry...")
+
+  # Get tetramers with CORUM strict match
+  tetramers_corum <- tetramer_evidence %>%
+    dplyr::filter(corum_strict_match) %>%
+    dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, corum_matched_id, corum_matched_name)
+
+  if (nrow(tetramers_corum) > 0) {
+    # Join with CORUM stoichiometry
+    tetramer_stoich <- tetramers_corum %>%
+      dplyr::left_join(
+        corum_stoich %>% dplyr::select(complex_id, gene_stoich, has_multimeric, n_unique_subunits, n_total_copies),
+        by = c("corum_matched_id" = "complex_id")
+      )
+
+    # Get copies for each tetramer protein
+    tetramer_stoich <- tetramer_stoich %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(
+        copies_g1 = {
+          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
+          else { idx <- which(gene_stoich$gene == Gene1); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
+        },
+        copies_g2 = {
+          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
+          else { idx <- which(gene_stoich$gene == Gene2); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
+        },
+        copies_g3 = {
+          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
+          else { idx <- which(gene_stoich$gene == Gene3); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
+        },
+        copies_g4 = {
+          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
+          else { idx <- which(gene_stoich$gene == Gene4); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
+        },
+        tetramer_has_multimeric = any(c(copies_g1, copies_g2, copies_g3, copies_g4) > 1, na.rm = TRUE),
+        tetramer_total_copies = sum(c(copies_g1, copies_g2, copies_g3, copies_g4), na.rm = TRUE),
+        tetramer_max_copies = max(c(copies_g1, copies_g2, copies_g3, copies_g4), na.rm = TRUE)
+      ) %>%
+      dplyr::ungroup()
+
+    # Summary
+    tetramer_stoich_summary <- tetramer_stoich %>%
+      dplyr::summarise(
+        n_tetramers_matched = dplyr::n(),
+        n_with_multimeric = sum(tetramer_has_multimeric, na.rm = TRUE),
+        pct_multimeric = round(100 * n_with_multimeric / n_tetramers_matched, 1),
+        mean_total_copies = round(mean(tetramer_total_copies, na.rm = TRUE), 1)
+      )
+
+    message("\nTetramer stoichiometry summary:")
+    print(tetramer_stoich_summary)
+
+    # Save
+    readr::write_csv(tetramer_stoich %>% dplyr::select(-gene_stoich),
+                     file.path(out_dir_stoich, "tables", "tetramers_stoichiometry.csv"))
+  } else {
+    message("  No CORUM-matched tetramers for stoichiometry analysis")
+    tetramer_stoich <- NULL
+    tetramer_stoich_summary <- NULL
+  }
+} else {
+  tetramer_stoich <- NULL
+  tetramer_stoich_summary <- NULL
+}
+```
+
+
+## Chunk 4: QC Plots
+```{r stoich_qc_plots, fig.width=8, fig.height=6}
+# =============================================================================
+# Stoichiometry: QC Plots
+# =============================================================================
+
+# --- Plot 1: CORUM multimeric distribution ---
+if (!is.null(corum_stoich)) {
+  multimeric_dist <- corum_stoich %>%
+    dplyr::mutate(multimeric_status = ifelse(has_multimeric, "Has multimeric", "All 1:1")) %>%
+    dplyr::count(multimeric_status, name = "n_complexes") %>%
+    dplyr::mutate(pct = round(100 * n_complexes / sum(n_complexes), 1))
+
+  p_multimeric <- ggplot(multimeric_dist, aes(x = multimeric_status, y = n_complexes, fill = multimeric_status)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = paste0(n_complexes, " (", pct, "%)")), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("Has multimeric" = "#4DAF4A", "All 1:1" = "grey70"), guide = "none") +
+    labs(title = "CORUM complexes: multimeric subunits", x = NULL, y = "Number of complexes") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_corum_multimeric.pdf"), p_multimeric, width = 3.5, height = 3.5, device = cairo_pdf)
+
+  # Max copies distribution
+  max_copies_dist <- corum_stoich %>%
+    dplyr::filter(max_copies > 1) %>%
+    dplyr::count(max_copies, name = "n_complexes")
+
+  if (nrow(max_copies_dist) > 0) {
+    p_max_copies <- ggplot(max_copies_dist, aes(x = factor(max_copies), y = n_complexes)) +
+      geom_col(fill = "steelblue", color = "black", linewidth = 0.3) +
+      geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
+      labs(title = "CORUM: max subunit copies (multimeric only)", x = "Max copies", y = "Number of complexes") +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+    ggsave(file.path(out_dir_stoich, "qc", "barplot_max_copies.pdf"), p_max_copies, width = 4, height = 3, device = cairo_pdf)
+  }
+}
+
+# --- Plot 2: Trimer/Tetramer stoichiometry comparison ---
+stoich_comparison <- data.frame(
+  level = c("Trimers", "Trimers", "Tetramers", "Tetramers"),
+  type = c("With multimeric", "Without multimeric", "With multimeric", "Without multimeric"),
+  n = c(
+    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_with_multimeric else 0,
+    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_trimers_matched - trimer_stoich_summary$n_with_multimeric else 0,
+    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_with_multimeric else 0,
+    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_tetramers_matched - tetramer_stoich_summary$n_with_multimeric else 0
+  )
+)
+
+if (sum(stoich_comparison$n) > 0) {
+  stoich_comparison <- stoich_comparison %>%
+    dplyr::group_by(level) %>%
+    dplyr::mutate(pct = round(100 * n / sum(n), 1)) %>%
+    dplyr::ungroup()
+
+  p_stoich_comparison <- ggplot(stoich_comparison, aes(x = level, y = n, fill = type)) +
+    geom_col(color = "black", linewidth = 0.3, position = "stack") +
+    geom_text(aes(label = paste0(n, " (", pct, "%)")), position = position_stack(vjust = 0.5), size = 2) +
+    scale_fill_manual(values = c("With multimeric" = "#4DAF4A", "Without multimeric" = "grey70"), name = NULL) +
+    labs(title = "CORUM-matched structures: stoichiometry", x = NULL, y = "Count") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_stoich_comparison.pdf"), p_stoich_comparison, width = 3.5, height = 4, device = cairo_pdf)
+}
+
+# --- Summary table ---
+stoich_stats <- data.frame(
+  metric = c("corum_total_complexes", "corum_multimeric_complexes", "corum_pct_multimeric",
+             "trimers_corum_matched", "trimers_multimeric", "trimers_pct_multimeric",
+             "tetramers_corum_matched", "tetramers_multimeric", "tetramers_pct_multimeric"),
+  value = c(
+    if(!is.null(corum_stoich)) nrow(corum_stoich) else 0,
+    if(!is.null(corum_stoich)) sum(corum_stoich$has_multimeric) else 0,
+    if(!is.null(corum_stoich)) round(100 * sum(corum_stoich$has_multimeric) / nrow(corum_stoich), 1) else 0,
+    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_trimers_matched else 0,
+    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_with_multimeric else 0,
+    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$pct_multimeric else 0,
+    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_tetramers_matched else 0,
+    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_with_multimeric else 0,
+    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$pct_multimeric else 0
+  )
+)
+
+readr::write_csv(stoich_stats, file.path(out_dir_stoich, "tables", "stoichiometry_stats.csv"))
+
+message("\nModule 7 complete.")
+message("QC plots saved to: ", file.path(out_dir_stoich, "qc"))
+```
 
 
 
