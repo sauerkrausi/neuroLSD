@@ -11862,16 +11862,18 @@ path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
 path_intact_tsv <- "/Users/felix/Desktop/ppi/interact.tsv"
 path_corum <- "/Users/felix/Desktop/ppi/coreComplexes.txt"  # UPDATE: download from https://mips.helmholtz-muenchen.de/corum/download/coreComplexes.txt.zip
 
-# --- Load CORUM database ---
-message("Loading CORUM database...")
-corum_raw <- data.table::fread(path_corum, sep = "\t", header = TRUE, quote = "", data.table = FALSE)
+# --- Load CORUM database (optional) ---
+corum_available <- file.exists(path_corum)
 
-# Filter to human complexes only
-corum_human <- corum_raw %>%
+if (corum_available) {
+  message("Loading CORUM database...")
+  corum_raw <- data.table::fread(path_corum, sep = "\t", header = TRUE, quote = "", data.table = FALSE)
 
-dplyr::filter(Organism == "Human") %>%
-  dplyr::select(ComplexID, ComplexName, `subunits(Gene name)`) %>%
-  dplyr::rename(complex_id = ComplexID, complex_name = ComplexName, subunits_gene = `subunits(Gene name)`)
+  # Filter to human complexes only
+  corum_human <- corum_raw %>%
+    dplyr::filter(Organism == "Human") %>%
+    dplyr::select(ComplexID, ComplexName, `subunits(Gene name)`) %>%
+    dplyr::rename(complex_id = ComplexID, complex_name = ComplexName, subunits_gene = `subunits(Gene name)`)
 
 # Expand to pairwise edges within each complex
 corum_edges <- corum_human %>%
@@ -11904,6 +11906,7 @@ corum_edge_lookup <- corum_edges %>%
 
 message("  CORUM complexes (human): ", nrow(corum_human))
 message("  CORUM unique edges: ", nrow(corum_edge_lookup))
+}
 ```
 
 
@@ -11922,8 +11925,8 @@ predictome80 <- predictome80_raw %>%
   dplyr::transmute(
     Protein1 = Protein1,
     Protein2 = Protein2,
-    Gene1 = sub("_HUMAN$", "", Gene1),
-    Gene2 = sub("_HUMAN$", "", Gene2),
+    Gene1 = Name1,
+    Gene2 = Name2,
     RFprob = suppressWarnings(as.numeric(RFprob)),
     AFprob = suppressWarnings(as.numeric(AFprob)),
     AFMprob = suppressWarnings(as.numeric(AFMprob)),
@@ -11966,14 +11969,21 @@ predictome80 <- predictome80 %>%
 message("Loading Predictomes.org 16k...")
 predictomes16k_raw <- readr::read_csv(path_predictomes16k, show_col_types = FALSE)
 
+# Parse paired columns (values separated by " / ")
 predictomes16k <- predictomes16k_raw %>%
+  dplyr::mutate(
+    Protein1 = sub(" / .*", "", UniProt_ID),
+    Protein2 = sub(".* / ", "", UniProt_ID),
+    Gene1_16k = sub(" / .*", "", Gene_Symbol),
+    Gene2_16k = sub(".* / ", "", Gene_Symbol)
+  ) %>%
   dplyr::transmute(
-    Protein1 = Entry1,
-    Protein2 = Entry2,
-    Gene1_16k = Gene1,
-    Gene2_16k = Gene2,
+    Protein1 = Protein1,
+    Protein2 = Protein2,
+    Gene1_16k = Gene1_16k,
+    Gene2_16k = Gene2_16k,
     SPOC_score = as.numeric(SPOC_score),
-    FDR_pct = as.numeric(FDR),
+    FDR_pct = as.numeric(`FDR_...`),
     ipTM_max = as.numeric(ipTM_max),
     KIRC_score = as.numeric(KIRC_score),
     BioGRID_count = as.numeric(BioGRID),
@@ -11992,7 +12002,7 @@ intact_raw <- data.table::fread(path_intact_tsv, sep = "\t", header = TRUE, quot
 intact <- intact_raw %>%
   dplyr::filter(`Taxid interactor A` == "taxid:9606(human)" & `Taxid interactor B` == "taxid:9606(human)") %>%
   dplyr::transmute(
-    Protein1 = sub("uniprotkb:", "", `#ID(s) interactor A`),
+    Protein1 = sub("uniprotkb:", "", `ID(s) interactor A`),
     Protein2 = sub("uniprotkb:", "", `ID(s) interactor B`),
     mi_score = as.numeric(sub(".*score:", "", `Confidence value(s)`)),
     key = .make_undirected_key(Protein1, Protein2)
@@ -12057,25 +12067,15 @@ message("  Merged master table: ", nrow(master_ppi_v3), " unique edges")
 
 # --- Add CORUM lookup ---
 message("Adding CORUM annotations...")
-# master_ppi_v3 <- master_ppi_v3 %>%
-#   dplyr::left_join(corum_edge_lookup, by = "key") %>%
-#   dplyr::mutate(
-#     filter_CORUM = dplyr::case_when(
-#       !is.na(corum_complex_ids) ~ "present",
-#       TRUE ~ "none"
-#     )
-#   )
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::left_join(corum_edge_lookup, by = "key") %>%
+  dplyr::mutate(
+    filter_CORUM = dplyr::case_when(
+      !is.na(corum_complex_ids) ~ "present",
+      TRUE ~ "none"
+    )
+  )
 
-if (exists("corum_edge_lookup") && nrow(corum_edge_lookup) > 0) {
-  master_ppi_v3 <- master_ppi_v3 %>%
-    dplyr::left_join(corum_edge_lookup, by = "key") %>%
-    dplyr::mutate(filter_CORUM = dplyr::case_when(!is.na(corum_complex_ids) ~ "present", TRUE ~ "none"))
-} else {
-  message("CORUM not available, skipping...")
-  master_ppi_v3$filter_CORUM <- "none"
-  master_ppi_v3$corum_complex_ids <- NA_character_
-  master_ppi_v3$corum_complex_names <- NA_character_
-}
 message("  Edges in CORUM: ", sum(master_ppi_v3$filter_CORUM == "present"))
 
 # --- Add ComplexPortal annotations ---
