@@ -13531,7 +13531,146 @@ message("Degree by tier plots saved.")
 
 
 
+# --- QC Plot: Database support barplot (baseline) ---
+message("Generating database support barplot for baseline...")
 
+filter_counts_baseline <- baseline_filtered %>%
+  dplyr::summarise(
+    PDB_exact = sum(filter_PDB == "exact", na.rm = TRUE),
+    PDB_homolog = sum(filter_PDB == "homolog", na.rm = TRUE),
+    ComplexPortal_strict = sum(filter_ComplexPortal == "strict", na.rm = TRUE),
+    ComplexPortal_relaxed = sum(filter_ComplexPortal == "relaxed", na.rm = TRUE),
+    STRING = sum(filter_STRING == "present", na.rm = TRUE),
+    BIOGRID = sum(filter_BIOGRID == "present", na.rm = TRUE),
+    CORUM = sum(filter_CORUM == "present", na.rm = TRUE)
+  ) %>%
+  tidyr::pivot_longer(everything(), names_to = "database", values_to = "n_edges") %>%
+  dplyr::mutate(
+    db_group = dplyr::case_when(
+      grepl("PDB", database) ~ "Structural",
+      grepl("ComplexPortal|CORUM", database) ~ "Complex",
+      TRUE ~ "Interaction"
+    ))
+  
+
+p_db_support_baseline <- ggplot(filter_counts_baseline, aes(x = reorder(database, -n_edges), y = n_edges, fill = db_group)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n_edges)), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("Structural" = "#E41A1C", "Complex" = "#377EB8", "Interaction" = "#4DAF4A"), name = "Type") +
+  labs(title = "Baseline PPI edges by database support (gold only)", x = NULL, y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top")
+
+ggsave(file.path(out_dir_baseline, "qc", "barplot_database_support_baseline.pdf"), p_db_support_baseline, width = 5, height = 4, device = cairo_pdf)
+
+# --- QC Plot: Support score distribution (baseline) ---
+message("Generating support score distribution for baseline...")
+
+p_support_dist_baseline <- ggplot(baseline_filtered, aes(x = factor(support_score))) +
+  geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
+  labs(title = "Support score distribution (baseline, gold only)",
+       x = "Support Score", y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_baseline, "qc", "barplot_support_score_baseline.pdf"), p_support_dist_baseline, width = 5, height = 4, device = cairo_pdf)
+
+# --- QC Plot: UpSet plot for database overlap (baseline) ---
+message("Generating UpSet plot for baseline...")
+
+upset_data_baseline <- baseline_filtered %>%
+  dplyr::transmute(
+    PDB = as.integer(filter_PDB != "none"),
+    ComplexPortal = as.integer(filter_ComplexPortal != "none"),
+    CORUM = as.integer(filter_CORUM == "present"),
+    STRING = as.integer(filter_STRING == "present"),
+    BIOGRID = as.integer(filter_BIOGRID == "present")
+  )
+
+if (requireNamespace("UpSetR", quietly = TRUE)) {
+  pdf(file.path(out_dir_baseline, "qc", "upset_database_overlap_baseline.pdf"), width = 8, height = 5)
+  print(UpSetR::upset(
+    as.data.frame(upset_data_baseline),
+    sets = c("PDB", "ComplexPortal", "CORUM", "STRING", "BIOGRID"),
+    order.by = "freq",
+    decreasing = TRUE,
+    mb.ratio = c(0.6, 0.4),
+    text.scale = 1.2,
+    main.bar.color = "steelblue",
+    sets.bar.color = "darkgray"
+  ))
+  dev.off()
+  message("  UpSet plot saved")
+} else {
+  message("  UpSetR package not installed, skipping UpSet plot")
+}
+
+# --- QC Plot: Pairwise overlap heatmap (baseline) ---
+message("Generating pairwise overlap heatmap for baseline...")
+
+databases <- c("PDB", "ComplexPortal", "CORUM", "STRING", "BIOGRID")
+overlap_matrix_baseline <- matrix(0, nrow = length(databases), ncol = length(databases), 
+                                  dimnames = list(databases, databases))
+
+for (i in seq_along(databases)) {
+  for (j in seq_along(databases)) {
+    overlap_matrix_baseline[i, j] <- sum(upset_data_baseline[[databases[i]]] == 1 & 
+                                          upset_data_baseline[[databases[j]]] == 1)
+  }
+}
+
+jaccard_matrix_baseline <- matrix(0, nrow = length(databases), ncol = length(databases), 
+                                  dimnames = list(databases, databases))
+
+for (i in seq_along(databases)) {
+  for (j in seq_along(databases)) {
+    intersection <- sum(upset_data_baseline[[databases[i]]] == 1 & upset_data_baseline[[databases[j]]] == 1)
+    union <- sum(upset_data_baseline[[databases[i]]] == 1 | upset_data_baseline[[databases[j]]] == 1)
+    jaccard_matrix_baseline[i, j] <- ifelse(union > 0, round(intersection / union, 3), 0)
+  }
+}
+
+pheatmap::pheatmap(
+  jaccard_matrix_baseline,
+  display_numbers = TRUE,
+  number_format = "%.2f",
+  color = colorRampPalette(c("white", "#2166AC"))(100),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  main = "Database overlap - Jaccard (baseline, gold only)",
+  fontsize = 8,
+  cellwidth = 50,
+  cellheight = 50,
+  border_color = "black",
+  filename = file.path(out_dir_baseline, "qc", "heatmap_database_overlap_jaccard_baseline.pdf"),
+  width = 6, height = 5
+)
+
+pheatmap::pheatmap(
+  overlap_matrix_baseline,
+  display_numbers = TRUE,
+  number_format = "%.0f",
+  color = colorRampPalette(c("white", "#4DAF4A"))(100),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  main = "Database overlap - counts (baseline, gold only)",
+  fontsize = 8,
+  cellwidth = 50,
+  cellheight = 50,
+  border_color = "black",
+  filename = file.path(out_dir_baseline, "qc", "heatmap_database_overlap_counts_baseline.pdf"),
+  width = 6, height = 5
+)
+
+# --- Save summary tables ---
+readr::write_csv(filter_counts_baseline, file.path(out_dir_baseline, "tables", "database_support_counts_baseline.csv"))
+
+message("Database support QC plots saved.")
 message("\nQC plots saved to: ", file.path(out_dir_baseline, "qc"))
 ```
 
