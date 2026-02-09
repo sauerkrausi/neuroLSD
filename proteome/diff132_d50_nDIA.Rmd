@@ -11969,7 +11969,6 @@ predictome80 <- predictome80 %>%
 message("Loading Predictomes.org 16k...")
 predictomes16k_raw <- readr::read_csv(path_predictomes16k, show_col_types = FALSE)
 
-# Parse paired columns (values separated by " / ")
 predictomes16k <- predictomes16k_raw %>%
   dplyr::mutate(
     Protein1 = sub(" / .*", "", UniProt_ID),
@@ -11983,7 +11982,7 @@ predictomes16k <- predictomes16k_raw %>%
     Gene1_16k = Gene1_16k,
     Gene2_16k = Gene2_16k,
     SPOC_score = as.numeric(SPOC_score),
-    FDR_pct = as.numeric(`FDR_...`),
+    FDR_pct = as.numeric(`FDR_(%)`),
     ipTM_max = as.numeric(ipTM_max),
     KIRC_score = as.numeric(KIRC_score),
     BioGRID_count = as.numeric(BioGRID),
@@ -11999,20 +11998,29 @@ message("  Predictomes16k: ", nrow(predictomes16k), " unique edges")
 message("Loading IntAct...")
 intact_raw <- data.table::fread(path_intact_tsv, sep = "\t", header = TRUE, quote = "", fill = TRUE, data.table = FALSE)
 
+# Check actual column names
+message("IntAct columns: ", paste(names(intact_raw)[1:5], collapse = ", "))
+
+# Get the first column name (it has # prefix)
+col_A <- names(intact_raw)[1]  # Should be "# ID(s) interactor A"
+col_B <- names(intact_raw)[2]  # Should be "ID(s) interactor B"
+
 intact <- intact_raw %>%
   dplyr::filter(`Taxid interactor A` == "taxid:9606(human)" & `Taxid interactor B` == "taxid:9606(human)") %>%
   dplyr::transmute(
-    Protein1 = sub("uniprotkb:", "", `ID(s) interactor A`),
-    Protein2 = sub("uniprotkb:", "", `ID(s) interactor B`),
-    mi_score = as.numeric(sub(".*score:", "", `Confidence value(s)`)),
-    key = .make_undirected_key(Protein1, Protein2)
+    Protein1 = sub("uniprotkb:", "", .data[[col_A]]),
+    Protein2 = sub("uniprotkb:", "", .data[[col_B]]),
+    mi_score = as.numeric(sub(".*score:", "", `Confidence value(s)`))
   ) %>%
+  dplyr::filter(!is.na(Protein1), !is.na(Protein2), Protein1 != "", Protein2 != "") %>%
+  dplyr::mutate(key = .make_undirected_key(Protein1, Protein2)) %>%
   dplyr::filter(mi_score >= 0.5) %>%
   dplyr::group_by(key) %>%
   dplyr::summarise(mi_score_max = max(mi_score, na.rm = TRUE), .groups = "drop") %>%
   dplyr::mutate(in_IntAct = TRUE)
 
 message("  IntAct (MI>=0.5): ", nrow(intact), " unique edges")
+message("  Key class: ", class(intact$key))
 
 # --- Merge all sources ---
 message("Merging prediction sources...")
