@@ -12648,7 +12648,7 @@ p_db_support <- ggplot(filter_counts, aes(x = reorder(database, -n_edges), y = n
         axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top")
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_database_support.pdf"), p_db_support, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_database_support.pdf"), p_db_support, width = 4, height = 4, device = cairo_pdf)
 
 # --- QC Plot 2: Support score distribution ---
 message("Generating support score distribution...")
@@ -13564,7 +13564,7 @@ p_db_support_baseline <- ggplot(filter_counts_baseline, aes(x = reorder(database
         axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top")
 
-ggsave(file.path(out_dir_baseline, "qc", "barplot_database_support_baseline.pdf"), p_db_support_baseline, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_baseline, "qc", "barplot_database_support_baseline.pdf"), p_db_support_baseline, width = 4, height = 4, device = cairo_pdf)
 
 # --- QC Plot: Support score distribution (baseline) ---
 message("Generating support score distribution for baseline...")
@@ -16358,7 +16358,8 @@ p_cp_complex <- ggplot(cp_summary_complex, aes(x = cp_status, y = n, fill = cp_s
 
 ggsave(file.path(out_dir_complex, "qc", "barplot_complexportal_validation.pdf"), p_cp_complex, width = sq_size, height = sq_size, device = cairo_pdf)
 
-ath(out_dir_complex, "qc", "barplot_complexport)al_validation.pdf"), p_cp_complex, width = sq_size, height = sq_size, device = cairo_pdf)
+path(out_dir_complex, "qc", "barplot_complexport_al_validation.pdf", p_cp_complex, width = sq_size, height = sq_size, device = cairo_pdf)
+
 # --- QC Plot 7: Complexes per dominant organelle ---
 complex_by_org <- complex_evidence %>%
   dplyr::filter(!is.na(dominant_organelles)) %>%
