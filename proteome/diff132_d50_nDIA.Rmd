@@ -11860,7 +11860,8 @@ message("Annotations added and saved.")
 path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
 path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
 path_intact_tsv <- "/Users/felix/Desktop/ppi/interact.tsv"
-path_corum <- "/Users/felix/Desktop/ppi/coreComplexes.txt"  # UPDATE: download from https://mips.helmholtz-muenchen.de/corum/download/coreComplexes.txt.zip
+path_corum <- "/Users/felix/Desktop/ppi/coreComplexes.txt"
+path_complexportal <- "/Users/felix/Desktop/ppi/9606.tsv"
 
 # --- Load CORUM database (optional) ---
 corum_available <- file.exists(path_corum)
@@ -11868,45 +11869,109 @@ corum_available <- file.exists(path_corum)
 if (corum_available) {
   message("Loading CORUM database...")
   corum_raw <- data.table::fread(path_corum, sep = "\t", header = TRUE, quote = "", data.table = FALSE)
-
-  # Filter to human complexes only
   corum_human <- corum_raw %>%
     dplyr::filter(Organism == "Human") %>%
     dplyr::select(ComplexID, ComplexName, `subunits(Gene name)`) %>%
     dplyr::rename(complex_id = ComplexID, complex_name = ComplexName, subunits_gene = `subunits(Gene name)`)
+  
+  corum_edges <- corum_human %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(genes = list(trimws(unlist(strsplit(subunits_gene, ";"))))) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(genes = purrr::map(genes, ~ .x[.x != "" & !is.na(.x)])) %>%
+    dplyr::filter(purrr::map_int(genes, length) >= 2) %>%
+    dplyr::mutate(
+      edge_pairs = purrr::map(genes, function(g) {
+        if (length(g) < 2) return(data.frame(Gene1 = character(), Gene2 = character()))
+        pairs <- t(combn(sort(unique(g)), 2))
+        data.frame(Gene1 = pairs[, 1], Gene2 = pairs[, 2], stringsAsFactors = FALSE)
+      })
+    ) %>%
+    tidyr::unnest(edge_pairs) %>%
+    dplyr::mutate(key = .make_undirected_key(Gene1, Gene2)) %>%
+    dplyr::select(key, complex_id, complex_name) %>%
+    dplyr::distinct()
+  
+  corum_edge_lookup <- corum_edges %>%
+    dplyr::group_by(key) %>%
+    dplyr::summarise(
+      corum_complex_ids = paste(unique(complex_id), collapse = ";"),
+      corum_complex_names = paste(unique(complex_name), collapse = ";"),
+      n_corum_complexes = dplyr::n_distinct(complex_id),
+      .groups = "drop"
+    )
+  
+  message("  CORUM complexes (human): ", nrow(corum_human))
+  message("  CORUM unique edges: ", nrow(corum_edge_lookup))
+} else {
+  message("CORUM file not found, skipping...")
+  corum_edge_lookup <- NULL
+}
 
-# Expand to pairwise edges within each complex
-corum_edges <- corum_human %>%
-  dplyr::rowwise() %>%
-  dplyr::mutate(genes = list(trimws(unlist(strsplit(subunits_gene, ";"))))) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(genes = purrr::map(genes, ~ .x[.x != "" & !is.na(.x)])) %>%
-  dplyr::filter(purrr::map_int(genes, length) >= 2) %>%
-  dplyr::mutate(
-    edge_pairs = purrr::map(genes, function(g) {
-      if (length(g) < 2) return(data.frame(Gene1 = character(), Gene2 = character()))
-      pairs <- t(combn(sort(unique(g)), 2))
-      data.frame(Gene1 = pairs[, 1], Gene2 = pairs[, 2], stringsAsFactors = FALSE)
-    })
+# --- Load and parse ComplexPortal ---
+message("Loading ComplexPortal...")
+complexportal_raw <- data.table::fread(path_complexportal, sep = "\t", header = TRUE, fill = TRUE, quote = "", data.table = FALSE)
+
+complexportal <- complexportal_raw %>%
+  dplyr::transmute(
+    complex_id = `#Complex ac`,
+    complex_name = `Recommended name`,
+    proteins_raw = `Identifiers (and stoichiometry) of molecules in complex`,
+    go_annotations = `Go Annotations`,
+    description = Description
   ) %>%
-  tidyr::unnest(edge_pairs) %>%
-  dplyr::mutate(key = .make_undirected_key(Gene1, Gene2)) %>%
-  dplyr::select(key, complex_id, complex_name) %>%
-  dplyr::distinct()
-
-# Collapse multiple complexes per edge (edge can be in multiple complexes)
-corum_edge_lookup <- corum_edges %>%
-  dplyr::group_by(key) %>%
-  dplyr::summarise(
-    corum_complex_ids = paste(unique(complex_id), collapse = ";"),
-    corum_complex_names = paste(unique(complex_name), collapse = ";"),
-    n_corum_complexes = dplyr::n_distinct(complex_id),
-    .groups = "drop"
+  dplyr::mutate(
+    proteins_list = stringr::str_extract_all(proteins_raw, "[A-Z][A-Z0-9]{5}(?=\\()"),
+    n_proteins = purrr::map_int(proteins_list, length)
   )
 
-message("  CORUM complexes (human): ", nrow(corum_human))
-message("  CORUM unique edges: ", nrow(corum_edge_lookup))
-}
+message("  ComplexPortal complexes: ", nrow(complexportal))
+
+# Create lookup: complex_id -> all proteins
+complex_to_proteins <- complexportal %>%
+  dplyr::select(complex_id, proteins_list) %>%
+  tidyr::unnest(proteins_list) %>%
+  dplyr::rename(protein = proteins_list) %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(proteins = list(unique(protein)), .groups = "drop")
+
+# Create edge lookup with strict/relaxed distinction
+complexportal_edges <- complexportal %>%
+  dplyr::filter(n_proteins >= 2) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    edge_pairs = list({
+      prots <- proteins_list
+      if (length(prots) < 2) return(data.frame(Protein1 = character(), Protein2 = character()))
+      pairs <- t(combn(sort(unique(prots)), 2))
+      data.frame(Protein1 = pairs[, 1], Protein2 = pairs[, 2], stringsAsFactors = FALSE)
+    })
+  ) %>%
+  dplyr::ungroup() %>%
+  tidyr::unnest(edge_pairs) %>%
+  dplyr::mutate(
+    key = .make_undirected_key(Protein1, Protein2),
+    cp_type = ifelse(n_proteins == 2, "strict", "relaxed")
+  ) %>%
+  dplyr::select(key, complex_id, cp_type) %>%
+  dplyr::distinct()
+
+# Collapse - if edge is strict in ANY complex, it's strict; otherwise relaxed
+complexportal_edge_lookup <- complexportal_edges %>%
+  dplyr::group_by(key) %>%
+  dplyr::summarise(
+    cp_complex_ids = paste(unique(complex_id), collapse = ";"),
+    n_cp_complexes = dplyr::n_distinct(complex_id),
+    has_strict = any(cp_type == "strict"),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    filter_ComplexPortal = ifelse(has_strict, "strict", "relaxed")
+  )
+
+message("  ComplexPortal unique edges: ", nrow(complexportal_edge_lookup))
+message("  Strict (dimers): ", sum(complexportal_edge_lookup$filter_ComplexPortal == "strict"))
+message("  Relaxed (larger complexes): ", sum(complexportal_edge_lookup$filter_ComplexPortal == "relaxed"))
 ```
 
 
@@ -12056,6 +12121,18 @@ master_ppi_v3 <- master_ppi_v3 %>%
     Gene2 = dplyr::coalesce(Gene2, Gene2_16k)
   )
 
+
+# --- Add ComplexPortal annotations ---
+message("Adding ComplexPortal annotations...")
+master_ppi_v3 <- master_ppi_v3 %>%
+  dplyr::left_join(complexportal_edge_lookup %>% dplyr::select(key, filter_ComplexPortal, cp_complex_ids), by = "key") %>%
+  dplyr::mutate(
+    filter_ComplexPortal = tidyr::replace_na(filter_ComplexPortal, "none")
+  )
+
+message("  Edges in ComplexPortal strict: ", sum(master_ppi_v3$filter_ComplexPortal == "strict"))
+message("  Edges in ComplexPortal relaxed: ", sum(master_ppi_v3$filter_ComplexPortal == "relaxed"))
+
 message("  Merged master table: ", nrow(master_ppi_v3), " unique edges")
 ```
 
@@ -12068,14 +12145,25 @@ message("  Merged master table: ", nrow(master_ppi_v3), " unique edges")
 
 # --- Add CORUM lookup ---
 message("Adding CORUM annotations...")
-master_ppi_v3 <- master_ppi_v3 %>%
-  dplyr::left_join(corum_edge_lookup, by = "key") %>%
-  dplyr::mutate(
-    filter_CORUM = dplyr::case_when(
-      !is.na(corum_complex_ids) ~ "present",
-      TRUE ~ "none"
-    )
-  )
+# master_ppi_v3 <- master_ppi_v3 %>%
+#   dplyr::left_join(corum_edge_lookup, by = "key") %>%
+#   dplyr::mutate(
+#     filter_CORUM = dplyr::case_when(
+#       !is.na(corum_complex_ids) ~ "present",
+#       TRUE ~ "none"
+#     )
+#   )
+
+if (exists("corum_edge_lookup") && nrow(corum_edge_lookup) > 0) {
+  master_ppi_v3 <- master_ppi_v3 %>%
+    dplyr::left_join(corum_edge_lookup, by = "key") %>%
+    dplyr::mutate(filter_CORUM = dplyr::case_when(!is.na(corum_complex_ids) ~ "present", TRUE ~ "none"))
+} else {
+  message("CORUM not available, skipping...")
+  master_ppi_v3$filter_CORUM <- "none"
+  master_ppi_v3$corum_complex_ids <- NA_character_
+  master_ppi_v3$corum_complex_names <- NA_character_
+}
 
 message("  Edges in CORUM: ", sum(master_ppi_v3$filter_CORUM == "present"))
 
