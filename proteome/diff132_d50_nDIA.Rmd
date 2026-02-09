@@ -12328,6 +12328,363 @@ message("QC plots saved to: ", file.path(out_dir_baseline, "qc"))
 
 
 
+# Module 3: Trimer Detection and Validation
+Detects triangles from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
+Requires: baseline_ppi_v3 from Module 2, corum_complex_members, complexportal
+
+## Chunk 1: Trimer Detection (Gold-Only)
+```{r trimer_detection}
+# =============================================================================
+# Trimers: Detection from Gold-Tier Baseline
+# =============================================================================
+
+library(igraph)
+
+# --- Setup ---
+out_dir_trimer <- file.path(out_dir_ppi_dual, "trimers")
+dir.create(file.path(out_dir_trimer, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_trimer, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Build graph from gold-only edges ---
+message("=== Building graph from gold-tier edges ===")
+
+g <- igraph::graph_from_data_frame(
+  baseline_ppi_v3 %>% dplyr::select(Gene1, Gene2),
+  directed = FALSE
+)
+g <- igraph::simplify(g)
+
+message("Graph: ", igraph::vcount(g), " nodes, ", igraph::ecount(g), " edges")
+
+# --- Find all triangles ---
+message("Finding triangles...")
+
+triangles_raw <- igraph::triangles(g)
+n_triangles <- length(triangles_raw) / 3
+
+message("Triangles found: ", n_triangles)
+
+if (n_triangles > 0) {
+  triangle_matrix <- matrix(igraph::V(g)$name[triangles_raw], ncol = 3, byrow = TRUE)
+  triangle_matrix_sorted <- t(apply(triangle_matrix, 1, sort))
+
+  trimers_df <- data.frame(
+    Gene1 = triangle_matrix_sorted[, 1],
+    Gene2 = triangle_matrix_sorted[, 2],
+    Gene3 = triangle_matrix_sorted[, 3],
+    stringsAsFactors = FALSE
+  ) %>%
+    dplyr::mutate(trimer_id = paste(Gene1, Gene2, Gene3, sep = "::")) %>%
+    dplyr::distinct(trimer_id, .keep_all = TRUE)
+
+  message("Unique trimers: ", nrow(trimers_df))
+} else {
+  stop("No triangles found. Check graph connectivity.")
+}
+
+# --- Get edge keys for each trimer ---
+message("Retrieving edge data for trimers...")
+
+.get_edge_key <- function(a, b) {
+  ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+}
+
+trimers_df <- trimers_df %>%
+  dplyr::mutate(
+    edge1_key = .get_edge_key(Gene1, Gene2),
+    edge2_key = .get_edge_key(Gene1, Gene3),
+    edge3_key = .get_edge_key(Gene2, Gene3)
+  )
+
+# Create edge lookup
+edge_lookup <- baseline_ppi_v3 %>%
+  dplyr::mutate(edge_key = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::select(edge_key, Protein1, Protein2, RFprob, AFMprob, SPOC_score, ipTM_max,
+                support_score, filter_PDB, filter_CORUM, filter_ComplexPortal, filter_STRING, filter_BIOGRID,
+                corum_complex_ids, corum_complex_names, cp_complex_ids)
+
+# Join for each edge
+trimers_df <- trimers_df %>%
+  dplyr::left_join(edge_lookup %>% dplyr::rename_with(~paste0(.x, "_e1"), -edge_key), by = c("edge1_key" = "edge_key")) %>%
+  dplyr::left_join(edge_lookup %>% dplyr::rename_with(~paste0(.x, "_e2"), -edge_key), by = c("edge2_key" = "edge_key")) %>%
+  dplyr::left_join(edge_lookup %>% dplyr::rename_with(~paste0(.x, "_e3"), -edge_key), by = c("edge3_key" = "edge_key"))
+```
+
+
+## Chunk 2: Trimer Scoring and Validation
+```{r trimer_scoring_validation}
+# =============================================================================
+# Trimers: Scoring and Multi-Database Validation
+# =============================================================================
+
+message("Computing trimer scores...")
+
+# Safe functions
+safe_mean <- function(x) { x <- x[!is.na(x) & !is.infinite(x)]; if (length(x) == 0) NA_real_ else mean(x) }
+safe_min <- function(x) { x <- x[!is.na(x) & !is.infinite(x)]; if (length(x) == 0) NA_real_ else min(x) }
+
+trimers_df <- trimers_df %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    mean_AFMprob = safe_mean(c(AFMprob_e1, AFMprob_e2, AFMprob_e3)),
+    min_AFMprob = safe_min(c(AFMprob_e1, AFMprob_e2, AFMprob_e3)),
+    mean_RFprob = safe_mean(c(RFprob_e1, RFprob_e2, RFprob_e3)),
+    min_RFprob = safe_min(c(RFprob_e1, RFprob_e2, RFprob_e3)),
+    mean_ipTM = safe_mean(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3)),
+    min_ipTM = safe_min(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3)),
+    mean_SPOC = safe_mean(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3)),
+    min_SPOC = safe_min(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3)),
+    # Support scores
+    support_total = sum(c(support_score_e1, support_score_e2, support_score_e3), na.rm = TRUE),
+    support_mean = support_total / 3,
+    # Database flags per edge
+    n_edges_PDB = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3) != "none", na.rm = TRUE),
+    n_edges_PDB_exact = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3) == "exact", na.rm = TRUE),
+    n_edges_CORUM = sum(c(filter_CORUM_e1, filter_CORUM_e2, filter_CORUM_e3) == "present", na.rm = TRUE),
+    n_edges_ComplexPortal = sum(c(filter_ComplexPortal_e1, filter_ComplexPortal_e2, filter_ComplexPortal_e3) != "none", na.rm = TRUE),
+    n_edges_STRING = sum(c(filter_STRING_e1, filter_STRING_e2, filter_STRING_e3) == "present", na.rm = TRUE),
+    n_edges_BIOGRID = sum(c(filter_BIOGRID_e1, filter_BIOGRID_e2, filter_BIOGRID_e3) == "present", na.rm = TRUE)
+  ) %>%
+  dplyr::ungroup()
+
+# --- Validation flags ---
+trimers_df <- trimers_df %>%
+  dplyr::mutate(
+    # All 3 edges in same database
+    all_edges_PDB = n_edges_PDB == 3,
+    all_edges_PDB_exact = n_edges_PDB_exact == 3,
+    all_edges_CORUM = n_edges_CORUM == 3,
+    all_edges_ComplexPortal = n_edges_ComplexPortal == 3,
+    all_edges_STRING = n_edges_STRING == 3,
+    all_edges_BIOGRID = n_edges_BIOGRID == 3,
+    # At least 2 edges
+    partial_PDB = n_edges_PDB >= 2,
+    partial_CORUM = n_edges_CORUM >= 2,
+    partial_ComplexPortal = n_edges_ComplexPortal >= 2,
+    # Validation tier
+    validation_tier = dplyr::case_when(
+      all_edges_PDB_exact ~ "PDB_exact_3",
+      all_edges_CORUM | all_edges_ComplexPortal ~ "known_complex_3",
+      n_edges_PDB_exact >= 2 ~ "PDB_exact_2",
+      partial_CORUM | partial_ComplexPortal ~ "known_complex_2",
+      n_edges_PDB >= 2 ~ "PDB_any_2",
+      n_edges_PDB >= 1 | n_edges_CORUM >= 1 | n_edges_ComplexPortal >= 1 ~ "partial_support",
+      TRUE ~ "novel"
+    )
+  )
+
+# --- Get UniProt IDs for proteins ---
+uniprot_lookup <- baseline_ppi_v3 %>%
+  dplyr::select(Gene1, Protein1) %>%
+  dplyr::rename(gene = Gene1, uniprot = Protein1) %>%
+  dplyr::bind_rows(baseline_ppi_v3 %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(gene = Gene2, uniprot = Protein2)) %>%
+  dplyr::distinct(gene, .keep_all = TRUE)
+
+trimers_df <- trimers_df %>%
+  dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein1 = uniprot), by = c("Gene1" = "gene")) %>%
+  dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein2 = uniprot), by = c("Gene2" = "gene")) %>%
+  dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein3 = uniprot), by = c("Gene3" = "gene"))
+
+# --- ComplexPortal exact match check ---
+message("Checking ComplexPortal exact matches...")
+
+.check_cp_match <- function(p1, p2, p3, complex_to_proteins) {
+  if (is.na(p1) || is.na(p2) || is.na(p3)) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+  proteins <- c(p1, p2, p3)
+  for (i in seq_len(nrow(complex_to_proteins))) {
+    complex_proteins <- complex_to_proteins$proteins[[i]]
+    n_match <- sum(proteins %in% complex_proteins)
+    if (n_match == 3) return(list(strict = TRUE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+    if (n_match >= 2) return(list(strict = FALSE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+  }
+  return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+}
+
+cp_matches <- purrr::pmap(list(trimers_df$Protein1, trimers_df$Protein2, trimers_df$Protein3),
+                          ~ .check_cp_match(..1, ..2, ..3, complex_to_proteins))
+
+trimers_df$cp_strict_match <- purrr::map_lgl(cp_matches, "strict")
+trimers_df$cp_relaxed_match <- purrr::map_lgl(cp_matches, "relaxed")
+trimers_df$cp_matched_id <- purrr::map_chr(cp_matches, "complex_id")
+
+message("  ComplexPortal strict (3/3): ", sum(trimers_df$cp_strict_match))
+message("  ComplexPortal relaxed (2/3): ", sum(trimers_df$cp_relaxed_match))
+
+# --- CORUM exact match check ---
+message("Checking CORUM exact matches...")
+
+if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  .check_corum_match <- function(g1, g2, g3, corum_members) {
+    genes <- c(g1, g2, g3)
+    for (i in seq_len(nrow(corum_members))) {
+      complex_genes <- corum_members$genes[[i]]
+      n_match <- sum(genes %in% complex_genes)
+      if (n_match == 3) return(list(strict = TRUE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+      if (n_match >= 2) return(list(strict = FALSE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+    }
+    return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
+  }
+
+  corum_matches <- purrr::pmap(list(trimers_df$Gene1, trimers_df$Gene2, trimers_df$Gene3),
+                               ~ .check_corum_match(..1, ..2, ..3, corum_complex_members))
+
+  trimers_df$corum_strict_match <- purrr::map_lgl(corum_matches, "strict")
+  trimers_df$corum_relaxed_match <- purrr::map_lgl(corum_matches, "relaxed")
+  trimers_df$corum_matched_id <- purrr::map_int(corum_matches, "complex_id")
+  trimers_df$corum_matched_name <- purrr::map_chr(corum_matches, "complex_name")
+
+  message("  CORUM strict (3/3): ", sum(trimers_df$corum_strict_match))
+  message("  CORUM relaxed (2/3): ", sum(trimers_df$corum_relaxed_match))
+} else {
+  trimers_df$corum_strict_match <- FALSE
+  trimers_df$corum_relaxed_match <- FALSE
+  trimers_df$corum_matched_id <- NA_integer_
+  trimers_df$corum_matched_name <- NA_character_
+}
+
+# --- Flag: in known complex (any source) ---
+trimers_df <- trimers_df %>%
+  dplyr::mutate(
+    in_known_complex = cp_strict_match | corum_strict_match | all_edges_PDB_exact,
+    in_known_complex_relaxed = cp_relaxed_match | corum_relaxed_match | all_edges_PDB
+  )
+
+message("\nTrimers in known complex (strict): ", sum(trimers_df$in_known_complex))
+message("Trimers in known complex (relaxed): ", sum(trimers_df$in_known_complex_relaxed))
+```
+
+
+## Chunk 3: Trimer QC Plots
+```{r trimer_qc_plots, fig.width=10, fig.height=8}
+# =============================================================================
+# Trimers: QC Plots
+# =============================================================================
+
+# --- Plot 1: Database support barplot ---
+db_support_trimers <- data.frame(
+  database = c("PDB_any", "PDB_exact", "CORUM", "ComplexPortal", "STRING", "BIOGRID"),
+  all_3_edges = c(sum(trimers_df$all_edges_PDB), sum(trimers_df$all_edges_PDB_exact),
+                  sum(trimers_df$all_edges_CORUM), sum(trimers_df$all_edges_ComplexPortal),
+                  sum(trimers_df$all_edges_STRING), sum(trimers_df$all_edges_BIOGRID)),
+  at_least_2 = c(sum(trimers_df$partial_PDB), sum(trimers_df$n_edges_PDB_exact >= 2),
+                 sum(trimers_df$partial_CORUM), sum(trimers_df$partial_ComplexPortal),
+                 sum(trimers_df$n_edges_STRING >= 2), sum(trimers_df$n_edges_BIOGRID >= 2))
+) %>%
+  tidyr::pivot_longer(-database, names_to = "coverage", values_to = "n_trimers")
+
+p_db_trimers <- ggplot(db_support_trimers, aes(x = database, y = n_trimers, fill = coverage)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_trimers), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("all_3_edges" = "#E41A1C", "at_least_2" = "#377EB8"), name = "Coverage") +
+  labs(title = "Trimer database support", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_database_support_trimers.pdf"), p_db_trimers, width = 5, height = 4, device = cairo_pdf)
+
+# --- Plot 2: Validation tier distribution ---
+validation_counts <- trimers_df %>%
+  dplyr::count(validation_tier) %>%
+  dplyr::mutate(validation_tier = factor(validation_tier,
+    levels = c("PDB_exact_3", "known_complex_3", "PDB_exact_2", "known_complex_2", "PDB_any_2", "partial_support", "novel")))
+
+p_validation <- ggplot(validation_counts, aes(x = validation_tier, y = n, fill = validation_tier)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "RdYlGn", direction = -1, guide = "none") +
+  labs(title = "Trimer validation tier distribution", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_validation_tiers.pdf"), p_validation, width = 5, height = 4, device = cairo_pdf)
+
+# --- Plot 3: Known complex status ---
+known_summary <- data.frame(
+  category = c("Known (strict)", "Known (relaxed only)", "Novel"),
+  n = c(sum(trimers_df$in_known_complex),
+        sum(trimers_df$in_known_complex_relaxed & !trimers_df$in_known_complex),
+        sum(!trimers_df$in_known_complex_relaxed))
+) %>%
+  dplyr::mutate(pct = round(100 * n / sum(n), 1))
+
+p_known <- ggplot(known_summary, aes(x = category, y = n, fill = category)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("Known (strict)" = "#4DAF4A", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "Trimers: known vs novel complexes", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_known_vs_novel.pdf"), p_known, width = 4, height = 4, device = cairo_pdf)
+
+# --- Plot 4: Support score distribution ---
+p_support_trimer <- ggplot(trimers_df, aes(x = support_mean)) +
+  geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
+  labs(title = "Trimer mean support score distribution", x = "Mean support score (3 edges)", y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_trimer, "qc", "histogram_support_score.pdf"), p_support_trimer, width = 4, height = 3, device = cairo_pdf)
+
+# --- Plot 5: Score distributions by validation status ---
+scores_by_known <- trimers_df %>%
+  dplyr::mutate(status = ifelse(in_known_complex, "Known", "Novel")) %>%
+  dplyr::select(trimer_id, status, mean_AFMprob, mean_ipTM, support_mean) %>%
+  tidyr::pivot_longer(c(mean_AFMprob, mean_ipTM, support_mean), names_to = "metric", values_to = "value")
+
+p_scores_known <- ggplot(scores_by_known, aes(x = status, y = value, fill = status)) +
+  geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+  facet_wrap(~metric, scales = "free_y") +
+  scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "Trimer scores by validation status", x = NULL, y = "Score") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        strip.background = element_rect(fill = "white", color = "black"))
+
+ggsave(file.path(out_dir_trimer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known, width = 5, height = 3.5, device = cairo_pdf)
+
+# --- Summary stats ---
+trimer_stats <- data.frame(
+  metric = c("total_trimers", "trimers_PDB_exact_all3", "trimers_CORUM_all3", "trimers_ComplexPortal_all3",
+             "trimers_in_known_complex", "trimers_novel", "median_support_score", "median_mean_AFMprob"),
+  value = c(nrow(trimers_df), sum(trimers_df$all_edges_PDB_exact), sum(trimers_df$all_edges_CORUM),
+            sum(trimers_df$all_edges_ComplexPortal), sum(trimers_df$in_known_complex),
+            sum(!trimers_df$in_known_complex_relaxed),
+            round(median(trimers_df$support_mean, na.rm = TRUE), 2),
+            round(median(trimers_df$mean_AFMprob, na.rm = TRUE), 3))
+)
+
+readr::write_csv(trimer_stats, file.path(out_dir_trimer, "tables", "trimer_stats.csv"))
+
+# --- Save trimer evidence table ---
+trimer_evidence <- trimers_df %>%
+  dplyr::select(
+    trimer_id, Gene1, Gene2, Gene3, Protein1, Protein2, Protein3,
+    edge1_key, edge2_key, edge3_key,
+    mean_AFMprob, min_AFMprob, mean_RFprob, min_RFprob, mean_ipTM, min_ipTM, mean_SPOC, min_SPOC,
+    support_total, support_mean,
+    n_edges_PDB, n_edges_PDB_exact, n_edges_CORUM, n_edges_ComplexPortal, n_edges_STRING, n_edges_BIOGRID,
+    all_edges_PDB_exact, all_edges_CORUM, all_edges_ComplexPortal,
+    validation_tier,
+    cp_strict_match, cp_relaxed_match, cp_matched_id,
+    corum_strict_match, corum_relaxed_match, corum_matched_id, corum_matched_name,
+    in_known_complex, in_known_complex_relaxed
+  )
+
+readr::write_csv(trimer_evidence, file.path(out_dir_trimer, "tables", "trimer_evidence.csv"))
+
+message("\nModule 3 complete. ", nrow(trimer_evidence), " trimers saved")
+message("  Known complex (strict): ", sum(trimer_evidence$in_known_complex))
+message("  Novel: ", sum(!trimer_evidence$in_known_complex_relaxed))
+message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
+```
+
+
+
+
+
 
 
 
