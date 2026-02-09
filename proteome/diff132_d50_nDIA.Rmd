@@ -12615,194 +12615,181 @@ message("\nPPI v3 outputs saved.")
 
 dir.create(file.path(out_dir_ppi_dual, "qc/plots"), recursive = TRUE, showWarnings = FALSE)
 
-# --- QC Plot 1: Score correlation heatmap ---
-message("Generating score correlation heatmap...")
+# --- QC Plot 1: Database/structure support barplot ---
+message("Generating database support barplot...")
 
-score_cols <- c("RFprob", "AFprob", "AFMprob", "SPOC_score", "ipTM_max", "KIRC_score")
-score_cols_present <- intersect(score_cols, colnames(master_ppi))
+filter_counts <- master_ppi_v3 %>%
+  dplyr::summarise(
+    PDB_exact = sum(filter_PDB == "exact", na.rm = TRUE),
+    PDB_homolog = sum(filter_PDB == "homolog", na.rm = TRUE),
+    ComplexPortal_strict = sum(filter_ComplexPortal == "strict", na.rm = TRUE),
+    ComplexPortal_relaxed = sum(filter_ComplexPortal == "relaxed", na.rm = TRUE),
+    STRING = sum(filter_STRING == "present", na.rm = TRUE),
+    BIOGRID = sum(filter_BIOGRID == "present", na.rm = TRUE),
+    CORUM = sum(filter_CORUM == "present", na.rm = TRUE)
+  ) %>%
+  tidyr::pivot_longer(everything(), names_to = "database", values_to = "n_edges") %>%
+  dplyr::mutate(
+    db_group = dplyr::case_when(
+      grepl("PDB", database) ~ "Structural",
+      grepl("ComplexPortal|CORUM", database) ~ "Complex",
+      TRUE ~ "Interaction"
+    )
+  )
 
-cor_matrix <- master_ppi %>%
-  dplyr::select(all_of(score_cols_present)) %>%
-  cor(use = "pairwise.complete.obs", method = "spearman")
+p_db_support <- ggplot(filter_counts, aes(x = reorder(database, -n_edges), y = n_edges, fill = db_group)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n_edges)), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("Structural" = "#E41A1C", "Complex" = "#377EB8", "Interaction" = "#4DAF4A"), name = "Type") +
+  labs(title = "PPI edges by database/structure support", x = NULL, y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA), 
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top")
+
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_database_support.pdf"), p_db_support, width = 5, height = 4, device = cairo_pdf)
+
+# --- QC Plot 2: Support score distribution ---
+message("Generating support score distribution...")
+
+p_support_dist <- ggplot(master_ppi_v3, aes(x = factor(support_score))) +
+  geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
+  labs(title = "Support score distribution (all edges)",
+       subtitle = "Max = 9 (PDB exact + ComplexPortal strict + STRING + BIOGRID + CORUM)",
+       x = "Support Score", y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), 
+        panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_score_distribution.pdf"), p_support_dist, width = 5, height = 4, device = cairo_pdf)
+
+# --- QC Plot 3: UpSet plot for database overlap ---
+message("Generating UpSet plot for database overlap...")
+
+# Create binary matrix for UpSet
+upset_data <- master_ppi_v3 %>%
+  dplyr::transmute(
+    PDB = as.integer(filter_PDB != "none"),
+    ComplexPortal = as.integer(filter_ComplexPortal != "none"),
+    CORUM = as.integer(filter_CORUM == "present"),
+    STRING = as.integer(filter_STRING == "present"),
+    BIOGRID = as.integer(filter_BIOGRID == "present")
+  )
+
+# Using UpSetR
+if (requireNamespace("UpSetR", quietly = TRUE)) {
+  pdf(file.path(out_dir_ppi_dual, "qc/plots", "upset_database_overlap.pdf"), width = 8, height = 5)
+  print(UpSetR::upset(
+    as.data.frame(upset_data),
+    sets = c("PDB", "ComplexPortal", "CORUM", "STRING", "BIOGRID"),
+    order.by = "freq",
+    decreasing = TRUE,
+    mb.ratio = c(0.6, 0.4),
+    text.scale = 1.2,
+    main.bar.color = "steelblue",
+    sets.bar.color = "darkgray"
+  ))
+  dev.off()
+  message("  UpSet plot saved")
+} else {
+  message("  UpSetR package not installed, skipping UpSet plot")
+}
+
+# --- QC Plot 4: Pairwise overlap heatmap ---
+message("Generating pairwise overlap heatmap...")
+
+databases <- c("PDB", "ComplexPortal", "CORUM", "STRING", "BIOGRID")
+overlap_matrix <- matrix(0, nrow = length(databases), ncol = length(databases), 
+                         dimnames = list(databases, databases))
+
+for (i in seq_along(databases)) {
+  for (j in seq_along(databases)) {
+    overlap_matrix[i, j] <- sum(upset_data[[databases[i]]] == 1 & upset_data[[databases[j]]] == 1)
+  }
+}
+
+# Convert to percentage (Jaccard-like: intersection / union)
+jaccard_matrix <- matrix(0, nrow = length(databases), ncol = length(databases), 
+                         dimnames = list(databases, databases))
+
+for (i in seq_along(databases)) {
+  for (j in seq_along(databases)) {
+    intersection <- sum(upset_data[[databases[i]]] == 1 & upset_data[[databases[j]]] == 1)
+    union <- sum(upset_data[[databases[i]]] == 1 | upset_data[[databases[j]]] == 1)
+    jaccard_matrix[i, j] <- ifelse(union > 0, round(intersection / union, 3), 0)
+  }
+}
 
 pheatmap::pheatmap(
-  cor_matrix,
+  jaccard_matrix,
   display_numbers = TRUE,
   number_format = "%.2f",
-  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(101),
-  breaks = seq(-1, 1, length.out = 102),
-  main = "Spearman correlation between PPI confidence scores",
+  color = colorRampPalette(c("white", "#2166AC"))(100),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  main = "Database overlap (Jaccard index)",
   fontsize = 8,
-  cellwidth = 40,
-  cellheight = 40,
+  cellwidth = 50,
+  cellheight = 50,
   border_color = "black",
-  filename = file.path(out_dir_ppi_dual, "qc/plots", "heatmap_score_correlations.pdf"),
-  width = 6,
-  height = 5
+  filename = file.path(out_dir_ppi_dual, "qc/plots", "heatmap_database_overlap_jaccard.pdf"),
+  width = 6, height = 5
 )
 
-# --- QC Plot 2: Score distributions by confidence tier ---
-message("Generating score distributions by tier...")
+# Also save raw counts
+pheatmap::pheatmap(
+  overlap_matrix,
+  display_numbers = TRUE,
+  number_format = "%.0f",
+  color = colorRampPalette(c("white", "#4DAF4A"))(100),
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  main = "Database overlap (edge counts)",
+  fontsize = 8,
+  cellwidth = 50,
+  cellheight = 50,
+  border_color = "black",
+  filename = file.path(out_dir_ppi_dual, "qc/plots", "heatmap_database_overlap_counts.pdf"),
+  width = 6, height = 5
+)
 
-scores_long <- master_ppi %>%
-  dplyr::select(key, confidence_tier, all_of(score_cols_present)) %>%
-  tidyr::pivot_longer(cols = all_of(score_cols_present), names_to = "score_type", values_to = "score_value") %>%
-  dplyr::filter(!is.na(score_value)) %>%
-  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze")))
+# --- QC Plot 5: Support score by confidence tier ---
+message("Generating support by tier plot...")
 
-p_tier_boxplot <- ggplot(scores_long, aes(x = confidence_tier, y = score_value, fill = confidence_tier)) +
-  geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
-  facet_wrap(~score_type, scales = "free_y", ncol = 3) +
-  scale_fill_manual(values = c("gold" = "#FFD700", "silver" = "#C0C0C0", "bronze" = "#CD7F32"), guide = "none") +
-  labs(title = "Score distributions by confidence tier", x = NULL, y = "Score") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA), 
-        strip.background = element_rect(fill = "white", color = "black"))
-
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "boxplot_scores_by_tier.pdf"), p_tier_boxplot, width = 7, height = 5, device = cairo_pdf)
-
-
-# --- QC Plot 3: Source overlap bar plot ---
-message("Generating source overlap plot...")
-
-source_summary <- master_ppi %>%
-  dplyr::mutate(
-    source_category = dplyr::case_when(
-      in_both_predictions & in_IntAct ~ "P80 + 16k + IntAct",
-      in_both_predictions ~ "P80 + 16k",
-      in_Predictome80 & in_IntAct ~ "P80 + IntAct",
-      in_Predictomes16k & in_IntAct ~ "16k + IntAct",
-      in_Predictome80 ~ "P80 only",
-      in_Predictomes16k ~ "16k only",
-      TRUE ~ "Other"
-    )
-  ) %>%
-  dplyr::count(source_category) %>%
-  dplyr::mutate(source_category = factor(source_category, levels = c("P80 + 16k + IntAct", "P80 + 16k", "P80 + IntAct", "16k + IntAct", "P80 only", "16k only")))
-
-p_source_bar <- ggplot(source_summary, aes(x = reorder(source_category, -n), y = n, fill = source_category)) +
-  geom_col(color = "black", linewidth = 0.3) +
-  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
-  scale_fill_brewer(palette = "Set2", guide = "none") +
-  labs(title = "PPI edges by evidence source", x = NULL, y = "Number of edges") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA), 
-        axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_source_overlap.pdf"), p_source_bar, width = 4, height = 4, device = cairo_pdf)
-
-
-# --- QC Plot 4: Tier validation summary ---
-message("Generating tier validation plot...")
-
-validation_summary <- master_ppi %>%
+support_by_tier <- master_ppi_v3 %>%
   dplyr::group_by(confidence_tier) %>%
   dplyr::summarise(
     n = dplyr::n(),
-    pct_IntAct = 100 * sum(has_experimental_validation) / n,
-    pct_high_ipTM = 100 * sum(high_interface_quality, na.rm = TRUE) / n,
+    mean_support = round(mean(support_score, na.rm = TRUE), 2),
+    pct_any_db = round(100 * mean(support_score > 0, na.rm = TRUE), 1),
+    pct_PDB = round(100 * mean(filter_PDB != "none", na.rm = TRUE), 1),
+    pct_ComplexPortal = round(100 * mean(filter_ComplexPortal != "none", na.rm = TRUE), 1),
+    pct_CORUM = round(100 * mean(filter_CORUM == "present", na.rm = TRUE), 1),
     .groups = "drop"
   ) %>%
-  tidyr::pivot_longer(cols = c(pct_IntAct, pct_high_ipTM), names_to = "metric", values_to = "percentage") %>%
-  dplyr::mutate(metric = dplyr::case_when(metric == "pct_IntAct" ~ "IntAct validated", metric == "pct_high_ipTM" ~ "High ipTM (>=0.7)"))
+  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze")))
 
-p_validation <- ggplot(validation_summary, aes(x = confidence_tier, y = percentage, fill = metric)) +
+support_by_tier_long <- support_by_tier %>%
+  tidyr::pivot_longer(cols = starts_with("pct_"), names_to = "metric", values_to = "percentage") %>%
+  dplyr::mutate(metric = sub("pct_", "", metric))
+
+p_support_tier <- ggplot(support_by_tier_long, aes(x = confidence_tier, y = percentage, fill = metric)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
-  geom_text(aes(label = paste0(round(percentage, 1), "%")), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("IntAct validated" = "#4DAF4A", "High ipTM (>=0.7)" = "#377EB8"), name = NULL) +
-  labs(title = "Validation metrics by confidence tier", x = NULL, y = "Percentage of edges") +
+  geom_text(aes(label = paste0(percentage, "%")), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "Set2", name = "Database") +
+  labs(title = "Database support by confidence tier", x = NULL, y = "Percentage of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), 
         panel.border = element_rect(color = "black", fill = NA), 
         legend.position = "top")
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_validation.pdf"), p_validation, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_by_tier.pdf"), p_support_tier, width = 6, height = 4, device = cairo_pdf)
 
-
-# --- QC Plot 5: Key score scatter plots ---
-message("Generating score scatter plots...")
-
-# AFMprob vs SPOC (for overlapping edges)
-overlap_for_scatter <- master_ppi %>% dplyr::filter(in_both_predictions)
-
-p_afm_spoc <- ggplot(overlap_for_scatter, aes(x = AFMprob, y = SPOC_score)) +
-  geom_point(alpha = 0.3, size = 0.5, color = "dodgerblue3") +
-  geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
-  labs(title = paste0("AFMprob vs SPOC (n=", nrow(overlap_for_scatter), ", r=", round(cor(overlap_for_scatter$AFMprob, overlap_for_scatter$SPOC_score, use = "complete.obs"), 2), ")"), x = "AFMprob (Baker)", y = "SPOC score (Predictomes.org)") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA))
-
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "scatter_AFMprob_vs_SPOC.pdf"), p_afm_spoc, width = 4, height = 4, device = cairo_pdf)
-
-# AFMprob vs ipTM
-p_afm_iptm <- ggplot(overlap_for_scatter, aes(x = AFMprob, y = ipTM_max)) +
-  geom_point(alpha = 0.3, size = 0.5, color = "dodgerblue3") +
-  geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
-  labs(title = paste0("AFMprob vs ipTM (n=", nrow(overlap_for_scatter), ", r=", round(cor(overlap_for_scatter$AFMprob, overlap_for_scatter$ipTM_max, use = "complete.obs"), 2), ")"), x = "AFMprob (Baker)", y = "ipTM max (Predictomes.org)") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid= element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA))
-
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "scatter_AFMprob_vs_ipTM.pdf"), p_afm_iptm, width = 4, height = 4, device = cairo_pdf)
-
-# RFprob vs AFMprob
-p_rf_afm <- ggplot(master_ppi %>% dplyr::filter(!is.na(RFprob) & !is.na(AFMprob)), aes(x = RFprob, y = AFMprob)) +
-  geom_point(alpha = 0.2, size = 0.5, color = "steelblue") +
-  geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5, linetype = "dashed") +
-  labs(title = paste0("RFprob vs AFMprob (Baker scores)"), x = "RFprob (coevolution)", y = "AFMprob (structural)") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA))
-
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "scatter_RFprob_vs_AFMprob.pdf"), p_rf_afm, width = 4, height = 4, device = cairo_pdf)
-
-
-# --- QC Plot 6: Edge counts by organelle ---
-message("Generating organelle distribution plots...")
-
-n_tags <- length(unique(shared_long_master$tag))
-organelle_colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(n_tags)
-names(organelle_colors) <- sort(unique(shared_long_master$tag))
-
-edge_counts_org <- shared_long_master %>%
-  dplyr::count(tag) %>%
-  dplyr::arrange(desc(n))
-
-p_org_counts <- ggplot(edge_counts_org, aes(x = reorder(tag, n), y = n, fill = tag)) +
-  geom_col(color = "black", linewidth = 0.3) +
-  scale_fill_manual(values = organelle_colors, guide = "none") +
-  coord_flip() +
-  labs(title = "PPI edges per shared organelle", x = NULL, y = "Edge count") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA))
-
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_edges_by_organelle.pdf"), p_org_counts, width = 4.5, height = 4, device = cairo_pdf)
-
-
-# --- QC Plot 7: Tier distribution by organelle ---
-tier_by_org <- shared_long_master %>%
-  dplyr::left_join(master_ppi %>% dplyr::select(key, confidence_tier), by = "key") %>%
-  dplyr::count(tag, confidence_tier) %>%
-  dplyr::mutate(confidence_tier = factor(confidence_tier, levels = c("gold", "silver", "bronze"))) %>%
-  dplyr::group_by(tag) %>%
-  dplyr::mutate(pct = 100 * n / sum(n)) %>%
-  dplyr::ungroup()
-
-p_tier_org <- ggplot(tier_by_org, aes(x = reorder(tag, -n), y = pct, fill = confidence_tier)) +
-  geom_col(color = "black", linewidth = 0.2) +
-  scale_fill_manual(values = c("gold" = "#FFD700", "silver" = "#C0C0C0", "bronze" = "#CD7F32"), name = "Tier") +
-  labs(title = "Confidence tier distribution by organelle", x = NULL, y = "Percentage") +
-  theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_rect(color = "black", fill = NA), 
-        axis.text.x = element_text(angle = 45, hjust = 1), 
-        legend.position = "top", legend.key.size = unit(0.3, "cm"))
-
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_tier_by_organelle.pdf"), p_tier_org, width = 6, height = 5, device = cairo_pdf)
+# --- Save summary table ---
+readr::write_csv(filter_counts, file.path(out_dir_ppi_dual, "qc", "database_support_counts.csv"))
+readr::write_csv(support_by_tier, file.path(out_dir_ppi_dual, "qc", "support_by_tier.csv"))
 
 message("QC plots complete. Saved to: ", file.path(out_dir_ppi_dual, "qc/plots"))
 
