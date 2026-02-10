@@ -13575,9 +13575,23 @@ if (nrow(tetramer_evidence) > 0) {
 message("QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
 ```
 
+
+
+
 # Module 5: Complex Growing from Trimers and Tetramers
 Grows complexes by iteratively adding neighbors connected to ≥2 members
 Requires: baseline_ppi_v3, trimer_evidence, tetramer_evidence
+
+ALGORITHM:
+   1. Start with trimer/tetramer seeds (3-4 protein subunits)
+   2. Iteratively grow by adding neighbors connected to ≥2 current members (min_edges=2)
+   3. Continue until no more candidates or max_size reached
+   4. Merge overlapping complexes at 80% threshold
+
+ VALIDATION:
+   - CORUM: gene-based matching, strict = all members in same CORUM complex
+   - ComplexPortal: UniProt-based matching, strict = all members in same CP complex
+   - relaxed match: ≥50% of members found in reference complex
 
 ## Chunk 1: Build Adjacency and Growth Functions
 ```{r complex_setup}
@@ -13805,6 +13819,22 @@ print(size_dist)
 # =============================================================================
 # Complex Growing: Support Scores and Validation
 # =============================================================================
+# SUPPORT SCORING (per edge, max = 9):
+#   PDB exact structure:    +3 points
+#   PDB homolog:            +1 point
+#   ComplexPortal strict:   +3 points
+#   ComplexPortal relaxed:  +1 point
+#   STRING:                 +1 point
+#   BIOGRID:                +1 point
+#   CORUM:                  +1 point
+#
+# COMPLEX SUPPORT: sum/mean of all edge support scores within the complex
+#
+# VALIDATION STATUS:
+#   strict_match:  All members found in same CORUM OR ComplexPortal reference complex
+#   relaxed_match: ≥50% of members found in same reference complex
+#   novel:         No significant overlap with known complexes
+# =============================================================================
 
 message("\nComputing support scores for complexes...")
 
@@ -13971,12 +14001,15 @@ print(complex_evidence %>% dplyr::count(origin))
 
 
 ## Chunk 5: QC Plots
-```{r complex_qc_plots, fig.width=8, fig.height=8}
+```{r complex_qc_plots, fig.width=10, fig.height=8}
 # =============================================================================
 # Complex Growing: QC Plots
+# All plots export source data CSV for journal compliance
 # =============================================================================
 
 # --- Plot 1: Size distribution ---
+readr::write_csv(size_dist, file.path(out_dir_complex, "qc", "sourcedata_size_distribution.csv"))
+
 p_size <- ggplot(size_dist, aes(x = factor(complex_size), y = n_complexes)) +
   geom_col(fill = "steelblue", color = "black", linewidth = 0.3) +
   geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
@@ -13984,10 +14017,11 @@ p_size <- ggplot(size_dist, aes(x = factor(complex_size), y = n_complexes)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_size_distribution.pdf"), p_size, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_size_distribution.pdf"), p_size, width = 6, height = 4, device = cairo_pdf)
 
 # --- Plot 2: Origin distribution ---
 origin_counts <- complex_evidence %>% dplyr::count(origin)
+readr::write_csv(origin_counts, file.path(out_dir_complex, "qc", "sourcedata_origin.csv"))
 
 p_origin <- ggplot(origin_counts, aes(x = origin, y = n, fill = origin)) +
   geom_col(color = "black", linewidth = 0.3) +
@@ -13997,11 +14031,13 @@ p_origin <- ggplot(origin_counts, aes(x = origin, y = n, fill = origin)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_origin.pdf"), p_origin, width = 2, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_origin.pdf"), p_origin, width = 4, height = 3.5, device = cairo_pdf)
 
-# --- Plot 3: Validation status ---
+# --- Plot 3: Validation status (combined) ---
 validation_counts <- complex_evidence %>% dplyr::count(validation_status) %>%
   dplyr::mutate(pct = round(100 * n / sum(n), 1))
+
+readr::write_csv(validation_counts, file.path(out_dir_complex, "qc", "sourcedata_validation_status.csv"))
 
 p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill = validation_status)) +
   geom_col(color = "black", linewidth = 0.3) +
@@ -14011,9 +14047,38 @@ p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 2, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 4, height = 3.5, device = cairo_pdf)
 
-# --- Plot 4: Support score by validation ---
+# --- Plot 4: Validation by source (CORUM vs ComplexPortal separate) ---
+validation_by_source <- data.frame(
+  source = c("CORUM_strict", "CORUM_relaxed", "ComplexPortal_strict", "ComplexPortal_relaxed", "Novel"),
+  n = c(sum(complex_evidence$corum_strict_match %in% TRUE),
+        sum((complex_evidence$corum_relaxed_match %in% TRUE) & !(complex_evidence$corum_strict_match %in% TRUE)),
+        sum(complex_evidence$cp_strict_match %in% TRUE),
+        sum((complex_evidence$cp_relaxed_match %in% TRUE) & !(complex_evidence$cp_strict_match %in% TRUE)),
+        sum(complex_evidence$validation_status == "novel"))
+)
+
+readr::write_csv(validation_by_source, file.path(out_dir_complex, "qc", "sourcedata_validation_by_source.csv"))
+
+p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y = n, fill = source)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("CORUM_strict" = "#4DAF4A", "CORUM_relaxed" = "#A6D854",
+                               "ComplexPortal_strict" = "#377EB8", "ComplexPortal_relaxed" = "#7FC8F8",
+                               "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "Complexes: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_validation_by_source.pdf"), p_validation_sep, width = 5, height = 4, device = cairo_pdf)
+
+# --- Plot 5: Support score by validation ---
+support_by_validation <- complex_evidence %>%
+  dplyr::select(complex_idx, validation_status, complex_support_mean)
+readr::write_csv(support_by_validation, file.path(out_dir_complex, "qc", "sourcedata_support_by_validation.csv"))
+
 p_support_validation <- ggplot(complex_evidence, aes(x = validation_status, y = complex_support_mean, fill = validation_status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
   scale_fill_manual(values = c("strict_match" = "#4DAF4A", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
@@ -14021,15 +14086,17 @@ p_support_validation <- ggplot(complex_evidence, aes(x = validation_status, y = 
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "boxplot_support_by_validation.pdf"), p_support_validation, width = 2, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "boxplot_support_by_validation.pdf"), p_support_validation, width = 4, height = 3.5, device = cairo_pdf)
 
-# --- Plot 5: Database coverage barplot ---
+# --- Plot 6: Database coverage barplot ---
 db_coverage <- data.frame(
   database = c("PDB", "CORUM", "ComplexPortal"),
   mean_pct = c(mean(complex_evidence$pct_edges_PDB, na.rm = TRUE),
                mean(complex_evidence$pct_edges_CORUM, na.rm = TRUE),
                mean(100 * complex_evidence$n_edges_in_ComplexPortal / complex_evidence$n_edges_in_baseline, na.rm = TRUE))
 )
+
+readr::write_csv(db_coverage, file.path(out_dir_complex, "qc", "sourcedata_database_coverage.csv"))
 
 p_db_coverage <- ggplot(db_coverage, aes(x = database, y = mean_pct, fill = database)) +
   geom_col(color = "black", linewidth = 0.3) +
@@ -14039,18 +14106,92 @@ p_db_coverage <- ggplot(db_coverage, aes(x = database, y = mean_pct, fill = data
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_database_coverage.pdf"), p_db_coverage, width = 2, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_database_coverage.pdf"), p_db_coverage, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- Plot 7: Heatmap organelle x validation ---
+message("Creating organelle x validation heatmap for complexes...")
+
+if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
+  # Get organelle annotations for each complex based on its members
+  complex_organelles <- complex_evidence %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      member_orgs = {
+        member_genes <- members
+        # Get organelles for each member gene
+        orgs <- shared_long_baseline %>%
+          dplyr::filter(key %in% baseline_ppi_v3$key[baseline_ppi_v3$Gene1 %in% member_genes | baseline_ppi_v3$Gene2 %in% member_genes]) %>%
+          dplyr::pull(tag) %>%
+          unique()
+        if (length(orgs) == 0) NA_character_ else paste(orgs, collapse = ";")
+      }
+    ) %>%
+    dplyr::ungroup()
+
+  complex_evidence$shared_organelle <- complex_organelles$member_orgs
+
+  # Build matrix: organelle x validation
+  org_validation_complex <- complex_evidence %>%
+    dplyr::filter(!is.na(shared_organelle)) %>%
+    tidyr::separate_rows(shared_organelle, sep = ";") %>%
+    dplyr::group_by(shared_organelle) %>%
+    dplyr::summarise(
+      n_total = dplyr::n(),
+      CORUM_strict = sum(corum_strict_match %in% TRUE),
+      CORUM_relaxed = sum(corum_relaxed_match %in% TRUE),
+      CP_strict = sum(cp_strict_match %in% TRUE),
+      CP_relaxed = sum(cp_relaxed_match %in% TRUE),
+      Novel = sum(validation_status == "novel"),
+      .groups = "drop"
+    ) %>%
+    dplyr::filter(n_total >= 10)
+
+  readr::write_csv(org_validation_complex, file.path(out_dir_complex, "qc", "sourcedata_heatmap_organelle_validation.csv"))
+
+  if (nrow(org_validation_complex) > 1) {
+    mat_complex <- org_validation_complex %>%
+      dplyr::select(shared_organelle, CORUM_strict, CP_strict, Novel) %>%
+      tibble::column_to_rownames("shared_organelle") %>%
+      as.matrix()
+
+    pheatmap::pheatmap(
+      mat_complex,
+      display_numbers = TRUE,
+      number_format = "%d",
+      color = colorRampPalette(c("white", "dodgerblue3"))(50),
+      main = "Complexes: organelle x validation (counts)",
+      fontsize = 6,
+      fontsize_number = 5,
+      border_color = NA,
+      cellheight = 12,
+      cellwidth = 20,
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      filename = file.path(out_dir_complex, "qc", "heatmap_organelle_validation.pdf"),
+      width = 4,
+      height = max(4, nrow(mat_complex) * 0.25)
+    )
+
+    message("Heatmap saved: organelle x validation")
+  }
+} else {
+  message("No organelle annotations available for heatmap")
+  complex_evidence$shared_organelle <- NA_character_
+}
 
 # --- Summary stats ---
 complex_stats <- data.frame(
   metric = c("total_complexes", "complexes_size_3", "complexes_size_4", "complexes_size_5_10", "complexes_size_11_plus",
              "max_complex_size", "median_complex_size", "mean_support_score",
+             "complexes_CORUM_strict", "complexes_ComplexPortal_strict",
              "complexes_strict_match", "complexes_relaxed_match", "complexes_novel",
              "complexes_from_trimer_only", "complexes_from_tetramer_only", "complexes_from_both"),
   value = c(nrow(complex_evidence), sum(complex_evidence$complex_size == 3), sum(complex_evidence$complex_size == 4),
             sum(complex_evidence$complex_size >= 5 & complex_evidence$complex_size <= 10),
             sum(complex_evidence$complex_size >= 11), max(complex_evidence$complex_size), median(complex_evidence$complex_size),
             round(mean(complex_evidence$complex_support_mean, na.rm = TRUE), 2),
+            sum(complex_evidence$corum_strict_match %in% TRUE),
+            sum(complex_evidence$cp_strict_match %in% TRUE),
             sum(complex_evidence$validation_status == "strict_match"),
             sum(complex_evidence$validation_status == "relaxed_match"),
             sum(complex_evidence$validation_status == "novel"),
@@ -14073,9 +14214,6 @@ message("  Strict match: ", sum(complex_evidence$validation_status == "strict_ma
 message("  Novel: ", sum(complex_evidence$validation_status == "novel"))
 message("QC plots saved to: ", file.path(out_dir_complex, "qc"))
 ```
-
-
-
 
 # Module 6: Top-Down vs Bottom-Up Comparison
 Flags detected structures that belong to known complexes
