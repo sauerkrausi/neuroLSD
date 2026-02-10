@@ -12074,7 +12074,7 @@ message("\nModule 1 complete. master_ppi_v3 saved with ", nrow(master_ppi_v3), "
 
 # Module 2: Baseline PPI Network
 Filters to gold tier + neuronal proteome, adds organelle annotations
-requires: master_ppi_v3 from Module 1, complete_data_annotated_day50, binary_matrix
+Requires: master_ppi_v3 from Module 1, complete_data_annotated_day50, binary_matrix
 
 ## Chunk 1: Gold-Only Baseline Filtering
 ```{r baseline_gold_filtering}
@@ -12322,9 +12322,265 @@ readr::write_csv(organelle_edge_counts, file.path(out_dir_baseline, "tables", "o
 readr::write_csv(shared_long_baseline, file.path(out_dir_baseline, "tables", "shared_organelle_edges.csv"))
 readr::write_csv(degree_df, file.path(out_dir_baseline, "tables", "node_degree.csv"))
 
+message("\nBaseline filtering and organelle annotation complete.")
+message("QC plots saved to: ", file.path(out_dir_baseline, "qc"))
+```
+
+
+## Chunk 4: Score Analysis by Organelle
+```{r baseline_score_analysis, fig.width=10, fig.height=8}
+# =============================================================================
+# Baseline PPI: Score Analysis by Organelle
+# Prediction scores: RFprob, AFMprob, SPOC_score, ipTM_max
+# =============================================================================
+
+message("\n=== Score Analysis by Organelle ===")
+
+# Score columns to analyze
+score_cols <- c("RFprob", "AFMprob", "SPOC_score", "ipTM_max")
+
+# Check which score columns exist
+existing_score_cols <- intersect(score_cols, colnames(baseline_ppi_v3))
+message("Score columns available: ", paste(existing_score_cols, collapse = ", "))
+
+if (length(existing_score_cols) > 0 && nrow(shared_long_baseline) > 0) {
+
+  # --- Filter to organelles with sufficient edges ---
+  min_edges_for_density <- 50
+  tags_to_keep <- shared_long_baseline %>%
+    dplyr::count(tag) %>%
+    dplyr::filter(n >= min_edges_for_density) %>%
+    dplyr::pull(tag)
+
+  message("Organelles with >= ", min_edges_for_density, " edges: ", length(tags_to_keep))
+
+  # Prepare scores with organelle annotations
+  scores_org_baseline <- baseline_ppi_v3 %>%
+    dplyr::select(key, dplyr::all_of(existing_score_cols)) %>%
+    dplyr::left_join(shared_long_baseline, by = "key") %>%
+    dplyr::filter(!is.na(tag), tag %in% tags_to_keep)
+
+  message("Edges with organelle annotations (n >= 50): ", nrow(scores_org_baseline))
+
+  # Update colors for filtered set
+  organelle_colors_filtered <- organelle_colors[names(organelle_colors) %in% tags_to_keep]
+
+  # --- Organelle score summary for bubble plots ---
+  organelle_score_summary <- scores_org_baseline %>%
+    dplyr::group_by(tag) %>%
+    dplyr::summarise(
+      n_edges = dplyr::n(),
+      mean_RFprob = if ("RFprob" %in% existing_score_cols) mean(RFprob, na.rm = TRUE) else NA_real_,
+      mean_AFMprob = if ("AFMprob" %in% existing_score_cols) mean(AFMprob, na.rm = TRUE) else NA_real_,
+      mean_SPOC = if ("SPOC_score" %in% existing_score_cols) mean(SPOC_score, na.rm = TRUE) else NA_real_,
+      mean_ipTM = if ("ipTM_max" %in% existing_score_cols) mean(ipTM_max, na.rm = TRUE) else NA_real_,
+      .groups = "drop"
+    )
+
+  # Export source data
+  readr::write_csv(organelle_score_summary, file.path(out_dir_baseline, "tables", "organelle_score_summary.csv"))
+
+  # --- Bubble Plot 1: RFprob vs AFMprob ---
+  if (all(c("RFprob", "AFMprob") %in% existing_score_cols)) {
+    p_bubble_rf_afm <- ggplot(organelle_score_summary, aes(x = mean_AFMprob, y = mean_RFprob, size = n_edges, fill = tag)) +
+      geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+      scale_fill_manual(values = organelle_colors_filtered, guide = "none") +
+      scale_size_continuous(range = c(3, 12), name = "Edges") +
+      labs(title = "Mean RFprob vs AFMprob by organelle", x = "Mean AFMprob", y = "Mean RFprob") +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            legend.position = "right", legend.key.size = unit(0.3, "cm"))
+
+    ggsave(file.path(out_dir_baseline, "qc", "bubble_RFprob_vs_AFMprob_by_organelle.pdf"), p_bubble_rf_afm, width = 6, height = 5, device = cairo_pdf)
+  }
+
+  # --- Bubble Plot 2: SPOC vs ipTM ---
+  if (all(c("SPOC_score", "ipTM_max") %in% existing_score_cols)) {
+    p_bubble_spoc_iptm <- ggplot(organelle_score_summary, aes(x = mean_ipTM, y = mean_SPOC, size = n_edges, fill = tag)) +
+      geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+      scale_fill_manual(values = organelle_colors_filtered, guide = "none") +
+      scale_size_continuous(range = c(3, 12), name = "Edges") +
+      labs(title = "Mean SPOC vs ipTM by organelle", x = "Mean ipTM_max", y = "Mean SPOC_score") +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            legend.position = "right", legend.key.size = unit(0.3, "cm"))
+
+    ggsave(file.path(out_dir_baseline, "qc", "bubble_SPOC_vs_ipTM_by_organelle.pdf"), p_bubble_spoc_iptm, width = 6, height = 5, device = cairo_pdf)
+  }
+
+  # --- Density plots by organelle ---
+  plot_score_density_by_organelle <- function(df, score_col, org_colors, out_dir) {
+    df_plot <- df %>% dplyr::filter(!is.na(!!rlang::sym(score_col)))
+    if (nrow(df_plot) == 0) return(invisible(NULL))
+
+    # Export source data
+    readr::write_csv(df_plot %>% dplyr::select(key, tag, !!rlang::sym(score_col)),
+                     file.path(out_dir, paste0("sourcedata_density_", score_col, ".csv")))
+
+    p <- ggplot(df_plot, aes(x = !!rlang::sym(score_col), fill = tag)) +
+      geom_density(alpha = 0.5) +
+      scale_fill_manual(values = org_colors, name = "Organelle") +
+      labs(title = paste(score_col, "density by organelle (n >= 50)"), x = score_col, y = "Density") +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            legend.key.size = unit(0.25, "cm"), legend.position = "right")
+
+    ggsave(file.path(out_dir, paste0("density_", score_col, "_by_organelle.pdf")), p, width = 5, height = 4, device = cairo_pdf)
+  }
+
+  for (sc in existing_score_cols) {
+    plot_score_density_by_organelle(scores_org_baseline, sc, organelle_colors_filtered, file.path(out_dir_baseline, "qc"))
+  }
+  message("Density plots saved for: ", paste(existing_score_cols, collapse = ", "))
+
+  # --- Boxplots by organelle ---
+  plot_score_boxplot_by_organelle <- function(df, score_col, org_colors, out_dir) {
+    df_plot <- df %>% dplyr::filter(!is.na(!!rlang::sym(score_col)))
+    if (nrow(df_plot) == 0) return(invisible(NULL))
+
+    # Compute summary for export
+    boxplot_summary <- df_plot %>%
+      dplyr::group_by(tag) %>%
+      dplyr::summarise(
+        n = dplyr::n(),
+        min = min(!!rlang::sym(score_col), na.rm = TRUE),
+        q1 = quantile(!!rlang::sym(score_col), 0.25, na.rm = TRUE),
+        median = median(!!rlang::sym(score_col), na.rm = TRUE),
+        q3 = quantile(!!rlang::sym(score_col), 0.75, na.rm = TRUE),
+        max = max(!!rlang::sym(score_col), na.rm = TRUE),
+        mean = mean(!!rlang::sym(score_col), na.rm = TRUE),
+        .groups = "drop"
+      )
+    readr::write_csv(boxplot_summary, file.path(out_dir, paste0("sourcedata_boxplot_", score_col, ".csv")))
+
+    # Order by median
+    tag_order <- boxplot_summary %>% dplyr::arrange(dplyr::desc(median)) %>% dplyr::pull(tag)
+    df_plot$tag <- factor(df_plot$tag, levels = tag_order)
+
+    p <- ggplot(df_plot, aes(x = tag, y = !!rlang::sym(score_col), fill = tag)) +
+      geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+      scale_fill_manual(values = org_colors, guide = "none") +
+      labs(title = paste(score_col, "by organelle (n >= 50)"), x = NULL, y = score_col) +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggsave(file.path(out_dir, paste0("boxplot_", score_col, "_by_organelle.pdf")), p, width = 6, height = 4, device = cairo_pdf)
+  }
+
+  for (sc in existing_score_cols) {
+    plot_score_boxplot_by_organelle(scores_org_baseline, sc, organelle_colors_filtered, file.path(out_dir_baseline, "qc"))
+  }
+  message("Boxplots saved for: ", paste(existing_score_cols, collapse = ", "))
+
+} else {
+  message("Skipping score analysis: no score columns or organelle annotations available")
+}
+```
+
+
+## Chunk 5: Heatmap Organelle x Database Validation
+```{r baseline_heatmap, fig.width=10, fig.height=8}
+# =============================================================================
+# Baseline PPI: Heatmap of Organelle x Database Validation
+# Rows: organelles, Columns: validation sources (PDB, CORUM, ComplexPortal, STRING, BIOGRID)
+# =============================================================================
+
+message("\n=== Heatmap: Organelle x Database Validation ===")
+
+if (nrow(shared_long_baseline) > 0) {
+
+  # Prepare edge-level database flags
+  edge_db_flags <- baseline_ppi_v3 %>%
+    dplyr::select(key, filter_PDB, filter_CORUM, filter_ComplexPortal, filter_STRING, filter_BIOGRID) %>%
+    dplyr::mutate(
+      has_PDB = filter_PDB != "none",
+      has_CORUM = filter_CORUM == "present",
+      has_ComplexPortal = filter_ComplexPortal != "none",
+      has_STRING = filter_STRING == "present",
+      has_BIOGRID = filter_BIOGRID == "present"
+    )
+
+  # Join with organelle annotations
+  org_db_combined <- shared_long_baseline %>%
+    dplyr::left_join(edge_db_flags, by = "key")
+
+  # Compute counts per organelle per database
+  org_db_matrix <- org_db_combined %>%
+    dplyr::group_by(tag) %>%
+    dplyr::summarise(
+      n_total = dplyr::n(),
+      PDB = sum(has_PDB),
+      CORUM = sum(has_CORUM),
+      ComplexPortal = sum(has_ComplexPortal),
+      STRING = sum(has_STRING),
+      BIOGRID = sum(has_BIOGRID),
+      .groups = "drop"
+    ) %>%
+    dplyr::filter(n_total >= 30)  # minimum edges for heatmap
+
+  # Export source data
+  readr::write_csv(org_db_matrix, file.path(out_dir_baseline, "tables", "sourcedata_heatmap_organelle_database.csv"))
+
+  if (nrow(org_db_matrix) > 1) {
+    # Convert to matrix for pheatmap
+    mat <- org_db_matrix %>%
+      dplyr::select(tag, PDB, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+      tibble::column_to_rownames("tag") %>%
+      as.matrix()
+
+    # Heatmap of counts
+    pheatmap::pheatmap(
+      mat,
+      display_numbers = TRUE,
+      number_format = "%d",
+      color = colorRampPalette(c("white", "steelblue"))(50),
+      main = "Baseline PPIs: organelle x database validation (counts)",
+      fontsize = 6,
+      fontsize_number = 5,
+      border_color = NA,
+      cellheight = 12,
+      cellwidth = 18,
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      filename = file.path(out_dir_baseline, "qc", "heatmap_organelle_database_counts.pdf"),
+      width = 5,
+      height = max(4, nrow(mat) * 0.25)
+    )
+
+    # Heatmap of percentages
+    mat_pct <- sweep(mat, 1, org_db_matrix$n_total, "/") * 100
+
+    pheatmap::pheatmap(
+      mat_pct,
+      display_numbers = TRUE,
+      number_format = "%.0f",
+      color = colorRampPalette(c("white", "darkgreen"))(50),
+      main = "Baseline PPIs: organelle x database validation (% of edges)",
+      fontsize = 6,
+      fontsize_number = 5,
+      border_color = NA,
+      cellheight = 12,
+      cellwidth = 18,
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      filename = file.path(out_dir_baseline, "qc", "heatmap_organelle_database_pct.pdf"),
+      width = 5,
+      height = max(4, nrow(mat) * 0.25)
+    )
+
+    message("Heatmaps saved: organelle x database validation")
+  } else {
+    message("Not enough organelles for heatmap (< 2 with n >= 30)")
+  }
+}
+
 message("\nModule 2 complete. Baseline PPI saved with ", nrow(baseline_ppi_v3), " edges")
 message("QC plots saved to: ", file.path(out_dir_baseline, "qc"))
 ```
+
 
 
 
@@ -12415,6 +12671,21 @@ trimers_df <- trimers_df %>%
 ```{r trimer_scoring_validation}
 # =============================================================================
 # Trimers: Scoring and Multi-Database Validation
+# =============================================================================
+# VALIDATION TIERS (ordered from strongest to weakest evidence):
+#   PDB_exact_3:     All 3 edges have exact PDB structure evidence
+#   known_complex_3: All 3 edges found in CORUM OR ComplexPortal (reported separately below)
+#   PDB_exact_2:     2/3 edges have exact PDB structure evidence
+#   known_complex_2: 2/3 edges in CORUM OR ComplexPortal
+#   PDB_any_2:       2/3 edges have any PDB evidence (exact or homolog)
+#   partial_support: At least 1 edge has PDB/CORUM/ComplexPortal support
+#   novel:           No database evidence for any edge
+#
+# KNOWN COMPLEX MATCHING:
+#   - CORUM: gene-based matching (subunits_gene_name column)
+#   - ComplexPortal: UniProt ID-based matching
+#   - strict match: all 3 proteins found in same reference complex
+#   - relaxed match: at least 2/3 proteins found in same reference complex
 # =============================================================================
 
 message("Computing trimer scores...")
@@ -12558,6 +12829,7 @@ message("Trimers in known complex (relaxed): ", sum(trimers_df$in_known_complex_
 ```{r trimer_qc_plots, fig.width=10, fig.height=8}
 # =============================================================================
 # Trimers: QC Plots
+# All plots export source data CSV for journal compliance
 # =============================================================================
 
 # --- Plot 1: Database support barplot ---
@@ -12569,10 +12841,15 @@ db_support_trimers <- data.frame(
   at_least_2 = c(sum(trimers_df$partial_PDB), sum(trimers_df$n_edges_PDB_exact >= 2),
                  sum(trimers_df$partial_CORUM), sum(trimers_df$partial_ComplexPortal),
                  sum(trimers_df$n_edges_STRING >= 2), sum(trimers_df$n_edges_BIOGRID >= 2))
-) %>%
+)
+
+# Export source data
+readr::write_csv(db_support_trimers, file.path(out_dir_trimer, "qc", "sourcedata_database_support_trimers.csv"))
+
+db_support_trimers_long <- db_support_trimers %>%
   tidyr::pivot_longer(-database, names_to = "coverage", values_to = "n_trimers")
 
-p_db_trimers <- ggplot(db_support_trimers, aes(x = database, y = n_trimers, fill = coverage)) +
+p_db_trimers <- ggplot(db_support_trimers_long, aes(x = database, y = n_trimers, fill = coverage)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = n_trimers), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
   scale_fill_manual(values = c("all_3_edges" = "#E41A1C", "at_least_2" = "#377EB8"), name = "Coverage") +
@@ -12589,6 +12866,8 @@ validation_counts <- trimers_df %>%
   dplyr::mutate(validation_tier = factor(validation_tier,
     levels = c("PDB_exact_3", "known_complex_3", "PDB_exact_2", "known_complex_2", "PDB_any_2", "partial_support", "novel")))
 
+readr::write_csv(validation_counts, file.path(out_dir_trimer, "qc", "sourcedata_validation_tiers.csv"))
+
 p_validation <- ggplot(validation_counts, aes(x = validation_tier, y = n, fill = validation_tier)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
@@ -12600,7 +12879,31 @@ p_validation <- ggplot(validation_counts, aes(x = validation_tier, y = n, fill =
 
 ggsave(file.path(out_dir_trimer, "qc", "barplot_validation_tiers.pdf"), p_validation, width = 5, height = 4, device = cairo_pdf)
 
-# --- Plot 3: Known complex status ---
+# --- Plot 3: Known complex status (CORUM vs ComplexPortal separate) ---
+known_summary_sep <- data.frame(
+  source = c("CORUM_strict", "CORUM_relaxed", "ComplexPortal_strict", "ComplexPortal_relaxed", "PDB_exact_3", "Novel"),
+  n = c(sum(trimers_df$corum_strict_match), sum(trimers_df$corum_relaxed_match & !trimers_df$corum_strict_match),
+        sum(trimers_df$cp_strict_match), sum(trimers_df$cp_relaxed_match & !trimers_df$cp_strict_match),
+        sum(trimers_df$all_edges_PDB_exact & !trimers_df$corum_strict_match & !trimers_df$cp_strict_match),
+        sum(!trimers_df$in_known_complex_relaxed))
+)
+
+readr::write_csv(known_summary_sep, file.path(out_dir_trimer, "qc", "sourcedata_known_complex_separate.csv"))
+
+p_known_sep <- ggplot(known_summary_sep, aes(x = reorder(source, -n), y = n, fill = source)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("CORUM_strict" = "#4DAF4A", "CORUM_relaxed" = "#A6D854",
+                               "ComplexPortal_strict" = "#377EB8", "ComplexPortal_relaxed" = "#7FC8F8",
+                               "PDB_exact_3" = "#984EA3", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "Trimers: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_trimer, "qc", "barplot_known_by_source.pdf"), p_known_sep, width = 5, height = 4, device = cairo_pdf)
+
+# --- Plot 4: Known complex status (combined) ---
 known_summary <- data.frame(
   category = c("Known (strict)", "Known (relaxed only)", "Novel"),
   n = c(sum(trimers_df$in_known_complex),
@@ -12608,6 +12911,8 @@ known_summary <- data.frame(
         sum(!trimers_df$in_known_complex_relaxed))
 ) %>%
   dplyr::mutate(pct = round(100 * n / sum(n), 1))
+
+readr::write_csv(known_summary, file.path(out_dir_trimer, "qc", "sourcedata_known_vs_novel.csv"))
 
 p_known <- ggplot(known_summary, aes(x = category, y = n, fill = category)) +
   geom_col(color = "black", linewidth = 0.3) +
@@ -12619,7 +12924,10 @@ p_known <- ggplot(known_summary, aes(x = category, y = n, fill = category)) +
 
 ggsave(file.path(out_dir_trimer, "qc", "barplot_known_vs_novel.pdf"), p_known, width = 4, height = 4, device = cairo_pdf)
 
-# --- Plot 4: Support score distribution ---
+# --- Plot 5: Support score distribution ---
+support_hist_data <- trimers_df %>% dplyr::select(trimer_id, support_mean)
+readr::write_csv(support_hist_data, file.path(out_dir_trimer, "qc", "sourcedata_support_score.csv"))
+
 p_support_trimer <- ggplot(trimers_df, aes(x = support_mean)) +
   geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
   labs(title = "Trimer mean support score distribution", x = "Mean support score (3 edges)", y = "Number of trimers") +
@@ -12628,13 +12936,17 @@ p_support_trimer <- ggplot(trimers_df, aes(x = support_mean)) +
 
 ggsave(file.path(out_dir_trimer, "qc", "histogram_support_score.pdf"), p_support_trimer, width = 4, height = 3, device = cairo_pdf)
 
-# --- Plot 5: Score distributions by validation status ---
+# --- Plot 6: Score distributions by validation status ---
 scores_by_known <- trimers_df %>%
   dplyr::mutate(status = ifelse(in_known_complex, "Known", "Novel")) %>%
-  dplyr::select(trimer_id, status, mean_AFMprob, mean_ipTM, support_mean) %>%
+  dplyr::select(trimer_id, status, mean_AFMprob, mean_ipTM, support_mean)
+
+readr::write_csv(scores_by_known, file.path(out_dir_trimer, "qc", "sourcedata_scores_by_known.csv"))
+
+scores_by_known_long <- scores_by_known %>%
   tidyr::pivot_longer(c(mean_AFMprob, mean_ipTM, support_mean), names_to = "metric", values_to = "value")
 
-p_scores_known <- ggplot(scores_by_known, aes(x = status, y = value, fill = status)) +
+p_scores_known <- ggplot(scores_by_known_long, aes(x = status, y = value, fill = status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
   facet_wrap(~metric, scales = "free_y") +
   scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), guide = "none") +
@@ -12645,13 +12957,103 @@ p_scores_known <- ggplot(scores_by_known, aes(x = status, y = value, fill = stat
 
 ggsave(file.path(out_dir_trimer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known, width = 5, height = 3.5, device = cairo_pdf)
 
+# --- Plot 7: Heatmap organelle x validation ---
+message("Creating organelle x validation heatmap...")
+
+# Add shared organelle to trimers
+if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
+  # Get shared organelle for each trimer based on its edges
+  trimer_organelles <- trimers_df %>%
+    dplyr::select(trimer_id, edge1_key, edge2_key, edge3_key) %>%
+    tidyr::pivot_longer(c(edge1_key, edge2_key, edge3_key), values_to = "key") %>%
+    dplyr::left_join(shared_long_baseline, by = "key") %>%
+    dplyr::filter(!is.na(tag)) %>%
+    dplyr::group_by(trimer_id) %>%
+    dplyr::summarise(shared_organelle = paste(unique(tag), collapse = ";"), .groups = "drop")
+
+  trimers_df <- trimers_df %>%
+    dplyr::left_join(trimer_organelles, by = "trimer_id")
+
+  # Build matrix: organelle x validation source
+  org_validation_matrix <- trimers_df %>%
+    dplyr::filter(!is.na(shared_organelle)) %>%
+    tidyr::separate_rows(shared_organelle, sep = ";") %>%
+    dplyr::group_by(shared_organelle) %>%
+    dplyr::summarise(
+      n_total = dplyr::n(),
+      PDB_exact = sum(all_edges_PDB_exact),
+      PDB_any = sum(all_edges_PDB),
+      CORUM = sum(all_edges_CORUM),
+      ComplexPortal = sum(all_edges_ComplexPortal),
+      STRING = sum(all_edges_STRING),
+      BIOGRID = sum(all_edges_BIOGRID),
+      .groups = "drop"
+    ) %>%
+    dplyr::filter(n_total >= 20)
+
+  readr::write_csv(org_validation_matrix, file.path(out_dir_trimer, "qc", "sourcedata_heatmap_organelle_validation.csv"))
+
+  if (nrow(org_validation_matrix) > 1) {
+    mat <- org_validation_matrix %>%
+      dplyr::select(shared_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+      tibble::column_to_rownames("shared_organelle") %>%
+      as.matrix()
+
+    pheatmap::pheatmap(
+      mat,
+      display_numbers = TRUE,
+      number_format = "%d",
+      color = colorRampPalette(c("white", "dodgerblue3"))(50),
+      main = "Trimers: organelle x validation (counts)",
+      fontsize = 6,
+      fontsize_number = 5,
+      border_color = NA,
+      cellheight = 12,
+      cellwidth = 18,
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      filename = file.path(out_dir_trimer, "qc", "heatmap_organelle_validation.pdf"),
+      width = 5,
+      height = max(4, nrow(mat) * 0.25)
+    )
+
+    # Percentage heatmap
+    mat_pct <- sweep(mat, 1, org_validation_matrix$n_total, "/") * 100
+
+    pheatmap::pheatmap(
+      mat_pct,
+      display_numbers = TRUE,
+      number_format = "%.0f",
+      color = colorRampPalette(c("white", "darkgreen"))(50),
+      main = "Trimers: organelle x validation (% of trimers)",
+      fontsize = 6,
+      fontsize_number = 5,
+      border_color = NA,
+      cellheight = 12,
+      cellwidth = 18,
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      filename = file.path(out_dir_trimer, "qc", "heatmap_organelle_validation_pct.pdf"),
+      width = 5,
+      height = max(4, nrow(mat) * 0.25)
+    )
+
+    message("Heatmaps saved: organelle x validation")
+  }
+} else {
+  message("No organelle annotations available for heatmap")
+  trimers_df$shared_organelle <- NA_character_
+}
+
 # --- Summary stats ---
 trimer_stats <- data.frame(
   metric = c("total_trimers", "trimers_PDB_exact_all3", "trimers_CORUM_all3", "trimers_ComplexPortal_all3",
+             "trimers_CORUM_strict", "trimers_ComplexPortal_strict",
              "trimers_in_known_complex", "trimers_novel", "median_support_score", "median_mean_AFMprob"),
   value = c(nrow(trimers_df), sum(trimers_df$all_edges_PDB_exact), sum(trimers_df$all_edges_CORUM),
-            sum(trimers_df$all_edges_ComplexPortal), sum(trimers_df$in_known_complex),
-            sum(!trimers_df$in_known_complex_relaxed),
+            sum(trimers_df$all_edges_ComplexPortal),
+            sum(trimers_df$corum_strict_match), sum(trimers_df$cp_strict_match),
+            sum(trimers_df$in_known_complex), sum(!trimers_df$in_known_complex_relaxed),
             round(median(trimers_df$support_mean, na.rm = TRUE), 2),
             round(median(trimers_df$mean_AFMprob, na.rm = TRUE), 3))
 )
@@ -12667,7 +13069,7 @@ trimer_evidence <- trimers_df %>%
     support_total, support_mean,
     n_edges_PDB, n_edges_PDB_exact, n_edges_CORUM, n_edges_ComplexPortal, n_edges_STRING, n_edges_BIOGRID,
     all_edges_PDB_exact, all_edges_CORUM, all_edges_ComplexPortal,
-    validation_tier,
+    validation_tier, shared_organelle,
     cp_strict_match, cp_relaxed_match, cp_matched_id,
     corum_strict_match, corum_relaxed_match, corum_matched_id, corum_matched_name,
     in_known_complex, in_known_complex_relaxed
@@ -12680,6 +13082,7 @@ message("  Known complex (strict): ", sum(trimer_evidence$in_known_complex))
 message("  Novel: ", sum(!trimer_evidence$in_known_complex_relaxed))
 message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 ```
+
 
 
 
@@ -12754,6 +13157,21 @@ if (nrow(tetramers_df) > 0) {
 ```{r tetramer_scoring_validation}
 # =============================================================================
 # Tetramers: Scoring and Multi-Database Validation
+# =============================================================================
+# VALIDATION TIERS (ordered from strongest to weakest evidence):
+#   PDB_exact_6:           All 6 edges have exact PDB structure evidence
+#   known_complex_6:       All 6 edges found in CORUM OR ComplexPortal (reported separately below)
+#   PDB_exact_4plus:       4+ of 6 edges have exact PDB structure evidence
+#   known_complex_4plus:   4+ of 6 edges in CORUM OR ComplexPortal
+#   partial_support_3plus: 3+ edges have PDB/CORUM/ComplexPortal support
+#   partial_support:       At least 1 edge has support
+#   novel:                 No database evidence for any edge
+#
+# KNOWN COMPLEX MATCHING:
+#   - CORUM: gene-based matching (subunits_gene_name column)
+#   - ComplexPortal: UniProt ID-based matching
+#   - strict match: all 4 proteins found in same reference complex
+#   - relaxed match: at least 3/4 proteins found in same reference complex
 # =============================================================================
 
 if (nrow(tetramers_df) > 0) {
@@ -12887,9 +13305,10 @@ if (nrow(tetramers_df) > 0) {
 
 
 ## Chunk 3: Tetramer QC Plots
-```{r tetramer_qc_plots, fig.width=8, fig.height=8}
+```{r tetramer_qc_plots, fig.width=10, fig.height=8}
 # =============================================================================
 # Tetramers: QC Plots
+# All plots export source data CSV for journal compliance
 # =============================================================================
 
 if (nrow(tetramers_df) > 0) {
@@ -12902,10 +13321,14 @@ if (nrow(tetramers_df) > 0) {
     majority_4plus = c(sum(tetramers_df$majority_PDB), sum(tetramers_df$majority_PDB_exact),
                        sum(tetramers_df$majority_CORUM), sum(tetramers_df$majority_ComplexPortal),
                        sum(tetramers_df$n_edges_STRING >= 4), sum(tetramers_df$n_edges_BIOGRID >= 4))
-  ) %>%
+  )
+
+  readr::write_csv(db_support_tetramers, file.path(out_dir_tetramer, "qc", "sourcedata_database_support_tetramers.csv"))
+
+  db_support_tetramers_long <- db_support_tetramers %>%
     tidyr::pivot_longer(-database, names_to = "coverage", values_to = "n_tetramers")
 
-  p_db_tetramers <- ggplot(db_support_tetramers, aes(x = database, y = n_tetramers, fill = coverage)) +
+  p_db_tetramers <- ggplot(db_support_tetramers_long, aes(x = database, y = n_tetramers, fill = coverage)) +
     geom_col(position = "dodge", color = "black", linewidth = 0.3) +
     geom_text(aes(label = n_tetramers), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
     scale_fill_manual(values = c("all_6_edges" = "#E41A1C", "majority_4plus" = "#377EB8"), name = "Coverage") +
@@ -12922,6 +13345,8 @@ if (nrow(tetramers_df) > 0) {
     dplyr::mutate(validation_tier = factor(validation_tier,
       levels = c("PDB_exact_6", "known_complex_6", "PDB_exact_4plus", "known_complex_4plus", "partial_support_3plus", "partial_support", "novel")))
 
+  readr::write_csv(validation_counts_tet, file.path(out_dir_tetramer, "qc", "sourcedata_validation_tiers.csv"))
+
   p_validation_tet <- ggplot(validation_counts_tet, aes(x = validation_tier, y = n, fill = validation_tier)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
@@ -12933,7 +13358,31 @@ if (nrow(tetramers_df) > 0) {
 
   ggsave(file.path(out_dir_tetramer, "qc", "barplot_validation_tiers.pdf"), p_validation_tet, width = 5, height = 4, device = cairo_pdf)
 
-  # --- Plot 3: Known complex status ---
+  # --- Plot 3: Known complex status (CORUM vs ComplexPortal separate) ---
+  known_summary_sep_tet <- data.frame(
+    source = c("CORUM_strict", "CORUM_relaxed", "ComplexPortal_strict", "ComplexPortal_relaxed", "PDB_exact_6", "Novel"),
+    n = c(sum(tetramers_df$corum_strict_match), sum(tetramers_df$corum_relaxed_match & !tetramers_df$corum_strict_match),
+          sum(tetramers_df$cp_strict_match), sum(tetramers_df$cp_relaxed_match & !tetramers_df$cp_strict_match),
+          sum(tetramers_df$all_edges_PDB_exact & !tetramers_df$corum_strict_match & !tetramers_df$cp_strict_match),
+          sum(!tetramers_df$in_known_complex_relaxed))
+  )
+
+  readr::write_csv(known_summary_sep_tet, file.path(out_dir_tetramer, "qc", "sourcedata_known_complex_separate.csv"))
+
+  p_known_sep_tet <- ggplot(known_summary_sep_tet, aes(x = reorder(source, -n), y = n, fill = source)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("CORUM_strict" = "#4DAF4A", "CORUM_relaxed" = "#A6D854",
+                                 "ComplexPortal_strict" = "#377EB8", "ComplexPortal_relaxed" = "#7FC8F8",
+                                 "PDB_exact_6" = "#984EA3", "Novel" = "#E41A1C"), guide = "none") +
+    labs(title = "Tetramers: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_by_source.pdf"), p_known_sep_tet, width = 5, height = 4, device = cairo_pdf)
+
+  # --- Plot 4: Known complex status (combined) ---
   known_summary_tet <- data.frame(
     category = c("Known (strict)", "Known (relaxed only)", "Novel"),
     n = c(sum(tetramers_df$in_known_complex),
@@ -12941,6 +13390,8 @@ if (nrow(tetramers_df) > 0) {
           sum(!tetramers_df$in_known_complex_relaxed))
   ) %>%
     dplyr::mutate(pct = round(100 * n / sum(n), 1))
+
+  readr::write_csv(known_summary_tet, file.path(out_dir_tetramer, "qc", "sourcedata_known_vs_novel.csv"))
 
   p_known_tet <- ggplot(known_summary_tet, aes(x = category, y = n, fill = category)) +
     geom_col(color = "black", linewidth = 0.3) +
@@ -12952,7 +13403,10 @@ if (nrow(tetramers_df) > 0) {
 
   ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_vs_novel.pdf"), p_known_tet, width = 4, height = 4, device = cairo_pdf)
 
-  # --- Plot 4: Support score distribution ---
+  # --- Plot 5: Support score distribution ---
+  support_hist_data_tet <- tetramers_df %>% dplyr::select(tetramer_id, support_mean)
+  readr::write_csv(support_hist_data_tet, file.path(out_dir_tetramer, "qc", "sourcedata_support_score.csv"))
+
   p_support_tetramer <- ggplot(tetramers_df, aes(x = support_mean)) +
     geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
     labs(title = "Tetramer mean support score distribution", x = "Mean support score (6 edges)", y = "Number of tetramers") +
@@ -12961,13 +13415,17 @@ if (nrow(tetramers_df) > 0) {
 
   ggsave(file.path(out_dir_tetramer, "qc", "histogram_support_score.pdf"), p_support_tetramer, width = 4, height = 3, device = cairo_pdf)
 
-  # --- Plot 5: Score distributions by validation status ---
+  # --- Plot 6: Score distributions by validation status ---
   scores_by_known_tet <- tetramers_df %>%
     dplyr::mutate(status = ifelse(in_known_complex, "Known", "Novel")) %>%
-    dplyr::select(tetramer_id, status, mean_AFMprob, mean_ipTM, support_mean) %>%
+    dplyr::select(tetramer_id, status, mean_AFMprob, mean_ipTM, support_mean)
+
+  readr::write_csv(scores_by_known_tet, file.path(out_dir_tetramer, "qc", "sourcedata_scores_by_known.csv"))
+
+  scores_by_known_tet_long <- scores_by_known_tet %>%
     tidyr::pivot_longer(c(mean_AFMprob, mean_ipTM, support_mean), names_to = "metric", values_to = "value")
 
-  p_scores_known_tet <- ggplot(scores_by_known_tet, aes(x = status, y = value, fill = status)) +
+  p_scores_known_tet <- ggplot(scores_by_known_tet_long, aes(x = status, y = value, fill = status)) +
     geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
     facet_wrap(~metric, scales = "free_y") +
     scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), guide = "none") +
@@ -12977,16 +13435,106 @@ if (nrow(tetramers_df) > 0) {
           strip.background = element_rect(fill = "white", color = "black"))
 
   ggsave(file.path(out_dir_tetramer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known_tet, width = 5, height = 3.5, device = cairo_pdf)
+
+  # --- Plot 7: Heatmap organelle x validation ---
+  message("Creating organelle x validation heatmap...")
+
+  if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
+    # Get shared organelle for each tetramer based on its edges
+    tetramer_organelles <- tetramers_df %>%
+      dplyr::select(tetramer_id, edge1_key, edge2_key, edge3_key, edge4_key, edge5_key, edge6_key) %>%
+      tidyr::pivot_longer(c(edge1_key, edge2_key, edge3_key, edge4_key, edge5_key, edge6_key), values_to = "key") %>%
+      dplyr::left_join(shared_long_baseline, by = "key") %>%
+      dplyr::filter(!is.na(tag)) %>%
+      dplyr::group_by(tetramer_id) %>%
+      dplyr::summarise(shared_organelle = paste(unique(tag), collapse = ";"), .groups = "drop")
+
+    tetramers_df <- tetramers_df %>%
+      dplyr::left_join(tetramer_organelles, by = "tetramer_id")
+
+    # Build matrix: organelle x validation source
+    org_validation_matrix_tet <- tetramers_df %>%
+      dplyr::filter(!is.na(shared_organelle)) %>%
+      tidyr::separate_rows(shared_organelle, sep = ";") %>%
+      dplyr::group_by(shared_organelle) %>%
+      dplyr::summarise(
+        n_total = dplyr::n(),
+        PDB_exact = sum(all_edges_PDB_exact),
+        PDB_any = sum(all_edges_PDB),
+        CORUM = sum(all_edges_CORUM),
+        ComplexPortal = sum(all_edges_ComplexPortal),
+        STRING = sum(all_edges_STRING),
+        BIOGRID = sum(all_edges_BIOGRID),
+        .groups = "drop"
+      ) %>%
+      dplyr::filter(n_total >= 10)
+
+    readr::write_csv(org_validation_matrix_tet, file.path(out_dir_tetramer, "qc", "sourcedata_heatmap_organelle_validation.csv"))
+
+    if (nrow(org_validation_matrix_tet) > 1) {
+      mat_tet <- org_validation_matrix_tet %>%
+        dplyr::select(shared_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+        tibble::column_to_rownames("shared_organelle") %>%
+        as.matrix()
+
+      pheatmap::pheatmap(
+        mat_tet,
+        display_numbers = TRUE,
+        number_format = "%d",
+        color = colorRampPalette(c("white", "dodgerblue3"))(50),
+        main = "Tetramers: organelle x validation (counts)",
+        fontsize = 6,
+        fontsize_number = 5,
+        border_color = NA,
+        cellheight = 12,
+        cellwidth = 18,
+        cluster_rows = TRUE,
+        cluster_cols = FALSE,
+        filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_validation.pdf"),
+        width = 5,
+        height = max(4, nrow(mat_tet) * 0.25)
+      )
+
+      # Percentage heatmap
+      mat_pct_tet <- sweep(mat_tet, 1, org_validation_matrix_tet$n_total, "/") * 100
+
+      pheatmap::pheatmap(
+        mat_pct_tet,
+        display_numbers = TRUE,
+        number_format = "%.0f",
+        color = colorRampPalette(c("white", "darkgreen"))(50),
+        main = "Tetramers: organelle x validation (% of tetramers)",
+        fontsize = 6,
+        fontsize_number = 5,
+        border_color = NA,
+        cellheight = 12,
+        cellwidth = 18,
+        cluster_rows = TRUE,
+        cluster_cols = FALSE,
+        filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_validation_pct.pdf"),
+        width = 5,
+        height = max(4, nrow(mat_tet) * 0.25)
+      )
+
+      message("Heatmaps saved: organelle x validation")
+    }
+  } else {
+    message("No organelle annotations available for heatmap")
+    tetramers_df$shared_organelle <- NA_character_
+  }
 }
 
 # --- Summary stats ---
 tetramer_stats <- data.frame(
   metric = c("total_tetramers", "tetramers_PDB_exact_all6", "tetramers_CORUM_all6", "tetramers_ComplexPortal_all6",
+             "tetramers_CORUM_strict", "tetramers_ComplexPortal_strict",
              "tetramers_in_known_complex", "tetramers_novel", "median_support_score", "median_mean_AFMprob"),
   value = c(nrow(tetramers_df),
             if(nrow(tetramers_df) > 0) sum(tetramers_df$all_edges_PDB_exact) else 0,
             if(nrow(tetramers_df) > 0) sum(tetramers_df$all_edges_CORUM) else 0,
             if(nrow(tetramers_df) > 0) sum(tetramers_df$all_edges_ComplexPortal) else 0,
+            if(nrow(tetramers_df) > 0) sum(tetramers_df$corum_strict_match) else 0,
+            if(nrow(tetramers_df) > 0) sum(tetramers_df$cp_strict_match) else 0,
             if(nrow(tetramers_df) > 0) sum(tetramers_df$in_known_complex) else 0,
             if(nrow(tetramers_df) > 0) sum(!tetramers_df$in_known_complex_relaxed) else 0,
             if(nrow(tetramers_df) > 0) round(median(tetramers_df$support_mean, na.rm = TRUE), 2) else NA,
@@ -12997,6 +13545,9 @@ readr::write_csv(tetramer_stats, file.path(out_dir_tetramer, "tables", "tetramer
 
 # --- Save tetramer evidence table ---
 if (nrow(tetramers_df) > 0) {
+  # Ensure shared_organelle exists
+ if (!"shared_organelle" %in% colnames(tetramers_df)) tetramers_df$shared_organelle <- NA_character_
+
   tetramer_evidence <- tetramers_df %>%
     dplyr::select(
       tetramer_id, Gene1, Gene2, Gene3, Gene4, Protein1, Protein2, Protein3, Protein4,
@@ -13005,7 +13556,7 @@ if (nrow(tetramers_df) > 0) {
       support_total, support_mean,
       n_edges_PDB, n_edges_PDB_exact, n_edges_CORUM, n_edges_ComplexPortal, n_edges_STRING, n_edges_BIOGRID,
       all_edges_PDB_exact, all_edges_CORUM, all_edges_ComplexPortal,
-      validation_tier,
+      validation_tier, shared_organelle,
       cp_strict_match, cp_relaxed_match, cp_matched_id,
       corum_strict_match, corum_relaxed_match, corum_matched_id, corum_matched_name,
       in_known_complex, in_known_complex_relaxed
@@ -13023,8 +13574,6 @@ if (nrow(tetramer_evidence) > 0) {
 }
 message("QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
 ```
-
-
 
 # Module 5: Complex Growing from Trimers and Tetramers
 Grows complexes by iteratively adding neighbors connected to ≥2 members
@@ -14114,7 +14663,7 @@ if (!is.null(corum_stoich)) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_stoich, "qc", "barplot_corum_multimeric.pdf"), p_multimeric, width = 3.5, height = 3.5, device = cairo_pdf)
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_corum_multimeric.pdf"), p_multimeric, width = 2, height = 3.5, device = cairo_pdf)
 
   # Max copies distribution
   max_copies_dist <- corum_stoich %>%
@@ -14129,7 +14678,7 @@ if (!is.null(corum_stoich)) {
       theme_bw(base_size = 6) +
       theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-    ggsave(file.path(out_dir_stoich, "qc", "barplot_max_copies.pdf"), p_max_copies, width = 4, height = 3, device = cairo_pdf)
+    ggsave(file.path(out_dir_stoich, "qc", "barplot_max_copies.pdf"), p_max_copies, width = 2, height = 3, device = cairo_pdf)
   }
 }
 
@@ -14159,7 +14708,7 @@ if (sum(stoich_comparison$n) > 0) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
 
-  ggsave(file.path(out_dir_stoich, "qc", "barplot_stoich_comparison.pdf"), p_stoich_comparison, width = 3.5, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_stoich_comparison.pdf"), p_stoich_comparison, width = 2, height = 4, device = cairo_pdf)
 }
 
 # --- Summary table ---
