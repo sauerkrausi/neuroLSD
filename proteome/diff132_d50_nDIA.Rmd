@@ -12026,7 +12026,7 @@ p_support_dist <- ggplot(master_ppi_v3, aes(x = factor(support_score))) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_score_distribution.pdf"), p_support_dist, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_score_distribution.pdf"), p_support_dist, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 3: UpSet plot for database overlap ---
 upset_data <- master_ppi_v3 %>%
@@ -12542,7 +12542,7 @@ if (nrow(shared_long_baseline) > 0) {
       fontsize_number = 5,
       border_color = NA,
       cellheight = 12,
-      cellwidth = 18,
+      cellwidth = 12,
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       filename = file.path(out_dir_baseline, "qc", "heatmap_organelle_database_counts.pdf"),
@@ -12563,7 +12563,7 @@ if (nrow(shared_long_baseline) > 0) {
       fontsize_number = 5,
       border_color = NA,
       cellheight = 12,
-      cellwidth = 18,
+      cellwidth = 12,
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       filename = file.path(out_dir_baseline, "qc", "heatmap_organelle_database_pct.pdf"),
