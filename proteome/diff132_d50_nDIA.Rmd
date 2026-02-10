@@ -14562,13 +14562,16 @@ message("QC plots saved to: ", file.path(out_dir_topdown, "qc"))
 
 
 # Module 7: Stoichiometry Analysis
-Analyzes stoichiometry of matched complexes from CORUM
-Requires: trimer_evidence, tetramer_evidence, corum_complex_members
+Analyzes stoichiometry of matched complexes from both CORUM and ComplexPortal
+Requires: trimer_evidence, tetramer_evidence, corum_complex_members, complexportal
 
-## Chunk 1: Parse CORUM Stoichiometry
+## Chunk 1: Parse CORUM and ComplexPortal Stoichiometry
 ```{r stoich_parse}
 # =============================================================================
-# Stoichiometry: Parse CORUM Subunit Stoichiometry
+# Stoichiometry: Parse Subunit Stoichiometry from Both Databases
+# =============================================================================
+# CORUM stoichiometry: subunits_stoechiometrie column (format: "1;1;2")
+# ComplexPortal stoichiometry: embedded in proteins_raw (format: "P84022(1)|Q13485(2)")
 # =============================================================================
 
 # --- Setup ---
@@ -14576,16 +14579,15 @@ out_dir_stoich <- file.path(out_dir_ppi_dual, "stoichiometry")
 dir.create(file.path(out_dir_stoich, "tables"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_stoich, "qc"), recursive = TRUE, showWarnings = FALSE)
 
-message("=== Stoichiometry analysis ===")
+message("=== Stoichiometry Analysis (CORUM + ComplexPortal) ===")
 
-# --- Parse stoichiometry from CORUM ---
+# --- Parse CORUM stoichiometry ---
 if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
   message("Parsing CORUM stoichiometry...")
 
   corum_stoich <- corum_complex_members %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
-      # Parse stoichiometry: format is "1;1;2" matching genes
       stoich_values = list({
         if (is.null(stoich) || length(stoich) == 0 || all(is.na(stoich)) || all(stoich == "")) {
           rep(1L, length(genes))
@@ -14595,9 +14597,7 @@ if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
           if (length(vals) != length(genes)) rep(1L, length(genes)) else vals
         }
       }),
-      # Create gene-stoich mapping
       gene_stoich = list(data.frame(gene = genes, copies = stoich_values, stringsAsFactors = FALSE)),
-      # Summary stats
       n_unique_subunits = length(genes),
       n_total_copies = sum(stoich_values),
       has_multimeric = any(stoich_values > 1),
@@ -14605,177 +14605,300 @@ if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
     ) %>%
     dplyr::ungroup()
 
-  # Summary
-  stoich_summary <- corum_stoich %>%
+  corum_stoich_summary <- corum_stoich %>%
     dplyr::summarise(
       total_complexes = dplyr::n(),
       n_with_multimeric = sum(has_multimeric),
-      pct_multimeric = round(100 * n_with_multimeric / total_complexes, 1),
-      n_homomeric_2plus = sum(max_copies >= 2),
-      n_homomeric_3plus = sum(max_copies >= 3),
-      n_homomeric_4plus = sum(max_copies >= 4)
+      pct_multimeric = round(100 * n_with_multimeric / total_complexes, 1)
     )
 
-  message("\nCORUM stoichiometry summary:")
-  print(stoich_summary)
+  message("  CORUM complexes: ", corum_stoich_summary$total_complexes)
+  message("  CORUM with multimeric subunits: ", corum_stoich_summary$n_with_multimeric,
+          " (", corum_stoich_summary$pct_multimeric, "%)")
 } else {
-  message("CORUM not available, skipping stoichiometry analysis")
   corum_stoich <- NULL
+  corum_stoich_summary <- NULL
+  message("CORUM not available")
+}
+
+# --- Parse ComplexPortal stoichiometry ---
+if (exists("complexportal") && nrow(complexportal) > 0) {
+  message("\nParsing ComplexPortal stoichiometry...")
+
+  # Format: "P84022(1)|Q13485(1)|Q15796(2)" or similar
+  complexportal_stoich <- complexportal %>%
+    dplyr::select(complex_id, complex_name, proteins_raw, n_proteins) %>%
+    dplyr::mutate(
+      stoich_list = stringr::str_extract_all(proteins_raw, "[A-Z][A-Z0-9]{5}\\(\\d+\\)"),
+      stoich_parsed = purrr::map(stoich_list, function(x) {
+        if (length(x) == 0) return(data.frame(protein = character(), copies = integer(), stringsAsFactors = FALSE))
+        proteins <- stringr::str_extract(x, "^[A-Z][A-Z0-9]{5}")
+        copies <- as.integer(stringr::str_extract(x, "(?<=\\()\\d+(?=\\))"))
+        copies[is.na(copies)] <- 1L
+        data.frame(protein = proteins, copies = copies, stringsAsFactors = FALSE)
+      }),
+      n_unique_proteins = purrr::map_int(stoich_parsed, ~length(unique(.x$protein))),
+      n_total_subunits = purrr::map_int(stoich_parsed, ~if(nrow(.x) == 0) 0L else sum(.x$copies)),
+      has_multimeric = purrr::map_lgl(stoich_parsed, ~if(nrow(.x) == 0) FALSE else any(.x$copies > 1)),
+      max_copies = purrr::map_int(stoich_parsed, ~if(nrow(.x) == 0) 0L else max(.x$copies))
+    )
+
+  cp_stoich_summary <- complexportal_stoich %>%
+    dplyr::summarise(
+      total_complexes = dplyr::n(),
+      n_with_multimeric = sum(has_multimeric),
+      pct_multimeric = round(100 * n_with_multimeric / total_complexes, 1)
+    )
+
+  message("  ComplexPortal complexes: ", cp_stoich_summary$total_complexes)
+  message("  ComplexPortal with multimeric subunits: ", cp_stoich_summary$n_with_multimeric,
+          " (", cp_stoich_summary$pct_multimeric, "%)")
+} else {
+  complexportal_stoich <- NULL
+  cp_stoich_summary <- NULL
+  message("ComplexPortal not available")
 }
 ```
 
 
-## Chunk 2: Trimer Stoichiometry
+## Chunk 2: Trimer Stoichiometry (Both Databases)
 ```{r stoich_trimers}
 # =============================================================================
-# Stoichiometry: Trimers Matched to CORUM
+# Stoichiometry: Trimers Matched to CORUM and ComplexPortal
 # =============================================================================
 
-if (!is.null(corum_stoich) && exists("trimer_evidence") && nrow(trimer_evidence) > 0) {
-  message("\nAnalyzing trimer stoichiometry...")
+if (exists("trimer_evidence") && nrow(trimer_evidence) > 0) {
+  message("\n=== Trimer Stoichiometry Analysis ===")
 
-  # Get trimers with CORUM strict match
-  trimers_corum <- trimer_evidence %>%
-    dplyr::filter(corum_strict_match) %>%
-    dplyr::select(trimer_id, Gene1, Gene2, Gene3, corum_matched_id, corum_matched_name)
+  # --- CORUM-matched trimers ---
+  if (!is.null(corum_stoich)) {
+    trimers_corum <- trimer_evidence %>%
+      dplyr::filter(corum_strict_match) %>%
+      dplyr::select(trimer_id, Gene1, Gene2, Gene3, corum_matched_id, corum_matched_name)
 
-  if (nrow(trimers_corum) > 0) {
-    # Join with CORUM stoichiometry
-    trimer_stoich <- trimers_corum %>%
-      dplyr::left_join(
-        corum_stoich %>% dplyr::select(complex_id, gene_stoich, has_multimeric, n_unique_subunits, n_total_copies),
-        by = c("corum_matched_id" = "complex_id")
+    if (nrow(trimers_corum) > 0) {
+      trimer_stoich_corum <- trimers_corum %>%
+        dplyr::left_join(
+          corum_stoich %>% dplyr::select(complex_id, gene_stoich, has_multimeric),
+          by = c("corum_matched_id" = "complex_id")
+        ) %>%
+        dplyr::rowwise() %>%
+        dplyr::mutate(
+          copies_g1 = if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_ else {
+            idx <- which(gene_stoich$gene == Gene1); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          },
+          copies_g2 = if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_ else {
+            idx <- which(gene_stoich$gene == Gene2); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          },
+          copies_g3 = if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_ else {
+            idx <- which(gene_stoich$gene == Gene3); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          },
+          trimer_has_multimeric = any(c(copies_g1, copies_g2, copies_g3) > 1, na.rm = TRUE),
+          trimer_total_copies = sum(c(copies_g1, copies_g2, copies_g3), na.rm = TRUE)
+        ) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(source = "CORUM")
+
+      trimer_corum_summary <- data.frame(
+        source = "CORUM",
+        n_matched = nrow(trimer_stoich_corum),
+        n_multimeric = sum(trimer_stoich_corum$trimer_has_multimeric, na.rm = TRUE),
+        pct_multimeric = round(100 * sum(trimer_stoich_corum$trimer_has_multimeric, na.rm = TRUE) / nrow(trimer_stoich_corum), 1)
       )
 
-    # Get copies for each trimer protein
-    trimer_stoich <- trimer_stoich %>%
-      dplyr::rowwise() %>%
-      dplyr::mutate(
-        copies_g1 = {
-          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
-          else {
-            idx <- which(gene_stoich$gene == Gene1)
-            if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
-          }
-        },
-        copies_g2 = {
-          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
-          else {
-            idx <- which(gene_stoich$gene == Gene2)
-            if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
-          }
-        },
-        copies_g3 = {
-          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
-          else {
-            idx <- which(gene_stoich$gene == Gene3)
-            if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
-          }
-        },
-        trimer_has_multimeric = any(c(copies_g1, copies_g2, copies_g3) > 1, na.rm = TRUE),
-        trimer_total_copies = sum(c(copies_g1, copies_g2, copies_g3), na.rm = TRUE),
-        trimer_max_copies = max(c(copies_g1, copies_g2, copies_g3), na.rm = TRUE)
-      ) %>%
-      dplyr::ungroup()
+      message("  CORUM-matched trimers: ", trimer_corum_summary$n_matched)
+      message("    With multimeric subunit: ", trimer_corum_summary$n_multimeric, " (", trimer_corum_summary$pct_multimeric, "%)")
 
-    # Summary
-    trimer_stoich_summary <- trimer_stoich %>%
-      dplyr::summarise(
-        n_trimers_matched = dplyr::n(),
-        n_with_multimeric = sum(trimer_has_multimeric, na.rm = TRUE),
-        pct_multimeric = round(100 * n_with_multimeric / n_trimers_matched, 1),
-        mean_total_copies = round(mean(trimer_total_copies, na.rm = TRUE), 1)
-      )
-
-    message("\nTrimer stoichiometry summary:")
-    print(trimer_stoich_summary)
-
-    # Save
-    readr::write_csv(trimer_stoich %>% dplyr::select(-gene_stoich),
-                     file.path(out_dir_stoich, "tables", "trimers_stoichiometry.csv"))
+      readr::write_csv(trimer_stoich_corum %>% dplyr::select(-gene_stoich),
+                       file.path(out_dir_stoich, "tables", "trimers_stoichiometry_CORUM.csv"))
+    } else {
+      trimer_stoich_corum <- NULL
+      trimer_corum_summary <- data.frame(source = "CORUM", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
+    }
   } else {
-    message("  No CORUM-matched trimers for stoichiometry analysis")
-    trimer_stoich <- NULL
-    trimer_stoich_summary <- NULL
+    trimer_stoich_corum <- NULL
+    trimer_corum_summary <- data.frame(source = "CORUM", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
   }
+
+  # --- ComplexPortal-matched trimers ---
+  if (!is.null(complexportal_stoich)) {
+    trimers_cp <- trimer_evidence %>%
+      dplyr::filter(cp_strict_match) %>%
+      dplyr::select(trimer_id, Protein1, Protein2, Protein3, cp_matched_id)
+
+    if (nrow(trimers_cp) > 0) {
+      trimer_stoich_cp <- trimers_cp %>%
+        dplyr::left_join(
+          complexportal_stoich %>% dplyr::select(complex_id, stoich_parsed, has_multimeric),
+          by = c("cp_matched_id" = "complex_id")
+        ) %>%
+        dplyr::rowwise() %>%
+        dplyr::mutate(
+          copies_p1 = if (is.null(stoich_parsed) || nrow(stoich_parsed) == 0) NA_integer_ else {
+            idx <- which(stoich_parsed$protein == Protein1); if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+          },
+          copies_p2 = if (is.null(stoich_parsed) || nrow(stoich_parsed) == 0) NA_integer_ else {
+            idx <- which(stoich_parsed$protein == Protein2); if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+          },
+          copies_p3 = if (is.null(stoich_parsed) || nrow(stoich_parsed) == 0) NA_integer_ else {
+            idx <- which(stoich_parsed$protein == Protein3); if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+          },
+          trimer_has_multimeric = any(c(copies_p1, copies_p2, copies_p3) > 1, na.rm = TRUE),
+          trimer_total_copies = sum(c(copies_p1, copies_p2, copies_p3), na.rm = TRUE)
+        ) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(source = "ComplexPortal")
+
+      trimer_cp_summary <- data.frame(
+        source = "ComplexPortal",
+        n_matched = nrow(trimer_stoich_cp),
+        n_multimeric = sum(trimer_stoich_cp$trimer_has_multimeric, na.rm = TRUE),
+        pct_multimeric = round(100 * sum(trimer_stoich_cp$trimer_has_multimeric, na.rm = TRUE) / nrow(trimer_stoich_cp), 1)
+      )
+
+      message("  ComplexPortal-matched trimers: ", trimer_cp_summary$n_matched)
+      message("    With multimeric subunit: ", trimer_cp_summary$n_multimeric, " (", trimer_cp_summary$pct_multimeric, "%)")
+
+      readr::write_csv(trimer_stoich_cp %>% dplyr::select(-stoich_parsed),
+                       file.path(out_dir_stoich, "tables", "trimers_stoichiometry_ComplexPortal.csv"))
+    } else {
+      trimer_stoich_cp <- NULL
+      trimer_cp_summary <- data.frame(source = "ComplexPortal", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
+    }
+  } else {
+    trimer_stoich_cp <- NULL
+    trimer_cp_summary <- data.frame(source = "ComplexPortal", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
+  }
+
+  trimer_stoich_combined <- dplyr::bind_rows(trimer_corum_summary, trimer_cp_summary)
 } else {
-  trimer_stoich <- NULL
-  trimer_stoich_summary <- NULL
+  trimer_stoich_corum <- NULL
+  trimer_stoich_cp <- NULL
+  trimer_stoich_combined <- data.frame(source = character(), n_matched = integer(), n_multimeric = integer(), pct_multimeric = numeric())
 }
 ```
 
 
-## Chunk 3: Tetramer Stoichiometry
+## Chunk 3: Tetramer Stoichiometry (Both Databases)
 ```{r stoich_tetramers}
 # =============================================================================
-# Stoichiometry: Tetramers Matched to CORUM
+# Stoichiometry: Tetramers Matched to CORUM and ComplexPortal
 # =============================================================================
 
-if (!is.null(corum_stoich) && exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) {
-  message("\nAnalyzing tetramer stoichiometry...")
+if (exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) {
+  message("\n=== Tetramer Stoichiometry Analysis ===")
 
-  # Get tetramers with CORUM strict match
-  tetramers_corum <- tetramer_evidence %>%
-    dplyr::filter(corum_strict_match) %>%
-    dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, corum_matched_id, corum_matched_name)
+  # --- CORUM-matched tetramers ---
+  if (!is.null(corum_stoich)) {
+    tetramers_corum <- tetramer_evidence %>%
+      dplyr::filter(corum_strict_match) %>%
+      dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, corum_matched_id, corum_matched_name)
 
-  if (nrow(tetramers_corum) > 0) {
-    # Join with CORUM stoichiometry
-    tetramer_stoich <- tetramers_corum %>%
-      dplyr::left_join(
-        corum_stoich %>% dplyr::select(complex_id, gene_stoich, has_multimeric, n_unique_subunits, n_total_copies),
-        by = c("corum_matched_id" = "complex_id")
+    if (nrow(tetramers_corum) > 0) {
+      tetramer_stoich_corum <- tetramers_corum %>%
+        dplyr::left_join(
+          corum_stoich %>% dplyr::select(complex_id, gene_stoich, has_multimeric),
+          by = c("corum_matched_id" = "complex_id")
+        ) %>%
+        dplyr::rowwise() %>%
+        dplyr::mutate(
+          copies_g1 = if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_ else {
+            idx <- which(gene_stoich$gene == Gene1); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          },
+          copies_g2 = if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_ else {
+            idx <- which(gene_stoich$gene == Gene2); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          },
+          copies_g3 = if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_ else {
+            idx <- which(gene_stoich$gene == Gene3); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          },
+          copies_g4 = if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_ else {
+            idx <- which(gene_stoich$gene == Gene4); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_
+          },
+          tetramer_has_multimeric = any(c(copies_g1, copies_g2, copies_g3, copies_g4) > 1, na.rm = TRUE),
+          tetramer_total_copies = sum(c(copies_g1, copies_g2, copies_g3, copies_g4), na.rm = TRUE)
+        ) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(source = "CORUM")
+
+      tetramer_corum_summary <- data.frame(
+        source = "CORUM",
+        n_matched = nrow(tetramer_stoich_corum),
+        n_multimeric = sum(tetramer_stoich_corum$tetramer_has_multimeric, na.rm = TRUE),
+        pct_multimeric = round(100 * sum(tetramer_stoich_corum$tetramer_has_multimeric, na.rm = TRUE) / nrow(tetramer_stoich_corum), 1)
       )
 
-    # Get copies for each tetramer protein
-    tetramer_stoich <- tetramer_stoich %>%
-      dplyr::rowwise() %>%
-      dplyr::mutate(
-        copies_g1 = {
-          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
-          else { idx <- which(gene_stoich$gene == Gene1); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
-        },
-        copies_g2 = {
-          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
-          else { idx <- which(gene_stoich$gene == Gene2); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
-        },
-        copies_g3 = {
-          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
-          else { idx <- which(gene_stoich$gene == Gene3); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
-        },
-        copies_g4 = {
-          if (is.null(gene_stoich) || nrow(gene_stoich) == 0) NA_integer_
-          else { idx <- which(gene_stoich$gene == Gene4); if (length(idx) > 0) gene_stoich$copies[idx] else NA_integer_ }
-        },
-        tetramer_has_multimeric = any(c(copies_g1, copies_g2, copies_g3, copies_g4) > 1, na.rm = TRUE),
-        tetramer_total_copies = sum(c(copies_g1, copies_g2, copies_g3, copies_g4), na.rm = TRUE),
-        tetramer_max_copies = max(c(copies_g1, copies_g2, copies_g3, copies_g4), na.rm = TRUE)
-      ) %>%
-      dplyr::ungroup()
+      message("  CORUM-matched tetramers: ", tetramer_corum_summary$n_matched)
+      message("    With multimeric subunit: ", tetramer_corum_summary$n_multimeric, " (", tetramer_corum_summary$pct_multimeric, "%)")
 
-    # Summary
-    tetramer_stoich_summary <- tetramer_stoich %>%
-      dplyr::summarise(
-        n_tetramers_matched = dplyr::n(),
-        n_with_multimeric = sum(tetramer_has_multimeric, na.rm = TRUE),
-        pct_multimeric = round(100 * n_with_multimeric / n_tetramers_matched, 1),
-        mean_total_copies = round(mean(tetramer_total_copies, na.rm = TRUE), 1)
-      )
-
-    message("\nTetramer stoichiometry summary:")
-    print(tetramer_stoich_summary)
-
-    # Save
-    readr::write_csv(tetramer_stoich %>% dplyr::select(-gene_stoich),
-                     file.path(out_dir_stoich, "tables", "tetramers_stoichiometry.csv"))
+      readr::write_csv(tetramer_stoich_corum %>% dplyr::select(-gene_stoich),
+                       file.path(out_dir_stoich, "tables", "tetramers_stoichiometry_CORUM.csv"))
+    } else {
+      tetramer_stoich_corum <- NULL
+      tetramer_corum_summary <- data.frame(source = "CORUM", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
+    }
   } else {
-    message("  No CORUM-matched tetramers for stoichiometry analysis")
-    tetramer_stoich <- NULL
-    tetramer_stoich_summary <- NULL
+    tetramer_stoich_corum <- NULL
+    tetramer_corum_summary <- data.frame(source = "CORUM", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
   }
+
+  # --- ComplexPortal-matched tetramers ---
+  if (!is.null(complexportal_stoich)) {
+    tetramers_cp <- tetramer_evidence %>%
+      dplyr::filter(cp_strict_match) %>%
+      dplyr::select(tetramer_id, Protein1, Protein2, Protein3, Protein4, cp_matched_id)
+
+    if (nrow(tetramers_cp) > 0) {
+      tetramer_stoich_cp <- tetramers_cp %>%
+        dplyr::left_join(
+          complexportal_stoich %>% dplyr::select(complex_id, stoich_parsed, has_multimeric),
+          by = c("cp_matched_id" = "complex_id")
+        ) %>%
+        dplyr::rowwise() %>%
+        dplyr::mutate(
+          copies_p1 = if (is.null(stoich_parsed) || nrow(stoich_parsed) == 0) NA_integer_ else {
+            idx <- which(stoich_parsed$protein == Protein1); if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+          },
+          copies_p2 = if (is.null(stoich_parsed) || nrow(stoich_parsed) == 0) NA_integer_ else {
+            idx <- which(stoich_parsed$protein == Protein2); if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+          },
+          copies_p3 = if (is.null(stoich_parsed) || nrow(stoich_parsed) == 0) NA_integer_ else {
+            idx <- which(stoich_parsed$protein == Protein3); if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+          },
+          copies_p4 = if (is.null(stoich_parsed) || nrow(stoich_parsed) == 0) NA_integer_ else {
+            idx <- which(stoich_parsed$protein == Protein4); if (length(idx) > 0) stoich_parsed$copies[idx] else NA_integer_
+          },
+          tetramer_has_multimeric = any(c(copies_p1, copies_p2, copies_p3, copies_p4) > 1, na.rm = TRUE),
+          tetramer_total_copies = sum(c(copies_p1, copies_p2, copies_p3, copies_p4), na.rm = TRUE)
+        ) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(source = "ComplexPortal")
+
+      tetramer_cp_summary <- data.frame(
+        source = "ComplexPortal",
+        n_matched = nrow(tetramer_stoich_cp),
+        n_multimeric = sum(tetramer_stoich_cp$tetramer_has_multimeric, na.rm = TRUE),
+        pct_multimeric = round(100 * sum(tetramer_stoich_cp$tetramer_has_multimeric, na.rm = TRUE) / nrow(tetramer_stoich_cp), 1)
+      )
+
+      message("  ComplexPortal-matched tetramers: ", tetramer_cp_summary$n_matched)
+      message("    With multimeric subunit: ", tetramer_cp_summary$n_multimeric, " (", tetramer_cp_summary$pct_multimeric, "%)")
+
+      readr::write_csv(tetramer_stoich_cp %>% dplyr::select(-stoich_parsed),
+                       file.path(out_dir_stoich, "tables", "tetramers_stoichiometry_ComplexPortal.csv"))
+    } else {
+      tetramer_stoich_cp <- NULL
+      tetramer_cp_summary <- data.frame(source = "ComplexPortal", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
+    }
+  } else {
+    tetramer_stoich_cp <- NULL
+    tetramer_cp_summary <- data.frame(source = "ComplexPortal", n_matched = 0, n_multimeric = 0, pct_multimeric = 0)
+  }
+
+  tetramer_stoich_combined <- dplyr::bind_rows(tetramer_corum_summary, tetramer_cp_summary)
 } else {
-  tetramer_stoich <- NULL
-  tetramer_stoich_summary <- NULL
+  tetramer_stoich_corum <- NULL
+  tetramer_stoich_cp <- NULL
+  tetramer_stoich_combined <- data.frame(source = character(), n_matched = integer(), n_multimeric = integer(), pct_multimeric = numeric())
 }
 ```
 
@@ -14784,98 +14907,133 @@ if (!is.null(corum_stoich) && exists("tetramer_evidence") && nrow(tetramer_evide
 ```{r stoich_qc_plots, fig.width=8, fig.height=6}
 # =============================================================================
 # Stoichiometry: QC Plots
+# All plots export source data CSV for journal compliance
 # =============================================================================
 
-# --- Plot 1: CORUM multimeric distribution ---
-if (!is.null(corum_stoich)) {
-  multimeric_dist <- corum_stoich %>%
-    dplyr::mutate(multimeric_status = ifelse(has_multimeric, "Has multimeric", "All 1:1")) %>%
-    dplyr::count(multimeric_status, name = "n_complexes") %>%
-    dplyr::mutate(pct = round(100 * n_complexes / sum(n_complexes), 1))
+# --- Plot 1: Database comparison - multimeric prevalence ---
+if (!is.null(corum_stoich_summary) || !is.null(cp_stoich_summary)) {
+  db_multimeric <- data.frame(
+    database = c("CORUM", "ComplexPortal"),
+    total = c(if(!is.null(corum_stoich_summary)) corum_stoich_summary$total_complexes else 0,
+              if(!is.null(cp_stoich_summary)) cp_stoich_summary$total_complexes else 0),
+    multimeric = c(if(!is.null(corum_stoich_summary)) corum_stoich_summary$n_with_multimeric else 0,
+                   if(!is.null(cp_stoich_summary)) cp_stoich_summary$n_with_multimeric else 0),
+    pct = c(if(!is.null(corum_stoich_summary)) corum_stoich_summary$pct_multimeric else 0,
+            if(!is.null(cp_stoich_summary)) cp_stoich_summary$pct_multimeric else 0)
+  )
 
-  p_multimeric <- ggplot(multimeric_dist, aes(x = multimeric_status, y = n_complexes, fill = multimeric_status)) +
+  readr::write_csv(db_multimeric, file.path(out_dir_stoich, "qc", "sourcedata_database_multimeric.csv"))
+
+  p_db_multimeric <- ggplot(db_multimeric, aes(x = database, y = pct, fill = database)) +
     geom_col(color = "black", linewidth = 0.3) +
-    geom_text(aes(label = paste0(n_complexes, " (", pct, "%)")), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("Has multimeric" = "#4DAF4A", "All 1:1" = "grey70"), guide = "none") +
-    labs(title = "CORUM complexes: multimeric subunits", x = NULL, y = "Number of complexes") +
+    geom_text(aes(label = paste0(multimeric, "/", total, "\n(", pct, "%)")), vjust = -0.1, size = 2) +
+    scale_fill_manual(values = c("CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), guide = "none") +
+    labs(title = "Complexes with multimeric subunits by database", x = NULL, y = "% with multimeric") +
+    coord_cartesian(ylim = c(0, max(db_multimeric$pct) * 1.3)) +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_stoich, "qc", "barplot_corum_multimeric.pdf"), p_multimeric, width = 2, height = 3.5, device = cairo_pdf)
-
-  # Max copies distribution
-  max_copies_dist <- corum_stoich %>%
-    dplyr::filter(max_copies > 1) %>%
-    dplyr::count(max_copies, name = "n_complexes")
-
-  if (nrow(max_copies_dist) > 0) {
-    p_max_copies <- ggplot(max_copies_dist, aes(x = factor(max_copies), y = n_complexes)) +
-      geom_col(fill = "steelblue", color = "black", linewidth = 0.3) +
-      geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
-      labs(title = "CORUM: max subunit copies (multimeric only)", x = "Max copies", y = "Number of complexes") +
-      theme_bw(base_size = 6) +
-      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
-
-    ggsave(file.path(out_dir_stoich, "qc", "barplot_max_copies.pdf"), p_max_copies, width = 2, height = 3, device = cairo_pdf)
-  }
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_database_multimeric.pdf"), p_db_multimeric, width = 3.5, height = 4, device = cairo_pdf)
 }
 
-# --- Plot 2: Trimer/Tetramer stoichiometry comparison ---
-stoich_comparison <- data.frame(
-  level = c("Trimers", "Trimers", "Tetramers", "Tetramers"),
-  type = c("With multimeric", "Without multimeric", "With multimeric", "Without multimeric"),
-  n = c(
-    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_with_multimeric else 0,
-    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_trimers_matched - trimer_stoich_summary$n_with_multimeric else 0,
-    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_with_multimeric else 0,
-    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_tetramers_matched - tetramer_stoich_summary$n_with_multimeric else 0
-  )
-)
+# --- Plot 2: Trimer stoichiometry by source ---
+if (nrow(trimer_stoich_combined) > 0 && sum(trimer_stoich_combined$n_matched) > 0) {
+  trimer_stoich_plot <- trimer_stoich_combined %>%
+    dplyr::mutate(n_non_multimeric = n_matched - n_multimeric) %>%
+    tidyr::pivot_longer(c(n_multimeric, n_non_multimeric), names_to = "type", values_to = "n") %>%
+    dplyr::mutate(type = ifelse(type == "n_multimeric", "With multimeric", "Without multimeric"))
 
-if (sum(stoich_comparison$n) > 0) {
-  stoich_comparison <- stoich_comparison %>%
-    dplyr::group_by(level) %>%
-    dplyr::mutate(pct = round(100 * n / sum(n), 1)) %>%
-    dplyr::ungroup()
+  readr::write_csv(trimer_stoich_combined, file.path(out_dir_stoich, "qc", "sourcedata_trimer_stoichiometry.csv"))
 
-  p_stoich_comparison <- ggplot(stoich_comparison, aes(x = level, y = n, fill = type)) +
+  p_trimer_stoich <- ggplot(trimer_stoich_plot, aes(x = source, y = n, fill = type)) +
     geom_col(color = "black", linewidth = 0.3, position = "stack") +
-    geom_text(aes(label = paste0(n, " (", pct, "%)")), position = position_stack(vjust = 0.5), size = 2) +
+    geom_text(aes(label = n), position = position_stack(vjust = 0.5), size = 2) +
     scale_fill_manual(values = c("With multimeric" = "#4DAF4A", "Without multimeric" = "grey70"), name = NULL) +
-    labs(title = "CORUM-matched structures: stoichiometry", x = NULL, y = "Count") +
+    labs(title = "Trimer stoichiometry by database", x = NULL, y = "Number of trimers") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
 
-  ggsave(file.path(out_dir_stoich, "qc", "barplot_stoich_comparison.pdf"), p_stoich_comparison, width = 2, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_trimer_stoichiometry.pdf"), p_trimer_stoich, width = 4, height = 4, device = cairo_pdf)
+}
+
+# --- Plot 3: Tetramer stoichiometry by source ---
+if (nrow(tetramer_stoich_combined) > 0 && sum(tetramer_stoich_combined$n_matched) > 0) {
+  tetramer_stoich_plot <- tetramer_stoich_combined %>%
+    dplyr::mutate(n_non_multimeric = n_matched - n_multimeric) %>%
+    tidyr::pivot_longer(c(n_multimeric, n_non_multimeric), names_to = "type", values_to = "n") %>%
+    dplyr::mutate(type = ifelse(type == "n_multimeric", "With multimeric", "Without multimeric"))
+
+  readr::write_csv(tetramer_stoich_combined, file.path(out_dir_stoich, "qc", "sourcedata_tetramer_stoichiometry.csv"))
+
+  p_tetramer_stoich <- ggplot(tetramer_stoich_plot, aes(x = source, y = n, fill = type)) +
+    geom_col(color = "black", linewidth = 0.3, position = "stack") +
+    geom_text(aes(label = n), position = position_stack(vjust = 0.5), size = 2) +
+    scale_fill_manual(values = c("With multimeric" = "#4DAF4A", "Without multimeric" = "grey70"), name = NULL) +
+    labs(title = "Tetramer stoichiometry by database", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_tetramer_stoichiometry.pdf"), p_tetramer_stoich, width = 4, height = 4, device = cairo_pdf)
+}
+
+# --- Plot 4: Combined comparison (Trimers vs Tetramers, CORUM vs CP) ---
+all_stoich <- dplyr::bind_rows(
+  trimer_stoich_combined %>% dplyr::mutate(level = "Trimers"),
+  tetramer_stoich_combined %>% dplyr::mutate(level = "Tetramers")
+)
+
+if (nrow(all_stoich) > 0 && sum(all_stoich$n_matched) > 0) {
+  readr::write_csv(all_stoich, file.path(out_dir_stoich, "qc", "sourcedata_combined_stoichiometry.csv"))
+
+  p_combined <- ggplot(all_stoich, aes(x = interaction(level, source), y = pct_multimeric, fill = source)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = paste0(n_multimeric, "/", n_matched)), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), name = "Database") +
+    scale_x_discrete(labels = c("Trimers.CORUM" = "Trimers\nCORUM", "Trimers.ComplexPortal" = "Trimers\nCP",
+                                "Tetramers.CORUM" = "Tetramers\nCORUM", "Tetramers.ComplexPortal" = "Tetramers\nCP")) +
+    labs(title = "Multimeric subunits in matched structures", x = NULL, y = "% with multimeric subunit") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+  ggsave(file.path(out_dir_stoich, "qc", "barplot_combined_stoichiometry.pdf"), p_combined, width = 5, height = 4, device = cairo_pdf)
 }
 
 # --- Summary table ---
 stoich_stats <- data.frame(
-  metric = c("corum_total_complexes", "corum_multimeric_complexes", "corum_pct_multimeric",
-             "trimers_corum_matched", "trimers_multimeric", "trimers_pct_multimeric",
-             "tetramers_corum_matched", "tetramers_multimeric", "tetramers_pct_multimeric"),
+  metric = c("corum_total_complexes", "corum_multimeric", "corum_pct_multimeric",
+             "cp_total_complexes", "cp_multimeric", "cp_pct_multimeric",
+             "trimers_corum_matched", "trimers_corum_multimeric", "trimers_corum_pct",
+             "trimers_cp_matched", "trimers_cp_multimeric", "trimers_cp_pct",
+             "tetramers_corum_matched", "tetramers_corum_multimeric", "tetramers_corum_pct",
+             "tetramers_cp_matched", "tetramers_cp_multimeric", "tetramers_cp_pct"),
   value = c(
-    if(!is.null(corum_stoich)) nrow(corum_stoich) else 0,
-    if(!is.null(corum_stoich)) sum(corum_stoich$has_multimeric) else 0,
-    if(!is.null(corum_stoich)) round(100 * sum(corum_stoich$has_multimeric) / nrow(corum_stoich), 1) else 0,
-    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_trimers_matched else 0,
-    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$n_with_multimeric else 0,
-    if(!is.null(trimer_stoich_summary)) trimer_stoich_summary$pct_multimeric else 0,
-    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_tetramers_matched else 0,
-    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$n_with_multimeric else 0,
-    if(!is.null(tetramer_stoich_summary)) tetramer_stoich_summary$pct_multimeric else 0
+    if(!is.null(corum_stoich_summary)) corum_stoich_summary$total_complexes else 0,
+    if(!is.null(corum_stoich_summary)) corum_stoich_summary$n_with_multimeric else 0,
+    if(!is.null(corum_stoich_summary)) corum_stoich_summary$pct_multimeric else 0,
+    if(!is.null(cp_stoich_summary)) cp_stoich_summary$total_complexes else 0,
+    if(!is.null(cp_stoich_summary)) cp_stoich_summary$n_with_multimeric else 0,
+    if(!is.null(cp_stoich_summary)) cp_stoich_summary$pct_multimeric else 0,
+    if(nrow(trimer_stoich_combined) > 0) trimer_stoich_combined$n_matched[trimer_stoich_combined$source == "CORUM"] else 0,
+    if(nrow(trimer_stoich_combined) > 0) trimer_stoich_combined$n_multimeric[trimer_stoich_combined$source == "CORUM"] else 0,
+    if(nrow(trimer_stoich_combined) > 0) trimer_stoich_combined$pct_multimeric[trimer_stoich_combined$source == "CORUM"] else 0,
+    if(nrow(trimer_stoich_combined) > 0) trimer_stoich_combined$n_matched[trimer_stoich_combined$source == "ComplexPortal"] else 0,
+    if(nrow(trimer_stoich_combined) > 0) trimer_stoich_combined$n_multimeric[trimer_stoich_combined$source == "ComplexPortal"] else 0,
+    if(nrow(trimer_stoich_combined) > 0) trimer_stoich_combined$pct_multimeric[trimer_stoich_combined$source == "ComplexPortal"] else 0,
+    if(nrow(tetramer_stoich_combined) > 0) tetramer_stoich_combined$n_matched[tetramer_stoich_combined$source == "CORUM"] else 0,
+    if(nrow(tetramer_stoich_combined) > 0) tetramer_stoich_combined$n_multimeric[tetramer_stoich_combined$source == "CORUM"] else 0,
+    if(nrow(tetramer_stoich_combined) > 0) tetramer_stoich_combined$pct_multimeric[tetramer_stoich_combined$source == "CORUM"] else 0,
+    if(nrow(tetramer_stoich_combined) > 0) tetramer_stoich_combined$n_matched[tetramer_stoich_combined$source == "ComplexPortal"] else 0,
+    if(nrow(tetramer_stoich_combined) > 0) tetramer_stoich_combined$n_multimeric[tetramer_stoich_combined$source == "ComplexPortal"] else 0,
+    if(nrow(tetramer_stoich_combined) > 0) tetramer_stoich_combined$pct_multimeric[tetramer_stoich_combined$source == "ComplexPortal"] else 0
   )
 )
 
 readr::write_csv(stoich_stats, file.path(out_dir_stoich, "tables", "stoichiometry_stats.csv"))
 
 message("\nModule 7 complete.")
+message("Stoichiometry analysis for both CORUM and ComplexPortal.")
 message("QC plots saved to: ", file.path(out_dir_stoich, "qc"))
 ```
-
-
-
-
 
 # TODELETE Merging of two PPI datasets into Master PPI Evidence Table
 ```{r}
