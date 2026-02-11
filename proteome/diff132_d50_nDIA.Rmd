@@ -13088,6 +13088,9 @@ message("  Novel: ", sum(!trimer_evidence$in_known_complex_relaxed))
 message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 ```
 
+
+
+
 # Module 4: Tetramer Detection and Validation
 Detects 4-cliques from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
 Requires: baseline_ppi_v3 from Module 2, g (graph), corum_complex_members, complexportal
@@ -13339,7 +13342,7 @@ if (nrow(tetramers_df) > 0) {
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
           axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
 
-  ggsave(file.path(out_dir_tetramer, "qc", "barplot_database_support_tetramers.pdf"), p_db_tetramers, width = 4, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_database_support_tetramers.pdf"), p_db_tetramers, width = 5, height = 4, device = cairo_pdf)
 
   # --- Plot 2: Validation tier distribution ---
   validation_counts_tet <- tetramers_df %>%
@@ -13358,7 +13361,7 @@ if (nrow(tetramers_df) > 0) {
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
           axis.text.x = element_text(angle = 45, hjust = 1))
 
-  ggsave(file.path(out_dir_tetramer, "qc", "barplot_validation_tiers.pdf"), p_validation_tet, width = 4, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_validation_tiers.pdf"), p_validation_tet, width = 5, height = 4, device = cairo_pdf)
 
   # --- Plot 3: Known complex status (CORUM vs ComplexPortal separate) ---
   known_summary_sep_tet <- data.frame(
@@ -13382,7 +13385,7 @@ if (nrow(tetramers_df) > 0) {
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
           axis.text.x = element_text(angle = 45, hjust = 1))
 
-  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_by_source.pdf"), p_known_sep_tet, width = 4, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_by_source.pdf"), p_known_sep_tet, width = 5, height = 4, device = cairo_pdf)
 
   # --- Plot 4: Known complex status (combined) ---
   known_summary_tet <- data.frame(
@@ -13403,7 +13406,7 @@ if (nrow(tetramers_df) > 0) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_vs_novel.pdf"), p_known_tet, width = 2, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_vs_novel.pdf"), p_known_tet, width = 4, height = 4, device = cairo_pdf)
 
   # --- Plot 5: Support score distribution ---
   support_hist_data_tet <- tetramers_df %>% dplyr::select(tetramer_id, support_mean)
@@ -13436,7 +13439,7 @@ if (nrow(tetramers_df) > 0) {
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
           strip.background = element_rect(fill = "white", color = "black"))
 
-  ggsave(file.path(out_dir_tetramer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known_tet, width = 4, height = 3.5, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known_tet, width = 5, height = 3.5, device = cairo_pdf)
 
   # --- Plot 7: Heatmap organelle x validation ---
   message("Creating organelle x validation heatmap...")
@@ -13453,6 +13456,11 @@ if (nrow(tetramers_df) > 0) {
 
     tetramers_df <- tetramers_df %>%
       dplyr::left_join(tetramer_organelles, by = "tetramer_id")
+
+    # Ensure shared_organelle column exists after join (defensive check)
+    if (!"shared_organelle" %in% colnames(tetramers_df)) {
+      tetramers_df$shared_organelle <- NA_character_
+    }
 
     # Build matrix: organelle x validation source
     org_validation_matrix_tet <- tetramers_df %>%
@@ -13489,7 +13497,7 @@ if (nrow(tetramers_df) > 0) {
         fontsize_number = 5,
         border_color = NA,
         cellheight = 12,
-        cellwidth = 12,
+        cellwidth = 18,
         cluster_rows = TRUE,
         cluster_cols = FALSE,
         filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_validation.pdf"),
@@ -13510,7 +13518,7 @@ if (nrow(tetramers_df) > 0) {
         fontsize_number = 5,
         border_color = NA,
         cellheight = 12,
-        cellwidth = 12,
+        cellwidth = 18,
         cluster_rows = TRUE,
         cluster_cols = FALSE,
         filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_validation_pct.pdf"),
@@ -13576,9 +13584,6 @@ if (nrow(tetramer_evidence) > 0) {
 }
 message("QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
 ```
-
-
-
 
 # Module 5: Complex Growing from Trimers and Tetramers
 Grows complexes by iteratively adding neighbors connected to ≥2 members
