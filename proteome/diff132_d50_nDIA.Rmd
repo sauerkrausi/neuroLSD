@@ -13871,7 +13871,8 @@ support_lookup <- baseline_ppi_v3 %>%
 
 # Function to compute support
 .compute_complex_support <- function(members, support_lookup) {
-  if (length(members) < 2) return(list(n_edges = 0, support_total = 0, support_mean = NA_real_))
+  if (length(members) < 2) return(list(n_edges = 0, support_total = 0, support_mean = NA_real_,
+                                        n_with_PDB_exact = 0, n_with_PDB_homolog = 0))
 
   pairs <- t(combn(sort(unique(members)), 2))
   edge_keys <- apply(pairs, 1, function(p) .make_undirected_key(p[1], p[2]))
@@ -13885,6 +13886,8 @@ support_lookup <- baseline_ppi_v3 %>%
     support_mean = if (nrow(matched) > 0) round(mean(matched$support_score, na.rm = TRUE), 2) else NA_real_,
     n_in_CORUM = sum(matched$filter_CORUM == "present", na.rm = TRUE),
     n_with_PDB = sum(matched$filter_PDB != "none", na.rm = TRUE),
+    n_with_PDB_exact = sum(matched$filter_PDB == "exact", na.rm = TRUE),
+    n_with_PDB_homolog = sum(matched$filter_PDB == "homolog", na.rm = TRUE),
     n_in_ComplexPortal = sum(matched$filter_ComplexPortal != "none", na.rm = TRUE)
   )
 }
@@ -13900,14 +13903,30 @@ complex_evidence <- complex_evidence %>%
     complex_support_mean = support_info$support_mean,
     n_edges_in_CORUM = support_info$n_in_CORUM,
     n_edges_with_PDB = support_info$n_with_PDB,
+    n_edges_with_PDB_exact = support_info$n_with_PDB_exact,
+    n_edges_with_PDB_homolog = support_info$n_with_PDB_homolog,
     n_edges_in_ComplexPortal = support_info$n_in_ComplexPortal,
     pct_edges_CORUM = round(100 * n_edges_in_CORUM / n_edges_in_baseline, 1),
-    pct_edges_PDB = round(100 * n_edges_with_PDB / n_edges_in_baseline, 1)
+    pct_edges_PDB = round(100 * n_edges_with_PDB / n_edges_in_baseline, 1),
+    pct_edges_PDB_exact = round(100 * n_edges_with_PDB_exact / n_edges_in_baseline, 1),
+    pct_edges_PDB_homolog = round(100 * n_edges_with_PDB_homolog / n_edges_in_baseline, 1),
+    # PDB-based validation flags (majority of edges have PDB support)
+    has_PDB_exact_majority = (n_edges_with_PDB_exact / n_edges_in_baseline) >= 0.5,
+    has_PDB_any_majority = (n_edges_with_PDB / n_edges_in_baseline) >= 0.5
   ) %>%
   dplyr::select(-support_info) %>%
   dplyr::ungroup()
 
 message("Mean complex support score: ", round(mean(complex_evidence$complex_support_mean, na.rm = TRUE), 2))
+
+# --- Create uniprot_lookup if not exists ---
+if (!exists("uniprot_lookup") || nrow(uniprot_lookup) == 0) {
+  uniprot_lookup <- baseline_ppi_v3 %>%
+    dplyr::select(Gene1, Protein1) %>%
+    dplyr::rename(gene = Gene1, uniprot = Protein1) %>%
+    dplyr::bind_rows(baseline_ppi_v3 %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(gene = Gene2, uniprot = Protein2)) %>%
+    dplyr::distinct(gene, .keep_all = TRUE)
+}
 
 # --- ComplexPortal validation ---
 message("\nValidating complexes against ComplexPortal...")
@@ -13957,23 +13976,32 @@ if (exists("complex_to_proteins") && exists("uniprot_lookup")) {
   complex_evidence$cp_match_fraction <- NA_real_
 }
 
-# --- CORUM validation ---
-message("Validating complexes against CORUM...")
+# --- CORUM validation (UniProt-based) ---
+message("Validating complexes against CORUM (UniProt-based)...")
 
 if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
-  .check_corum_match_any <- function(members, corum_members) {
+  # UniProt-based matching for complexes
+  .check_corum_match_any_uniprot <- function(members, corum_members, uniprot_lookup) {
+    # Convert gene names to UniProt IDs
+    member_uniprots <- uniprot_lookup$uniprot[match(members, uniprot_lookup$gene)]
+    member_uniprots <- member_uniprots[!is.na(member_uniprots)]
+
+    if (length(member_uniprots) == 0) {
+      return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_, match_fraction = 0))
+    }
+
     best_match <- list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_, match_fraction = 0)
 
     for (i in seq_len(nrow(corum_members))) {
-      complex_genes <- corum_members$genes[[i]]
-      n_match <- sum(members %in% complex_genes)
-      match_frac <- n_match / length(members)
+      complex_proteins <- corum_members$proteins[[i]]
+      n_match <- sum(member_uniprots %in% complex_proteins)
+      match_frac <- n_match / length(member_uniprots)
 
       if (match_frac > best_match$match_fraction) {
         best_match$match_fraction <- match_frac
         best_match$complex_id <- corum_members$complex_id[i]
         best_match$complex_name <- corum_members$complex_name[i]
-        best_match$strict <- (n_match == length(members) && n_match == length(complex_genes))
+        best_match$strict <- (n_match == length(member_uniprots) && n_match == length(complex_proteins))
         best_match$relaxed <- (match_frac >= 0.5)
       }
     }
@@ -13983,7 +14011,7 @@ if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
   complex_evidence <- complex_evidence %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
-      corum_match = list(.check_corum_match_any(members, corum_complex_members)),
+      corum_match = list(.check_corum_match_any_uniprot(members, corum_complex_members, uniprot_lookup)),
       corum_strict_match = corum_match$strict,
       corum_relaxed_match = corum_match$relaxed,
       corum_matched_id = corum_match$complex_id,
@@ -14074,13 +14102,16 @@ p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill
 
 ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 4, height = 3.5, device = cairo_pdf)
 
-# --- Plot 4: Validation by source (CORUM vs ComplexPortal separate) ---
+# --- Plot 4: Validation by source (CORUM, ComplexPortal, PDB separate) ---
 validation_by_source <- data.frame(
-  source = c("CORUM_strict", "CORUM_relaxed", "ComplexPortal_strict", "ComplexPortal_relaxed", "Novel"),
+  source = c("CORUM_strict", "CORUM_relaxed", "ComplexPortal_strict", "ComplexPortal_relaxed",
+             "PDB_exact", "PDB_homolog", "Novel"),
   n = c(sum(complex_evidence$corum_strict_match %in% TRUE),
         sum((complex_evidence$corum_relaxed_match %in% TRUE) & !(complex_evidence$corum_strict_match %in% TRUE)),
         sum(complex_evidence$cp_strict_match %in% TRUE),
         sum((complex_evidence$cp_relaxed_match %in% TRUE) & !(complex_evidence$cp_strict_match %in% TRUE)),
+        sum(complex_evidence$has_PDB_exact_majority %in% TRUE),
+        sum((complex_evidence$has_PDB_any_majority %in% TRUE) & !(complex_evidence$has_PDB_exact_majority %in% TRUE)),
         sum(complex_evidence$validation_status == "novel"))
 )
 
@@ -14091,13 +14122,14 @@ p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y 
   geom_text(aes(label = n), vjust = -0.3, size = 2) +
   scale_fill_manual(values = c("CORUM_strict" = "#4DAF4A", "CORUM_relaxed" = "#A6D854",
                                "ComplexPortal_strict" = "#377EB8", "ComplexPortal_relaxed" = "#7FC8F8",
+                               "PDB_exact" = "#8B0000", "PDB_homolog" = "#FF6B6B",
                                "Novel" = "#E41A1C"), guide = "none") +
-  labs(title = "Complexes: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of complexes") +
+  labs(title = "Complexes: validation by source (CORUM, CP, PDB)", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_validation_by_source.pdf"), p_validation_sep, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_validation_by_source.pdf"), p_validation_sep, width = 6, height = 4, device = cairo_pdf)
 
 # --- Plot 5: Support score by validation ---
 support_by_validation <- complex_evidence %>%
@@ -14162,20 +14194,22 @@ if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
     dplyr::group_by(shared_organelle) %>%
     dplyr::summarise(
       n_total = dplyr::n(),
+      PDB_exact = sum(has_PDB_exact_majority %in% TRUE),
+      PDB_homolog = sum((has_PDB_any_majority %in% TRUE) & !(has_PDB_exact_majority %in% TRUE)),
       CORUM_strict = sum(corum_strict_match %in% TRUE),
-      CORUM_relaxed = sum(corum_relaxed_match %in% TRUE),
+      CORUM_relaxed = sum((corum_relaxed_match %in% TRUE) & !(corum_strict_match %in% TRUE)),
       CP_strict = sum(cp_strict_match %in% TRUE),
-      CP_relaxed = sum(cp_relaxed_match %in% TRUE),
+      CP_relaxed = sum((cp_relaxed_match %in% TRUE) & !(cp_strict_match %in% TRUE)),
       Novel = sum(validation_status == "novel"),
       .groups = "drop"
     ) %>%
-    dplyr::filter(n_total >= 10)
+    dplyr::filter(n_total >= 5)  # Lowered threshold
 
   readr::write_csv(org_validation_complex, file.path(out_dir_complex, "qc", "sourcedata_heatmap_organelle_validation.csv"))
 
   if (nrow(org_validation_complex) > 1) {
     mat_complex <- org_validation_complex %>%
-      dplyr::select(shared_organelle, CORUM_strict, CP_strict, Novel) %>%
+      dplyr::select(shared_organelle, PDB_exact, PDB_homolog, CORUM_strict, CORUM_relaxed, CP_strict, CP_relaxed, Novel) %>%
       tibble::column_to_rownames("shared_organelle") %>%
       as.matrix()
 
@@ -14189,11 +14223,11 @@ if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
       fontsize_number = 5,
       border_color = NA,
       cellheight = 12,
-      cellwidth = 12,
+      cellwidth = 16,
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       filename = file.path(out_dir_complex, "qc", "heatmap_organelle_validation.pdf"),
-      width = 4,
+      width = 7,
       height = max(4, nrow(mat_complex) * 0.25)
     )
 
@@ -14239,9 +14273,6 @@ message("  Strict match: ", sum(complex_evidence$validation_status == "strict_ma
 message("  Novel: ", sum(complex_evidence$validation_status == "novel"))
 message("QC plots saved to: ", file.path(out_dir_complex, "qc"))
 ```
-
-
-
 
 # Module 6: Top-Down vs Bottom-Up Comparison
 Flags detected structures that belong to known complexes
