@@ -13092,6 +13092,9 @@ message("  Novel: ", sum(!trimer_evidence$in_known_complex_relaxed))
 message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 ```
 
+
+
+
 # Module 4: Tetramer Detection and Validation
 Detects 4-cliques from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
 Requires: baseline_ppi_v3 from Module 2, g (graph), corum_complex_members, complexportal
@@ -13234,6 +13237,15 @@ if (nrow(tetramers_df) > 0) {
     )
 
   # --- Get UniProt IDs ---
+  # Create uniprot_lookup if it doesn't exist (from baseline)
+  if (!exists("uniprot_lookup") || nrow(uniprot_lookup) == 0) {
+    uniprot_lookup <- baseline_ppi_v3 %>%
+      dplyr::select(Gene1, Protein1) %>%
+      dplyr::rename(gene = Gene1, uniprot = Protein1) %>%
+      dplyr::bind_rows(baseline_ppi_v3 %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(gene = Gene2, uniprot = Protein2)) %>%
+      dplyr::distinct(gene, .keep_all = TRUE)
+  }
+
   tetramers_df <- tetramers_df %>%
     dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein1 = uniprot), by = c("Gene1" = "gene")) %>%
     dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein2 = uniprot), by = c("Gene2" = "gene")) %>%
@@ -13265,23 +13277,26 @@ if (nrow(tetramers_df) > 0) {
   message("  ComplexPortal strict (4/4): ", sum(tetramers_df$cp_strict_match))
   message("  ComplexPortal relaxed (3/4): ", sum(tetramers_df$cp_relaxed_match))
 
-  # --- CORUM exact match check ---
-  message("Checking CORUM exact matches...")
+  # --- CORUM exact match check (UniProt-based) ---
+  message("Checking CORUM exact matches (UniProt-based)...")
 
   if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
-    .check_corum_match_4 <- function(g1, g2, g3, g4, corum_members) {
-      genes <- c(g1, g2, g3, g4)
+    .check_corum_match_4_uniprot <- function(p1, p2, p3, p4, corum_members) {
+      proteins <- c(p1, p2, p3, p4)
+      proteins <- proteins[!is.na(proteins)]
+      if (length(proteins) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
+
       for (i in seq_len(nrow(corum_members))) {
-        complex_genes <- corum_members$genes[[i]]
-        n_match <- sum(genes %in% complex_genes)
+        complex_proteins <- corum_members$proteins[[i]]
+        n_match <- sum(proteins %in% complex_proteins)
         if (n_match == 4) return(list(strict = TRUE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
         if (n_match >= 3) return(list(strict = FALSE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
       }
       return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
     }
 
-    corum_matches_4 <- purrr::pmap(list(tetramers_df$Gene1, tetramers_df$Gene2, tetramers_df$Gene3, tetramers_df$Gene4),
-                                   ~ .check_corum_match_4(..1, ..2, ..3, ..4, corum_complex_members))
+    corum_matches_4 <- purrr::pmap(list(tetramers_df$Protein1, tetramers_df$Protein2, tetramers_df$Protein3, tetramers_df$Protein4),
+                                   ~ .check_corum_match_4_uniprot(..1, ..2, ..3, ..4, corum_complex_members))
 
     tetramers_df$corum_strict_match <- purrr::map_lgl(corum_matches_4, "strict")
     tetramers_df$corum_relaxed_match <- purrr::map_lgl(corum_matches_4, "relaxed")
@@ -13478,7 +13493,7 @@ if (nrow(tetramers_df) > 0) {
         BIOGRID = sum(all_edges_BIOGRID),
         .groups = "drop"
       ) %>%
-      dplyr::filter(n_total >= 10)
+      dplyr::filter(n_total >= 5)  # Lowered threshold for heatmap
 
     readr::write_csv(org_validation_matrix_tet, file.path(out_dir_tetramer, "qc", "sourcedata_heatmap_organelle_validation.csv"))
 
@@ -13585,7 +13600,6 @@ if (nrow(tetramer_evidence) > 0) {
 }
 message("QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
 ```
-
 
 
 
