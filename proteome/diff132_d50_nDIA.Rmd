@@ -13632,7 +13632,7 @@ if (nrow(tetramers_df) > 0) {
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
           axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
 
-  ggsave(file.path(out_dir_tetramer, "qc", "barplot_database_support_tetramers.pdf"), p_db_tetramers, width = 5, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_database_support_tetramers.pdf"), p_db_tetramers, width = 4, height = 4, device = cairo_pdf)
 
   # --- Plot 2: Validation tier distribution ---
   validation_counts_tet <- tetramers_df %>%
@@ -13651,7 +13651,7 @@ if (nrow(tetramers_df) > 0) {
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
           axis.text.x = element_text(angle = 45, hjust = 1))
 
-  ggsave(file.path(out_dir_tetramer, "qc", "barplot_validation_tiers.pdf"), p_validation_tet, width = 5, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_validation_tiers.pdf"), p_validation_tet, width = 4, height = 4, device = cairo_pdf)
 
   # --- Plot 3: Known complex status (CORUM vs ComplexPortal separate) ---
   known_summary_sep_tet <- data.frame(
@@ -13729,7 +13729,7 @@ if (nrow(tetramers_df) > 0) {
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
           strip.background = element_rect(fill = "white", color = "black"))
 
-  ggsave(file.path(out_dir_tetramer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known_tet, width = 5, height = 3.5, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known_tet, width = 4, height = 3.5, device = cairo_pdf)
 
   # --- Plot 7: Heatmap organelle x validation ---
   message("Creating organelle x validation heatmap...")
@@ -13819,7 +13819,7 @@ if (nrow(tetramers_df) > 0) {
         fontsize_number = 5,
         border_color = NA,
         cellheight = 12,
-        cellwidth = 18,
+        cellwidth = 12,
         cluster_rows = TRUE,
         cluster_cols = FALSE,
         filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_validation.pdf"),
@@ -13840,7 +13840,7 @@ if (nrow(tetramers_df) > 0) {
         fontsize_number = 5,
         border_color = NA,
         cellheight = 12,
-        cellwidth = 18,
+        cellwidth = 12,
         cluster_rows = TRUE,
         cluster_cols = FALSE,
         filename = file.path(out_dir_tetramer, "qc", "heatmap_organelle_validation_pct.pdf"),
@@ -14391,7 +14391,7 @@ p_origin <- ggplot(origin_counts, aes(x = origin, y = n, fill = origin)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_origin.pdf"), p_origin, width = 4, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_origin.pdf"), p_origin, width = 2, height = 3.5, device = cairo_pdf)
 
 # --- Plot 3: Validation status (combined) ---
 validation_counts <- complex_evidence %>% dplyr::count(validation_status) %>%
@@ -14436,7 +14436,7 @@ p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y 
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_validation_by_source.pdf"), p_validation_sep, width = 6, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_validation_by_source.pdf"), p_validation_sep, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 5: Support score by validation ---
 support_by_validation <- complex_evidence %>%
@@ -14450,7 +14450,7 @@ p_support_validation <- ggplot(complex_evidence, aes(x = validation_status, y = 
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "boxplot_support_by_validation.pdf"), p_support_validation, width = 4, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "boxplot_support_by_validation.pdf"), p_support_validation, width = 2, height = 3.5, device = cairo_pdf)
 
 # --- Plot 6: Database coverage barplot ---
 db_coverage <- data.frame(
@@ -14470,7 +14470,7 @@ p_db_coverage <- ggplot(db_coverage, aes(x = database, y = mean_pct, fill = data
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_database_coverage.pdf"), p_db_coverage, width = 4, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_database_coverage.pdf"), p_db_coverage, width = 3, height = 3.5, device = cairo_pdf)
 
 # --- Plot 7: Heatmap organelle x validation ---
 message("Creating organelle x validation heatmap for complexes...")
