@@ -12240,7 +12240,7 @@ ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_database_support.pdf"), 
 p_support_dist <- ggplot(master_ppi_v3, aes(x = factor(support_score))) +
   geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
   geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
-  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9: PDB exact +3 homolog +1 CP strict +1 CP relaxed +1 STING, BIOGRID, CORUM +1", x = "Support Score", y = "Number of edges") +
+  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9: PDB exact +3 homolog +1 CP strict +3 CP relaxed +1 STING, BIOGRID, CORUM +1", x = "Support Score", y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
@@ -12475,7 +12475,7 @@ ggsave(file.path(out_dir_baseline, "qc", "barplot_database_support_baseline.pdf"
 p_support_baseline <- ggplot(baseline_ppi_v3, aes(x = factor(support_score))) +
   geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
   geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
-  labs(title = "Support Score Distribution (Gold Tier Baseline)", x = "Support Score", y = "Number of edges") +
+  labs(title = "Support Score Distribution (Gold Tier Baseline)", subtitle = "Max = 9: PDB exact +3 homolog +1 CP strict +3 CP relaxed +1 STING, BIOGRID, CORUM +1", x = "Support Score", y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
@@ -13155,7 +13155,7 @@ readr::write_csv(support_hist_data, file.path(out_dir_trimer, "qc", "sourcedata_
 
 p_support_trimer <- ggplot(trimers_df, aes(x = support_mean)) +
   geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
-  labs(title = "Trimer mean support score distribution", x = "Mean support score (3 edges)", y = "Number of trimers") +
+  labs(title = "Trimer mean support score distribution", subtitle = "Max = 9: PDB exact +3 homolog +1 CP strict +3 CP relaxed +1 STING, BIOGRID, CORUM +1", x = "Mean support score (3 edges)", y = "Number of trimers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
@@ -13704,7 +13704,7 @@ if (nrow(tetramers_df) > 0) {
 
   p_support_tetramer <- ggplot(tetramers_df, aes(x = support_mean)) +
     geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
-    labs(title = "Tetramer mean support score distribution", x = "Mean support score (6 edges)", y = "Number of tetramers") +
+    labs(title = "Tetramer mean support score distribution", subtitle = "Max = 9: PDB exact +3 homolog +1 CP strict +3 CP relaxed +1 STING, BIOGRID, CORUM +1", x = "Mean support score (6 edges)", y = "Number of tetramers") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
@@ -14470,7 +14470,7 @@ p_db_coverage <- ggplot(db_coverage, aes(x = database, y = mean_pct, fill = data
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_database_coverage.pdf"), p_db_coverage, width = 3, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_database_coverage.pdf"), p_db_coverage, width = 2, height = 3.5, device = cairo_pdf)
 
 # --- Plot 7: Heatmap organelle x validation ---
 message("Creating organelle x validation heatmap for complexes...")
@@ -15875,7 +15875,7 @@ message("QC plots saved to: ", file.path(out_dir_stoich, "qc"))
 
 
 
-# KO Vulnerability Analysis v5
+# Module 9: KO Vulnerability Analysis v5
 ## Module 0: Setup and Configuration
 ```{r setup}
 # =============================================================================
