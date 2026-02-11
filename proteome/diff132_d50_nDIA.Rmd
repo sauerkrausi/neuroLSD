@@ -13102,7 +13102,7 @@ p_validation <- ggplot(validation_counts, aes(x = validation_tier, y = n, fill =
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave(file.path(out_dir_trimer, "qc", "barplot_validation_tiers.pdf"), p_validation, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "barplot_validation_tiers.pdf"), p_validation, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 3: Known complex status (CORUM vs ComplexPortal separate) ---
 known_summary_sep <- data.frame(
@@ -13126,7 +13126,7 @@ p_known_sep <- ggplot(known_summary_sep, aes(x = reorder(source, -n), y = n, fil
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave(file.path(out_dir_trimer, "qc", "barplot_known_by_source.pdf"), p_known_sep, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "barplot_known_by_source.pdf"), p_known_sep, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 4: Known complex status (combined) ---
 known_summary <- data.frame(
@@ -13147,7 +13147,7 @@ p_known <- ggplot(known_summary, aes(x = category, y = n, fill = category)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_trimer, "qc", "barplot_known_vs_novel.pdf"), p_known, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "barplot_known_vs_novel.pdf"), p_known, width = 2, height = 4, device = cairo_pdf)
 
 # --- Plot 5: Support score distribution ---
 support_hist_data <- trimers_df %>% dplyr::select(trimer_id, support_mean)
@@ -13180,7 +13180,7 @@ p_scores_known <- ggplot(scores_by_known_long, aes(x = status, y = value, fill =
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         strip.background = element_rect(fill = "white", color = "black"))
 
-ggsave(file.path(out_dir_trimer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known, width = 5, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "boxplot_scores_by_known.pdf"), p_scores_known, width = 4, height = 3.5, device = cairo_pdf)
 
 # --- Plot 7: Heatmap organelle x validation ---
 message("Creating organelle x validation heatmap...")
@@ -13255,7 +13255,7 @@ if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
       fontsize_number = 5,
       border_color = NA,
       cellheight = 12,
-      cellwidth = 18,
+      cellwidth = 12,
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       filename = file.path(out_dir_trimer, "qc", "heatmap_organelle_validation.pdf"),
@@ -13276,7 +13276,7 @@ if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
       fontsize_number = 5,
       border_color = NA,
       cellheight = 12,
-      cellwidth = 18,
+      cellwidth = 12,
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       filename = file.path(out_dir_trimer, "qc", "heatmap_organelle_validation_pct.pdf"),
@@ -13696,7 +13696,7 @@ if (nrow(tetramers_df) > 0) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_vs_novel.pdf"), p_known_tet, width = 4, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_tetramer, "qc", "barplot_known_vs_novel.pdf"), p_known_tet, width = 2, height = 4, device = cairo_pdf)
 
   # --- Plot 5: Support score distribution ---
   support_hist_data_tet <- tetramers_df %>% dplyr::select(tetramer_id, support_mean)
