@@ -14228,7 +14228,7 @@ message("QC plots saved to: ", file.path(out_dir_complex, "qc"))
 # Module 6: Top-Down vs Bottom-Up Comparison
 Flags detected structures that belong to known complexes
 Computes coverage metrics (ratio + missing proteins)
-Requires: baseline_ppi_v3, trimer_evidence, tetramer_evidence, complexes_summary, corum_complex_members
+Requires: baseline_ppi_v3, trimer_evidence, tetramer_evidence, complex_evidence, corum_complex_members
 
 ## Chunk 1: Top-Down Complex Coverage
 ```{r topdown_coverage}
@@ -14405,17 +14405,17 @@ if (exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) {
 }
 
 # --- Flag Bottom-Up Complexes ---
-if (exists("complexes_summary") && nrow(complexes_summary) > 0) {
-  complexes_summary <- complexes_summary %>%
+if (exists("complex_evidence") && nrow(complex_evidence) > 0) {
+  complex_evidence <- complex_evidence %>%
     dplyr::mutate(
       topdown_status = dplyr::case_when(
         has_known_match ~ "known_complex",
-        corum_overlap_n >= 2 | cp_overlap_n >= 2 ~ "partial_known",
+        (corum_relaxed_match %in% TRUE) | (cp_relaxed_match %in% TRUE) ~ "partial_known",
         TRUE ~ "novel"
       )
     )
 
-  complex_topdown_summary <- complexes_summary %>%
+  complex_topdown_summary <- complex_evidence %>%
     dplyr::count(topdown_status, name = "n_complexes") %>%
     dplyr::mutate(pct = round(100 * n_complexes / sum(n_complexes), 1))
 
@@ -14426,7 +14426,7 @@ if (exists("complexes_summary") && nrow(complexes_summary) > 0) {
 
 
 ## Chunk 3: QC Plots
-```{r topdown_qc_plots, fig.width=8, fig.height=8}
+```{r topdown_qc_plots, fig.width=10, fig.height=8}
 # =============================================================================
 # Top-Down: QC Plots
 # =============================================================================
@@ -14509,8 +14509,8 @@ comparison_df <- data.frame(
     if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(!trimer_evidence$in_known_complex) else 0,
     if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$in_known_complex) else 0,
     if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(!tetramer_evidence$in_known_complex) else 0,
-    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(complexes_summary$has_known_match, na.rm = TRUE) else 0,
-    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(!complexes_summary$has_known_match, na.rm = TRUE) else 0
+    if(exists("complex_evidence") && nrow(complex_evidence) > 0) sum(complex_evidence$has_known_match, na.rm = TRUE) else 0,
+    if(exists("complex_evidence") && nrow(complex_evidence) > 0) sum(!complex_evidence$has_known_match, na.rm = TRUE) else 0
   )
 ) %>%
   dplyr::mutate(level = factor(level, levels = c("PPIs", "Trimers", "Tetramers", "Complexes")))
@@ -14539,8 +14539,8 @@ topdown_stats <- data.frame(
     if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(!trimer_evidence$in_known_complex) else 0,
     if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$in_known_complex) else 0,
     if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(!tetramer_evidence$in_known_complex) else 0,
-    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(complexes_summary$has_known_match, na.rm = TRUE) else 0,
-    if(exists("complexes_summary") && nrow(complexes_summary) > 0) sum(!complexes_summary$has_known_match, na.rm = TRUE) else 0,
+    if(exists("complex_evidence") && nrow(complex_evidence) > 0) sum(complex_evidence$has_known_match, na.rm = TRUE) else 0,
+    if(exists("complex_evidence") && nrow(complex_evidence) > 0) sum(!complex_evidence$has_known_match, na.rm = TRUE) else 0,
     if(exists("corum_coverage")) sum(corum_coverage$coverage_tier == "complete") else 0,
     if(exists("corum_coverage")) sum(corum_coverage$coverage_tier == "high_80pct") else 0,
     if(exists("corum_coverage")) sum(corum_coverage$coverage_tier == "partial_50pct") else 0
@@ -14568,8 +14568,6 @@ if (exists("corum_coverage")) {
 }
 message("QC plots saved to: ", file.path(out_dir_topdown, "qc"))
 ```
-
-
 
 # Module 7: Stoichiometry Analysis
 Analyzes stoichiometry of matched complexes from both CORUM and ComplexPortal
