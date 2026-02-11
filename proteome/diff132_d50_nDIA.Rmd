@@ -11586,11 +11586,13 @@ path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
 path_corum <- "/Users/felix/Desktop/ppi/corum_humanComplexes.txt"
 path_complexportal <- "/Users/felix/Desktop/ppi/9606.tsv"
 
-# --- Helper function ---
+# --- Helper functions ---
 .make_undirected_key <- function(a, b) {
-
   ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
 }
+
+# Strip isoform suffix (e.g., "P12345-1" -> "P12345")
+.strip_isoform <- function(x) sub("-\\d+$", "", x)
 
 # --- Load CORUM database ---
 corum_available <- file.exists(path_corum)
@@ -11651,7 +11653,11 @@ if (corum_available) {
     dplyr::select(complex_id, complex_name, genes, proteins, stoich, n_subunits)
 
   message("  CORUM complexes (human): ", nrow(corum_human))
-  message("  CORUM unique edges: ", nrow(corum_edge_lookup))
+  message("  CORUM unique edges (gene-based): ", nrow(corum_edge_lookup))
+
+  # Check UniProt coverage in CORUM
+  corum_with_uniprot <- sum(!is.na(corum_human$subunits_uniprot_id) & corum_human$subunits_uniprot_id != "")
+  message("  CORUM complexes with UniProt IDs: ", corum_with_uniprot, " / ", nrow(corum_human))
 } else {
   message("CORUM file not found, skipping...")
   corum_edge_lookup <- NULL
@@ -11845,40 +11851,77 @@ message("  Edges in ComplexPortal relaxed: ", sum(master_ppi_v3$filter_ComplexPo
 # --- Add CORUM annotations (gene-based + UniProt fallback) ---
 message("Adding CORUM annotations...")
 if (!is.null(corum_edge_lookup) && nrow(corum_edge_lookup) > 0) {
-  # CORUM uses gene-based keys
+  # CORUM uses gene-based keys - normalize to uppercase for matching
   master_ppi_v3 <- master_ppi_v3 %>%
-    dplyr::mutate(gene_key = .make_undirected_key(Gene1, Gene2))
+    dplyr::mutate(
+      Gene1_upper = toupper(Gene1),
+      Gene2_upper = toupper(Gene2),
+      gene_key = .make_undirected_key(Gene1, Gene2),
+      gene_key_upper = .make_undirected_key(Gene1_upper, Gene2_upper)
+    )
 
-  # Diagnostics: check gene name overlap
+  # Also create uppercase CORUM lookup
+  corum_edge_lookup_upper <- corum_edge_lookup %>%
+    dplyr::mutate(key_upper = toupper(key))
+
+  # Diagnostics: check gene name overlap (case-insensitive)
   ppi_genes <- unique(c(master_ppi_v3$Gene1, master_ppi_v3$Gene2))
+  ppi_genes_upper <- unique(toupper(ppi_genes))
   corum_genes <- unique(unlist(corum_complex_members$genes))
+  corum_genes_upper <- unique(toupper(corum_genes))
   gene_overlap <- length(intersect(ppi_genes, corum_genes))
+  gene_overlap_upper <- length(intersect(ppi_genes_upper, corum_genes_upper))
   message("  PPI unique genes: ", length(ppi_genes))
   message("  CORUM unique genes: ", length(corum_genes))
-  message("  Gene overlap: ", gene_overlap, " (", round(100 * gene_overlap / length(ppi_genes), 1), "% of PPI genes)")
+  message("  Gene overlap (exact case): ", gene_overlap, " (", round(100 * gene_overlap / length(ppi_genes), 1), "% of PPI genes)")
+  message("  Gene overlap (case-insensitive): ", gene_overlap_upper, " (", round(100 * gene_overlap_upper / length(ppi_genes), 1), "% of PPI genes)")
 
-  # Gene-based matching
+  # Gene-based matching (try exact case first, then case-insensitive)
   master_ppi_v3 <- master_ppi_v3 %>%
-    dplyr::left_join(corum_edge_lookup, by = c("gene_key" = "key")) %>%
-    dplyr::mutate(filter_CORUM_gene = ifelse(!is.na(corum_complex_ids), "present", "none"))
+    dplyr::left_join(corum_edge_lookup, by = c("gene_key" = "key"))
+
+  # Also try case-insensitive matching for unmatched
+  master_ppi_v3 <- master_ppi_v3 %>%
+    dplyr::left_join(
+      corum_edge_lookup_upper %>%
+        dplyr::select(key_upper, corum_complex_ids_upper = corum_complex_ids,
+                      corum_complex_names_upper = corum_complex_names),
+      by = c("gene_key_upper" = "key_upper")
+    )
+
+  # Combine: use exact match if available, otherwise use case-insensitive
+  master_ppi_v3 <- master_ppi_v3 %>%
+    dplyr::mutate(
+      corum_complex_ids = dplyr::coalesce(corum_complex_ids, corum_complex_ids_upper),
+      corum_complex_names = dplyr::coalesce(corum_complex_names, corum_complex_names_upper),
+      filter_CORUM_gene = ifelse(!is.na(corum_complex_ids), "present", "none")
+    ) %>%
+    dplyr::select(-corum_complex_ids_upper, -corum_complex_names_upper)
 
   gene_matches <- sum(master_ppi_v3$filter_CORUM_gene == "present")
-  message("  CORUM matches (gene-based): ", gene_matches)
+  message("  CORUM matches (gene-based, case-insensitive): ", gene_matches)
 
   # UniProt-based matching as alternative
   message("  Creating UniProt-based CORUM edge lookup...")
+
   corum_edges_uniprot <- corum_human %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
-      proteins = list(trimws(unlist(strsplit(subunits_uniprot_id, ";")))),
-      proteins = list(proteins[proteins != "" & !is.na(proteins)])
+      proteins_raw = list(trimws(unlist(strsplit(subunits_uniprot_id, ";")))),
+      proteins_raw = list(proteins_raw[proteins_raw != "" & !is.na(proteins_raw)]),
+      # Also create version without isoform suffixes
+      proteins_base = list(.strip_isoform(proteins_raw))
     ) %>%
     dplyr::ungroup() %>%
-    dplyr::filter(purrr::map_int(proteins, length) >= 2) %>%
+    dplyr::filter(purrr::map_int(proteins_raw, length) >= 2)
+
+  # Create edges using base UniProt IDs (without isoforms)
+  corum_edges_uniprot <- corum_edges_uniprot %>%
     dplyr::mutate(
-      edge_pairs = purrr::map(proteins, function(p) {
+      edge_pairs = purrr::map(proteins_base, function(p) {
+        p <- unique(p)  # Remove duplicates after stripping isoforms
         if (length(p) < 2) return(data.frame(P1 = character(), P2 = character()))
-        pairs <- t(combn(sort(unique(p)), 2))
+        pairs <- t(combn(sort(p), 2))
         data.frame(P1 = pairs[, 1], P2 = pairs[, 2], stringsAsFactors = FALSE)
       })
     ) %>%
@@ -11897,14 +11940,73 @@ if (!is.null(corum_edge_lookup) && nrow(corum_edge_lookup) > 0) {
 
   message("  CORUM UniProt edges: ", nrow(corum_edge_uniprot_lookup))
 
-  # Match using UniProt keys (Protein1::Protein2)
+  # Diagnostics: Compare CORUM vs ComplexPortal edge counts
+  message("\n=== CORUM vs ComplexPortal Edge Comparison ===")
+  message("ComplexPortal unique edges: ", nrow(complexportal_edge_lookup))
+  message("CORUM gene-based edges: ", nrow(corum_edge_lookup))
+  message("CORUM UniProt edges (isoform-stripped): ", nrow(corum_edge_uniprot_lookup))
+
+  # Check UniProt overlap (using base IDs without isoforms)
+  ppi_uniprots <- unique(c(master_ppi_v3$Protein1, master_ppi_v3$Protein2))
+  ppi_uniprots <- ppi_uniprots[!is.na(ppi_uniprots) & ppi_uniprots != ""]
+  ppi_uniprots_base <- unique(.strip_isoform(ppi_uniprots))
+
+  # Get all UniProts from CORUM (already stripped in edge creation)
+  corum_uniprots_raw <- unique(unlist(corum_complex_members$proteins))
+  corum_uniprots_raw <- corum_uniprots_raw[!is.na(corum_uniprots_raw) & corum_uniprots_raw != ""]
+  corum_uniprots_base <- unique(.strip_isoform(corum_uniprots_raw))
+
+  # Get all UniProts from ComplexPortal
+  cp_uniprots <- unique(unlist(complexportal$proteins_list))
+
+  message("\nUniProt coverage:")
+  message("  PPI unique UniProts (raw): ", length(ppi_uniprots))
+  message("  PPI unique UniProts (base): ", length(ppi_uniprots_base))
+  message("  CORUM unique UniProts (raw): ", length(corum_uniprots_raw))
+  message("  CORUM unique UniProts (base): ", length(corum_uniprots_base))
+  message("  ComplexPortal unique UniProts: ", length(cp_uniprots))
+  message("  PPI-CORUM UniProt overlap (base): ", length(intersect(ppi_uniprots_base, corum_uniprots_base)))
+  message("  PPI-CP UniProt overlap: ", length(intersect(ppi_uniprots_base, cp_uniprots)))
+
+  # Check edge key overlap directly
+  ppi_keys_base <- unique(.make_undirected_key(.strip_isoform(master_ppi_v3$Protein1),
+                                                .strip_isoform(master_ppi_v3$Protein2)))
+  cp_edge_keys <- unique(complexportal_edge_lookup$key)
+  corum_uniprot_keys <- unique(corum_edge_uniprot_lookup$uniprot_key)
+
+  message("\nEdge key overlap (using base UniProt IDs):")
+  message("  PPI edge keys: ", length(ppi_keys_base))
+  message("  CP edge keys: ", length(cp_edge_keys))
+  message("  CORUM UniProt edge keys: ", length(corum_uniprot_keys))
+  message("  PPI-CP edge overlap: ", length(intersect(ppi_keys_base, cp_edge_keys)))
+  message("  PPI-CORUM UniProt edge overlap: ", length(intersect(ppi_keys_base, corum_uniprot_keys)))
+
+  # Sample of CORUM UniProt IDs to check format
+  message("\nSample CORUM UniProt IDs (raw, first 5):")
+  print(head(corum_uniprots_raw, 5))
+  message("Sample PPI UniProt IDs (first 5):")
+  print(head(ppi_uniprots, 5))
+
+  # Check if CORUM UniProts contain isoform suffixes like "-1"
+  corum_has_isoform <- sum(grepl("-\\d+$", corum_uniprots_raw))
+  ppi_has_isoform <- sum(grepl("-\\d+$", ppi_uniprots))
+  message("\nIsoform suffix check:")
+  message("  CORUM UniProts with isoform: ", corum_has_isoform, " / ", length(corum_uniprots_raw))
+  message("  PPI UniProts with isoform: ", ppi_has_isoform, " / ", length(ppi_uniprots))
+
+  # Match using UniProt keys (Protein1::Protein2) - strip isoforms for matching
   master_ppi_v3 <- master_ppi_v3 %>%
-    dplyr::mutate(uniprot_key = .make_undirected_key(Protein1, Protein2)) %>%
-    dplyr::left_join(corum_edge_uniprot_lookup, by = "uniprot_key") %>%
+    dplyr::mutate(
+      Protein1_base = .strip_isoform(Protein1),
+      Protein2_base = .strip_isoform(Protein2),
+      uniprot_key = .make_undirected_key(Protein1, Protein2),
+      uniprot_key_base = .make_undirected_key(Protein1_base, Protein2_base)
+    ) %>%
+    dplyr::left_join(corum_edge_uniprot_lookup, by = c("uniprot_key_base" = "uniprot_key")) %>%
     dplyr::mutate(filter_CORUM_uniprot = ifelse(!is.na(corum_uniprot_ids), "present", "none"))
 
   uniprot_matches <- sum(master_ppi_v3$filter_CORUM_uniprot == "present")
-  message("  CORUM matches (UniProt-based): ", uniprot_matches)
+  message("  CORUM matches (UniProt-based, isoform-stripped): ", uniprot_matches)
 
   # Combine: use either gene OR UniProt match
   master_ppi_v3 <- master_ppi_v3 %>%
@@ -11935,6 +12037,47 @@ if (!is.null(corum_edge_lookup) && nrow(corum_edge_lookup) > 0) {
 }
 
 message("  Edges in CORUM (combined): ", sum(master_ppi_v3$filter_CORUM == "present"))
+
+  # Additional diagnostics for CORUM matching
+  message("\n=== CORUM Matching Diagnostics ===")
+  message("Total CORUM edges available: ", nrow(corum_edge_lookup))
+  message("Total CORUM UniProt edges: ", nrow(corum_edge_uniprot_lookup))
+  message("Total CORUM complexes: ", nrow(corum_complex_members))
+
+  # Check how many PPI genes are in any CORUM complex
+  ppi_gene1_in_corum <- master_ppi_v3$Gene1 %in% corum_genes
+  ppi_gene2_in_corum <- master_ppi_v3$Gene2 %in% corum_genes
+  ppi_both_in_corum <- ppi_gene1_in_corum & ppi_gene2_in_corum
+  ppi_either_in_corum <- ppi_gene1_in_corum | ppi_gene2_in_corum
+
+  message("\nPPI edges where Gene1 is in CORUM: ", sum(ppi_gene1_in_corum))
+  message("PPI edges where Gene2 is in CORUM: ", sum(ppi_gene2_in_corum))
+  message("PPI edges where BOTH genes are in CORUM (any complex): ", sum(ppi_both_in_corum))
+  message("PPI edges where EITHER gene is in CORUM: ", sum(ppi_either_in_corum))
+  message("PPI edges where both genes are in SAME CORUM complex (edge match): ", gene_matches)
+
+  # Sample of unmatched edges where both genes are in CORUM
+  both_in_corum_but_no_match <- master_ppi_v3 %>%
+    dplyr::filter(ppi_both_in_corum & filter_CORUM_gene == "none") %>%
+    dplyr::slice_head(n = 10)
+
+  if (nrow(both_in_corum_but_no_match) > 0) {
+    message("\nSample of edges where both genes are in CORUM but NOT in same complex:")
+    for (i in seq_len(min(5, nrow(both_in_corum_but_no_match)))) {
+      message("  ", both_in_corum_but_no_match$Gene1[i], " - ", both_in_corum_but_no_match$Gene2[i])
+    }
+  }
+
+  # CORUM complex size distribution
+  corum_size_dist <- corum_complex_members %>%
+    dplyr::count(n_subunits, name = "n_complexes") %>%
+    dplyr::arrange(n_subunits)
+
+  message("\nCORUM complex size distribution (top 10):")
+  print(head(corum_size_dist, 10))
+
+  message("  Median CORUM complex size: ", median(corum_complex_members$n_subunits))
+  message("  Mean CORUM complex size: ", round(mean(corum_complex_members$n_subunits), 1))
 ```
 
 
@@ -12043,6 +12186,7 @@ support_by_tier <- master_ppi_v3 %>%
     median_support = median(support_score),
     pct_in_CORUM = round(100 * mean(filter_CORUM == "present"), 1),
     pct_PDB_struct = round(100 * mean(filter_PDB != "none"), 1),
+    pct_ComplexPortal = round(100 * mean(filter_ComplexPortal != "none"), 1),
     .groups = "drop"
   )
 
@@ -12122,14 +12266,19 @@ if (requireNamespace("UpSetR", quietly = TRUE)) {
 
 # --- Plot 4: Support by tier ---
 support_by_tier_long <- support_by_tier %>%
-  dplyr::select(confidence_tier, pct_in_CORUM, pct_PDB_struct) %>%
+  dplyr::select(confidence_tier, pct_in_CORUM, pct_PDB_struct, pct_ComplexPortal) %>%
   tidyr::pivot_longer(-confidence_tier, names_to = "metric", values_to = "percentage") %>%
-  dplyr::mutate(metric = sub("pct_", "", metric))
+  dplyr::mutate(metric = dplyr::case_when(
+    metric == "pct_in_CORUM" ~ "CORUM",
+    metric == "pct_PDB_struct" ~ "PDB",
+    metric == "pct_ComplexPortal" ~ "ComplexPortal",
+    TRUE ~ sub("pct_", "", metric)
+  ))
 
 p_support_tier <- ggplot(support_by_tier_long, aes(x = factor(confidence_tier, levels = c("gold", "silver", "bronze")), y = percentage, fill = metric)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(percentage, "%")), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_brewer(palette = "Set2", name = "Database") +
+  scale_fill_manual(values = c("PDB" = "#E41A1C", "CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), name = "Database") +
   labs(title = "Database support by confidence tier", x = NULL, y = "Percentage of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
@@ -14767,6 +14916,94 @@ p_ppi_source <- ggplot(ppi_known_summary, aes(x = reorder(known_complex_source, 
         axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave(file.path(out_dir_topdown, "qc", "barplot_ppi_known_source.pdf"), p_ppi_source, width = 5, height = 4, device = cairo_pdf)
+
+# --- Plot 3b: Validation by database (PDB, CORUM, CP) - all levels ---
+message("Creating validation by database barplots...")
+
+validation_by_db <- data.frame(
+  level = rep(c("PPIs", "Trimers", "Tetramers"), each = 6),
+  database = rep(c("PDB_exact", "PDB_any", "CORUM", "ComplexPortal", "STRING", "BIOGRID"), 3),
+  n = c(
+    # PPIs
+    sum(baseline_ppi_v3$filter_PDB == "exact"),
+    sum(baseline_ppi_v3$filter_PDB != "none"),
+    sum(baseline_ppi_v3$filter_CORUM == "present"),
+    sum(baseline_ppi_v3$filter_ComplexPortal != "none"),
+    sum(baseline_ppi_v3$filter_STRING == "present"),
+    sum(baseline_ppi_v3$filter_BIOGRID == "present"),
+    # Trimers (all 3 edges)
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$all_edges_PDB_exact) else 0,
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$n_edges_PDB == 3) else 0,
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$all_edges_CORUM) else 0,
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$all_edges_ComplexPortal) else 0,
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$all_edges_STRING) else 0,
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$all_edges_BIOGRID) else 0,
+    # Tetramers (all 6 edges)
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$all_edges_PDB_exact) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$n_edges_PDB == 6, na.rm = TRUE) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$all_edges_CORUM) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$all_edges_ComplexPortal) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$all_edges_STRING) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$all_edges_BIOGRID) else 0
+  )
+) %>%
+  dplyr::mutate(level = factor(level, levels = c("PPIs", "Trimers", "Tetramers")))
+
+readr::write_csv(validation_by_db, file.path(out_dir_topdown, "qc", "sourcedata_validation_by_database.csv"))
+
+# Barplot: validation by database for each level
+p_validation_db <- ggplot(validation_by_db, aes(x = database, y = n, fill = database)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 1.8) +
+  facet_wrap(~level, scales = "free_y", ncol = 3) +
+  scale_fill_manual(values = c("PDB_exact" = "#E41A1C", "PDB_any" = "#FC8D62",
+                               "CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8",
+                               "STRING" = "#984EA3", "BIOGRID" = "#FF7F00"), guide = "none") +
+  labs(title = "Validation by database at each level", x = NULL, y = "Count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.background = element_rect(fill = "white", color = "black"))
+
+ggsave(file.path(out_dir_topdown, "qc", "barplot_validation_by_database.pdf"), p_validation_db, width = 8, height = 4, device = cairo_pdf)
+
+# --- Plot 3c: PDB validation summary (focus on structural evidence) ---
+pdb_validation_summary <- data.frame(
+  level = c("PPIs", "Trimers", "Tetramers"),
+  PDB_exact = c(
+    sum(baseline_ppi_v3$filter_PDB == "exact"),
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$all_edges_PDB_exact) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$all_edges_PDB_exact) else 0
+  ),
+  PDB_homolog = c(
+    sum(baseline_ppi_v3$filter_PDB == "homolog"),
+    if(exists("trimer_evidence") && nrow(trimer_evidence) > 0) sum(trimer_evidence$n_edges_PDB == 3 & !trimer_evidence$all_edges_PDB_exact) else 0,
+    if(exists("tetramer_evidence") && nrow(tetramer_evidence) > 0) sum(tetramer_evidence$n_edges_PDB == 6 & !tetramer_evidence$all_edges_PDB_exact, na.rm = TRUE) else 0
+  ),
+  total = c(nrow(baseline_ppi_v3),
+            if(exists("trimer_evidence")) nrow(trimer_evidence) else 0,
+            if(exists("tetramer_evidence")) nrow(tetramer_evidence) else 0)
+) %>%
+  dplyr::mutate(
+    pct_PDB_exact = round(100 * PDB_exact / total, 1),
+    pct_PDB_any = round(100 * (PDB_exact + PDB_homolog) / total, 1),
+    level = factor(level, levels = c("PPIs", "Trimers", "Tetramers"))
+  )
+
+readr::write_csv(pdb_validation_summary, file.path(out_dir_topdown, "qc", "sourcedata_pdb_validation_summary.csv"))
+
+pdb_validation_long <- pdb_validation_summary %>%
+  tidyr::pivot_longer(c(PDB_exact, PDB_homolog), names_to = "type", values_to = "n")
+
+p_pdb_summary <- ggplot(pdb_validation_long, aes(x = level, y = n, fill = type)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("PDB_exact" = "#E41A1C", "PDB_homolog" = "#FC8D62"), name = "PDB Type") +
+  labs(title = "PDB structural validation by level", x = NULL, y = "Count") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+ggsave(file.path(out_dir_topdown, "qc", "barplot_pdb_validation.pdf"), p_pdb_summary, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 4: Bottom-up vs Top-down comparison (stacked) ---
 comparison_df <- data.frame(
