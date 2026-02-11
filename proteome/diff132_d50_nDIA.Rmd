@@ -11599,7 +11599,7 @@ corum_available <- file.exists(path_corum)
 
 if (corum_available) {
   message("Loading CORUM database...")
-  corum_raw <- data.table::fread(path_corum, sep = "\t", header = TRUE, quote = "", data.table = FALSE)
+  corum_raw <- data.table::fread(path_corum, sep = "\t", header = TRUE, data.table = FALSE)
 
   # Parse using correct column names from corum_humanComplexes.txt
   corum_human <- corum_raw %>%
@@ -11614,12 +11614,13 @@ if (corum_available) {
     dplyr::rowwise() %>%
     dplyr::mutate(genes = list(trimws(unlist(strsplit(subunits_gene_name, ";"))))) %>%
     dplyr::ungroup() %>%
-    dplyr::mutate(genes = purrr::map(genes, ~ .x[.x != "" & !is.na(.x)])) %>%
+    dplyr::mutate(genes = purrr::map(genes, ~ unique(.x[.x != "" & !is.na(.x)]))) %>%
     dplyr::filter(purrr::map_int(genes, length) >= 2) %>%
     dplyr::mutate(
       edge_pairs = purrr::map(genes, function(g) {
+        g <- unique(g)  # Ensure unique
         if (length(g) < 2) return(data.frame(Gene1 = character(), Gene2 = character()))
-        pairs <- t(combn(sort(unique(g)), 2))
+        pairs <- t(combn(sort(g), 2))
         data.frame(Gene1 = pairs[, 1], Gene2 = pairs[, 2], stringsAsFactors = FALSE)
       })
     ) %>%
@@ -11909,17 +11910,16 @@ if (!is.null(corum_edge_lookup) && nrow(corum_edge_lookup) > 0) {
     dplyr::mutate(
       proteins_raw = list(trimws(unlist(strsplit(subunits_uniprot_id, ";")))),
       proteins_raw = list(proteins_raw[proteins_raw != "" & !is.na(proteins_raw)]),
-      # Also create version without isoform suffixes
-      proteins_base = list(.strip_isoform(proteins_raw))
+      # Create version without isoform suffixes AND make unique
+      proteins_base = list(unique(.strip_isoform(proteins_raw)))
     ) %>%
     dplyr::ungroup() %>%
-    dplyr::filter(purrr::map_int(proteins_raw, length) >= 2)
+    dplyr::filter(purrr::map_int(proteins_base, length) >= 2)  # Filter on unique base proteins
 
   # Create edges using base UniProt IDs (without isoforms)
   corum_edges_uniprot <- corum_edges_uniprot %>%
     dplyr::mutate(
       edge_pairs = purrr::map(proteins_base, function(p) {
-        p <- unique(p)  # Remove duplicates after stripping isoforms
         if (length(p) < 2) return(data.frame(P1 = character(), P2 = character()))
         pairs <- t(combn(sort(p), 2))
         data.frame(P1 = pairs[, 1], P2 = pairs[, 2], stringsAsFactors = FALSE)
