@@ -12781,23 +12781,27 @@ trimers_df$cp_matched_id <- purrr::map_chr(cp_matches, "complex_id")
 message("  ComplexPortal strict (3/3): ", sum(trimers_df$cp_strict_match))
 message("  ComplexPortal relaxed (2/3): ", sum(trimers_df$cp_relaxed_match))
 
-# --- CORUM exact match check ---
-message("Checking CORUM exact matches...")
+# --- CORUM exact match check (UniProt-based) ---
+message("Checking CORUM exact matches (UniProt-based)...")
 
 if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
-  .check_corum_match <- function(g1, g2, g3, corum_members) {
-    genes <- c(g1, g2, g3)
+  # UniProt-based matching (preferred)
+  .check_corum_match_uniprot <- function(p1, p2, p3, corum_members) {
+    proteins <- c(p1, p2, p3)
+    proteins <- proteins[!is.na(proteins)]
+    if (length(proteins) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
+
     for (i in seq_len(nrow(corum_members))) {
-      complex_genes <- corum_members$genes[[i]]
-      n_match <- sum(genes %in% complex_genes)
+      complex_proteins <- corum_members$proteins[[i]]
+      n_match <- sum(proteins %in% complex_proteins)
       if (n_match == 3) return(list(strict = TRUE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
       if (n_match >= 2) return(list(strict = FALSE, relaxed = TRUE, complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
     }
     return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
   }
 
-  corum_matches <- purrr::pmap(list(trimers_df$Gene1, trimers_df$Gene2, trimers_df$Gene3),
-                               ~ .check_corum_match(..1, ..2, ..3, corum_complex_members))
+  corum_matches <- purrr::pmap(list(trimers_df$Protein1, trimers_df$Protein2, trimers_df$Protein3),
+                               ~ .check_corum_match_uniprot(..1, ..2, ..3, corum_complex_members))
 
   trimers_df$corum_strict_match <- purrr::map_lgl(corum_matches, "strict")
   trimers_df$corum_relaxed_match <- purrr::map_lgl(corum_matches, "relaxed")
@@ -12994,7 +12998,7 @@ if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
       BIOGRID = sum(all_edges_BIOGRID),
       .groups = "drop"
     ) %>%
-    dplyr::filter(n_total >= 100)
+    dplyr::filter(n_total >= 5)  # Lowered threshold for heatmap
 
   readr::write_csv(org_validation_matrix, file.path(out_dir_trimer, "qc", "sourcedata_heatmap_organelle_validation.csv"))
 
@@ -13087,9 +13091,6 @@ message("  Known complex (strict): ", sum(trimer_evidence$in_known_complex))
 message("  Novel: ", sum(!trimer_evidence$in_known_complex_relaxed))
 message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 ```
-
-
-
 
 # Module 4: Tetramer Detection and Validation
 Detects 4-cliques from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
