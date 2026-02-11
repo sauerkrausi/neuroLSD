@@ -13181,6 +13181,9 @@ message("  Novel: ", sum(!trimer_evidence$in_known_complex_relaxed))
 message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 ```
 
+
+
+
 # Module 4: Tetramer Detection and Validation
 Detects 4-cliques from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
 Requires: baseline_ppi_v3 from Module 2, g (graph), corum_complex_members, complexportal
@@ -13323,20 +13326,43 @@ if (nrow(tetramers_df) > 0) {
     )
 
   # --- Get UniProt IDs ---
-  # Create uniprot_lookup if it doesn't exist (from baseline)
-  if (!exists("uniprot_lookup") || nrow(uniprot_lookup) == 0) {
-    uniprot_lookup <- baseline_ppi_v3 %>%
-      dplyr::select(Gene1, Protein1) %>%
-      dplyr::rename(gene = Gene1, uniprot = Protein1) %>%
-      dplyr::bind_rows(baseline_ppi_v3 %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(gene = Gene2, uniprot = Protein2)) %>%
-      dplyr::distinct(gene, .keep_all = TRUE)
+  # Create uniprot_lookup from baseline (or master_ppi_v3 if baseline not available)
+  message("Creating UniProt lookup for tetramers...")
+
+  ppi_source <- if (exists("baseline_ppi_v3") && nrow(baseline_ppi_v3) > 0) baseline_ppi_v3 else master_ppi_v3
+
+  uniprot_lookup <- ppi_source %>%
+    dplyr::select(Gene1, Protein1) %>%
+    dplyr::filter(!is.na(Gene1) & !is.na(Protein1) & Gene1 != "" & Protein1 != "") %>%
+    dplyr::rename(gene = Gene1, uniprot = Protein1) %>%
+    dplyr::bind_rows(
+      ppi_source %>%
+        dplyr::select(Gene2, Protein2) %>%
+        dplyr::filter(!is.na(Gene2) & !is.na(Protein2) & Gene2 != "" & Protein2 != "") %>%
+        dplyr::rename(gene = Gene2, uniprot = Protein2)
+    ) %>%
+    dplyr::distinct(gene, .keep_all = TRUE)
+
+  message("  UniProt lookup entries: ", nrow(uniprot_lookup))
+
+  # Initialize Protein columns
+  tetramers_df$Protein1 <- NA_character_
+  tetramers_df$Protein2 <- NA_character_
+  tetramers_df$Protein3 <- NA_character_
+  tetramers_df$Protein4 <- NA_character_
+
+  # Map Gene to UniProt
+  if (nrow(uniprot_lookup) > 0) {
+    gene_to_prot <- setNames(uniprot_lookup$uniprot, uniprot_lookup$gene)
+    tetramers_df$Protein1 <- gene_to_prot[tetramers_df$Gene1]
+    tetramers_df$Protein2 <- gene_to_prot[tetramers_df$Gene2]
+    tetramers_df$Protein3 <- gene_to_prot[tetramers_df$Gene3]
+    tetramers_df$Protein4 <- gene_to_prot[tetramers_df$Gene4]
   }
 
-  tetramers_df <- tetramers_df %>%
-    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein1 = uniprot), by = c("Gene1" = "gene")) %>%
-    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein2 = uniprot), by = c("Gene2" = "gene")) %>%
-    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein3 = uniprot), by = c("Gene3" = "gene")) %>%
-    dplyr::left_join(uniprot_lookup %>% dplyr::rename(Protein4 = uniprot), by = c("Gene4" = "gene"))
+  n_with_proteins <- sum(!is.na(tetramers_df$Protein1) & !is.na(tetramers_df$Protein2) &
+                          !is.na(tetramers_df$Protein3) & !is.na(tetramers_df$Protein4))
+  message("  Tetramers with all 4 proteins mapped: ", n_with_proteins, " / ", nrow(tetramers_df))
 
   # --- ComplexPortal exact match check ---
   message("Checking ComplexPortal exact matches...")
@@ -13353,12 +13379,22 @@ if (nrow(tetramers_df) > 0) {
     return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
   }
 
-  cp_matches_4 <- purrr::pmap(list(tetramers_df$Protein1, tetramers_df$Protein2, tetramers_df$Protein3, tetramers_df$Protein4),
-                              ~ .check_cp_match_4(..1, ..2, ..3, ..4, complex_to_proteins))
+  # Check if complex_to_proteins exists and has data
+  if (exists("complex_to_proteins") && nrow(complex_to_proteins) > 0 && n_with_proteins > 0) {
+    cp_matches_4 <- purrr::pmap(
+      list(tetramers_df$Protein1, tetramers_df$Protein2, tetramers_df$Protein3, tetramers_df$Protein4),
+      ~ .check_cp_match_4(..1, ..2, ..3, ..4, complex_to_proteins)
+    )
 
-  tetramers_df$cp_strict_match <- purrr::map_lgl(cp_matches_4, "strict")
-  tetramers_df$cp_relaxed_match <- purrr::map_lgl(cp_matches_4, "relaxed")
-  tetramers_df$cp_matched_id <- purrr::map_chr(cp_matches_4, "complex_id")
+    tetramers_df$cp_strict_match <- purrr::map_lgl(cp_matches_4, "strict")
+    tetramers_df$cp_relaxed_match <- purrr::map_lgl(cp_matches_4, "relaxed")
+    tetramers_df$cp_matched_id <- purrr::map_chr(cp_matches_4, "complex_id")
+  } else {
+    message("  Skipping ComplexPortal check (no protein mapping or no complex data)")
+    tetramers_df$cp_strict_match <- FALSE
+    tetramers_df$cp_relaxed_match <- FALSE
+    tetramers_df$cp_matched_id <- NA_character_
+  }
 
   message("  ComplexPortal strict (4/4): ", sum(tetramers_df$cp_strict_match))
   message("  ComplexPortal relaxed (3/4): ", sum(tetramers_df$cp_relaxed_match))
@@ -13366,7 +13402,7 @@ if (nrow(tetramers_df) > 0) {
   # --- CORUM exact match check (UniProt-based) ---
   message("Checking CORUM exact matches (UniProt-based)...")
 
-  if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0 && n_with_proteins > 0) {
     .check_corum_match_4_uniprot <- function(p1, p2, p3, p4, corum_members) {
       proteins <- c(p1, p2, p3, p4)
       proteins <- proteins[!is.na(proteins)]
@@ -13381,8 +13417,10 @@ if (nrow(tetramers_df) > 0) {
       return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
     }
 
-    corum_matches_4 <- purrr::pmap(list(tetramers_df$Protein1, tetramers_df$Protein2, tetramers_df$Protein3, tetramers_df$Protein4),
-                                   ~ .check_corum_match_4_uniprot(..1, ..2, ..3, ..4, corum_complex_members))
+    corum_matches_4 <- purrr::pmap(
+      list(tetramers_df$Protein1, tetramers_df$Protein2, tetramers_df$Protein3, tetramers_df$Protein4),
+      ~ .check_corum_match_4_uniprot(..1, ..2, ..3, ..4, corum_complex_members)
+    )
 
     tetramers_df$corum_strict_match <- purrr::map_lgl(corum_matches_4, "strict")
     tetramers_df$corum_relaxed_match <- purrr::map_lgl(corum_matches_4, "relaxed")
@@ -13392,6 +13430,7 @@ if (nrow(tetramers_df) > 0) {
     message("  CORUM strict (4/4): ", sum(tetramers_df$corum_strict_match))
     message("  CORUM relaxed (3/4): ", sum(tetramers_df$corum_relaxed_match))
   } else {
+    message("  Skipping CORUM check (no protein mapping or no CORUM data)")
     tetramers_df$corum_strict_match <- FALSE
     tetramers_df$corum_relaxed_match <- FALSE
     tetramers_df$corum_matched_id <- NA_integer_
@@ -13547,12 +13586,14 @@ if (nrow(tetramers_df) > 0) {
   message("Creating organelle x validation heatmap...")
 
   # Use node-level (protein) annotations with MAJORITY VOTING
+  # For tetramers: 3/4 = strict majority, 2/4 = relaxed majority
   if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
     organelle_tags <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
     gene_to_org <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags))
 
-    # Function to get majority organelle for a set of genes
-    .get_majority_organelle <- function(genes, gene_to_org, org_tags) {
+    # Function to get majority organelle for a set of 4 genes
+    # Returns: list(strict = org if 3+/4, relaxed = org if 2+/4, organelle = best match)
+    .get_majority_organelle_4 <- function(genes, gene_to_org, org_tags) {
       org_votes <- lapply(genes, function(g) {
         row <- gene_to_org %>% dplyr::filter(Genes == g)
         if (nrow(row) == 0) return(character(0))
@@ -13560,29 +13601,45 @@ if (nrow(tetramers_df) > 0) {
         return(orgs)
       })
       all_orgs <- unlist(org_votes)
-      if (length(all_orgs) == 0) return(NA_character_)
+      if (length(all_orgs) == 0) return(list(organelle = NA_character_, strict = NA_character_, relaxed = NA_character_, n_agree = 0L))
+
       org_counts <- table(all_orgs)
+      max_count <- max(org_counts)
       majority_org <- names(org_counts)[which.max(org_counts)]
-      return(majority_org)
+
+      return(list(
+        organelle = majority_org,
+        strict = if (max_count >= 3) majority_org else NA_character_,
+        relaxed = if (max_count >= 2) majority_org else NA_character_,
+        n_agree = as.integer(max_count)
+      ))
     }
 
     # Apply to each tetramer
-    tetramers_df <- tetramers_df %>%
-      dplyr::rowwise() %>%
-      dplyr::mutate(
-        majority_organelle = .get_majority_organelle(c(Gene1, Gene2, Gene3, Gene4), gene_to_org, organelle_tags)
-      ) %>%
-      dplyr::ungroup()
+    tetramer_org_results <- purrr::pmap(
+      list(tetramers_df$Gene1, tetramers_df$Gene2, tetramers_df$Gene3, tetramers_df$Gene4),
+      ~ .get_majority_organelle_4(c(..1, ..2, ..3, ..4), gene_to_org, organelle_tags)
+    )
 
-    tetramers_df$shared_organelle <- tetramers_df$majority_organelle
+    tetramers_df$majority_organelle <- purrr::map_chr(tetramer_org_results, "organelle")
+    tetramers_df$organelle_strict <- purrr::map_chr(tetramer_org_results, "strict")
+    tetramers_df$organelle_relaxed <- purrr::map_chr(tetramer_org_results, "relaxed")
+    tetramers_df$organelle_n_agree <- purrr::map_int(tetramer_org_results, "n_agree")
+
+    # Use relaxed (2/4) for shared_organelle in heatmap (for better coverage)
+    tetramers_df$shared_organelle <- tetramers_df$organelle_relaxed
 
     n_with_org <- sum(!is.na(tetramers_df$majority_organelle))
-    message("  Tetramers with organelle annotation: ", n_with_org, " / ", nrow(tetramers_df))
+    n_strict <- sum(!is.na(tetramers_df$organelle_strict))
+    n_relaxed <- sum(!is.na(tetramers_df$organelle_relaxed))
+    message("  Tetramers with any organelle annotation: ", n_with_org, " / ", nrow(tetramers_df))
+    message("  Tetramers with strict majority (3/4): ", n_strict)
+    message("  Tetramers with relaxed majority (2/4): ", n_relaxed)
 
-    # Build matrix: organelle x validation source (using majority annotation)
+    # Build matrix: organelle x validation source (using relaxed 2/4 annotation)
     org_validation_matrix_tet <- tetramers_df %>%
-      dplyr::filter(!is.na(majority_organelle)) %>%
-      dplyr::group_by(majority_organelle) %>%
+      dplyr::filter(!is.na(organelle_relaxed)) %>%
+      dplyr::group_by(organelle_relaxed) %>%
       dplyr::summarise(
         n_total = dplyr::n(),
         PDB_exact = sum(all_edges_PDB_exact),
@@ -13593,14 +13650,14 @@ if (nrow(tetramers_df) > 0) {
         BIOGRID = sum(all_edges_BIOGRID),
         .groups = "drop"
       ) %>%
-      dplyr::filter(n_total >= 5)  # Lowered threshold for heatmap
+      dplyr::filter(n_total >= 3)  # Lowered threshold for heatmap
 
     readr::write_csv(org_validation_matrix_tet, file.path(out_dir_tetramer, "qc", "sourcedata_heatmap_organelle_validation.csv"))
 
     if (nrow(org_validation_matrix_tet) > 1) {
       mat_tet <- org_validation_matrix_tet %>%
-        dplyr::select(majority_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
-        tibble::column_to_rownames("majority_organelle") %>%
+        dplyr::select(organelle_relaxed, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+        tibble::column_to_rownames("organelle_relaxed") %>%
         as.matrix()
 
       pheatmap::pheatmap(
@@ -13701,6 +13758,8 @@ if (nrow(tetramer_evidence) > 0) {
 }
 message("QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
 ```
+
+
 
 # Module 5: Complex Growing from Trimers and Tetramers
 Grows complexes by iteratively adding neighbors connected to ≥2 members
