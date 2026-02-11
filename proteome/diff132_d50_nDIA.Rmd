@@ -12240,7 +12240,7 @@ ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_database_support.pdf"), 
 p_support_dist <- ggplot(master_ppi_v3, aes(x = factor(support_score))) +
   geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
   geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
-  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9", x = "Support Score", y = "Number of edges") +
+  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9: PDB exact +3 homolog +1 CP strict +1 CP relaxed +1 STING, BIOGRID, CORUM +1", x = "Support Score", y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
@@ -14805,7 +14805,7 @@ if (exists("corum_coverage")) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_topdown, "qc", "barplot_corum_coverage.pdf"), p_corum_coverage, width = 4, height = 3.5, device = cairo_pdf)
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_corum_coverage.pdf"), p_corum_coverage, width = 3, height = 3.5, device = cairo_pdf)
 
   # Histogram of coverage ratios
   p_corum_hist <- ggplot(corum_coverage %>% dplyr::filter(n_detected > 0), aes(x = coverage_pct)) +
@@ -14815,7 +14815,7 @@ if (exists("corum_coverage")) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_topdown, "qc", "histogram_corum_coverage.pdf"), p_corum_hist, width = 4, height = 3, device = cairo_pdf)
+  ggsave(file.path(out_dir_topdown, "qc", "histogram_corum_coverage.pdf"), p_corum_hist, width = 3, height = 3, device = cairo_pdf)
 }
 
 # --- Plot 2: Coverage by complex size ---
@@ -14841,7 +14841,7 @@ if (exists("corum_coverage")) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_topdown, "qc", "barplot_coverage_by_size.pdf"), p_coverage_size, width = 4, height = 3.5, device = cairo_pdf)
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_coverage_by_size.pdf"), p_coverage_size, width = 3.5, height = 3.5, device = cairo_pdf)
 }
 
 # --- Plot 2b: ComplexPortal coverage distribution ---
@@ -14860,7 +14860,7 @@ if (exists("cp_coverage") && nrow(cp_coverage) > 0) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_topdown, "qc", "barplot_cp_coverage.pdf"), p_cp_coverage, width = 4, height = 3.5, device = cairo_pdf)
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_cp_coverage.pdf"), p_cp_coverage, width = 3.5, height = 3.5, device = cairo_pdf)
 
   # Histogram of coverage ratios
   p_cp_hist <- ggplot(cp_coverage %>% dplyr::filter(n_detected > 0), aes(x = coverage_pct)) +
@@ -14870,7 +14870,7 @@ if (exists("cp_coverage") && nrow(cp_coverage) > 0) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_topdown, "qc", "histogram_cp_coverage.pdf"), p_cp_hist, width = 4, height = 3, device = cairo_pdf)
+  ggsave(file.path(out_dir_topdown, "qc", "histogram_cp_coverage.pdf"), p_cp_hist, width = 3, height = 3, device = cairo_pdf)
 
   message("  ComplexPortal complexes detected: ", sum(cp_coverage$n_detected > 0), " / ", nrow(cp_coverage))
   message("  ComplexPortal complete coverage: ", sum(cp_coverage$coverage_tier == "complete"))
@@ -14902,7 +14902,7 @@ if (exists("corum_coverage") && exists("cp_coverage") && nrow(cp_coverage) > 0) 
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
 
-  ggsave(file.path(out_dir_topdown, "qc", "barplot_coverage_comparison.pdf"), p_combined, width = 5, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_coverage_comparison.pdf"), p_combined, width = 4, height = 4, device = cairo_pdf)
 }
 
 # --- Plot 3: PPI known complex source ---
@@ -14915,7 +14915,7 @@ p_ppi_source <- ggplot(ppi_known_summary, aes(x = reorder(known_complex_source, 
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave(file.path(out_dir_topdown, "qc", "barplot_ppi_known_source.pdf"), p_ppi_source, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_topdown, "qc", "barplot_ppi_known_source.pdf"), p_ppi_source, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 3b: Validation by database (PDB, CORUM, CP) - all levels ---
 message("Creating validation by database barplots...")
