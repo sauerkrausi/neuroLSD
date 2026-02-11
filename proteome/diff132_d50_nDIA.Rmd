@@ -11842,25 +11842,99 @@ master_ppi_v3 <- master_ppi_v3 %>%
 message("  Edges in ComplexPortal strict: ", sum(master_ppi_v3$filter_ComplexPortal == "strict"))
 message("  Edges in ComplexPortal relaxed: ", sum(master_ppi_v3$filter_ComplexPortal == "relaxed"))
 
-# --- Add CORUM annotations ---
+# --- Add CORUM annotations (gene-based + UniProt fallback) ---
 message("Adding CORUM annotations...")
 if (!is.null(corum_edge_lookup) && nrow(corum_edge_lookup) > 0) {
-  # CORUM uses gene-based keys, need to create gene key for master_ppi_v3
+  # CORUM uses gene-based keys
   master_ppi_v3 <- master_ppi_v3 %>%
     dplyr::mutate(gene_key = .make_undirected_key(Gene1, Gene2))
 
+  # Diagnostics: check gene name overlap
+  ppi_genes <- unique(c(master_ppi_v3$Gene1, master_ppi_v3$Gene2))
+  corum_genes <- unique(unlist(corum_complex_members$genes))
+  gene_overlap <- length(intersect(ppi_genes, corum_genes))
+  message("  PPI unique genes: ", length(ppi_genes))
+  message("  CORUM unique genes: ", length(corum_genes))
+  message("  Gene overlap: ", gene_overlap, " (", round(100 * gene_overlap / length(ppi_genes), 1), "% of PPI genes)")
+
+  # Gene-based matching
   master_ppi_v3 <- master_ppi_v3 %>%
     dplyr::left_join(corum_edge_lookup, by = c("gene_key" = "key")) %>%
-    dplyr::mutate(filter_CORUM = ifelse(!is.na(corum_complex_ids), "present", "none"))
+    dplyr::mutate(filter_CORUM_gene = ifelse(!is.na(corum_complex_ids), "present", "none"))
+
+  gene_matches <- sum(master_ppi_v3$filter_CORUM_gene == "present")
+  message("  CORUM matches (gene-based): ", gene_matches)
+
+  # UniProt-based matching as alternative
+  message("  Creating UniProt-based CORUM edge lookup...")
+  corum_edges_uniprot <- corum_human %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      proteins = list(trimws(unlist(strsplit(subunits_uniprot_id, ";")))),
+      proteins = list(proteins[proteins != "" & !is.na(proteins)])
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::filter(purrr::map_int(proteins, length) >= 2) %>%
+    dplyr::mutate(
+      edge_pairs = purrr::map(proteins, function(p) {
+        if (length(p) < 2) return(data.frame(P1 = character(), P2 = character()))
+        pairs <- t(combn(sort(unique(p)), 2))
+        data.frame(P1 = pairs[, 1], P2 = pairs[, 2], stringsAsFactors = FALSE)
+      })
+    ) %>%
+    tidyr::unnest(edge_pairs) %>%
+    dplyr::mutate(uniprot_key = .make_undirected_key(P1, P2)) %>%
+    dplyr::select(uniprot_key, complex_id, complex_name) %>%
+    dplyr::distinct()
+
+  corum_edge_uniprot_lookup <- corum_edges_uniprot %>%
+    dplyr::group_by(uniprot_key) %>%
+    dplyr::summarise(
+      corum_uniprot_ids = paste(unique(complex_id), collapse = ";"),
+      corum_uniprot_names = paste(unique(complex_name), collapse = ";"),
+      .groups = "drop"
+    )
+
+  message("  CORUM UniProt edges: ", nrow(corum_edge_uniprot_lookup))
+
+  # Match using UniProt keys (Protein1::Protein2)
+  master_ppi_v3 <- master_ppi_v3 %>%
+    dplyr::mutate(uniprot_key = .make_undirected_key(Protein1, Protein2)) %>%
+    dplyr::left_join(corum_edge_uniprot_lookup, by = "uniprot_key") %>%
+    dplyr::mutate(filter_CORUM_uniprot = ifelse(!is.na(corum_uniprot_ids), "present", "none"))
+
+  uniprot_matches <- sum(master_ppi_v3$filter_CORUM_uniprot == "present")
+  message("  CORUM matches (UniProt-based): ", uniprot_matches)
+
+  # Combine: use either gene OR UniProt match
+  master_ppi_v3 <- master_ppi_v3 %>%
+    dplyr::mutate(
+      filter_CORUM = ifelse(filter_CORUM_gene == "present" | filter_CORUM_uniprot == "present", "present", "none"),
+      # Merge complex IDs from both sources
+      corum_complex_ids = dplyr::case_when(
+        !is.na(corum_complex_ids) & !is.na(corum_uniprot_ids) ~ paste(corum_complex_ids, corum_uniprot_ids, sep = ";"),
+        !is.na(corum_complex_ids) ~ corum_complex_ids,
+        !is.na(corum_uniprot_ids) ~ corum_uniprot_ids,
+        TRUE ~ NA_character_
+      ),
+      corum_complex_names = dplyr::case_when(
+        !is.na(corum_complex_names) & !is.na(corum_uniprot_names) ~ paste(corum_complex_names, corum_uniprot_names, sep = ";"),
+        !is.na(corum_complex_names) ~ corum_complex_names,
+        !is.na(corum_uniprot_names) ~ corum_uniprot_names,
+        TRUE ~ NA_character_
+      )
+    )
 } else {
   message("CORUM not available, skipping...")
   master_ppi_v3$filter_CORUM <- "none"
+  master_ppi_v3$filter_CORUM_gene <- "none"
+  master_ppi_v3$filter_CORUM_uniprot <- "none"
   master_ppi_v3$corum_complex_ids <- NA_character_
   master_ppi_v3$corum_complex_names <- NA_character_
   master_ppi_v3$gene_key <- .make_undirected_key(master_ppi_v3$Gene1, master_ppi_v3$Gene2)
 }
 
-message("  Edges in CORUM: ", sum(master_ppi_v3$filter_CORUM == "present"))
+message("  Edges in CORUM (combined): ", sum(master_ppi_v3$filter_CORUM == "present"))
 ```
 
 
@@ -12022,11 +12096,11 @@ ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_database_support.pdf"), 
 p_support_dist <- ggplot(master_ppi_v3, aes(x = factor(support_score))) +
   geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
   geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
-  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9 ||| PDB: exact=3, homolog=1 | ComplexPortal: strict=3, relaxed=1 | STRING, BIOGRID, CORUM: present=1", x = "Support Score", y = "Number of edges") +
+  labs(title = "Support score distribution (all edges)", subtitle = "Max = 9", x = "Support Score", y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_score_distribution.pdf"), p_support_dist, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_score_distribution.pdf"), p_support_dist, width = 5, height = 4, device = cairo_pdf)
 
 # --- Plot 3: UpSet plot for database overlap ---
 upset_data <- master_ppi_v3 %>%
@@ -12069,8 +12143,6 @@ readr::write_csv(as.data.frame(support_by_tier), file.path(out_dir_ppi_dual, "qc
 
 message("\nModule 1 complete. master_ppi_v3 saved with ", nrow(master_ppi_v3), " edges")
 ```
-
-
 
 # Module 2: Baseline PPI Network
 Filters to gold tier + neuronal proteome, adds organelle annotations
@@ -12964,30 +13036,46 @@ ggsave(file.path(out_dir_trimer, "qc", "boxplot_scores_by_known.pdf"), p_scores_
 # --- Plot 7: Heatmap organelle x validation ---
 message("Creating organelle x validation heatmap...")
 
-# Add shared organelle to trimers
-if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
-  # Get shared organelle for each trimer based on its edges
-  trimer_organelles <- trimers_df %>%
-    dplyr::select(trimer_id, edge1_key, edge2_key, edge3_key) %>%
-    tidyr::pivot_longer(c(edge1_key, edge2_key, edge3_key), values_to = "key") %>%
-    dplyr::left_join(shared_long_baseline, by = "key") %>%
-    dplyr::filter(!is.na(tag)) %>%
-    dplyr::group_by(trimer_id) %>%
-    dplyr::summarise(shared_organelle = paste(unique(tag), collapse = ";"), .groups = "drop")
+# Use node-level (protein) annotations with MAJORITY VOTING
+# If 2/3 proteins are mito and 1 is lyso, assign trimer as "mito"
+if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
+  organelle_tags <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+  gene_to_org <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags))
 
-  trimers_df <- trimers_df %>%
-    dplyr::left_join(trimer_organelles, by = "trimer_id")
-
-  # Ensure shared_organelle column exists after join (defensive check)
-  if (!"shared_organelle" %in% colnames(trimers_df)) {
-    trimers_df$shared_organelle <- NA_character_
+  # Function to get majority organelle for a set of genes
+  .get_majority_organelle <- function(genes, gene_to_org, org_tags) {
+    org_votes <- lapply(genes, function(g) {
+      row <- gene_to_org %>% dplyr::filter(Genes == g)
+      if (nrow(row) == 0) return(character(0))
+      orgs <- org_tags[as.logical(row[1, org_tags])]
+      return(orgs)
+    })
+    all_orgs <- unlist(org_votes)
+    if (length(all_orgs) == 0) return(NA_character_)
+    # Get majority (most frequent)
+    org_counts <- table(all_orgs)
+    majority_org <- names(org_counts)[which.max(org_counts)]
+    return(majority_org)
   }
 
-  # Build matrix: organelle x validation source
+  # Apply to each trimer
+  trimers_df <- trimers_df %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      majority_organelle = .get_majority_organelle(c(Gene1, Gene2, Gene3), gene_to_org, organelle_tags)
+    ) %>%
+    dplyr::ungroup()
+
+  # Also keep shared_organelle for compatibility (but use majority for heatmap)
+  trimers_df$shared_organelle <- trimers_df$majority_organelle
+
+  n_with_org <- sum(!is.na(trimers_df$majority_organelle))
+  message("  Trimers with organelle annotation: ", n_with_org, " / ", nrow(trimers_df))
+
+  # Build matrix: organelle x validation source (using majority annotation)
   org_validation_matrix <- trimers_df %>%
-    dplyr::filter(!is.na(shared_organelle)) %>%
-    tidyr::separate_rows(shared_organelle, sep = ";") %>%
-    dplyr::group_by(shared_organelle) %>%
+    dplyr::filter(!is.na(majority_organelle)) %>%
+    dplyr::group_by(majority_organelle) %>%
     dplyr::summarise(
       n_total = dplyr::n(),
       PDB_exact = sum(all_edges_PDB_exact),
@@ -13004,8 +13092,8 @@ if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
 
   if (nrow(org_validation_matrix) > 1) {
     mat <- org_validation_matrix %>%
-      dplyr::select(shared_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
-      tibble::column_to_rownames("shared_organelle") %>%
+      dplyr::select(majority_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+      tibble::column_to_rownames("majority_organelle") %>%
       as.matrix()
 
     pheatmap::pheatmap(
@@ -13050,8 +13138,9 @@ if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
     message("Heatmaps saved: organelle x validation")
   }
 } else {
-  message("No organelle annotations available for heatmap")
+  message("No organelle annotations available for heatmap (binary_matrix not found)")
   trimers_df$shared_organelle <- NA_character_
+  trimers_df$majority_organelle <- NA_character_
 }
 
 # --- Summary stats ---
@@ -13091,9 +13180,6 @@ message("  Known complex (strict): ", sum(trimer_evidence$in_known_complex))
 message("  Novel: ", sum(!trimer_evidence$in_known_complex_relaxed))
 message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 ```
-
-
-
 
 # Module 4: Tetramer Detection and Validation
 Detects 4-cliques from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
@@ -13460,29 +13546,43 @@ if (nrow(tetramers_df) > 0) {
   # --- Plot 7: Heatmap organelle x validation ---
   message("Creating organelle x validation heatmap...")
 
-  if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
-    # Get shared organelle for each tetramer based on its edges
-    tetramer_organelles <- tetramers_df %>%
-      dplyr::select(tetramer_id, edge1_key, edge2_key, edge3_key, edge4_key, edge5_key, edge6_key) %>%
-      tidyr::pivot_longer(c(edge1_key, edge2_key, edge3_key, edge4_key, edge5_key, edge6_key), values_to = "key") %>%
-      dplyr::left_join(shared_long_baseline, by = "key") %>%
-      dplyr::filter(!is.na(tag)) %>%
-      dplyr::group_by(tetramer_id) %>%
-      dplyr::summarise(shared_organelle = paste(unique(tag), collapse = ";"), .groups = "drop")
+  # Use node-level (protein) annotations with MAJORITY VOTING
+  if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
+    organelle_tags <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+    gene_to_org <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags))
 
-    tetramers_df <- tetramers_df %>%
-      dplyr::left_join(tetramer_organelles, by = "tetramer_id")
-
-    # Ensure shared_organelle column exists after join (defensive check)
-    if (!"shared_organelle" %in% colnames(tetramers_df)) {
-      tetramers_df$shared_organelle <- NA_character_
+    # Function to get majority organelle for a set of genes
+    .get_majority_organelle <- function(genes, gene_to_org, org_tags) {
+      org_votes <- lapply(genes, function(g) {
+        row <- gene_to_org %>% dplyr::filter(Genes == g)
+        if (nrow(row) == 0) return(character(0))
+        orgs <- org_tags[as.logical(row[1, org_tags])]
+        return(orgs)
+      })
+      all_orgs <- unlist(org_votes)
+      if (length(all_orgs) == 0) return(NA_character_)
+      org_counts <- table(all_orgs)
+      majority_org <- names(org_counts)[which.max(org_counts)]
+      return(majority_org)
     }
 
-    # Build matrix: organelle x validation source
+    # Apply to each tetramer
+    tetramers_df <- tetramers_df %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(
+        majority_organelle = .get_majority_organelle(c(Gene1, Gene2, Gene3, Gene4), gene_to_org, organelle_tags)
+      ) %>%
+      dplyr::ungroup()
+
+    tetramers_df$shared_organelle <- tetramers_df$majority_organelle
+
+    n_with_org <- sum(!is.na(tetramers_df$majority_organelle))
+    message("  Tetramers with organelle annotation: ", n_with_org, " / ", nrow(tetramers_df))
+
+    # Build matrix: organelle x validation source (using majority annotation)
     org_validation_matrix_tet <- tetramers_df %>%
-      dplyr::filter(!is.na(shared_organelle)) %>%
-      tidyr::separate_rows(shared_organelle, sep = ";") %>%
-      dplyr::group_by(shared_organelle) %>%
+      dplyr::filter(!is.na(majority_organelle)) %>%
+      dplyr::group_by(majority_organelle) %>%
       dplyr::summarise(
         n_total = dplyr::n(),
         PDB_exact = sum(all_edges_PDB_exact),
@@ -13499,8 +13599,8 @@ if (nrow(tetramers_df) > 0) {
 
     if (nrow(org_validation_matrix_tet) > 1) {
       mat_tet <- org_validation_matrix_tet %>%
-        dplyr::select(shared_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
-        tibble::column_to_rownames("shared_organelle") %>%
+        dplyr::select(majority_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+        tibble::column_to_rownames("majority_organelle") %>%
         as.matrix()
 
       pheatmap::pheatmap(
@@ -13545,8 +13645,9 @@ if (nrow(tetramers_df) > 0) {
       message("Heatmaps saved: organelle x validation")
     }
   } else {
-    message("No organelle annotations available for heatmap")
+    message("No organelle annotations available for heatmap (binary_matrix not found)")
     tetramers_df$shared_organelle <- NA_character_
+    tetramers_df$majority_organelle <- NA_character_
   }
 }
 
@@ -13600,8 +13701,6 @@ if (nrow(tetramer_evidence) > 0) {
 }
 message("QC plots saved to: ", file.path(out_dir_tetramer, "qc"))
 ```
-
-
 
 # Module 5: Complex Growing from Trimers and Tetramers
 Grows complexes by iteratively adding neighbors connected to ≥2 members
@@ -14223,7 +14322,7 @@ if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
       fontsize_number = 5,
       border_color = NA,
       cellheight = 12,
-      cellwidth = 16,
+      cellwidth = 12,
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       filename = file.path(out_dir_complex, "qc", "heatmap_organelle_validation.pdf"),
@@ -14273,6 +14372,8 @@ message("  Strict match: ", sum(complex_evidence$validation_status == "strict_ma
 message("  Novel: ", sum(complex_evidence$validation_status == "novel"))
 message("QC plots saved to: ", file.path(out_dir_complex, "qc"))
 ```
+
+
 
 # Module 6: Top-Down vs Bottom-Up Comparison
 Flags detected structures that belong to known complexes
@@ -14535,6 +14636,67 @@ if (exists("corum_coverage")) {
   ggsave(file.path(out_dir_topdown, "qc", "barplot_coverage_by_size.pdf"), p_coverage_size, width = 4, height = 3.5, device = cairo_pdf)
 }
 
+# --- Plot 2b: ComplexPortal coverage distribution ---
+if (exists("cp_coverage") && nrow(cp_coverage) > 0) {
+  coverage_dist_cp <- cp_coverage %>%
+    dplyr::filter(n_detected > 0) %>%
+    dplyr::count(coverage_tier, name = "n_complexes") %>%
+    dplyr::mutate(coverage_tier = factor(coverage_tier, levels = c("complete", "high_80pct", "partial_50pct", "low")))
+
+  p_cp_coverage <- ggplot(coverage_dist_cp, aes(x = coverage_tier, y = n_complexes, fill = coverage_tier)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("complete" = "#4DAF4A", "high_80pct" = "#377EB8",
+                                  "partial_50pct" = "#FFFF33", "low" = "#E41A1C"), guide = "none") +
+    labs(title = "ComplexPortal coverage in detected proteome", x = "Coverage tier", y = "Number of complexes") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_cp_coverage.pdf"), p_cp_coverage, width = 4, height = 3.5, device = cairo_pdf)
+
+  # Histogram of coverage ratios
+  p_cp_hist <- ggplot(cp_coverage %>% dplyr::filter(n_detected > 0), aes(x = coverage_pct)) +
+    geom_histogram(binwidth = 10, fill = "royalblue", color = "black", linewidth = 0.3) +
+    geom_vline(xintercept = c(50, 80, 100), linetype = "dashed", color = "red", linewidth = 0.3) +
+    labs(title = "ComplexPortal coverage distribution", x = "Coverage (%)", y = "Number of complexes") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+  ggsave(file.path(out_dir_topdown, "qc", "histogram_cp_coverage.pdf"), p_cp_hist, width = 4, height = 3, device = cairo_pdf)
+
+  message("  ComplexPortal complexes detected: ", sum(cp_coverage$n_detected > 0), " / ", nrow(cp_coverage))
+  message("  ComplexPortal complete coverage: ", sum(cp_coverage$coverage_tier == "complete"))
+}
+
+# --- Plot 2c: Combined coverage comparison (CORUM vs ComplexPortal) ---
+if (exists("corum_coverage") && exists("cp_coverage") && nrow(cp_coverage) > 0) {
+  combined_coverage <- data.frame(
+    database = c("CORUM", "CORUM", "CORUM", "CORUM", "ComplexPortal", "ComplexPortal", "ComplexPortal", "ComplexPortal"),
+    tier = rep(c("complete", "high_80pct", "partial_50pct", "low"), 2),
+    n = c(
+      sum(corum_coverage$coverage_tier == "complete" & corum_coverage$n_detected > 0),
+      sum(corum_coverage$coverage_tier == "high_80pct" & corum_coverage$n_detected > 0),
+      sum(corum_coverage$coverage_tier == "partial_50pct" & corum_coverage$n_detected > 0),
+      sum(corum_coverage$coverage_tier == "low" & corum_coverage$n_detected > 0),
+      sum(cp_coverage$coverage_tier == "complete" & cp_coverage$n_detected > 0),
+      sum(cp_coverage$coverage_tier == "high_80pct" & cp_coverage$n_detected > 0),
+      sum(cp_coverage$coverage_tier == "partial_50pct" & cp_coverage$n_detected > 0),
+      sum(cp_coverage$coverage_tier == "low" & cp_coverage$n_detected > 0)
+    )
+  ) %>%
+    dplyr::mutate(tier = factor(tier, levels = c("complete", "high_80pct", "partial_50pct", "low")))
+
+  p_combined <- ggplot(combined_coverage, aes(x = tier, y = n, fill = database)) +
+    geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+    geom_text(aes(label = n), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), name = NULL) +
+    labs(title = "Coverage comparison: CORUM vs ComplexPortal", x = "Coverage tier", y = "Number of complexes") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
+
+  ggsave(file.path(out_dir_topdown, "qc", "barplot_coverage_comparison.pdf"), p_combined, width = 5, height = 4, device = cairo_pdf)
+}
+
 # --- Plot 3: PPI known complex source ---
 p_ppi_source <- ggplot(ppi_known_summary, aes(x = reorder(known_complex_source, -n_edges), y = n_edges, fill = known_complex_source)) +
   geom_col(color = "black", linewidth = 0.3) +
@@ -14617,8 +14779,6 @@ if (exists("corum_coverage")) {
 }
 message("QC plots saved to: ", file.path(out_dir_topdown, "qc"))
 ```
-
-
 
 # Module 7: Complex Network Visualization
 Generates network plots for each complex with edge coloring by evidence tier
