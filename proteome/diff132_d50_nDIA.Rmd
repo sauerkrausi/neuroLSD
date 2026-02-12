@@ -15937,7 +15937,7 @@ message("QC plots saved to: ", file.path(out_dir_stoich, "qc"))
 
 
 # Module 9: KO Vulnerability Analysis v5
-## Module 0: Setup and Configuration
+## Chunk 0: Setup and Configuration
 ```{r setup}
 # =============================================================================
 # Libraries
@@ -16026,7 +16026,7 @@ message("Module 0 complete: Setup done")
 
 
 
-## Module 1: Build KO Edge States Table
+## Chunk 1: Build KO Edge States Table
 ```{r edge_states}
 # =============================================================================
 # Build KO Edge States Table
@@ -16125,7 +16125,7 @@ message("Module 1 complete: KO edge states table built")
 
 
 
-## Module 2: PPI Vulnerability Visualizations
+## Chunk 2: PPI Vulnerability Visualizations
 ```{r ppi_viz}
 # =============================================================================
 # PPI Vulnerability Visualizations
@@ -16370,7 +16370,7 @@ message("Module 2 complete: PPI vulnerability visualizations")
 
 
 
-## Module 3: Trimer Vulnerability Analysis
+## Chunk 3: Trimer Vulnerability Analysis
 ```{r trimer}
 # =============================================================================
 # Trimer Vulnerability Analysis
@@ -16474,7 +16474,7 @@ message("Module 3 complete: Trimer vulnerability analysis")
 
 
 
-## Module 4: Tetramer Vulnerability Analysis
+## Chunk 4: Tetramer Vulnerability Analysis
 ```{r tetramer}
 # =============================================================================
 # Tetramer Vulnerability Analysis
@@ -16561,7 +16561,7 @@ message("Module 4 complete: Tetramer vulnerability analysis")
 ```
 
 
-## Module 5: Complex Vulnerability Analysis
+## Chunk 5: Complex Vulnerability Analysis
 ```{r complex}
 # =============================================================================
 # Complex Vulnerability Analysis
@@ -16654,7 +16654,7 @@ message("Module 5 complete: Complex vulnerability analysis")
 
 
 
-## Module 6: Ternary plots of PPI loss by organelle class and disease class
+## Chunk 6: Ternary plots of PPI loss by organelle class and disease class
 ```{r ternary}
 # =============================================================================
 # Ternary Plots (using Ternary package, NOT ggtern)
@@ -16909,7 +16909,7 @@ message("Module 6 complete: Ternary plots")
 
 
 
-## Module 7: Radar / Spider Plots
+## Chunk 7: Radar / Spider Plots
 ```{r radar}
 # =============================================================================
 # Radar / Spider Plots (ALL 12 annotations)
@@ -17053,7 +17053,7 @@ message("Module 7 complete: Radar plots")
 
 
 
-## Module 8: KO x Neuron Extended Analysis
+## Chunk 8: KO x Neuron Extended Analysis
 Bubble plots + Annotation-level barplots for lost PPI/trimers/tetramers/complexes
 ```{r}
 # =============================================================================
@@ -17827,7 +17827,7 @@ message("Module 8 complete: KO x Neuron Extended Analysis")
 
 
 
-## Module 9: Ceramide Pathway Disruption Analysis
+## Chunk 9: Ceramide Pathway Disruption Analysis
 Compare PPI/complex disruption across sphingolipidosis genes
 
 ```{r module9}
@@ -18179,7 +18179,7 @@ message("Key question: Do ASAH1 and GBA1 show similar PPI disruption despite dif
 ```
 
 
-## Module 10: OXPHOS Vulnerability Analysis
+## Chunk 10: OXPHOS Vulnerability Analysis
 Mitochondrial and OXPHOS PPI vulnerability in LSD mutants
 ```{r module10}
 # =============================================================================
@@ -18458,7 +18458,7 @@ message("Module 10 complete: OXPHOS vulnerability analysis")
 
 
 
-## Module 11: PPI Network Connectivity Analysis
+## Chunk 11: PPI Network Connectivity Analysis
 Network topology disruption analysis per KO x neuron
 
 ```{r module11_network}
@@ -19322,7 +19322,7 @@ message("  M4_disease_convergence/  - Disease class aggregation")
 
 
 
-## Module 12: Master Summary Statistics
+## Chunk 12: Master Summary Statistics
 ```{r summary}
 # =============================================================================
 # Module 12: Master Summary Statistics
@@ -19366,7 +19366,7 @@ message("Output directory: ", out_dir_vuln)
 
 
 
-## Module 13: Multi-Genotype Timecourse (d30 & d50)
+## Chunk 13: Multi-Genotype Timecourse (d30 & d50)
 PPI loss analysis for ASAH1, SMPD1, GBA1, GRN at days 30 and 50
 
 ```{r module13_timecourse_multi}
@@ -19737,7 +19737,7 @@ message("  - Timepoints: d30, d50")
 
 
 
-## Module 14: ASAH1 Long Timecourse (d30, d50, d70)
+## Chunk 14: ASAH1 Long Timecourse (d30, d50, d70)
 PPI loss analysis for ASAH1 across days 30, 50, and 70 with d70 baseline correction
 ```{r module14_timecourse_asah1}
 # =============================================================================
