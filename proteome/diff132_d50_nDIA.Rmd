@@ -16119,91 +16119,106 @@ message("  Saved: significance_filtering_summary.csv")
 message("Module 1 complete: Significance-filtered proteome data built")
 ````
 
-
-## Chunk 1: Build Significance-Filtered Proteome Data
-````{r significance_filter}
+## Chunk 2: Build KO Edge States Table (Significance-Filtered)
+```{r edge_states}
 # =============================================================================
-# Build Significance-Filtered Proteome Data
+# Build KO Edge States Table (Significance-Filtered, both p and q)
 # =============================================================================
-message("Building significance-filtered proteome data...")
+message("Building KO edge states table...")
 
-fc_cols <- names(complete_data_annotated_day50)[grepl("_log2_fold_change$", names(complete_data_annotated_day50))]
-pval_cols <- names(complete_data_annotated_day50)[grepl("_neg_log10_p_value$", names(complete_data_annotated_day50))]
-qval_cols <- names(complete_data_annotated_day50)[grepl("_neg_log10_q_value$", names(complete_data_annotated_day50))]
+baseline_filtered <- baseline_ppi %>% dplyr::filter(confidence_tier %in% conf_tiers_use)
+message("  Baseline PPIs (gold): ", nrow(baseline_filtered))
 
-message("  Found ", length(fc_cols), " log2FC columns")
-message("  Found ", length(pval_cols), " -log10(p) columns")
-message("  Found ", length(qval_cols), " -log10(q) columns")
+baseline_expanded <- baseline_filtered %>%
+  dplyr::mutate(dummy = 1) %>%
+  dplyr::left_join(ko_neuron_grid %>% dplyr::mutate(dummy = 1), by = "dummy", relationship = "many-to-many") %>%
+  dplyr::select(-dummy)
 
-# Build long-format proteome table
-prot_long <- complete_data_annotated_day50 %>%
-  dplyr::select(Genes, all_of(fc_cols)) %>%
-  tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "log2FC") %>%
-  dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_log2_fold_change$", "\\1", sample_col),
-                neuron = sub("^.+_(iN|iDA)_log2_fold_change$", "\\1", sample_col),
-                genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-  dplyr::select(Genes, genotype, neuron, genotype_neuron, log2FC)
+# Join significance data for both partners (both p and q)
+prot_sig <- prot_long %>% dplyr::select(Genes, genotype, neuron, log2FC, is_lost_p, is_lost_q, is_gained_p, is_gained_q)
 
-# Add p-values (already -log10 transformed)
-if (length(pval_cols) > 0) {
-  pval_long <- complete_data_annotated_day50 %>%
-    dplyr::select(Genes, all_of(pval_cols)) %>%
-    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "neglog10_p") %>%
-    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_neg_log10_p_value$", "\\1", sample_col),
-                  neuron = sub("^.+_(iN|iDA)_neg_log10_p_value$", "\\1", sample_col),
-                  genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-    dplyr::select(Genes, genotype_neuron, neglog10_p)
-  prot_long <- prot_long %>% dplyr::left_join(pval_long, by = c("Genes", "genotype_neuron"))
-}
-
-# Add q-values (already -log10 transformed)
-if (length(qval_cols) > 0) {
-  qval_long <- complete_data_annotated_day50 %>%
-    dplyr::select(Genes, all_of(qval_cols)) %>%
-    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "neglog10_q") %>%
-    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_neg_log10_q_value$", "\\1", sample_col),
-                  neuron = sub("^.+_(iN|iDA)_neg_log10_q_value$", "\\1", sample_col),
-                  genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-    dplyr::select(Genes, genotype_neuron, neglog10_q)
-  prot_long <- prot_long %>% dplyr::left_join(qval_long, by = c("Genes", "genotype_neuron"))
-}
-
-# Compute significance status for BOTH p and q values
-prot_long <- prot_long %>%
+ko_edge_states <- baseline_expanded %>%
+  dplyr::left_join(prot_sig, by = c("Gene1" = "Genes", "genotype", "neuron")) %>%
+  dplyr::rename(log2FC_A = log2FC, lost_A_p = is_lost_p, lost_A_q = is_lost_q, gained_A_p = is_gained_p, gained_A_q = is_gained_q) %>%
+  dplyr::left_join(prot_sig, by = c("Gene2" = "Genes", "genotype", "neuron")) %>%
+  dplyr::rename(log2FC_B = log2FC, lost_B_p = is_lost_p, lost_B_q = is_lost_q, gained_B_p = is_gained_p, gained_B_q = is_gained_q) %>%
   dplyr::mutate(
-    is_sig_p = !is.na(neglog10_p) & neglog10_p >= p_threshold,
-    is_sig_q = !is.na(neglog10_q) & neglog10_q >= q_threshold,
-    is_lost_p = is_sig_p & !is.na(log2FC) & log2FC < 0,
-    is_lost_q = is_sig_q & !is.na(log2FC) & log2FC < 0,
-    is_gained_p = is_sig_p & !is.na(log2FC) & log2FC > 0,
-    is_gained_q = is_sig_q & !is.na(log2FC) & log2FC > 0
+    # States for q-value (primary)
+    state_q = dplyr::case_when(
+      lost_A_q | lost_B_q ~ "lost",
+      !is.na(log2FC_A) | !is.na(log2FC_B) ~ "retained",
+      TRUE ~ "unknown"
+    ),
+    # States for p-value (comparison)
+    state_p = dplyr::case_when(
+      lost_A_p | lost_B_p ~ "lost",
+      !is.na(log2FC_A) | !is.na(log2FC_B) ~ "retained",
+      TRUE ~ "unknown"
+    ),
+    loss_driver_q = dplyr::case_when(lost_A_q & lost_B_q ~ "both", lost_A_q ~ "Gene1", lost_B_q ~ "Gene2", TRUE ~ NA_character_),
+    loss_driver_p = dplyr::case_when(lost_A_p & lost_B_p ~ "both", lost_A_p ~ "Gene1", lost_B_p ~ "Gene2", TRUE ~ NA_character_)
   )
 
-ko_neuron_grid <- prot_long %>% dplyr::distinct(genotype, neuron, genotype_neuron)
-message("  KO x Neuron combinations: ", nrow(ko_neuron_grid))
+# Add disease class mapping
+disease_map <- disease_class_df %>% dplyr::distinct(sample, .keep_all = TRUE)
+ko_edge_states <- ko_edge_states %>% dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
 
-# Summary with both p and q columns
-sig_summary <- prot_long %>%
-  dplyr::group_by(genotype, neuron, genotype_neuron) %>%
+# Add shared organelle information
+message("  Computing shared organelle annotations...")
+org1_cols <- paste0(organelle_tags, "_prot1")
+org2_cols <- paste0(organelle_tags, "_prot2")
+existing_org1 <- intersect(org1_cols, names(ko_edge_states))
+existing_org2 <- intersect(org2_cols, names(ko_edge_states))
+
+if (length(existing_org1) > 0 && length(existing_org2) > 0) {
+  existing_tags <- sub("_prot1$", "", existing_org1)
+  m1 <- as.matrix(ko_edge_states[, existing_org1]); m1[is.na(m1)] <- FALSE
+  m2 <- as.matrix(ko_edge_states[, existing_org2]); m2[is.na(m2)] <- FALSE
+  shared_mat <- m1 & m2
+  ko_edge_states$OrgPair <- ifelse(rowSums(shared_mat) > 0, "same", "cross")
+  ko_edge_states$shared_organelle <- apply(shared_mat, 1, function(row) {
+    idx <- which(row); if (length(idx) > 0) existing_tags[idx[1]] else NA_character_
+  })
+} else {
+  ko_edge_states$OrgPair <- NA_character_
+  ko_edge_states$shared_organelle <- NA_character_
+}
+
+readr::write_csv(ko_edge_states, file.path(out_dir_vuln, "tables", "ko_edge_states.csv"))
+message("  Saved: ko_edge_states.csv (", nrow(ko_edge_states), " rows)")
+
+# Summary with both p and q
+ko_summary_global <- ko_edge_states %>%
+  dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass) %>%
   dplyr::summarise(
-    n_proteins = dplyr::n(),
-    n_sig_p = sum(is_sig_p, na.rm = TRUE),
-    n_sig_q = sum(is_sig_q, na.rm = TRUE),
-    n_lost_p = sum(is_lost_p, na.rm = TRUE),
-    n_lost_q = sum(is_lost_q, na.rm = TRUE),
-    n_gained_p = sum(is_gained_p, na.rm = TRUE),
-    n_gained_q = sum(is_gained_q, na.rm = TRUE),
+    total_edges = dplyr::n(),
+    n_lost_q = sum(state_q == "lost", na.rm = TRUE),
+    n_lost_p = sum(state_p == "lost", na.rm = TRUE),
+    n_retained_q = sum(state_q == "retained", na.rm = TRUE),
+    n_retained_p = sum(state_p == "retained", na.rm = TRUE),
+    frac_lost_q = n_lost_q / total_edges,
+    frac_lost_p = n_lost_p / total_edges,
     .groups = "drop"
   )
+readr::write_csv(ko_summary_global, file.path(out_dir_vuln, "tables", "ko_summary_global.csv"))
 
-readr::write_csv(sig_summary, file.path(out_dir_vuln, "tables", "significance_filtering_summary.csv"))
-message("  Total proteins with significance data: ", nrow(prot_long))
-message("  Saved: significance_filtering_summary.csv")
+ko_summary_by_organelle <- ko_edge_states %>%
+  dplyr::filter(OrgPair == "same", !is.na(shared_organelle)) %>%
+  dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass, shared_organelle) %>%
+  dplyr::summarise(
+    n_edges = dplyr::n(),
+    n_lost_q = sum(state_q == "lost", na.rm = TRUE),
+    n_lost_p = sum(state_p == "lost", na.rm = TRUE),
+    frac_lost_q = n_lost_q / n_edges,
+    frac_lost_p = n_lost_p / n_edges,
+    .groups = "drop"
+  )
+readr::write_csv(ko_summary_by_organelle, file.path(out_dir_vuln, "tables", "ko_summary_by_organelle.csv"))
 
-message("Module 1 complete: Significance-filtered proteome data built")
-````
+message("Module 2 complete: KO edge states table built")
+```
 
-
+## Chunk 3: Trimer Vulnerability Analysis (From Existing Structures)
 `````{r trimer}
 # =============================================================================
 # Trimer Vulnerability Analysis (From Existing Structures)
@@ -16480,33 +16495,33 @@ message("Module 5 complete: Complex vulnerability analysis with heatmaps")
 # =============================================================================
 message("Generating PPI vulnerability visualizations...")
 
-# Barplot: PPI states (absolute)
-plot_data_2_1 <- ko_edge_states %>%
-  dplyr::group_by(genotype, neuron, state) %>%
+# --- Barplot: PPI states (q-value, absolute) ---
+plot_data_ppi <- ko_edge_states %>%
+  dplyr::group_by(genotype, neuron, state_q) %>%
   dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
-  dplyr::mutate(state = factor(state, levels = c("retained", "lost", "unknown")))
+  dplyr::mutate(state_q = factor(state_q, levels = c("retained", "lost", "unknown")))
 
-p_2_1 <- ggplot2::ggplot(plot_data_2_1, ggplot2::aes(x = genotype, y = n, fill = state)) +
+p_ppi_states <- ggplot2::ggplot(plot_data_ppi, ggplot2::aes(x = genotype, y = n, fill = state_q)) +
   ggplot2::geom_col(color = "black", linewidth = 0.2) +
   ggplot2::facet_wrap(~neuron, ncol = 1, scales = "free_y") +
   ggplot2::scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
-  ggplot2::labs(x = NULL, y = "Number of PPI edges", title = "PPI edge states per KO (significance-filtered)") +
+  ggplot2::labs(x = NULL, y = "Number of PPI edges", title = "PPI edge states per KO (q < 0.05)") +
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
                  strip.background = ggplot2::element_rect(fill = "white"), legend.position = "right")
 
-save_plot_with_sourcedata(p_2_1, "plots/global/barplot_ppi_states_absolute", plot_data_2_1, width = 10, height = 8)
+save_plot_with_sourcedata(p_ppi_states, "plots/global/barplot_ppi_states_qval", plot_data_ppi, width = 10, height = 8)
 
-# Scatter plot: iN vs iDA
+# --- Scatter plot: iN vs iDA (q-value) ---
 scatter_data <- ko_summary_global %>%
-  dplyr::select(genotype, neuron, frac_lost, DiseaseClass) %>%
-  tidyr::pivot_wider(names_from = neuron, values_from = frac_lost) %>%
+  dplyr::select(genotype, neuron, frac_lost_q, DiseaseClass) %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = frac_lost_q) %>%
   dplyr::mutate(diff = abs(iDA - iN), deviation = ifelse(diff <= 0.05, "within_band", "outside_band"))
 
 axis_max <- max(c(scatter_data$iN, scatter_data$iDA), na.rm = TRUE) * 1.1
 axis_lim <- c(0, axis_max)
 
-p_2_6 <- ggplot2::ggplot(scatter_data, ggplot2::aes(x = iN, y = iDA)) +
+p_scatter <- ggplot2::ggplot(scatter_data, ggplot2::aes(x = iN, y = iDA)) +
   ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.5) +
   ggplot2::geom_abline(slope = 1, intercept = 0.05, linetype = "solid", color = "grey70", linewidth = 0.3) +
   ggplot2::geom_abline(slope = 1, intercept = -0.05, linetype = "solid", color = "grey70", linewidth = 0.3) +
@@ -16515,18 +16530,18 @@ p_2_6 <- ggplot2::ggplot(scatter_data, ggplot2::aes(x = iN, y = iDA)) +
   ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
   ggplot2::scale_shape_manual(values = c(within_band = 21, outside_band = 24), name = "Deviation") +
   ggplot2::coord_fixed(ratio = 1, xlim = axis_lim, ylim = axis_lim, clip = "on") +
-  ggplot2::labs(x = "Fraction lost PPIs (iN)", y = "Fraction lost PPIs (iDA)", title = "PPI vulnerability: iN vs iDA (significance-filtered)") +
+  ggplot2::labs(x = "Fraction lost PPIs (iN)", y = "Fraction lost PPIs (iDA)", title = "PPI vulnerability: iN vs iDA (q < 0.05)") +
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank())
 
-save_plot_with_sourcedata(p_2_6, "plots/global/scatter_ppi_loss_iN_vs_iDA", scatter_data, width = 5.5, height = 5.5)
+save_plot_with_sourcedata(p_scatter, "plots/global/scatter_ppi_loss_iN_vs_iDA_qval", scatter_data, width = 5.5, height = 5.5)
 
-# --- Organelle x KO heatmaps (iN and iDA separately) ---
+# --- Organelle x KO heatmaps (iN and iDA separately, q-value) ---
 for (neuron_filter in c("iN", "iDA")) {
   hm_data <- ko_summary_by_organelle %>%
     dplyr::filter(neuron == neuron_filter) %>%
-    dplyr::select(genotype, shared_organelle, frac_lost) %>%
-    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost, values_fill = NA)
+    dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = NA)
   
   if (nrow(hm_data) < 2) next
   
@@ -16544,15 +16559,99 @@ for (neuron_filter in c("iN", "iDA")) {
   
   ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(annotation_row$DiseaseClass)))])
   
-  readr::write_csv(hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_organelle_ko_", neuron_filter, "_sourcedata.csv")))
+  readr::write_csv(hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_organelle_ko_qval_", neuron_filter, "_sourcedata.csv")))
   
-  pdf(file.path(out_dir_vuln, "plots/global", paste0("heatmap_organelle_ko_", neuron_filter, ".pdf")), width = 12, height = 10)
+  pdf(file.path(out_dir_vuln, "plots/global", paste0("heatmap_organelle_ko_qval_", neuron_filter, ".pdf")), width = 12, height = 10)
   pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), border_color = NA,
     fontsize = 6, cellwidth = 10, cellheight = 10, cluster_rows = TRUE, cluster_cols = TRUE,
     clustering_method = "ward.D2", annotation_row = annotation_row, annotation_colors = ann_colors,
-    main = paste0("Fraction PPIs lost by organelle (", neuron_filter, ")"))
+    main = paste0("Fraction PPIs lost by organelle (", neuron_filter, ", q < 0.05)"))
   dev.off()
-  message("  Saved: heatmap_organelle_ko_", neuron_filter, ".pdf")
+  message("  Saved: heatmap_organelle_ko_qval_", neuron_filter, ".pdf")
+}
+
+
+# =============================================================================
+# Comparison Barplots: Sig lost across structure types (Proteins, PPIs, Trimers, Tetramers, Complexes)
+# =============================================================================
+message("Generating comparison barplots...")
+
+# Combine summaries for comparison
+comparison_data <- dplyr::bind_rows(
+  sig_summary %>%
+    dplyr::select(genotype, neuron, n_lost_p, n_lost_q) %>%
+    dplyr::mutate(structure = "Proteins"),
+  ko_summary_global %>%
+    dplyr::select(genotype, neuron, n_lost_p, n_lost_q) %>%
+    dplyr::mutate(structure = "PPIs"),
+  trimer_summary_ko %>%
+    dplyr::select(genotype, neuron, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
+    dplyr::mutate(structure = "Trimers"),
+  tetramer_summary_ko %>%
+    dplyr::select(genotype, neuron, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
+    dplyr::mutate(structure = "Tetramers"),
+  complex_summary_ko %>%
+    dplyr::select(genotype, neuron, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
+    dplyr::mutate(structure = "Complexes")
+) %>%
+  dplyr::mutate(structure = factor(structure, levels = c("Proteins", "PPIs", "Trimers", "Tetramers", "Complexes")))
+
+# Add disease class
+comparison_data <- comparison_data %>%
+  dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
+  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+
+readr::write_csv(comparison_data, file.path(out_dir_vuln, "tables", "structure_loss_comparison.csv"))
+
+# --- Barplots: q-value, separate for iN and iDA ---
+for (neuron_filter in c("iN", "iDA")) {
+  plot_data <- comparison_data %>% dplyr::filter(neuron == neuron_filter)
+  
+  p_q <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = n_lost_q, fill = structure)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+    ggplot2::scale_fill_brewer(palette = "Set2", name = "Structure") +
+    ggplot2::labs(x = NULL, y = "Number lost/disrupted (q < 0.05)", 
+                  title = paste0("Significant losses across structure types (", neuron_filter, ", q-value)")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1))
+  
+  save_plot_with_sourcedata(p_q, paste0("plots/global/barplot_structure_loss_qval_", neuron_filter), plot_data, width = 12, height = 5)
+}
+
+# --- Barplots: p-value, separate for iN and iDA ---
+for (neuron_filter in c("iN", "iDA")) {
+  plot_data <- comparison_data %>% dplyr::filter(neuron == neuron_filter)
+  
+  p_p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = n_lost_p, fill = structure)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+    ggplot2::scale_fill_brewer(palette = "Set2", name = "Structure") +
+    ggplot2::labs(x = NULL, y = "Number lost/disrupted (p < 0.05)", 
+                  title = paste0("Significant losses across structure types (", neuron_filter, ", p-value)")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1))
+  
+  save_plot_with_sourcedata(p_p, paste0("plots/global/barplot_structure_loss_pval_", neuron_filter), plot_data, width = 12, height = 5)
+}
+
+# --- Faceted version: all structures in one plot per significance type ---
+for (sig_type in c("q", "p")) {
+  y_col <- if (sig_type == "q") "n_lost_q" else "n_lost_p"
+  sig_label <- if (sig_type == "q") "q < 0.05" else "p < 0.05"
+  
+  p_facet <- ggplot2::ggplot(comparison_data, ggplot2::aes(x = genotype, y = .data[[y_col]], fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_grid(structure ~ neuron, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = paste0("Number lost/disrupted (", sig_label, ")"),
+                  title = paste0("Structure vulnerability by KO and neuron type (", sig_label, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
+                   strip.background = ggplot2::element_rect(fill = "white"))
+  
+  save_plot_with_sourcedata(p_facet, paste0("plots/global/barplot_structure_loss_faceted_", sig_type, "val"), comparison_data, width = 10, height = 12)
 }
 
 message("Module 6 complete: PPI vulnerability visualizations")
