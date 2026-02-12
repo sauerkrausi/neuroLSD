@@ -16466,19 +16466,21 @@ for (neuron_type in c("iN", "iDA")) {
 
   # Heatmap (ordered by disruption frequency)
   pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_", neuron_type, ".pdf")), width = 12, height = 20)
-  pheatmap::pheatmap(hm_mat_ordered, color = c("grey95", "#C51B7D"), cluster_rows = FALSE, cluster_cols = TRUE,
-    clustering_method = "ward.D2", annotation_row = row_annot_ordered, annotation_col = col_annot,
-    annotation_colors = ann_colors, show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8,
-    border_color = NA, main = paste0("Complex Vulnerability (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
+  pheatmap::pheatmap(hm_mat_ordered, color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
+    cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
+    annotation_row = row_annot_ordered, annotation_col = col_annot, annotation_colors = ann_colors,
+    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+    main = paste0("Complex Vulnerability (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
   message("  Saved: heatmap_complex_vuln_", neuron_type, ".pdf")
 
   # Clustered version
   pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_clustered_", neuron_type, ".pdf")), width = 12, height = 20)
-  pheatmap::pheatmap(hm_mat, color = c("grey95", "#C51B7D"), cluster_rows = TRUE, cluster_cols = TRUE,
-    clustering_method = "ward.D2", annotation_row = row_annot, annotation_col = col_annot,
-    annotation_colors = ann_colors, show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8,
-    border_color = NA, main = paste0("Complex Vulnerability Clustered (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
+  pheatmap::pheatmap(hm_mat, color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
+    cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2",
+    annotation_row = row_annot, annotation_col = col_annot, annotation_colors = ann_colors,
+    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+    main = paste0("Complex Vulnerability Clustered (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
   message("  Saved: heatmap_complex_vuln_clustered_", neuron_type, ".pdf")
 }
