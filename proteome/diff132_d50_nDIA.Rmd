@@ -6067,6 +6067,67 @@ ggsave(file.path(out_dir_d50_violins,
 
 
 
+# Barplots of Autophagy machinery across all genotypes x neuron types
+```{r}
+# --- Autophagy Cargo Barplots (Core & Receptor)
+
+# --- Define gene sets
+core_genes <- c("ATG12","ATG13","ATG14","ATG16L1","ATG3","ATG4A","ATG4B","ATG4C","ATG5","ATG7","ATG9A","GABARAP","GABARAPL2","MAP1LC3A","MAP1LC3B","MTOR","PIK3C3","PIK3R4","PLEKHM1","RAB5A","RAB7A","RB1CC1","RUBCN","STX17","ULK1","ULK2","UVRAG","WDR45","WDR45B","WIPI1","WIPI2","ZFYVE1")
+
+receptor_genes <- c("AMBRA1","BCL2L13","BECN1","BNIP3L","CALCOCO2","CCPG1","CDK5RAP3","FUNDC1","LGALS3","LGALS8","NBR1","NCOA4","NLRX1","OPTN","RETREG1","SQSTM1","STBD1","TAX1BP1","TEX264","TOLLIP","TRIM5")
+
+# --- Get all genotypes from column names
+all_genotypes <- complete_data_annotated_day50 %>%
+  dplyr::select(dplyr::ends_with("_iDA_log2_fold_change")) %>%
+  colnames() %>%
+  stringr::str_remove("_iDA_log2_fold_change") %>%
+  sort()
+
+# --- Function to compute mean ± SEM for a gene set
+compute_autophagy_summary <- function(data, genes, genotypes) {
+  
+  fc_cols <- unlist(lapply(genotypes, function(g) paste0(g, c("_iDA_log2_fold_change", "_iN_log2_fold_change"))))
+  
+  data %>%
+    dplyr::filter(Genes %in% genes) %>%
+    dplyr::select(Genes, dplyr::all_of(fc_cols)) %>%
+    tidyr::pivot_longer(cols = -Genes, names_to = "sample", values_to = "log2FC") %>%
+    tidyr::separate(sample, into = c("genotype", "neuron", NA), sep = "_") %>%
+    dplyr::group_by(genotype, neuron) %>%
+    dplyr::summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), sem = sd(log2FC, na.rm = TRUE) / sqrt(dplyr::n()), .groups = "drop") %>%
+    dplyr::mutate(genotype = factor(genotype, levels = sort(unique(genotype))))
+}
+
+# --- Compute summaries
+core_summary <- compute_autophagy_summary(complete_data_annotated_day50, core_genes, all_genotypes)
+receptor_summary <- compute_autophagy_summary(complete_data_annotated_day50, receptor_genes, all_genotypes)
+
+# --- Plotting function
+plot_autophagy_barplot <- function(summary_df, title) {
+  ggplot2::ggplot(summary_df, ggplot2::aes(x = genotype, y = mean_log2FC, fill = neuron)) +
+    ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.8), width = 0.7) +
+    ggplot2::geom_errorbar(ggplot2::aes(ymin = mean_log2FC - sem, ymax = mean_log2FC + sem), position = ggplot2::position_dodge(width = 0.8), width = 0.25, linewidth = 0.3) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+    ggplot2::scale_fill_manual(values = c("iDA" = "#E69F00", "iN" = "#56B4E9")) +
+    ggplot2::labs(title = title, x = "Genotype", y = "Mean log2 Fold Change", fill = "Neuron Type") +
+    ggplot2::theme_bw() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 8), panel.grid = ggplot2::element_blank(), legend.position = "top")
+}
+
+# --- Generate plots
+core_plot <- plot_autophagy_barplot(core_summary, "Core Autophagy Machinery")
+receptor_plot <- plot_autophagy_barplot(receptor_summary, "Autophagy Receptors")
+
+# --- Save
+ggplot2::ggsave(file.path(out_dir_d50_violins, "diff132_d50_Autophagy_Core_barplot.pdf"), core_plot, width = 10, height = 5, device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(out_dir_d50_violins, "diff132_d50_Autophagy_Receptor_barplot.pdf"), receptor_plot, width = 10, height = 5, device = grDevices::cairo_pdf)
+
+core_plot
+receptor_plot
+```
+
+
+
 # Volcano plot of select genotype w/ annotation highlights 
 ```{r}
 # --------------------------------------------------- #
