@@ -16084,7 +16084,8 @@ if (length(qval_cols) > 0) {
   prot_long <- prot_long %>% dplyr::left_join(qval_long, by = c("Genes", "genotype_neuron"))
 }
 
-# Compute significance status (values already -log10, compare directly)
+# Compute significance status
+# Lost = negative log2FC AND significant (direction + significance, no magnitude threshold)
 prot_long <- prot_long %>%
   dplyr::mutate(
     is_significant = if (use_q_value) {
@@ -16092,8 +16093,8 @@ prot_long <- prot_long %>%
     } else {
       !is.na(neglog10_p) & neglog10_p >= p_threshold
     },
-    is_lost = is_significant & !is.na(log2FC) & log2FC < drop_thresh,
-    is_gained = is_significant & !is.na(log2FC) & log2FC > -drop_thresh
+    is_lost = is_significant & !is.na(log2FC) & log2FC < 0,
+    is_gained = is_significant & !is.na(log2FC) & log2FC > 0
   )
 
 ko_neuron_grid <- prot_long %>% dplyr::distinct(genotype, neuron, genotype_neuron)
@@ -16488,12 +16489,12 @@ message("Generating PPI vulnerability visualizations...")
 plot_data_2_1 <- ko_edge_states %>%
   dplyr::group_by(genotype, neuron, state) %>%
   dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
-  dplyr::mutate(state = factor(state, levels = c("retained", "retained_significant", "lost", "unknown")))
+  dplyr::mutate(state = factor(state, levels = c("retained", "lost", "unknown")))
 
 p_2_1 <- ggplot2::ggplot(plot_data_2_1, ggplot2::aes(x = genotype, y = n, fill = state)) +
   ggplot2::geom_col(color = "black", linewidth = 0.2) +
   ggplot2::facet_wrap(~neuron, ncol = 1, scales = "free_y") +
-  ggplot2::scale_fill_manual(values = c(retained = "grey80", retained_significant = "grey60", lost = "#C51B7D", unknown = "grey50")) +
+  ggplot2::scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
   ggplot2::labs(x = NULL, y = "Number of PPI edges", title = "PPI edge states per KO (significance-filtered)") +
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
@@ -16524,6 +16525,40 @@ p_2_6 <- ggplot2::ggplot(scatter_data, ggplot2::aes(x = iN, y = iDA)) +
   ggplot2::theme(panel.grid = ggplot2::element_blank())
 
 save_plot_with_sourcedata(p_2_6, "plots/global/scatter_ppi_loss_iN_vs_iDA", scatter_data, width = 5.5, height = 5.5)
+
+# --- Organelle x KO heatmaps (iN and iDA separately) ---
+for (neuron_filter in c("iN", "iDA")) {
+  hm_data <- ko_summary_by_organelle %>%
+    dplyr::filter(neuron == neuron_filter) %>%
+    dplyr::select(genotype, shared_organelle, frac_lost) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost, values_fill = NA)
+  
+  if (nrow(hm_data) < 2) next
+  
+  hm_mat <- as.matrix(hm_data[, -1])
+  rownames(hm_mat) <- hm_data$genotype
+  
+  annotation_row <- disease_map %>%
+    dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+    dplyr::select(genotype, DiseaseClass) %>%
+    dplyr::distinct(genotype, .keep_all = TRUE) %>%
+    dplyr::filter(genotype %in% rownames(hm_mat)) %>%
+    as.data.frame()
+  rownames(annotation_row) <- annotation_row$genotype
+  annotation_row <- annotation_row[rownames(hm_mat), "DiseaseClass", drop = FALSE]
+  
+  ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(annotation_row$DiseaseClass)))])
+  
+  readr::write_csv(hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_organelle_ko_", neuron_filter, "_sourcedata.csv")))
+  
+  pdf(file.path(out_dir_vuln, "plots/global", paste0("heatmap_organelle_ko_", neuron_filter, ".pdf")), width = 12, height = 10)
+  pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), border_color = NA,
+    fontsize = 6, cellwidth = 10, cellheight = 10, cluster_rows = TRUE, cluster_cols = TRUE,
+    clustering_method = "ward.D2", annotation_row = annotation_row, annotation_colors = ann_colors,
+    main = paste0("Fraction PPIs lost by organelle (", neuron_filter, ")"))
+  dev.off()
+  message("  Saved: heatmap_organelle_ko_", neuron_filter, ".pdf")
+}
 
 message("Module 6 complete: PPI vulnerability visualizations")
 ```
