@@ -15965,7 +15965,7 @@ library(corrplot)
 # Configuration
 # =============================================================================
 drop_thresh <- -0.5
-conf_tiers_use <- c("gold", "silver")
+conf_tiers_use <- c("gold")
 
 # Significance thresholds (using -log10 scale)
 q_threshold <- -log10(0.05)  # 1.3
@@ -16229,8 +16229,9 @@ message("Module 2 complete: KO edge states table built (significance-filtered)")
 # =============================================================================
 message("Analyzing trimer vulnerability from existing structures...")
 
+# Select core columns for vulnerability analysis
 trimer_genes <- trimer_evidence %>%
-  dplyr::select(trimer_id, Gene1, Gene2, Gene3, tier_composition, shared_organelle, complexportal_strict, complexportal_relaxed, quality_C)
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3, validation_tier, shared_organelle, cp_strict_match, cp_relaxed_match, in_known_complex)
 
 # Use significance-aware loss status
 trimer_vuln_list <- list()
@@ -16291,8 +16292,9 @@ message("Module 3 complete: Trimer vulnerability analysis (significance-filtered
 # =============================================================================
 message("Analyzing tetramer vulnerability from existing structures...")
 
+# Select core columns for vulnerability analysis
 tetramer_genes <- tetramer_evidence %>%
-  dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, tier_composition, shared_organelle, complexportal_strict, complexportal_relaxed, quality_C)
+  dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, validation_tier, shared_organelle, cp_strict_match, cp_relaxed_match, in_known_complex)
 
 tetramer_vuln_list <- list()
 for (i in seq_len(nrow(ko_neuron_grid))) {
@@ -16352,9 +16354,10 @@ message("Module 4 complete: Tetramer vulnerability analysis (significance-filter
 # =============================================================================
 message("Analyzing complex vulnerability...")
 
+# Select core columns for vulnerability analysis
 complex_members_parsed <- complex_evidence %>%
-  dplyr::mutate(members_list = members) %>%
-  dplyr::select(complex_idx, complex_id, complex_size, origin, dominant_organelles, complexportal_strict, complexportal_relaxed, quality_C, members_list)
+  dplyr::select(complex_idx, complex_id, complex_size, origin, shared_organelle, cp_strict_match, cp_relaxed_match, members) %>%
+  dplyr::mutate(members_list = members)
 
 message("  Total complexes: ", nrow(complex_members_parsed))
 
@@ -16438,7 +16441,7 @@ for (neuron_type in c("iN", "iDA")) {
   complex_annot <- complex_ko_states %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::distinct(complex_id, .keep_all = TRUE) %>%
-    dplyr::select(complex_id, origin, dominant_organelles, complex_size) %>%
+    dplyr::select(complex_id, origin, shared_organelle, complex_size) %>%
     dplyr::mutate(size_bin = cut(complex_size, breaks = c(0, 4, 10, 50, Inf), labels = c("2-4", "5-10", "11-50", ">50")))
   rownames(complex_annot) <- complex_annot$complex_id
   complex_annot <- complex_annot[rownames(hm_mat), ]
@@ -16906,9 +16909,6 @@ message("    - Sphingosine pathway analysis")
 
 message("\nOutput directory: ", out_dir_vuln)
 ```
-
-
-
 
 # OLD: Module 9: KO Vulnerability Analysis v5
 ## Chunk 0: Setup and Configuration
