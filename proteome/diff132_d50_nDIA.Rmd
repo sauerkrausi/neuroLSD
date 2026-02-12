@@ -16218,6 +16218,7 @@ readr::write_csv(ko_summary_by_organelle, file.path(out_dir_vuln, "tables", "ko_
 message("Module 2 complete: KO edge states table built")
 ```
 
+
 ## Chunk 3: Trimer Vulnerability Analysis (From Existing Structures)
 `````{r trimer}
 # =============================================================================
