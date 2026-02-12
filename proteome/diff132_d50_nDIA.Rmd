@@ -15936,7 +15936,7 @@ message("QC plots saved to: ", file.path(out_dir_stoich, "qc"))
 
 
 
-# Module 9: KO Vulnerability Analysis v5
+# OLD: Module 9: KO Vulnerability Analysis v5
 ## Chunk 0: Setup and Configuration
 ```{r setup}
 # =============================================================================
