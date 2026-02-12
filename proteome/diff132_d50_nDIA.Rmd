@@ -16379,7 +16379,6 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
       n_members = length(members_list),
       n_lost_sig = sum(loss_data[members_list], na.rm = TRUE),
       frac_lost = n_lost_sig / n_members,
-      # Disruption criteria: any member significantly lost for small complexes, >=25% for large
       state = dplyr::case_when(
         n_members <= 4 & n_lost_sig >= 1 ~ "disrupted",
         n_members > 4 & frac_lost >= 0.25 ~ "disrupted",
@@ -16406,12 +16405,7 @@ message("  Saved: complex_ko_states.csv")
 
 complex_summary_ko <- complex_ko_states %>%
   dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass) %>%
-  dplyr::summarise(
-    total_complexes = dplyr::n(),
-    n_disrupted = sum(state == "disrupted"),
-    frac_disrupted = n_disrupted / total_complexes,
-    .groups = "drop"
-  )
+  dplyr::summarise(total_complexes = dplyr::n(), n_disrupted = sum(state == "disrupted"), frac_disrupted = n_disrupted / total_complexes, .groups = "drop")
 readr::write_csv(complex_summary_ko, file.path(out_dir_vuln, "tables", "complex_summary_ko.csv"))
 
 
@@ -16422,7 +16416,6 @@ message("Generating complex vulnerability heatmaps...")
 
 for (neuron_type in c("iN", "iDA")) {
 
-  # Pivot to wide format: rows = complexes, cols = KOs
   hm_data <- complex_ko_states %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::mutate(disrupted_binary = as.integer(state == "disrupted")) %>%
@@ -16437,82 +16430,55 @@ for (neuron_type in c("iN", "iDA")) {
   hm_mat <- as.matrix(hm_data[, -1])
   rownames(hm_mat) <- hm_data$complex_id
 
-  # Row annotation: complex origin and dominant organelle
+  # Row annotation: convert to data.frame to allow rownames
   complex_annot <- complex_ko_states %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::distinct(complex_id, .keep_all = TRUE) %>%
-    dplyr::select(complex_id, origin, shared_organelle, complex_size) %>%
-    dplyr::mutate(size_bin = cut(complex_size, breaks = c(0, 4, 10, 50, Inf), labels = c("2-4", "5-10", "11-50", ">50")))
+    dplyr::select(complex_id, origin, complex_size) %>%
+    as.data.frame()
   rownames(complex_annot) <- complex_annot$complex_id
-  complex_annot <- complex_annot[rownames(hm_mat), ]
-  row_annot <- complex_annot %>% dplyr::select(origin, size_bin)
+  complex_annot <- complex_annot[rownames(hm_mat), , drop = FALSE]
+  row_annot <- data.frame(origin = complex_annot$origin, row.names = rownames(complex_annot))
 
   # Column annotation: disease class
   col_annot <- disease_map %>%
     dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
     dplyr::select(genotype, DiseaseClass) %>%
     dplyr::distinct(genotype, .keep_all = TRUE) %>%
-    dplyr::filter(genotype %in% colnames(hm_mat))
+    dplyr::filter(genotype %in% colnames(hm_mat)) %>%
+    as.data.frame()
   rownames(col_annot) <- col_annot$genotype
-  col_annot <- col_annot[colnames(hm_mat), , drop = FALSE] %>% dplyr::select(DiseaseClass)
+  col_annot <- col_annot[colnames(hm_mat), "DiseaseClass", drop = FALSE]
 
   ann_colors <- list(
     DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(col_annot$DiseaseClass)))],
-    origin = c(CORUM = "#1B9E77", ComplexPortal = "#D95F02", merged = "#7570B3"),
-    size_bin = c("2-4" = "#FEE5D9", "5-10" = "#FCAE91", "11-50" = "#FB6A4A", ">50" = "#CB181D")
+    origin = c(CORUM = "#1B9E77", ComplexPortal = "#D95F02", merged = "#7570B3")
   )
 
   # Order by row sum (most frequently disrupted complexes at top)
   row_sums <- rowSums(hm_mat)
   row_order <- order(row_sums, decreasing = TRUE)
-  hm_mat_ordered <- hm_mat[row_order, ]
-  row_annot_ordered <- row_annot[row_order, ]
+  hm_mat_ordered <- hm_mat[row_order, , drop = FALSE]
+  row_annot_ordered <- row_annot[row_order, , drop = FALSE]
 
-  # Save sourcedata
-  readr::write_csv(
-    as.data.frame(hm_mat_ordered) %>% tibble::rownames_to_column("complex_id"),
-    file.path(out_dir_vuln, "sourcedata", paste0("complex_heatmap_", neuron_type, "_sourcedata.csv"))
-  )
+  readr::write_csv(as.data.frame(hm_mat_ordered) %>% tibble::rownames_to_column("complex_id"),
+    file.path(out_dir_vuln, "sourcedata", paste0("complex_heatmap_", neuron_type, "_sourcedata.csv")))
 
-  # Generate heatmap
+  # Heatmap (ordered by disruption frequency)
   pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_", neuron_type, ".pdf")), width = 12, height = 20)
-  pheatmap::pheatmap(
-    hm_mat_ordered,
-    color = c("grey95", "#C51B7D"),
-    cluster_rows = FALSE,
-    cluster_cols = TRUE,
-    clustering_method = "ward.D2",
-    annotation_row = row_annot_ordered,
-    annotation_col = col_annot,
-    annotation_colors = ann_colors,
-    show_rownames = FALSE,
-    fontsize = 6,
-    fontsize_col = 7,
-    cellwidth = 8,
-    border_color = NA,
-    main = paste0("Complex Vulnerability (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs")
-  )
+  pheatmap::pheatmap(hm_mat_ordered, color = c("grey95", "#C51B7D"), cluster_rows = FALSE, cluster_cols = TRUE,
+    clustering_method = "ward.D2", annotation_row = row_annot_ordered, annotation_col = col_annot,
+    annotation_colors = ann_colors, show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8,
+    border_color = NA, main = paste0("Complex Vulnerability (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
   message("  Saved: heatmap_complex_vuln_", neuron_type, ".pdf")
 
   # Clustered version
   pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_clustered_", neuron_type, ".pdf")), width = 12, height = 20)
-  pheatmap::pheatmap(
-    hm_mat,
-    color = c("grey95", "#C51B7D"),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    clustering_method = "ward.D2",
-    annotation_row = row_annot,
-    annotation_col = col_annot,
-    annotation_colors = ann_colors,
-    show_rownames = FALSE,
-    fontsize = 6,
-    fontsize_col = 7,
-    cellwidth = 8,
-    border_color = NA,
-    main = paste0("Complex Vulnerability Clustered (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs")
-  )
+  pheatmap::pheatmap(hm_mat, color = c("grey95", "#C51B7D"), cluster_rows = TRUE, cluster_cols = TRUE,
+    clustering_method = "ward.D2", annotation_row = row_annot, annotation_col = col_annot,
+    annotation_colors = ann_colors, show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8,
+    border_color = NA, main = paste0("Complex Vulnerability Clustered (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
   message("  Saved: heatmap_complex_vuln_clustered_", neuron_type, ".pdf")
 }
