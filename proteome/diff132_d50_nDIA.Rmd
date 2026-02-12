@@ -16120,137 +16120,122 @@ message("Module 1 complete: Significance-filtered proteome data built")
 ````
 
 
-## Chunk 2: Build KO Edge States Table (Significant PPIs Only)
-```{r edge_states}
+## Chunk 1: Build Significance-Filtered Proteome Data
+````{r significance_filter}
 # =============================================================================
-# Build KO Edge States Table (Significance-Filtered)
+# Build Significance-Filtered Proteome Data
 # =============================================================================
-message("Building KO edge states table (significance-filtered)...")
+message("Building significance-filtered proteome data...")
 
-# Filter baseline PPIs to gold + silver
-baseline_filtered <- baseline_ppi %>% dplyr::filter(confidence_tier %in% conf_tiers_use)
-message("  Baseline PPIs (gold+silver): ", nrow(baseline_filtered))
+fc_cols <- names(complete_data_annotated_day50)[grepl("_log2_fold_change$", names(complete_data_annotated_day50))]
+pval_cols <- names(complete_data_annotated_day50)[grepl("_neg_log10_p_value$", names(complete_data_annotated_day50))]
+qval_cols <- names(complete_data_annotated_day50)[grepl("_neg_log10_q_value$", names(complete_data_annotated_day50))]
 
-# Expand baseline edges to all KO x neuron contexts
-baseline_expanded <- baseline_filtered %>%
-  dplyr::mutate(dummy = 1) %>%
-  dplyr::left_join(ko_neuron_grid %>% dplyr::mutate(dummy = 1), by = "dummy", relationship = "many-to-many") %>%
-  dplyr::select(-dummy)
+message("  Found ", length(fc_cols), " log2FC columns")
+message("  Found ", length(pval_cols), " -log10(p) columns")
+message("  Found ", length(qval_cols), " -log10(q) columns")
 
-# Join significance data for both partners
-prot_sig <- prot_long %>% dplyr::select(Genes, genotype, neuron, log2FC, is_significant, is_lost, is_gained)
+# Build long-format proteome table
+prot_long <- complete_data_annotated_day50 %>%
+  dplyr::select(Genes, all_of(fc_cols)) %>%
+  tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "log2FC") %>%
+  dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_log2_fold_change$", "\\1", sample_col),
+                neuron = sub("^.+_(iN|iDA)_log2_fold_change$", "\\1", sample_col),
+                genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
+  dplyr::select(Genes, genotype, neuron, genotype_neuron, log2FC)
 
-ko_edge_states <- baseline_expanded %>%
-  dplyr::left_join(prot_sig, by = c("Gene1" = "Genes", "genotype", "neuron")) %>%
-  dplyr::rename(log2FC_A = log2FC, sig_A = is_significant, lost_A = is_lost, gained_A = is_gained) %>%
-  dplyr::left_join(prot_sig, by = c("Gene2" = "Genes", "genotype", "neuron")) %>%
-  dplyr::rename(log2FC_B = log2FC, sig_B = is_significant, lost_B = is_lost, gained_B = is_gained) %>%
-  dplyr::mutate(
-    state = dplyr::case_when(
-      lost_A | lost_B ~ "lost",
-      !is.na(log2FC_A) | !is.na(log2FC_B) ~ "retained",
-      TRUE ~ "unknown"
-    ),
-    loss_driver = dplyr::case_when(
-      lost_A & lost_B ~ "both",
-      lost_A ~ "Gene1",
-      lost_B ~ "Gene2",
-      TRUE ~ NA_character_
-    )
-  )
-
-# Add disease class mapping
-disease_map <- disease_class_df %>% dplyr::distinct(sample, .keep_all = TRUE)
-ko_edge_states <- ko_edge_states %>% dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
-
-# Add shared organelle information
-message("  Computing shared organelle annotations...")
-org1_cols <- paste0(organelle_tags, "_prot1")
-org2_cols <- paste0(organelle_tags, "_prot2")
-existing_org1 <- intersect(org1_cols, names(ko_edge_states))
-existing_org2 <- intersect(org2_cols, names(ko_edge_states))
-
-if (length(existing_org1) > 0 && length(existing_org2) > 0) {
-  existing_tags <- sub("_prot1$", "", existing_org1)
-  m1 <- as.matrix(ko_edge_states[, existing_org1]); m1[is.na(m1)] <- FALSE
-  m2 <- as.matrix(ko_edge_states[, existing_org2]); m2[is.na(m2)] <- FALSE
-  shared_mat <- m1 & m2
-  ko_edge_states$OrgPair <- ifelse(rowSums(shared_mat) > 0, "same", "cross")
-  ko_edge_states$shared_organelle <- apply(shared_mat, 1, function(row) {
-    idx <- which(row); if (length(idx) > 0) existing_tags[idx[1]] else NA_character_
-  })
-} else {
-  ko_edge_states$OrgPair <- NA_character_
-  ko_edge_states$shared_organelle <- NA_character_
+# Add p-values (already -log10 transformed)
+if (length(pval_cols) > 0) {
+  pval_long <- complete_data_annotated_day50 %>%
+    dplyr::select(Genes, all_of(pval_cols)) %>%
+    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "neglog10_p") %>%
+    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_neg_log10_p_value$", "\\1", sample_col),
+                  neuron = sub("^.+_(iN|iDA)_neg_log10_p_value$", "\\1", sample_col),
+                  genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
+    dplyr::select(Genes, genotype_neuron, neglog10_p)
+  prot_long <- prot_long %>% dplyr::left_join(pval_long, by = c("Genes", "genotype_neuron"))
 }
 
-# Save tables
-readr::write_csv(ko_edge_states, file.path(out_dir_vuln, "tables", "ko_edge_states_significant.csv"))
-message("  Saved: ko_edge_states_significant.csv (", nrow(ko_edge_states), " rows)")
+# Add q-values (already -log10 transformed)
+if (length(qval_cols) > 0) {
+  qval_long <- complete_data_annotated_day50 %>%
+    dplyr::select(Genes, all_of(qval_cols)) %>%
+    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "neglog10_q") %>%
+    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_neg_log10_q_value$", "\\1", sample_col),
+                  neuron = sub("^.+_(iN|iDA)_neg_log10_q_value$", "\\1", sample_col),
+                  genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
+    dplyr::select(Genes, genotype_neuron, neglog10_q)
+  prot_long <- prot_long %>% dplyr::left_join(qval_long, by = c("Genes", "genotype_neuron"))
+}
 
-# Summary statistics
-ko_summary_global <- ko_edge_states %>%
-  dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass) %>%
+# Compute significance status for BOTH p and q values
+prot_long <- prot_long %>%
+  dplyr::mutate(
+    is_sig_p = !is.na(neglog10_p) & neglog10_p >= p_threshold,
+    is_sig_q = !is.na(neglog10_q) & neglog10_q >= q_threshold,
+    is_lost_p = is_sig_p & !is.na(log2FC) & log2FC < 0,
+    is_lost_q = is_sig_q & !is.na(log2FC) & log2FC < 0,
+    is_gained_p = is_sig_p & !is.na(log2FC) & log2FC > 0,
+    is_gained_q = is_sig_q & !is.na(log2FC) & log2FC > 0
+  )
+
+ko_neuron_grid <- prot_long %>% dplyr::distinct(genotype, neuron, genotype_neuron)
+message("  KO x Neuron combinations: ", nrow(ko_neuron_grid))
+
+# Summary with both p and q columns
+sig_summary <- prot_long %>%
+  dplyr::group_by(genotype, neuron, genotype_neuron) %>%
   dplyr::summarise(
-    total_edges = dplyr::n(),
-    n_lost = sum(state == "lost", na.rm = TRUE),
-    n_retained = sum(state %in% c("retained", "retained_significant"), na.rm = TRUE),
-    n_unknown = sum(state == "unknown", na.rm = TRUE),
-    frac_lost = n_lost / total_edges,
-    frac_retained = n_retained / total_edges,
+    n_proteins = dplyr::n(),
+    n_sig_p = sum(is_sig_p, na.rm = TRUE),
+    n_sig_q = sum(is_sig_q, na.rm = TRUE),
+    n_lost_p = sum(is_lost_p, na.rm = TRUE),
+    n_lost_q = sum(is_lost_q, na.rm = TRUE),
+    n_gained_p = sum(is_gained_p, na.rm = TRUE),
+    n_gained_q = sum(is_gained_q, na.rm = TRUE),
     .groups = "drop"
   )
-readr::write_csv(ko_summary_global, file.path(out_dir_vuln, "tables", "ko_summary_global.csv"))
 
-ko_summary_by_organelle <- ko_edge_states %>%
-  dplyr::filter(OrgPair == "same", !is.na(shared_organelle)) %>%
-  dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass, shared_organelle) %>%
-  dplyr::summarise(n_edges = dplyr::n(), n_lost = sum(state == "lost", na.rm = TRUE), frac_lost = n_lost / n_edges, .groups = "drop")
-readr::write_csv(ko_summary_by_organelle, file.path(out_dir_vuln, "tables", "ko_summary_by_organelle.csv"))
+readr::write_csv(sig_summary, file.path(out_dir_vuln, "tables", "significance_filtering_summary.csv"))
+message("  Total proteins with significance data: ", nrow(prot_long))
+message("  Saved: significance_filtering_summary.csv")
 
-message("Module 2 complete: KO edge states table built (significance-filtered)")
-```
+message("Module 1 complete: Significance-filtered proteome data built")
+````
 
 
-## Chunk 3: Trimer Vulnerability Analysis (From Existing Structures)
-```{r trimer}
+`````{r trimer}
 # =============================================================================
 # Trimer Vulnerability Analysis (From Existing Structures)
 # =============================================================================
 message("Analyzing trimer vulnerability from existing structures...")
 
-# Select core columns for vulnerability analysis
 trimer_genes <- trimer_evidence %>%
   dplyr::select(trimer_id, Gene1, Gene2, Gene3, validation_tier, shared_organelle, cp_strict_match, cp_relaxed_match, in_known_complex)
 
-# Use significance-aware loss status
 trimer_vuln_list <- list()
 for (i in seq_len(nrow(ko_neuron_grid))) {
   geno <- ko_neuron_grid$genotype[i]
   neur <- ko_neuron_grid$neuron[i]
   gn <- ko_neuron_grid$genotype_neuron[i]
 
-  # Get loss status (significant only)
   loss_data <- prot_long %>%
     dplyr::filter(genotype == geno, neuron == neur) %>%
-    dplyr::select(Genes, log2FC, is_lost)
+    dplyr::select(Genes, log2FC, is_lost_p, is_lost_q)
 
   trimer_status <- trimer_genes %>%
     dplyr::left_join(loss_data, by = c("Gene1" = "Genes")) %>%
-    dplyr::rename(fc1 = log2FC, lost1 = is_lost) %>%
+    dplyr::rename(fc1 = log2FC, lost1_p = is_lost_p, lost1_q = is_lost_q) %>%
     dplyr::left_join(loss_data, by = c("Gene2" = "Genes")) %>%
-    dplyr::rename(fc2 = log2FC, lost2 = is_lost) %>%
+    dplyr::rename(fc2 = log2FC, lost2_p = is_lost_p, lost2_q = is_lost_q) %>%
     dplyr::left_join(loss_data, by = c("Gene3" = "Genes")) %>%
-    dplyr::rename(fc3 = log2FC, lost3 = is_lost) %>%
+    dplyr::rename(fc3 = log2FC, lost3_p = is_lost_p, lost3_q = is_lost_q) %>%
     dplyr::mutate(
       genotype = geno, neuron = neur, genotype_neuron = gn,
-      n_lost_sig = rowSums(cbind(lost1, lost2, lost3), na.rm = TRUE),
-      state = dplyr::case_when(n_lost_sig >= 1 ~ "disrupted", TRUE ~ "intact"),
-      # Which genes are lost
-      lost_genes = purrr::pmap_chr(list(Gene1, Gene2, Gene3, lost1, lost2, lost3), function(g1, g2, g3, l1, l2, l3) {
-        genes <- c(g1, g2, g3)[c(isTRUE(l1), isTRUE(l2), isTRUE(l3))]
-        if (length(genes) > 0) paste(genes, collapse = ",") else NA_character_
-      })
+      n_lost_q = rowSums(cbind(lost1_q, lost2_q, lost3_q), na.rm = TRUE),
+      n_lost_p = rowSums(cbind(lost1_p, lost2_p, lost3_p), na.rm = TRUE),
+      state_q = dplyr::case_when(n_lost_q >= 1 ~ "disrupted", TRUE ~ "intact"),
+      state_p = dplyr::case_when(n_lost_p >= 1 ~ "disrupted", TRUE ~ "intact")
     )
   trimer_vuln_list[[i]] <- trimer_status
 }
@@ -16265,24 +16250,25 @@ trimer_summary_ko <- trimer_ko_states %>%
   dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass) %>%
   dplyr::summarise(
     total_trimers = dplyr::n(),
-    n_disrupted = sum(state == "disrupted"),
-    frac_disrupted = n_disrupted / total_trimers,
+    n_disrupted_q = sum(state_q == "disrupted"),
+    n_disrupted_p = sum(state_p == "disrupted"),
+    frac_disrupted_q = n_disrupted_q / total_trimers,
+    frac_disrupted_p = n_disrupted_p / total_trimers,
     .groups = "drop"
   )
 readr::write_csv(trimer_summary_ko, file.path(out_dir_vuln, "tables", "trimer_summary_ko.csv"))
 
-message("Module 3 complete: Trimer vulnerability analysis (significance-filtered)")
-```
+message("Module 3 complete: Trimer vulnerability analysis")
+`````
 
 
 ## Chunk 4: Tetramer Vulnerability Analysis (From Existing Structures)
-```{r tetramer}
+````{r tetramer}
 # =============================================================================
 # Tetramer Vulnerability Analysis (From Existing Structures)
 # =============================================================================
 message("Analyzing tetramer vulnerability from existing structures...")
 
-# Select core columns for vulnerability analysis
 tetramer_genes <- tetramer_evidence %>%
   dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, validation_tier, shared_organelle, cp_strict_match, cp_relaxed_match, in_known_complex)
 
@@ -16294,25 +16280,23 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
 
   loss_data <- prot_long %>%
     dplyr::filter(genotype == geno, neuron == neur) %>%
-    dplyr::select(Genes, log2FC, is_lost)
+    dplyr::select(Genes, log2FC, is_lost_p, is_lost_q)
 
   tetramer_status <- tetramer_genes %>%
     dplyr::left_join(loss_data, by = c("Gene1" = "Genes")) %>%
-    dplyr::rename(fc1 = log2FC, lost1 = is_lost) %>%
+    dplyr::rename(fc1 = log2FC, lost1_p = is_lost_p, lost1_q = is_lost_q) %>%
     dplyr::left_join(loss_data, by = c("Gene2" = "Genes")) %>%
-    dplyr::rename(fc2 = log2FC, lost2 = is_lost) %>%
+    dplyr::rename(fc2 = log2FC, lost2_p = is_lost_p, lost2_q = is_lost_q) %>%
     dplyr::left_join(loss_data, by = c("Gene3" = "Genes")) %>%
-    dplyr::rename(fc3 = log2FC, lost3 = is_lost) %>%
+    dplyr::rename(fc3 = log2FC, lost3_p = is_lost_p, lost3_q = is_lost_q) %>%
     dplyr::left_join(loss_data, by = c("Gene4" = "Genes")) %>%
-    dplyr::rename(fc4 = log2FC, lost4 = is_lost) %>%
+    dplyr::rename(fc4 = log2FC, lost4_p = is_lost_p, lost4_q = is_lost_q) %>%
     dplyr::mutate(
       genotype = geno, neuron = neur, genotype_neuron = gn,
-      n_lost_sig = rowSums(cbind(lost1, lost2, lost3, lost4), na.rm = TRUE),
-      state = dplyr::case_when(n_lost_sig >= 1 ~ "disrupted", TRUE ~ "intact"),
-      lost_genes = purrr::pmap_chr(list(Gene1, Gene2, Gene3, Gene4, lost1, lost2, lost3, lost4), function(g1, g2, g3, g4, l1, l2, l3, l4) {
-        genes <- c(g1, g2, g3, g4)[c(isTRUE(l1), isTRUE(l2), isTRUE(l3), isTRUE(l4))]
-        if (length(genes) > 0) paste(genes, collapse = ",") else NA_character_
-      })
+      n_lost_q = rowSums(cbind(lost1_q, lost2_q, lost3_q, lost4_q), na.rm = TRUE),
+      n_lost_p = rowSums(cbind(lost1_p, lost2_p, lost3_p, lost4_p), na.rm = TRUE),
+      state_q = dplyr::case_when(n_lost_q >= 1 ~ "disrupted", TRUE ~ "intact"),
+      state_p = dplyr::case_when(n_lost_p >= 1 ~ "disrupted", TRUE ~ "intact")
     )
   tetramer_vuln_list[[i]] <- tetramer_status
 }
@@ -16327,24 +16311,25 @@ tetramer_summary_ko <- tetramer_ko_states %>%
   dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass) %>%
   dplyr::summarise(
     total_tetramers = dplyr::n(),
-    n_disrupted = sum(state == "disrupted"),
-    frac_disrupted = n_disrupted / total_tetramers,
+    n_disrupted_q = sum(state_q == "disrupted"),
+    n_disrupted_p = sum(state_p == "disrupted"),
+    frac_disrupted_q = n_disrupted_q / total_tetramers,
+    frac_disrupted_p = n_disrupted_p / total_tetramers,
     .groups = "drop"
   )
 readr::write_csv(tetramer_summary_ko, file.path(out_dir_vuln, "tables", "tetramer_summary_ko.csv"))
 
-message("Module 4 complete: Tetramer vulnerability analysis (significance-filtered)")
-```
+message("Module 4 complete: Tetramer vulnerability analysis")
+````
 
 
 ## Chunk 5: Complex Vulnerability Analysis with Heatmap
 ```{r complex}
 # =============================================================================
-# Complex Vulnerability Analysis with Heatmap (352 x 23 x 2)
+# Complex Vulnerability Analysis with Heatmap
 # =============================================================================
 message("Analyzing complex vulnerability...")
 
-# Select core columns for vulnerability analysis
 complex_members_parsed <- complex_evidence %>%
   dplyr::select(complex_idx, complex_id, complex_size, origin, shared_organelle, cp_strict_match, cp_relaxed_match, members) %>%
   dplyr::mutate(members_list = members)
@@ -16357,28 +16342,34 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
   neur <- ko_neuron_grid$neuron[i]
   gn <- ko_neuron_grid$genotype_neuron[i]
 
-  # Get loss status as named vector
-  loss_data <- prot_long %>%
+  loss_data_q <- prot_long %>%
     dplyr::filter(genotype == geno, neuron == neur) %>%
-    dplyr::select(Genes, is_lost) %>%
+    dplyr::select(Genes, is_lost_q) %>%
+    tibble::deframe()
+
+  loss_data_p <- prot_long %>%
+    dplyr::filter(genotype == geno, neuron == neur) %>%
+    dplyr::select(Genes, is_lost_p) %>%
     tibble::deframe()
 
   complex_status <- complex_members_parsed %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
       n_members = length(members_list),
-      n_lost_sig = sum(loss_data[members_list], na.rm = TRUE),
-      frac_lost = n_lost_sig / n_members,
-      state = dplyr::case_when(
-        n_members <= 4 & n_lost_sig >= 1 ~ "disrupted",
-        n_members > 4 & frac_lost >= 0.25 ~ "disrupted",
+      n_lost_q = sum(loss_data_q[members_list], na.rm = TRUE),
+      n_lost_p = sum(loss_data_p[members_list], na.rm = TRUE),
+      frac_lost_q = n_lost_q / n_members,
+      frac_lost_p = n_lost_p / n_members,
+      state_q = dplyr::case_when(
+        n_members <= 4 & n_lost_q >= 1 ~ "disrupted",
+        n_members > 4 & frac_lost_q >= 0.25 ~ "disrupted",
         TRUE ~ "intact"
       ),
-      lost_members = {
-        lost_idx <- members_list[loss_data[members_list] == TRUE]
-        lost_idx <- lost_idx[!is.na(lost_idx)]
-        if (length(lost_idx) > 0) paste(lost_idx, collapse = ",") else NA_character_
-      }
+      state_p = dplyr::case_when(
+        n_members <= 4 & n_lost_p >= 1 ~ "disrupted",
+        n_members > 4 & frac_lost_p >= 0.25 ~ "disrupted",
+        TRUE ~ "intact"
+      )
     ) %>%
     dplyr::ungroup() %>%
     dplyr::mutate(genotype = geno, neuron = neur, genotype_neuron = gn)
@@ -16395,20 +16386,27 @@ message("  Saved: complex_ko_states.csv")
 
 complex_summary_ko <- complex_ko_states %>%
   dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass) %>%
-  dplyr::summarise(total_complexes = dplyr::n(), n_disrupted = sum(state == "disrupted"), frac_disrupted = n_disrupted / total_complexes, .groups = "drop")
+  dplyr::summarise(
+    total_complexes = dplyr::n(),
+    n_disrupted_q = sum(state_q == "disrupted"),
+    n_disrupted_p = sum(state_p == "disrupted"),
+    frac_disrupted_q = n_disrupted_q / total_complexes,
+    frac_disrupted_p = n_disrupted_p / total_complexes,
+    .groups = "drop"
+  )
 readr::write_csv(complex_summary_ko, file.path(out_dir_vuln, "tables", "complex_summary_ko.csv"))
 
 
 # =============================================================================
-# Complex Vulnerability Heatmap (352 complexes x 23 KOs x 2 neurons)
+# Complex Vulnerability Heatmap (q-value based, primary)
 # =============================================================================
-message("Generating complex vulnerability heatmaps...")
+message("Generating complex vulnerability heatmaps (q-value filtered)...")
 
 for (neuron_type in c("iN", "iDA")) {
 
   hm_data <- complex_ko_states %>%
     dplyr::filter(neuron == neuron_type) %>%
-    dplyr::mutate(disrupted_binary = as.integer(state == "disrupted")) %>%
+    dplyr::mutate(disrupted_binary = as.integer(state_q == "disrupted")) %>%
     dplyr::select(complex_id, genotype, disrupted_binary) %>%
     tidyr::pivot_wider(names_from = genotype, values_from = disrupted_binary, values_fill = 0)
 
@@ -16420,7 +16418,6 @@ for (neuron_type in c("iN", "iDA")) {
   hm_mat <- as.matrix(hm_data[, -1])
   rownames(hm_mat) <- hm_data$complex_id
 
-  # Row annotation
   complex_annot <- complex_ko_states %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::distinct(complex_id, .keep_all = TRUE) %>%
@@ -16430,7 +16427,6 @@ for (neuron_type in c("iN", "iDA")) {
   complex_annot <- complex_annot[rownames(hm_mat), , drop = FALSE]
   row_annot <- data.frame(origin = complex_annot$origin, row.names = rownames(complex_annot))
 
-  # Column annotation
   col_annot <- disease_map %>%
     dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
     dplyr::select(genotype, DiseaseClass) %>%
@@ -16440,42 +16436,37 @@ for (neuron_type in c("iN", "iDA")) {
   rownames(col_annot) <- col_annot$genotype
   col_annot <- col_annot[colnames(hm_mat), "DiseaseClass", drop = FALSE]
 
-  # Build annotation colors dynamically from actual data
   origin_levels <- unique(na.omit(row_annot$origin))
   origin_pal <- setNames(RColorBrewer::brewer.pal(max(3, length(origin_levels)), "Dark2")[seq_along(origin_levels)], origin_levels)
   disease_levels <- unique(na.omit(col_annot$DiseaseClass))
   disease_pal <- disease_class_palette[intersect(names(disease_class_palette), disease_levels)]
-
   ann_colors <- list(DiseaseClass = disease_pal, origin = origin_pal)
 
-  # Order by row sum
   row_sums <- rowSums(hm_mat)
   row_order <- order(row_sums, decreasing = TRUE)
   hm_mat_ordered <- hm_mat[row_order, , drop = FALSE]
   row_annot_ordered <- row_annot[row_order, , drop = FALSE]
 
   readr::write_csv(as.data.frame(hm_mat_ordered) %>% tibble::rownames_to_column("complex_id"),
-    file.path(out_dir_vuln, "sourcedata", paste0("complex_heatmap_", neuron_type, "_sourcedata.csv")))
+    file.path(out_dir_vuln, "sourcedata", paste0("complex_heatmap_qval_", neuron_type, "_sourcedata.csv")))
 
-  # Heatmap (ordered)
-  pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_", neuron_type, ".pdf")), width = 12, height = 20)
+  pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_qval_", neuron_type, ".pdf")), width = 12, height = 20)
   pheatmap::pheatmap(hm_mat_ordered, color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
     cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
     annotation_row = row_annot_ordered, annotation_col = col_annot, annotation_colors = ann_colors,
     show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
-    main = paste0("Complex Vulnerability (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
+    main = paste0("Complex Vulnerability (", neuron_type, ", q < 0.05)\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
-  message("  Saved: heatmap_complex_vuln_", neuron_type, ".pdf")
+  message("  Saved: heatmap_complex_vuln_qval_", neuron_type, ".pdf")
 
-  # Clustered version
-  pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_clustered_", neuron_type, ".pdf")), width = 12, height = 20)
+  pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_qval_clustered_", neuron_type, ".pdf")), width = 12, height = 20)
   pheatmap::pheatmap(hm_mat, color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
     cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2",
     annotation_row = row_annot, annotation_col = col_annot, annotation_colors = ann_colors,
     show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
-    main = paste0("Complex Vulnerability Clustered (", neuron_type, ")\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
+    main = paste0("Complex Vulnerability Clustered (", neuron_type, ", q < 0.05)\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
-  message("  Saved: heatmap_complex_vuln_clustered_", neuron_type, ".pdf")
+  message("  Saved: heatmap_complex_vuln_qval_clustered_", neuron_type, ".pdf")
 }
 
 message("Module 5 complete: Complex vulnerability analysis with heatmaps")
