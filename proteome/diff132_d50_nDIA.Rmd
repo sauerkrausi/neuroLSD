@@ -16037,7 +16037,7 @@ message("  Significance threshold: ", if(use_q_value) "q-value" else "p-value", 
 
 
 ## Chunk 1: Build Significance-Filtered Proteome Data
-```{r significance_filter}
+````{r significance_filter}
 # =============================================================================
 # Build Significance-Filtered Proteome Data
 # =============================================================================
@@ -16084,33 +16084,40 @@ if (length(qval_cols) > 0) {
   prot_long <- prot_long %>% dplyr::left_join(qval_long, by = c("Genes", "genotype_neuron"))
 }
 
-# Compute significance status
-# Lost = negative log2FC AND significant (direction + significance, no magnitude threshold)
+# Compute significance status for BOTH p and q values
 prot_long <- prot_long %>%
   dplyr::mutate(
-    is_significant = if (use_q_value) {
-      !is.na(neglog10_q) & neglog10_q >= q_threshold
-    } else {
-      !is.na(neglog10_p) & neglog10_p >= p_threshold
-    },
-    is_lost = is_significant & !is.na(log2FC) & log2FC < 0,
-    is_gained = is_significant & !is.na(log2FC) & log2FC > 0
+    is_sig_p = !is.na(neglog10_p) & neglog10_p >= p_threshold,
+    is_sig_q = !is.na(neglog10_q) & neglog10_q >= q_threshold,
+    is_lost_p = is_sig_p & !is.na(log2FC) & log2FC < 0,
+    is_lost_q = is_sig_q & !is.na(log2FC) & log2FC < 0,
+    is_gained_p = is_sig_p & !is.na(log2FC) & log2FC > 0,
+    is_gained_q = is_sig_q & !is.na(log2FC) & log2FC > 0
   )
 
 ko_neuron_grid <- prot_long %>% dplyr::distinct(genotype, neuron, genotype_neuron)
 message("  KO x Neuron combinations: ", nrow(ko_neuron_grid))
 
+# Summary with both p and q columns
 sig_summary <- prot_long %>%
-  dplyr::group_by(genotype_neuron) %>%
-  dplyr::summarise(n_proteins = dplyr::n(), n_significant = sum(is_significant, na.rm = TRUE),
-    n_lost = sum(is_lost, na.rm = TRUE), n_gained = sum(is_gained, na.rm = TRUE), .groups = "drop")
+  dplyr::group_by(genotype, neuron, genotype_neuron) %>%
+  dplyr::summarise(
+    n_proteins = dplyr::n(),
+    n_sig_p = sum(is_sig_p, na.rm = TRUE),
+    n_sig_q = sum(is_sig_q, na.rm = TRUE),
+    n_lost_p = sum(is_lost_p, na.rm = TRUE),
+    n_lost_q = sum(is_lost_q, na.rm = TRUE),
+    n_gained_p = sum(is_gained_p, na.rm = TRUE),
+    n_gained_q = sum(is_gained_q, na.rm = TRUE),
+    .groups = "drop"
+  )
 
 readr::write_csv(sig_summary, file.path(out_dir_vuln, "tables", "significance_filtering_summary.csv"))
 message("  Total proteins with significance data: ", nrow(prot_long))
 message("  Saved: significance_filtering_summary.csv")
 
 message("Module 1 complete: Significance-filtered proteome data built")
-```
+````
 
 
 ## Chunk 2: Build KO Edge States Table (Significant PPIs Only)
@@ -16139,14 +16146,11 @@ ko_edge_states <- baseline_expanded %>%
   dplyr::left_join(prot_sig, by = c("Gene2" = "Genes", "genotype", "neuron")) %>%
   dplyr::rename(log2FC_B = log2FC, sig_B = is_significant, lost_B = is_lost, gained_B = is_gained) %>%
   dplyr::mutate(
-    # Edge state: lost if either partner is significantly lost
     state = dplyr::case_when(
       lost_A | lost_B ~ "lost",
-      sig_A | sig_B ~ "retained_significant",
       !is.na(log2FC_A) | !is.na(log2FC_B) ~ "retained",
       TRUE ~ "unknown"
     ),
-    # Which partner caused the loss
     loss_driver = dplyr::case_when(
       lost_A & lost_B ~ "both",
       lost_A ~ "Gene1",
