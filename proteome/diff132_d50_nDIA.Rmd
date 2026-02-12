@@ -16043,16 +16043,13 @@ message("  Significance threshold: ", if(use_q_value) "q-value" else "p-value", 
 # =============================================================================
 message("Building significance-filtered proteome data...")
 
-# Parse proteome data to long format with log2FC
 fc_cols <- names(complete_data_annotated_day50)[grepl("_log2_fold_change$", names(complete_data_annotated_day50))]
-
-# Parse p-value columns (adjust pattern based on actual column names)
-pval_cols <- names(complete_data_annotated_day50)[grepl("_p_value$|_pvalue$", names(complete_data_annotated_day50))]
-qval_cols <- names(complete_data_annotated_day50)[grepl("_q_value$|_qvalue$|_padj$|_fdr$", names(complete_data_annotated_day50))]
+pval_cols <- names(complete_data_annotated_day50)[grepl("_neg_log10_p_value$", names(complete_data_annotated_day50))]
+qval_cols <- names(complete_data_annotated_day50)[grepl("_neg_log10_q_value$", names(complete_data_annotated_day50))]
 
 message("  Found ", length(fc_cols), " log2FC columns")
-message("  Found ", length(pval_cols), " p-value columns")
-message("  Found ", length(qval_cols), " q-value columns")
+message("  Found ", length(pval_cols), " -log10(p) columns")
+message("  Found ", length(qval_cols), " -log10(q) columns")
 
 # Build long-format proteome table
 prot_long <- complete_data_annotated_day50 %>%
@@ -16063,61 +16060,49 @@ prot_long <- complete_data_annotated_day50 %>%
                 genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
   dplyr::select(Genes, genotype, neuron, genotype_neuron, log2FC)
 
-# Add p-values if available
+# Add p-values (already -log10 transformed)
 if (length(pval_cols) > 0) {
   pval_long <- complete_data_annotated_day50 %>%
     dplyr::select(Genes, all_of(pval_cols)) %>%
-    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "p_value") %>%
-    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_p_value$", "\\1", sample_col),
-                  neuron = sub("^.+_(iN|iDA)_p_value$", "\\1", sample_col),
+    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "neglog10_p") %>%
+    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_neg_log10_p_value$", "\\1", sample_col),
+                  neuron = sub("^.+_(iN|iDA)_neg_log10_p_value$", "\\1", sample_col),
                   genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-    dplyr::select(Genes, genotype_neuron, p_value)
-
+    dplyr::select(Genes, genotype_neuron, neglog10_p)
   prot_long <- prot_long %>% dplyr::left_join(pval_long, by = c("Genes", "genotype_neuron"))
 }
 
-# Add q-values if available
+# Add q-values (already -log10 transformed)
 if (length(qval_cols) > 0) {
   qval_long <- complete_data_annotated_day50 %>%
     dplyr::select(Genes, all_of(qval_cols)) %>%
-    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "q_value") %>%
-    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_q_value$", "\\1", sample_col),
-                  neuron = sub("^.+_(iN|iDA)_q_value$", "\\1", sample_col),
+    tidyr::pivot_longer(-Genes, names_to = "sample_col", values_to = "neglog10_q") %>%
+    dplyr::mutate(genotype = sub("^(.+)_(iN|iDA)_neg_log10_q_value$", "\\1", sample_col),
+                  neuron = sub("^.+_(iN|iDA)_neg_log10_q_value$", "\\1", sample_col),
                   genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-    dplyr::select(Genes, genotype_neuron, q_value)
-
+    dplyr::select(Genes, genotype_neuron, neglog10_q)
   prot_long <- prot_long %>% dplyr::left_join(qval_long, by = c("Genes", "genotype_neuron"))
 }
 
-# Compute significance status
+# Compute significance status (values already -log10, compare directly)
 prot_long <- prot_long %>%
   dplyr::mutate(
-    neglog10_p = -log10(p_value),
-    neglog10_q = -log10(q_value),
     is_significant = if (use_q_value) {
       !is.na(neglog10_q) & neglog10_q >= q_threshold
     } else {
       !is.na(neglog10_p) & neglog10_p >= p_threshold
     },
-    # Loss: significant AND log2FC < drop_thresh
     is_lost = is_significant & !is.na(log2FC) & log2FC < drop_thresh,
-    # Gain: significant AND log2FC > -drop_thresh (positive)
     is_gained = is_significant & !is.na(log2FC) & log2FC > -drop_thresh
   )
 
 ko_neuron_grid <- prot_long %>% dplyr::distinct(genotype, neuron, genotype_neuron)
 message("  KO x Neuron combinations: ", nrow(ko_neuron_grid))
 
-# Summary of significance filtering
 sig_summary <- prot_long %>%
   dplyr::group_by(genotype_neuron) %>%
-  dplyr::summarise(
-    n_proteins = dplyr::n(),
-    n_significant = sum(is_significant, na.rm = TRUE),
-    n_lost = sum(is_lost, na.rm = TRUE),
-    n_gained = sum(is_gained, na.rm = TRUE),
-    .groups = "drop"
-  )
+  dplyr::summarise(n_proteins = dplyr::n(), n_significant = sum(is_significant, na.rm = TRUE),
+    n_lost = sum(is_lost, na.rm = TRUE), n_gained = sum(is_gained, na.rm = TRUE), .groups = "drop")
 
 readr::write_csv(sig_summary, file.path(out_dir_vuln, "tables", "significance_filtering_summary.csv"))
 message("  Total proteins with significance data: ", nrow(prot_long))
@@ -16430,17 +16415,17 @@ for (neuron_type in c("iN", "iDA")) {
   hm_mat <- as.matrix(hm_data[, -1])
   rownames(hm_mat) <- hm_data$complex_id
 
-  # Row annotation: convert to data.frame to allow rownames
+  # Row annotation
   complex_annot <- complex_ko_states %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::distinct(complex_id, .keep_all = TRUE) %>%
-    dplyr::select(complex_id, origin, complex_size) %>%
+    dplyr::select(complex_id, origin) %>%
     as.data.frame()
   rownames(complex_annot) <- complex_annot$complex_id
   complex_annot <- complex_annot[rownames(hm_mat), , drop = FALSE]
   row_annot <- data.frame(origin = complex_annot$origin, row.names = rownames(complex_annot))
 
-  # Column annotation: disease class
+  # Column annotation
   col_annot <- disease_map %>%
     dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
     dplyr::select(genotype, DiseaseClass) %>%
@@ -16450,12 +16435,15 @@ for (neuron_type in c("iN", "iDA")) {
   rownames(col_annot) <- col_annot$genotype
   col_annot <- col_annot[colnames(hm_mat), "DiseaseClass", drop = FALSE]
 
-  ann_colors <- list(
-    DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(col_annot$DiseaseClass)))],
-    origin = c(CORUM = "#1B9E77", ComplexPortal = "#D95F02", merged = "#7570B3")
-  )
+  # Build annotation colors dynamically from actual data
+  origin_levels <- unique(na.omit(row_annot$origin))
+  origin_pal <- setNames(RColorBrewer::brewer.pal(max(3, length(origin_levels)), "Dark2")[seq_along(origin_levels)], origin_levels)
+  disease_levels <- unique(na.omit(col_annot$DiseaseClass))
+  disease_pal <- disease_class_palette[intersect(names(disease_class_palette), disease_levels)]
 
-  # Order by row sum (most frequently disrupted complexes at top)
+  ann_colors <- list(DiseaseClass = disease_pal, origin = origin_pal)
+
+  # Order by row sum
   row_sums <- rowSums(hm_mat)
   row_order <- order(row_sums, decreasing = TRUE)
   hm_mat_ordered <- hm_mat[row_order, , drop = FALSE]
@@ -16464,7 +16452,7 @@ for (neuron_type in c("iN", "iDA")) {
   readr::write_csv(as.data.frame(hm_mat_ordered) %>% tibble::rownames_to_column("complex_id"),
     file.path(out_dir_vuln, "sourcedata", paste0("complex_heatmap_", neuron_type, "_sourcedata.csv")))
 
-  # Heatmap (ordered by disruption frequency)
+  # Heatmap (ordered)
   pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_", neuron_type, ".pdf")), width = 12, height = 20)
   pheatmap::pheatmap(hm_mat_ordered, color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
     cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
