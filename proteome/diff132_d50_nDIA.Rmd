@@ -11643,7 +11643,7 @@ dir.create(file.path(out_dir_baseline, "qc"), recursive = TRUE, showWarnings = F
 
 # --- Input paths ---
 path_predictome80 <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/final_predictions_80.tsv"
-path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
+path_predictomes16k <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/Predictomes_16kset.csv"
 path_corum <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/corum_humanComplexes.txt"
 path_complexportal <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/9606.tsv"
 
