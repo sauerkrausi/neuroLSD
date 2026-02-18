@@ -11642,10 +11642,10 @@ dir.create(file.path(out_dir_baseline, "tables"), recursive = TRUE, showWarnings
 dir.create(file.path(out_dir_baseline, "qc"), recursive = TRUE, showWarnings = FALSE)
 
 # --- Input paths ---
-path_predictome80 <- "/Users/felix/Desktop/ppi/final_predictions_80.tsv"
+path_predictome80 <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/final_predictions_80.tsv"
 path_predictomes16k <- "/Users/felix/Desktop/ppi/Predictomes_16kset.csv"
-path_corum <- "/Users/felix/Desktop/ppi/corum_humanComplexes.txt"
-path_complexportal <- "/Users/felix/Desktop/ppi/9606.tsv"
+path_corum <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/corum_humanComplexes.txt"
+path_complexportal <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/9606.tsv"
 
 # --- Helper functions ---
 .make_undirected_key <- function(a, b) {
