@@ -1445,20 +1445,7 @@ sig_heatmap_matrix <- sig_annotation_heatmap %>%
   as.matrix()
 
 # Plot
-pdf(file.path(out_dir_d50_QC, "diff132_sig_annotation_heatmap.pdf"), width = 10, height = 6)
-pheatmap::pheatmap(
-  sig_heatmap_matrix,
-  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
-  breaks = seq(-0.5, 0.5, length.out = 101),
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
-  cellheight = 8,
-  cellwidth = 8,
-  border_color = NA,
-  fontsize = 6,
-  main = "Mean log2FC of significant proteins (p < 0.05) per annotation"
-)
-dev.off()
+ 
 ```
 
 
@@ -12737,7 +12724,7 @@ Requires: baseline_ppi_v3 from Module 2, corum_complex_members, complexportal
 # =============================================================================
 # Trimers: Detection from Gold-Tier Baseline
 # =============================================================================
-
+install.packages("igraph")
 library(igraph)
 
 # --- Setup ---
