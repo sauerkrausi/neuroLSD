@@ -15976,7 +15976,7 @@ message("Module 1 complete: Significance-filtered proteome data built")
 # =============================================================================
 message("Building KO edge states table...")
 
-baseline_filtered <- baseline_ppi %>% dplyr::filter(confidence_tier %in% conf_tiers_use)
+baseline_filtered <- baseline_filtered
 message("  Baseline PPIs (gold): ", nrow(baseline_filtered))
 
 baseline_expanded <- baseline_filtered %>%
@@ -16011,7 +16011,7 @@ ko_edge_states <- baseline_expanded %>%
 
 # Add disease class mapping
 disease_map <- disease_class_df %>% dplyr::distinct(sample, .keep_all = TRUE)
-ko_edge_states <- ko_edge_states %>% dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+ko_edge_states <- ko_edge_states %>% dplyr::left_join(disease_map, by = c("genotype" = "sample"))
 
 # Add shared organelle information
 message("  Computing shared organelle annotations...")
