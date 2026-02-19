@@ -16453,7 +16453,7 @@ comparison_data <- dplyr::bind_rows(
 # Add disease class
 comparison_data <- comparison_data %>%
   dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
 
 readr::write_csv(comparison_data, file.path(out_dir_vuln, "tables", "structure_loss_comparison.csv"))
 
