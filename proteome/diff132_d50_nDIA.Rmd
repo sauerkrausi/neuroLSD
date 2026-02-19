@@ -43,9 +43,9 @@ Module 13: Validates predicted PPI networks against XL-MS cross-linking data (DS
 # Load packackes & set project directory
 ```{r setup, include=FALSE}
 # install.packages(c(
-#   "plyr", "ggrepel", "ggpubr", "ggpmisc", "patchwork", "gghighlight", 
-#   "ggVennDiagram", "UpSetR", "ComplexUpset", "pheatmap", "circlize", 
-#   "magick", "viridis", "NatParksPalettes", "limma", "bigstatsr", 
+#   "plyr", "ggrepel", "ggpubr", "ggpmisc", "patchwork", "gghighlight",
+#   "ggVennDiagram", "UpSetR", "ComplexUpset", "pheatmap", "circlize",
+#   "magick", "viridis", "NatParksPalettes", "limma", "bigstatsr",
 #   "irlba", "ggbiplot", "plotly", "Cairo", "devtools", "lintr"
 # ))
 
@@ -102,6 +102,7 @@ library(circlize)
 # Utilities / Dev / Misc
 library(grid)
 library(gridExtra)
+#install.packages("Cairo")
 library(Cairo)
 #library(png)
 library(devtools)
@@ -392,7 +393,7 @@ cleaned_df <- diff132_d50_PCA_df %>%
 
 # --- Step 4a: Load subcellular annotations
 cols_to_read <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33,34)
-subcell_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv", stringsAsFactors = FALSE)[, cols_to_read]
+subcell_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/SubCellAnnotation.csv", stringsAsFactors = FALSE)[, cols_to_read]
 subcell_df[] <- lapply(subcell_df, as.character)
 
 long_subcell_df <- subcell_df %>%
