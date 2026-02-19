@@ -71,8 +71,11 @@ library(superheat)
 library(ggVennDiagram)
 library(UpSetR)
 library(ComplexUpset)
+#install.packages("eulerr")
 library(eulerr)
+#install.packages("Ternary")
 library(Ternary)
+#devtools::install_github("davidsjoberg/ggsankey")
 library(ggsankey)
 
 # Heatmaps & Clustering
