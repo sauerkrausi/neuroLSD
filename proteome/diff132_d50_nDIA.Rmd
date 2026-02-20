@@ -17226,6 +17226,120 @@ message("Chunk 7 complete: KO x Neuron Extended Analysis")
 ```
 
 
+
+## Chunk 8: Radar / Spider Plots
+```{r radar}
+# =============================================================================
+# Radar / Spider Plots (ALL 12 annotations)
+# Uses fmsb::radarchart - shows all 12 annotations defined in radar_annotations
+# =============================================================================
+message("Generating radar plots...")
+
+out_dir_radar     <- file.path(out_dir_vuln, "plots/radar")
+out_dir_radarDisClass <- file.path(out_dir_radar, "DisClassDetailed")
+dir.create(out_dir_radar,         recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_radarDisClass, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/radar"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Prepare: disease class level (loss_per_KO per DiseaseClass x tag) ---
+prepare_radar_data <- function(df_states, shared_long_full, neuron_type, radar_annotations) {
+  shared_tags <- shared_long_full %>% dplyr::distinct(key, tag)
+
+  df_tagged <- df_states %>%
+    dplyr::filter(neuron == neuron_type) %>%
+    dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many") %>%
+    dplyr::filter(!is.na(tag), !is.na(DiseaseClass), tag %in% radar_annotations)
+
+  n_KOs_per_class <- df_tagged %>%
+    dplyr::distinct(genotype, DiseaseClass) %>%
+    dplyr::count(DiseaseClass, name = "n_KOs")
+
+  radar_data <- df_tagged %>%
+    dplyr::filter(state_q == "lost") %>%
+    dplyr::group_by(DiseaseClass, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    dplyr::left_join(n_KOs_per_class, by = "DiseaseClass") %>%
+    dplyr::mutate(loss_per_KO = n_lost / n_KOs) %>%
+    dplyr::select(DiseaseClass, tag, loss_per_KO) %>%
+    tidyr::pivot_wider(names_from = tag, values_from = loss_per_KO, values_fill = 0)
+
+  for (ann in radar_annotations) {
+    if (!ann %in% colnames(radar_data)) radar_data[[ann]] <- 0
+  }
+  radar_data %>% dplyr::select(DiseaseClass, dplyr::all_of(radar_annotations))
+}
+
+prepare_radar_data_by_genotype <- function(df_states, shared_long_full, neuron_type, radar_annotations) {
+  shared_tags <- shared_long_full %>% dplyr::distinct(key, tag)
+
+  df_tagged <- df_states %>%
+    dplyr::filter(neuron == neuron_type) %>%
+    dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many") %>%
+    dplyr::filter(!is.na(tag), !is.na(DiseaseClass), tag %in% radar_annotations)
+
+  radar_data <- df_tagged %>%
+    dplyr::filter(state_q == "lost") %>%
+    dplyr::group_by(genotype, DiseaseClass, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    tidyr::pivot_wider(names_from = tag, values_from = n_lost, values_fill = 0)
+
+  for (ann in radar_annotations) {
+    if (!ann %in% colnames(radar_data)) radar_data[[ann]] <- 0
+  }
+  radar_data
+}
+
+# --- Plot: one line per disease class ---
+plot_radar_ppi <- function(radar_data, disease_class_palette, neuron_type, out_dir, radar_annotations, out_dir_sourcedata) {
+  annot_cols <- radar_annotations
+  if (length(annot_cols) < 3) { message("  Insufficient annotations for radar plot (", neuron_type, ")"); return(invisible(NULL)) }
+
+  data_matrix  <- as.data.frame(radar_data[, annot_cols])
+  rownames(data_matrix) <- radar_data$DiseaseClass
+  max_val      <- max(data_matrix, na.rm = TRUE) * 1.1
+  min_val      <- 0
+  radar_df     <- rbind(rep(max_val, ncol(data_matrix)), rep(min_val, ncol(data_matrix)), data_matrix)
+  colnames(radar_df) <- annot_cols
+
+  disease_classes <- radar_data$DiseaseClass
+  line_colors     <- disease_class_palette[disease_classes]
+  fill_colors     <- adjustcolor(line_colors, alpha.f = 0.15)
+
+  pdf(file.path(out_dir, paste0("radar_ppi_vulnerability_", neuron_type, ".pdf")), width = 8, height = 8)
+  par(mar = c(1, 1, 2, 1))
+  fmsb::radarchart(radar_df,
+    axistype  = 1,
+    pcol      = line_colors, pfcol = fill_colors,
+    plwd      = 2, plty = 1,
+    cglcol    = "grey70", cglty = 1, cglwd = 0.8,
+    axislabcol = "grey30",
+    vlcex     = 0.7, calcex = 0.6,
+    title     = paste0("PPI Vulnerability Profile by Disease Class (", neuron_type, ")\nNormalized lost PPIs per KO - All 12 annotations"))
+  legend("topright", legend = disease_classes, col = line_colors, lwd = 2, lty = 1, bty = "n", cex = 0.7)
+  dev.off()
+  message("  Saved: radar_ppi_vulnerability_", neuron_type, ".pdf")
+
+  # Sourcedata
+  readr::write_csv(radar_data, file.path(out_dir_sourcedata, paste0("radar_ppi_global_", neuron_type, "_sourcedata.csv")))
+}
+
+# --- Run global radars ---
+radar_data_iN  <- prepare_radar_data(ko_edge_states, shared_long_full, "iN",  radar_annotations)
+radar_data_iDA <- prepare_radar_data(ko_edge_states, shared_long_full, "iDA", radar_annotations)
+
+plot_radar_ppi(radar_data_iN,  disease_class_palette, "iN",  out_dir_radar, radar_annotations, file.path(out_dir_vuln, "sourcedata/radar"))
+plot_radar_ppi(radar_data_iDA, disease_class_palette, "iDA", out_dir_radar, radar_annotations, file.path(out_dir_vuln, "sourcedata/radar"))
+
+readr::write_csv(radar_data_iN,  file.path(out_dir_vuln, "tables", "radar_ppi_data_iN.csv"))
+readr::write_csv(radar_data_iDA, file.path(out_dir_vuln, "tables", "radar_ppi_data_iDA.csv"))
+
+
+
+```
+
+
+
+
 ## Chunk 7: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
