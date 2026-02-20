@@ -16572,7 +16572,8 @@ save_plot_with_sourcedata(p_bubble_trimer, "plots/KOxNeuron/bubble_trimer_iN_vs_
 
 # --- 7.1.3 Lost Tetramers bubble plot ---
 bubble_tetramer <- tetramer_summary_ko %>%
-  dplyr::select(genotype, neuron, frac_disrupted_q, DiseaseClass) %>%
+  dplyr::select(genotype, neuron, frac_disrupted_q) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype") %>%
   tidyr::pivot_wider(names_from = neuron, values_from = frac_disrupted_q)
 
 axis_max_tet <- max(c(bubble_tetramer$iN, bubble_tetramer$iDA), na.rm = TRUE) * 1.1
@@ -16591,7 +16592,8 @@ save_plot_with_sourcedata(p_bubble_tetramer, "plots/KOxNeuron/bubble_tetramer_iN
 
 # --- 7.1.4 Lost Complexes bubble plot ---
 bubble_complex <- complex_summary_ko %>%
-  dplyr::select(genotype, neuron, frac_disrupted_q, DiseaseClass) %>%
+  dplyr::select(genotype, neuron, frac_disrupted_q) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype") %>%
   tidyr::pivot_wider(names_from = neuron, values_from = frac_disrupted_q)
 
 axis_max_cpx <- max(c(bubble_complex$iN, bubble_complex$iDA), na.rm = TRUE) * 1.1
