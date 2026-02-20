@@ -17227,7 +17227,7 @@ message("Chunk 7 complete: KO x Neuron Extended Analysis")
 
 
 
-### Section 7.X: Complex Network Plots per KO x Neuron
+### Section 7.1: Complex Network Plots per KO x Neuron
 ```{r}
 # =============================================================================
 # One PDF per disrupted complex x KO x neuron (state_q == "disrupted")
@@ -17359,25 +17359,34 @@ plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
 plot_count_cx <- 0
 skipped_cx    <- 0
 
-for (i in seq_len(nrow(disrupted_cx_ko))) {
-  row <- disrupted_cx_ko[i, ]
-  result <- tryCatch(
-    plot_complex_ko_network(
-      cx_idx            = row$complex_idx,
-      ko_geno           = row$genotype,
-      ko_neur           = row$neuron,
-      ko_edge_states    = ko_edge_states,
-      complex_evidence  = complex_evidence,
-      complex_ko_states = complex_ko_states,
-      baseline_layouts  = baseline_layouts,
-      out_dir           = out_dir_cx_nets,
-      out_dir_sd        = out_dir_cx_nets_sd),
-    error = function(e) {
-      message("  SKIP complex ", row$complex_idx, " / ", row$genotype, " / ", row$neuron, ": ", e$message)
-      "error"
-    })
-  if (identical(result, "error")) { skipped_cx <- skipped_cx + 1 } else { plot_count_cx <- plot_count_cx + 1 }
-  if ((plot_count_cx + skipped_cx) %% 50 == 0) message("  Progress: ", plot_count_cx, " plots / ", skipped_cx, " skipped...")
+for (sig in c("state_q", "state_p")) {
+  sig_tag <- sub("state_", "", sig)   # "q" or "p"
+
+  out_dir_sig    <- file.path(out_dir_vuln, paste0("plots/complex_networks_", sig_tag))
+  out_dir_sig_sd <- file.path(out_dir_vuln, paste0("sourcedata/complex_networks_", sig_tag))
+  dir.create(out_dir_sig,    recursive = TRUE, showWarnings = FALSE)
+  dir.create(out_dir_sig_sd, recursive = TRUE, showWarnings = FALSE)
+
+  disrupted_sig <- complex_ko_states %>% dplyr::filter(.data[[sig]] == "disrupted")
+  message("Running ", toupper(sig_tag), ": ", nrow(disrupted_sig), " plots")
+
+  plot_count_cx <- 0; skipped_cx <- 0
+  for (i in seq_len(nrow(disrupted_sig))) {
+    row <- disrupted_sig[i, ]
+    result <- tryCatch(
+      plot_complex_ko_network(
+        cx_idx = row$complex_idx, ko_geno = row$genotype, ko_neur = row$neuron,
+        ko_edge_states = ko_edge_states, complex_evidence = complex_evidence,
+        complex_ko_states = complex_ko_states, baseline_layouts = baseline_layouts,
+        out_dir = out_dir_sig, out_dir_sd = out_dir_sig_sd, sig_col = sig),
+      error = function(e) {
+        message("  SKIP complex ", row$complex_idx, " / ", row$genotype, " / ", row$neuron, ": ", e$message)
+        "error"
+      })
+    if (identical(result, "error")) skipped_cx <- skipped_cx + 1 else plot_count_cx <- plot_count_cx + 1
+    if ((plot_count_cx + skipped_cx) %% 100 == 0) message("  ", plot_count_cx, " done / ", skipped_cx, " skipped")
+  }
+  message(toupper(sig_tag), " complete: ", plot_count_cx, " plots, ", skipped_cx, " skipped")
 }
 
 
