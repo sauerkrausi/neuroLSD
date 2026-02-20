@@ -18050,13 +18050,189 @@ message("Step 0 complete.")
 
 ### Section 10.1 Hub vulnearbility
 ```{r}
+# =============================================================================
+# MODULE 1: HUB VULNERABILITY
+# =============================================================================
+message("\n--- MODULE 1: Hub Vulnerability ---")
+
+baseline_degree  <- data.frame(Gene = igraph::V(baseline_net)$name,
+  baseline_degree = igraph::V(baseline_net)$degree,
+  is_hub_top10    = igraph::V(baseline_net)$is_hub_top10,
+  is_hub_top5     = igraph::V(baseline_net)$is_hub_top5)
+
+ko_neuron_combos <- ko_edge_states %>% dplyr::distinct(genotype, neuron)
+hub_vulnerability_list <- list()
+
+for (i in seq_len(nrow(ko_neuron_combos))) {
+  geno <- ko_neuron_combos$genotype[i]
+  nt   <- ko_neuron_combos$neuron[i]
+
+  retained_edges <- ko_edge_states %>%
+    dplyr::filter(.data$genotype == geno, .data$neuron == nt, state_q == "retained") %>%
+    dplyr::select(Gene1, Gene2)
+
+  if (nrow(retained_edges) > 0) {
+    retained_net    <- igraph::graph_from_data_frame(retained_edges, directed = FALSE,
+      vertices = data.frame(name = unique(c(retained_edges$Gene1, retained_edges$Gene2))))
+    retained_degree <- data.frame(Gene = igraph::V(retained_net)$name,
+      retained_degree = igraph::degree(retained_net))
+  } else {
+    retained_degree <- data.frame(Gene = character(0), retained_degree = integer(0))
+  }
+
+  hub_vulnerability_list[[paste(geno, nt, sep = "_")]] <- baseline_degree %>%
+    dplyr::left_join(retained_degree, by = "Gene") %>%
+    dplyr::mutate(retained_degree = tidyr::replace_na(retained_degree, 0),
+                  lost_degree      = baseline_degree - retained_degree,
+                  frac_degree_lost = ifelse(baseline_degree > 0, lost_degree / baseline_degree, 0),
+                  genotype = geno, neuron = nt)
+}
+
+hub_vulnerability_all <- dplyr::bind_rows(hub_vulnerability_list)
+readr::write_csv(hub_vulnerability_all, file.path(out_dir_network, "M1_hub_vulnerability", "hub_vulnerability_all_proteins.csv"))
+
+hub_vuln_summary <- hub_vulnerability_all %>%
+  dplyr::filter(is_hub_top10) %>%
+  dplyr::group_by(genotype, neuron) %>%
+  dplyr::summarise(
+    n_hubs            = dplyr::n(),
+    mean_frac_lost    = mean(frac_degree_lost, na.rm = TRUE),
+    median_frac_lost  = median(frac_degree_lost, na.rm = TRUE),
+    total_degree_lost = sum(lost_degree, na.rm = TRUE),
+    n_hubs_50pct_lost = sum(frac_degree_lost >= 0.5, na.rm = TRUE),
+    .groups = "drop") %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype") %>%
+  dplyr::arrange(dplyr::desc(mean_frac_lost))
+
+readr::write_csv(hub_vuln_summary, file.path(out_dir_network, "M1_hub_vulnerability", "hub_vulnerability_summary.csv"))
+
+recurrent_vulnerable_hubs <- hub_vulnerability_all %>%
+  dplyr::filter(is_hub_top10, frac_degree_lost >= 0.3) %>%
+  dplyr::group_by(Gene) %>%
+  dplyr::summarise(n_KOs_affected  = dplyr::n_distinct(genotype),
+                   mean_frac_lost  = mean(frac_degree_lost),
+                   baseline_degree = dplyr::first(baseline_degree), .groups = "drop") %>%
+  dplyr::filter(n_KOs_affected >= 3) %>%
+  dplyr::arrange(dplyr::desc(n_KOs_affected), dplyr::desc(mean_frac_lost))
+
+readr::write_csv(recurrent_vulnerable_hubs, file.path(out_dir_network, "M1_hub_vulnerability", "recurrent_vulnerable_hubs.csv"))
+message("  Recurrently vulnerable hubs (>=3 KOs): ", nrow(recurrent_vulnerable_hubs))
+
+p_hub_vuln_bar <- ggplot2::ggplot(hub_vuln_summary, ggplot2::aes(x = reorder(genotype, -mean_frac_lost), y = mean_frac_lost, fill = neuron)) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
+  ggplot2::scale_fill_manual(values = neuron_palette, name = "Neuron") +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::labs(title = "Hub vulnerability per KO (top-10% hubs)", x = NULL, y = "Mean % degree lost") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
+ggplot2::ggsave(file.path(out_dir_network, "M1_hub_vulnerability", "barplot_hub_vulnerability_per_KO.pdf"), p_hub_vuln_bar, width = 6, height = 4, device = cairo_pdf)
+
+hub_vuln_wide <- hub_vuln_summary %>%
+  dplyr::select(genotype, neuron, mean_frac_lost, DiseaseClass) %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = mean_frac_lost)
+
+p_hub_scatter <- ggplot2::ggplot(hub_vuln_wide, ggplot2::aes(x = iN, y = iDA, fill = DiseaseClass)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  ggplot2::geom_point(shape = 21, size = 3, stroke = 0.3) +
+  ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 20) +
+  ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  ggplot2::coord_fixed(ratio = 3) +
+  ggplot2::labs(title = "Hub vulnerability: iN vs iDA", x = "Mean % degree lost (iN)", y = "Mean % degree lost (iDA)") +
+  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+ggplot2::ggsave(file.path(out_dir_network, "M1_hub_vulnerability", "scatter_hub_vuln_iN_vs_iDA.pdf"), p_hub_scatter, width = 5, height = 4.5, device = cairo_pdf)
+
+readr::write_csv(hub_vuln_summary, file.path(out_dir_network, "sourcedata", "M1_hub_vuln_summary_sourcedata.csv"))
+message("Module 1 complete.")
 
 ```
 
 
-### Section 10.2
+### Section 10.2 Network Fragmentation
 ```{r}
+# =============================================================================
+# MODULE 2: NETWORK FRAGMENTATION
+# =============================================================================
+message("\n--- MODULE 2: Network Fragmentation ---")
 
+fragmentation_list <- list()
+
+for (i in seq_len(nrow(ko_neuron_combos))) {
+  geno <- ko_neuron_combos$genotype[i]
+  nt   <- ko_neuron_combos$neuron[i]
+
+  retained_edges <- ko_edge_states %>%
+    dplyr::filter(.data$genotype == geno, .data$neuron == nt, state_q == "retained") %>%
+    dplyr::select(Gene1, Gene2)
+
+  if (nrow(retained_edges) > 0) {
+    retained_net <- igraph::graph_from_data_frame(retained_edges, directed = FALSE,
+      vertices = data.frame(name = igraph::V(baseline_net)$name))
+    comp    <- igraph::components(retained_net)
+    orphans <- sum(igraph::degree(retained_net) == 0)
+    fragmentation_list[[paste(geno, nt, sep = "_")]] <- data.frame(
+      genotype = geno, neuron = nt,
+      n_components           = comp$no,
+      largest_component_size = max(comp$csize),
+      largest_component_pct  = max(comp$csize) / igraph::vcount(retained_net) * 100,
+      n_orphans              = orphans,
+      orphan_pct             = orphans / igraph::vcount(retained_net) * 100,
+      n_edges_retained       = igraph::ecount(retained_net),
+      n_edges_lost           = igraph::ecount(baseline_net) - igraph::ecount(retained_net),
+      frac_edges_lost        = (igraph::ecount(baseline_net) - igraph::ecount(retained_net)) / igraph::ecount(baseline_net))
+  } else {
+    fragmentation_list[[paste(geno, nt, sep = "_")]] <- data.frame(
+      genotype = geno, neuron = nt,
+      n_components           = igraph::vcount(baseline_net),
+      largest_component_size = 1,
+      largest_component_pct  = 1 / igraph::vcount(baseline_net) * 100,
+      n_orphans              = igraph::vcount(baseline_net),
+      orphan_pct             = 100,
+      n_edges_retained       = 0,
+      n_edges_lost           = igraph::ecount(baseline_net),
+      frac_edges_lost        = 1)
+  }
+}
+
+fragmentation_all <- dplyr::bind_rows(fragmentation_list) %>%
+  dplyr::mutate(
+    delta_components   = n_components - baseline_summary$n_components,
+    delta_largest_pct  = baseline_summary$largest_component_pct - largest_component_pct,
+    fragmentation_score = (delta_components / baseline_summary$n_components) + (delta_largest_pct / 100) + (orphan_pct / 100)) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype") %>%
+  dplyr::arrange(dplyr::desc(fragmentation_score))
+
+readr::write_csv(fragmentation_all, file.path(out_dir_network, "M2_fragmentation", "fragmentation_metrics.csv"))
+readr::write_csv(fragmentation_all, file.path(out_dir_network, "sourcedata", "M2_fragmentation_sourcedata.csv"))
+
+p_frag_bar <- ggplot2::ggplot(fragmentation_all, ggplot2::aes(x = reorder(genotype, -fragmentation_score), y = fragmentation_score, fill = neuron)) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
+  ggplot2::scale_fill_manual(values = neuron_palette) +
+  ggplot2::labs(title = "Network fragmentation per KO", x = NULL, y = "Fragmentation score") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
+ggplot2::ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_fragmentation_per_KO.pdf"), p_frag_bar, width = 4.5, height = 4, device = cairo_pdf)
+
+p_frag_scatter <- ggplot2::ggplot(fragmentation_all, ggplot2::aes(x = n_orphans, y = delta_components, fill = DiseaseClass)) +
+  ggplot2::geom_point(shape = 21, size = 3, stroke = 0.3) +
+  ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 20) +
+  ggplot2::scale_fill_manual(values = disease_class_palette) +
+  ggplot2::facet_wrap(~ neuron) +
+  ggplot2::labs(title = "Fragmentation: orphans vs new components", x = "Orphaned proteins", y = "Delta components") +
+  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+ggplot2::ggsave(file.path(out_dir_network, "M2_fragmentation", "scatter_orphans_vs_components.pdf"), p_frag_scatter, width = 7, height = 3.5, device = cairo_pdf)
+
+p_lcc <- ggplot2::ggplot(fragmentation_all, ggplot2::aes(x = reorder(genotype, largest_component_pct), y = largest_component_pct, fill = neuron)) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
+  ggplot2::geom_hline(yintercept = baseline_summary$largest_component_pct, linetype = "dashed", color = "red", linewidth = 0.5) +
+  ggplot2::scale_fill_manual(values = neuron_palette) +
+  ggplot2::labs(title = "Largest connected component after KO",
+    subtitle = paste0("Baseline: ", round(baseline_summary$largest_component_pct, 1), "%"),
+    x = NULL, y = "% in largest component") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
+ggplot2::ggsave(file.path(out_dir_network, "M2_fragmentation", "barplot_largest_component.pdf"), p_lcc, width = 4.5, height = 4, device = cairo_pdf)
+
+message("Module 2 complete.")
 ```
 
 
