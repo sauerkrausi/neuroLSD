@@ -18506,7 +18506,7 @@ message(strrep("=", 70))
 
 
 
-## Chunk 14: Sphingosine Pathway Disruption Analysis
+## Chunk 11: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
 # Sphingosine Pathway Disruption Analysis
@@ -18527,7 +18527,7 @@ dir.create(out_dir_sphingosine, recursive = TRUE, showWarnings = FALSE)
 
 
 # -----------------------------------------------------------------------------
-# 14.1 Define pathway structure (depth from sphingosine)
+# 11.1 Define pathway structure (depth from sphingosine)
 # -----------------------------------------------------------------------------
 sphingo_pathway <- data.frame(
   gene                   = c("HEXA", "HEXB", "GBA1", "SMPD1", "ASAH1", "PSAP"),
@@ -18546,7 +18546,7 @@ readr::write_csv(sphingo_pathway, file.path(out_dir_sphingosine, "sphingo_pathwa
 
 
 # -----------------------------------------------------------------------------
-# 14.2 Extract PPI loss profiles for sphingolipidosis KOs
+# 11.2 Extract PPI loss profiles for sphingolipidosis KOs
 # -----------------------------------------------------------------------------
 sphingo_genes      <- sphingo_pathway$gene
 sphingo_edge_states <- ko_edge_states %>% dplyr::filter(genotype %in% sphingo_genes)
@@ -18563,7 +18563,7 @@ readr::write_csv(sphingo_loss_wide, file.path(out_dir_sphingosine, "sphingo_loss
 
 
 # -----------------------------------------------------------------------------
-# 14.3 Compute pairwise Jaccard similarity of lost PPIs
+# 11.3 Compute pairwise Jaccard similarity of lost PPIs
 # -----------------------------------------------------------------------------
 compute_jaccard <- function(x, y) {
   intersection <- sum(x == 1 & y == 1)
@@ -18590,7 +18590,7 @@ readr::write_csv(as.data.frame(jaccard_mat) %>% tibble::rownames_to_column("samp
 
 
 # -----------------------------------------------------------------------------
-# 14.4 Pathway distance (from sphingosine) vs similarity analysis
+# 11.4 Pathway distance (from sphingosine) vs similarity analysis
 # -----------------------------------------------------------------------------
 pathway_dist_sphingo <- function(gene_a, gene_b, pathway_df) {
   depth_a <- pathway_df$depth_from_sphingosine[pathway_df$gene == gene_a]
@@ -18635,7 +18635,7 @@ ggplot2::ggsave(file.path(out_dir_sphingosine, "pathway_distance_sphingo_vs_jacc
 
 
 # -----------------------------------------------------------------------------
-# 14.5 Key comparisons for sphingosine-proximal genes
+# 11.5 Key comparisons for sphingosine-proximal genes
 # -----------------------------------------------------------------------------
 comparisons_sphingo <- list(
   "ASAH1_vs_GBA1"  = list(a = "ASAH1", b = "GBA1",  hypothesis = "ASAH1 closest to sphingosine, GBA1 produces ceramide"),
@@ -18660,7 +18660,7 @@ readr::write_csv(comparison_results_sphingo, file.path(out_dir_sphingosine, "key
 
 
 # -----------------------------------------------------------------------------
-# 14.6 Jaccard similarity heatmap
+# 11.6 Jaccard similarity heatmap
 # -----------------------------------------------------------------------------
 pheatmap::pheatmap(
   jaccard_mat,
@@ -18943,6 +18943,248 @@ readr::write_csv(summary_table, file.path(out_dir_ceramide, "key_comparisons_sum
 message("=== Chunk 12: Ceramide pathway analysis complete ===")
 ```
 
+
+
+## Chunk 13: OXPHOS Vulnerability Analysis
+```{r module13}
+# =============================================================================
+# Module 13: OXPHOS Vulnerability Analysis in Sphingolipidoses
+# =============================================================================
+message("Module 13: OXPHOS Vulnerability Analysis...")
+
+out_dir_mito <- file.path(out_dir_vuln, "mito_oxphos_vulnerability")
+dir.create(file.path(out_dir_mito, "plots"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_mito, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_mito, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+mito_annotations <- c("Mito", "MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI")
+
+sphingolipidosis_genes <- c("ASAH1", "GBA1", "SMPD1", "HEXA", "HEXB", "PSAP")
+ceramide_core_genes    <- c("ASAH1", "GBA1", "SMPD1")
+
+
+# -----------------------------------------------------------------------------
+# 13.1 Filter PPI summary to mito annotations
+# -----------------------------------------------------------------------------
+mito_ppi_summary <- ko_summary_by_organelle %>%
+  dplyr::filter(shared_organelle %in% mito_annotations)
+
+if (nrow(mito_ppi_summary) == 0) {
+  message("  No mito annotation data found. Skipping Module 13.")
+} else {
+
+  readr::write_csv(mito_ppi_summary, file.path(out_dir_mito, "tables", "ppi_mito_summary.csv"))
+  message("  Mito PPI summary: ", nrow(mito_ppi_summary), " rows")
+
+
+  # ---------------------------------------------------------------------------
+  # 13.2 Heatmaps: KO x mito-annotation (n_lost_q)
+  # ---------------------------------------------------------------------------
+  for (neuron_type in c("iN", "iDA")) {
+
+    heatmap_data <- mito_ppi_summary %>%
+      dplyr::filter(neuron == neuron_type) %>%
+      dplyr::select(genotype, shared_organelle, n_lost_q) %>%
+      tidyr::pivot_wider(names_from = shared_organelle, values_from = n_lost_q, values_fill = 0)
+
+    if (nrow(heatmap_data) < 2 || ncol(heatmap_data) < 2) {
+      message("  Insufficient data for heatmap (", neuron_type, ")")
+      next
+    }
+
+    hm_mat <- as.matrix(heatmap_data[, -1])
+    rownames(hm_mat) <- heatmap_data$genotype
+
+    row_totals <- rowSums(hm_mat, na.rm = TRUE)
+    row_order  <- names(sort(row_totals, decreasing = TRUE))
+    hm_mat     <- hm_mat[row_order, , drop = FALSE]
+
+    row_annot <- disease_class_lookup %>%
+      dplyr::filter(genotype %in% rownames(hm_mat)) %>%
+      as.data.frame()
+    rownames(row_annot) <- row_annot$genotype
+    row_annot <- row_annot %>% dplyr::select(DiseaseClass)
+    row_annot <- row_annot[rownames(hm_mat), , drop = FALSE]
+
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    readr::write_csv(as.data.frame(hm_mat) %>% tibble::rownames_to_column("genotype"),
+      file.path(out_dir_mito, "sourcedata", paste0("ppi_mito_heatmap_", neuron_type, ".csv")))
+
+    pheatmap::pheatmap(
+      hm_mat,
+      color = colorRampPalette(c("grey95", "#FC9272", "#C51B7D"))(100),
+      cluster_rows = FALSE, cluster_cols = FALSE,
+      display_numbers = TRUE, number_format = "%.0f",
+      fontsize = 6, fontsize_number = 5,
+      cellwidth = 10, cellheight = 10, border_color = NA,
+      annotation_row = row_annot, annotation_colors = ann_colors,
+      main = paste0("Lost Mito/OXPHOS PPIs (q-sig) - ", neuron_type, "\n(ordered by total lost)"),
+      filename = file.path(out_dir_mito, "plots", paste0("heatmap_mito_lost_ppi_", neuron_type, ".pdf")),
+      width = 8, height = 12
+    )
+    message("  Saved: heatmap_mito_lost_ppi_", neuron_type, ".pdf")
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 13.3 Heatmaps: fraction lost (frac_lost_q, normalized)
+  # ---------------------------------------------------------------------------
+  for (neuron_type in c("iN", "iDA")) {
+
+    heatmap_data_frac <- mito_ppi_summary %>%
+      dplyr::filter(neuron == neuron_type) %>%
+      dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
+      tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = 0)
+
+    if (nrow(heatmap_data_frac) < 2 || ncol(heatmap_data_frac) < 2) next
+
+    hm_mat_frac <- as.matrix(heatmap_data_frac[, -1])
+    rownames(hm_mat_frac) <- heatmap_data_frac$genotype
+
+    row_means <- rowMeans(hm_mat_frac, na.rm = TRUE)
+    row_order  <- names(sort(row_means, decreasing = TRUE))
+    hm_mat_frac <- hm_mat_frac[row_order, , drop = FALSE]
+
+    row_annot_frac <- disease_class_lookup %>%
+      dplyr::filter(genotype %in% rownames(hm_mat_frac)) %>%
+      as.data.frame()
+    rownames(row_annot_frac) <- row_annot_frac$genotype
+    row_annot_frac <- row_annot_frac %>% dplyr::select(DiseaseClass)
+    row_annot_frac <- row_annot_frac[rownames(hm_mat_frac), , drop = FALSE]
+
+    ann_colors_frac <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot_frac$DiseaseClass)))])
+
+    readr::write_csv(as.data.frame(hm_mat_frac) %>% tibble::rownames_to_column("genotype"),
+      file.path(out_dir_mito, "sourcedata", paste0("ppi_mito_heatmap_frac_", neuron_type, ".csv")))
+
+    pheatmap::pheatmap(
+      hm_mat_frac,
+      color = colorRampPalette(c("white", "#FC9272", "#C51B7D"))(100),
+      cluster_rows = FALSE, cluster_cols = FALSE,
+      display_numbers = TRUE, number_format = "%.2f",
+      fontsize = 6, fontsize_number = 5,
+      cellwidth = 10, cellheight = 10, border_color = NA,
+      annotation_row = row_annot_frac, annotation_colors = ann_colors_frac,
+      main = paste0("Fraction Mito/OXPHOS PPIs lost (q-sig) - ", neuron_type),
+      filename = file.path(out_dir_mito, "plots", paste0("heatmap_mito_frac_lost_", neuron_type, ".pdf")),
+      width = 8, height = 12
+    )
+    message("  Saved: heatmap_mito_frac_lost_", neuron_type, ".pdf")
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 13.4 Barplot: mean frac_lost_q by disease class
+  # ---------------------------------------------------------------------------
+  mito_by_disease <- mito_ppi_summary %>%
+    dplyr::filter(!is.na(DiseaseClass), DiseaseClass %in% disease_class_order) %>%
+    dplyr::mutate(DiseaseClass = factor(DiseaseClass, levels = disease_class_order)) %>%
+    dplyr::group_by(DiseaseClass, neuron) %>%
+    dplyr::summarise(
+      total_lost      = sum(n_lost_q, na.rm = TRUE),
+      mean_frac_lost  = mean(frac_lost_q, na.rm = TRUE),
+      n_kos           = dplyr::n_distinct(genotype),
+      .groups = "drop"
+    )
+
+  p_mito_disease <- ggplot2::ggplot(mito_by_disease, ggplot2::aes(x = DiseaseClass, y = mean_frac_lost, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~neuron) +
+    ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
+    ggplot2::labs(x = NULL, y = "Mean fraction mito PPIs lost (q-sig)", title = "Mito/OXPHOS vulnerability by disease class") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+  ggplot2::ggsave(file.path(out_dir_mito, "plots", "barplot_mito_disease_class.pdf"), p_mito_disease, width = 6, height = 4, device = cairo_pdf)
+  readr::write_csv(mito_by_disease, file.path(out_dir_mito, "sourcedata", "barplot_mito_disease_class.csv"))
+
+
+  # ---------------------------------------------------------------------------
+  # 13.5 Sphingolipidosis focus: ceramide-core vs upstream
+  # ---------------------------------------------------------------------------
+  sphingo_mito <- mito_ppi_summary %>%
+    dplyr::filter(genotype %in% sphingolipidosis_genes) %>%
+    dplyr::mutate(group = dplyr::case_when(
+      genotype %in% ceramide_core_genes ~ "Ceramide-proximal",
+      TRUE ~ "Upstream"
+    ))
+
+  if (nrow(sphingo_mito) > 0) {
+    sphingo_mito_summary <- sphingo_mito %>%
+      dplyr::group_by(genotype, neuron, group) %>%
+      dplyr::summarise(
+        total_lost     = sum(n_lost_q, na.rm = TRUE),
+        mean_frac_lost = mean(frac_lost_q, na.rm = TRUE),
+        .groups = "drop"
+      )
+
+    p_sphingo_mito <- ggplot2::ggplot(sphingo_mito_summary, ggplot2::aes(x = reorder(genotype, -mean_frac_lost), y = mean_frac_lost, fill = group)) +
+      ggplot2::geom_col(color = "black", linewidth = 0.2) +
+      ggplot2::facet_wrap(~neuron) +
+      ggplot2::scale_fill_manual(values = c("Ceramide-proximal" = "#D53E4F", "Upstream" = "#FEE08B"), name = "Position") +
+      ggplot2::labs(x = NULL, y = "Mean fraction mito PPIs lost (q-sig)", title = "Sphingolipidosis: Mito/OXPHOS vulnerability") +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+    ggplot2::ggsave(file.path(out_dir_mito, "plots", "barplot_sphingo_mito.pdf"), p_sphingo_mito, width = 5, height = 4, device = cairo_pdf)
+    readr::write_csv(sphingo_mito_summary, file.path(out_dir_mito, "sourcedata", "barplot_sphingo_mito.csv"))
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # 13.6 Detailed heatmap: OXPHOS subcompartments
+  # ---------------------------------------------------------------------------
+  oxphos_detail <- mito_ppi_summary %>%
+    dplyr::filter(shared_organelle %in% c("OXPHOS", "mtComplexI", "MitoMatrix", "MitoIMS"))
+
+  if (nrow(oxphos_detail) > 0) {
+    for (neuron_type in c("iN", "iDA")) {
+      heatmap_oxphos <- oxphos_detail %>%
+        dplyr::filter(neuron == neuron_type) %>%
+        dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
+        tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = 0)
+
+      if (nrow(heatmap_oxphos) < 2 || ncol(heatmap_oxphos) < 2) next
+
+      hm_mat_oxphos <- as.matrix(heatmap_oxphos[, -1])
+      rownames(hm_mat_oxphos) <- heatmap_oxphos$genotype
+
+      row_means_oxphos <- rowMeans(hm_mat_oxphos, na.rm = TRUE)
+      row_order_oxphos <- names(sort(row_means_oxphos, decreasing = TRUE))
+      hm_mat_oxphos    <- hm_mat_oxphos[row_order_oxphos, , drop = FALSE]
+
+      row_annot_oxphos <- disease_class_lookup %>%
+        dplyr::filter(genotype %in% rownames(hm_mat_oxphos)) %>%
+        as.data.frame()
+      rownames(row_annot_oxphos) <- row_annot_oxphos$genotype
+      row_annot_oxphos <- row_annot_oxphos %>% dplyr::select(DiseaseClass)
+      row_annot_oxphos <- row_annot_oxphos[rownames(hm_mat_oxphos), , drop = FALSE]
+
+      ann_colors_oxphos <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot_oxphos$DiseaseClass)))])
+
+      readr::write_csv(as.data.frame(hm_mat_oxphos) %>% tibble::rownames_to_column("genotype"),
+        file.path(out_dir_mito, "sourcedata", paste0("heatmap_oxphos_detail_", neuron_type, ".csv")))
+
+      pheatmap::pheatmap(
+        hm_mat_oxphos,
+        color = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+        cluster_rows = FALSE, cluster_cols = FALSE,
+        display_numbers = TRUE, number_format = "%.2f",
+        fontsize = 6, fontsize_number = 5,
+        cellwidth = 10, cellheight = 10, border_color = NA,
+        annotation_row = row_annot_oxphos, annotation_colors = ann_colors_oxphos,
+        main = paste0("OXPHOS subcompartment vulnerability (q-sig) - ", neuron_type),
+        filename = file.path(out_dir_mito, "plots", paste0("heatmap_oxphos_detail_", neuron_type, ".pdf")),
+        width = 6, height = 12
+      )
+      message("  Saved: heatmap_oxphos_detail_", neuron_type, ".pdf")
+    }
+  }
+}
+
+message("Module 13 complete: OXPHOS vulnerability analysis")
+```
 
 
 ## Chunk 14: Export Gain Analysis Metrics
