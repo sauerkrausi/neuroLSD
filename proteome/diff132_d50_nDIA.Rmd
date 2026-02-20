@@ -17801,6 +17801,253 @@ message("Chunk 9 complete: Ternary plots")
 
 
 
+## Chunk 10: PPI Network Connectivity Analysis
+```{r network_connectivity}
+# =============================================================================
+# Network topology disruption analysis per KO x neuron
+# Baseline: gold-tier PPIs from baseline_filtered
+# KO states: state_q filtered
+# =============================================================================
+message(strrep("=", 70))
+message("CHUNK 10: PPI Network Connectivity Analysis")
+message(strrep("=", 70))
+
+library(igraph)
+library(corrplot)
+
+out_dir_network <- file.path(out_dir_vuln, "Network_evaluation")
+dir.create(file.path(out_dir_network, "Step0_baseline"),              recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_network, "M1_hub_vulnerability"),        recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_network, "M2_fragmentation"),            recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_network, "M3_interorganelle_bridges"),   recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_network, "M3_interorganelle_bridges/per_KO"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_network, "M4_disease_convergence"),      recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_network, "sourcedata"),                  recursive = TRUE, showWarnings = FALSE)
+
+
+# =============================================================================
+# STEP 0: BASELINE NETWORK & TOPOLOGY
+# =============================================================================
+message("\n--- STEP 0: Building baseline network ---")
+
+# --- 0.1 Build igraph from baseline_filtered ---
+baseline_net <- igraph::graph_from_data_frame(
+  d = baseline_filtered %>% dplyr::select(Gene1, Gene2, key, confidence_tier),
+  directed = FALSE,
+  vertices = data.frame(name = unique(c(baseline_filtered$Gene1, baseline_filtered$Gene2)))
+)
+message("Baseline: ", igraph::vcount(baseline_net), " proteins | ", igraph::ecount(baseline_net), " edges")
+
+
+# --- 0.2 Build gene -> organelle annotation from baseline_filtered _prot1/_prot2 columns ---
+# Replaces complete_data_annotated_day50 - fully self-contained
+gene_annotations <- purrr::map_dfr(organelle_tags, function(tag) {
+  p1 <- paste0(tag, "_prot1"); p2 <- paste0(tag, "_prot2")
+  if (!p1 %in% colnames(baseline_filtered) || !p2 %in% colnames(baseline_filtered)) return(NULL)
+  g1 <- baseline_filtered %>% dplyr::filter(.data[[p1]] == 1) %>% dplyr::distinct(Gene1) %>% dplyr::rename(Genes = Gene1)
+  g2 <- baseline_filtered %>% dplyr::filter(.data[[p2]] == 1) %>% dplyr::distinct(Gene2) %>% dplyr::rename(Genes = Gene2)
+  dplyr::bind_rows(g1, g2) %>% dplyr::distinct() %>% dplyr::mutate(annotation = tag)
+}) %>% dplyr::distinct()
+
+gene_primary_annotation <- gene_annotations %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(annotations = paste(annotation, collapse = ";"),
+                   primary_annotation = dplyr::first(annotation),
+                   n_annotations = dplyr::n(), .groups = "drop")
+
+all_annotations <- unique(gene_primary_annotation$primary_annotation)
+all_annotations <- all_annotations[!is.na(all_annotations)]
+organelle_colors_network <- setNames(colorRampPalette(RColorBrewer::brewer.pal(11, "RdBu"))(length(all_annotations)), all_annotations)
+
+igraph::V(baseline_net)$primary_annotation <- gene_primary_annotation$primary_annotation[match(igraph::V(baseline_net)$name, gene_primary_annotation$Genes)]
+igraph::V(baseline_net)$all_annotations    <- gene_primary_annotation$annotations[match(igraph::V(baseline_net)$name, gene_primary_annotation$Genes)]
+igraph::V(baseline_net)$n_annotations      <- gene_primary_annotation$n_annotations[match(igraph::V(baseline_net)$name, gene_primary_annotation$Genes)]
+igraph::V(baseline_net)$primary_annotation[is.na(igraph::V(baseline_net)$primary_annotation)] <- "Unannotated"
+igraph::V(baseline_net)$all_annotations[is.na(igraph::V(baseline_net)$all_annotations)]       <- "Unannotated"
+igraph::V(baseline_net)$n_annotations[is.na(igraph::V(baseline_net)$n_annotations)]           <- 0
+
+
+# --- 0.3 Node topology metrics ---
+message("Computing node topology metrics...")
+igraph::V(baseline_net)$degree          <- igraph::degree(baseline_net)
+igraph::V(baseline_net)$betweenness     <- igraph::betweenness(baseline_net, normalized = TRUE)
+igraph::V(baseline_net)$clustering_coef <- igraph::transitivity(baseline_net, type = "local")
+
+degree_threshold_top10 <- quantile(igraph::V(baseline_net)$degree, 0.90, na.rm = TRUE)
+degree_threshold_top5  <- quantile(igraph::V(baseline_net)$degree, 0.95, na.rm = TRUE)
+igraph::V(baseline_net)$is_hub_top10 <- igraph::V(baseline_net)$degree >= degree_threshold_top10
+igraph::V(baseline_net)$is_hub_top5  <- igraph::V(baseline_net)$degree >= degree_threshold_top5
+message("  Hub threshold (top 10%): degree >= ", degree_threshold_top10, " | n hubs: ", sum(igraph::V(baseline_net)$is_hub_top10))
+
+
+# --- 0.4 Connected components ---
+components_baseline <- igraph::components(baseline_net)
+message("  Components: ", components_baseline$no,
+        " | Largest: ", max(components_baseline$csize),
+        " proteins (", round(max(components_baseline$csize) / igraph::vcount(baseline_net) * 100, 1), "%)")
+igraph::V(baseline_net)$component_id <- components_baseline$membership
+
+
+# --- 0.5 Classify edges as intra- / inter-organelle ---
+message("Classifying edges...")
+edge_df <- igraph::as_data_frame(baseline_net, what = "edges") %>%
+  dplyr::left_join(gene_primary_annotation %>% dplyr::select(Genes, primary_annotation), by = c("from" = "Genes")) %>%
+  dplyr::rename(annotation_from = primary_annotation) %>%
+  dplyr::left_join(gene_primary_annotation %>% dplyr::select(Genes, primary_annotation), by = c("to" = "Genes")) %>%
+  dplyr::rename(annotation_to = primary_annotation) %>%
+  dplyr::mutate(
+    annotation_from = tidyr::replace_na(annotation_from, "Unannotated"),
+    annotation_to   = tidyr::replace_na(annotation_to,   "Unannotated"),
+    edge_type       = dplyr::case_when(
+      annotation_from == annotation_to ~ "intra",
+      annotation_from == "Unannotated" | annotation_to == "Unannotated" ~ "unknown",
+      TRUE ~ "inter"),
+    annotation_pair = ifelse(annotation_from <= annotation_to,
+      paste(annotation_from, annotation_to, sep = "::"),
+      paste(annotation_to, annotation_from, sep = "::")))
+
+igraph::E(baseline_net)$edge_type       <- edge_df$edge_type
+igraph::E(baseline_net)$annotation_pair <- edge_df$annotation_pair
+
+edge_type_summary <- table(edge_df$edge_type)
+message("  Intra: ", edge_type_summary["intra"], " | Inter: ", edge_type_summary["inter"])
+
+
+# --- 0.6 Inter-organelle edge matrix (baseline) ---
+annotation_pairs_all <- edge_df %>%
+  dplyr::filter(edge_type %in% c("intra", "inter")) %>%
+  dplyr::count(annotation_from, annotation_to, name = "n_edges")
+
+all_annots <- unique(c(edge_df$annotation_from, edge_df$annotation_to))
+all_annots <- all_annots[all_annots != "Unannotated"]
+
+inter_matrix_baseline <- matrix(0, nrow = length(all_annots), ncol = length(all_annots),
+  dimnames = list(all_annots, all_annots))
+for (i in seq_len(nrow(annotation_pairs_all))) {
+  a1 <- as.character(annotation_pairs_all$annotation_from[i])
+  a2 <- as.character(annotation_pairs_all$annotation_to[i])
+  if (a1 %in% all_annots && a2 %in% all_annots) {
+    inter_matrix_baseline[a1, a2] <- inter_matrix_baseline[a1, a2] + annotation_pairs_all$n_edges[i]
+    if (a1 != a2) inter_matrix_baseline[a2, a1] <- inter_matrix_baseline[a2, a1] + annotation_pairs_all$n_edges[i]
+  }
+}
+
+
+# --- 0.7 Save baseline ---
+node_metrics_baseline <- data.frame(
+  Gene = igraph::V(baseline_net)$name, degree = igraph::V(baseline_net)$degree,
+  betweenness = igraph::V(baseline_net)$betweenness, clustering_coef = igraph::V(baseline_net)$clustering_coef,
+  is_hub_top10 = igraph::V(baseline_net)$is_hub_top10, is_hub_top5 = igraph::V(baseline_net)$is_hub_top5,
+  primary_annotation = igraph::V(baseline_net)$primary_annotation,
+  all_annotations = igraph::V(baseline_net)$all_annotations,
+  component_id = igraph::V(baseline_net)$component_id) %>%
+  dplyr::arrange(dplyr::desc(degree))
+
+readr::write_csv(node_metrics_baseline, file.path(out_dir_network, "Step0_baseline", "node_metrics_baseline.csv"))
+readr::write_csv(edge_df,               file.path(out_dir_network, "Step0_baseline", "edge_classification_baseline.csv"))
+write.csv(inter_matrix_baseline,        file.path(out_dir_network, "Step0_baseline", "inter_organelle_matrix_baseline.csv"))
+
+baseline_summary <- list(
+  n_proteins = igraph::vcount(baseline_net), n_edges = igraph::ecount(baseline_net),
+  n_components = components_baseline$no, largest_component_size = max(components_baseline$csize),
+  largest_component_pct = round(max(components_baseline$csize) / igraph::vcount(baseline_net) * 100, 2),
+  n_hubs_top10 = sum(igraph::V(baseline_net)$is_hub_top10),
+  n_hubs_top5  = sum(igraph::V(baseline_net)$is_hub_top5),
+  hub_degree_threshold_top10 = degree_threshold_top10,
+  hub_degree_threshold_top5  = degree_threshold_top5,
+  n_intra_edges = as.numeric(edge_type_summary["intra"]),
+  n_inter_edges = as.numeric(edge_type_summary["inter"]),
+  mean_degree = mean(igraph::V(baseline_net)$degree),
+  median_degree = median(igraph::V(baseline_net)$degree),
+  max_degree = max(igraph::V(baseline_net)$degree))
+saveRDS(baseline_summary, file.path(out_dir_network, "Step0_baseline", "baseline_summary.rds"))
+
+
+# --- 0.8 Baseline visualizations ---
+message("Generating baseline visualizations...")
+
+p_degree_dist <- ggplot2::ggplot(node_metrics_baseline, ggplot2::aes(x = degree)) +
+  ggplot2::geom_histogram(bins = 50, fill = "dodgerblue3", color = "black", linewidth = 0.2) +
+  ggplot2::geom_vline(xintercept = degree_threshold_top10, linetype = "dashed", color = "red", linewidth = 0.5) +
+  ggplot2::annotate("text", x = degree_threshold_top10 + 5, y = Inf, label = "Top 10%", vjust = 2, hjust = 0, size = 2.5, color = "red") +
+  ggplot2::scale_x_log10() +
+  ggplot2::labs(title = "Baseline degree distribution", x = "Degree (log10)", y = "Count") +
+  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
+
+p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(primary_annotation != "Unannotated"),
+    ggplot2::aes(x = reorder(primary_annotation, degree, median), y = degree, fill = primary_annotation)) +
+  ggplot2::geom_boxplot(outlier.size = 0.3, linewidth = 0.3) +
+  ggplot2::scale_y_log10() +
+  ggplot2::scale_fill_manual(values = organelle_colors_network, guide = "none") +
+  ggplot2::coord_flip() +
+  ggplot2::labs(title = "Degree by annotation", x = NULL, y = "Degree (log10)") +
+  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 6, device = cairo_pdf)
+
+annots_with_edges_base <- rownames(inter_matrix_baseline)[rowSums(inter_matrix_baseline) > 10]
+inter_matrix_filtered  <- inter_matrix_baseline[annots_with_edges_base, annots_with_edges_base]
+if (nrow(inter_matrix_filtered) >= 2) {
+  pdf(file.path(out_dir_network, "Step0_baseline", "heatmap_inter_organelle_baseline.pdf"), width = 10, height = 9)
+  pheatmap::pheatmap(inter_matrix_filtered, scale = "none",
+    color = colorRampPalette(c("white", "dodgerblue", "dodgerblue4"))(100),
+    cluster_rows = TRUE, cluster_cols = TRUE, display_numbers = FALSE,
+    fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA,
+    main = "Baseline inter-organelle edge counts")
+  dev.off()
+}
+
+readr::write_csv(node_metrics_baseline %>% dplyr::filter(is_hub_top5) %>% dplyr::slice_head(n = 50),
+  file.path(out_dir_network, "Step0_baseline", "top_hubs_baseline.csv"))
+
+
+# --- 0.9 Annotation-level network ---
+message("Building annotation-level network...")
+annotation_edge_counts <- edge_df %>%
+  dplyr::filter(annotation_from != "Unannotated", annotation_to != "Unannotated") %>%
+  dplyr::count(annotation_from, annotation_to, name = "n_edges") %>%
+  dplyr::filter(n_edges >= 15)
+
+annotation_node_sizes <- gene_primary_annotation %>%
+  dplyr::filter(primary_annotation != "Unannotated") %>%
+  dplyr::count(primary_annotation, name = "n_proteins")
+
+inter_annotation_edges   <- annotation_edge_counts %>% dplyr::filter(annotation_from != annotation_to)
+connected_annots         <- unique(c(inter_annotation_edges$annotation_from, inter_annotation_edges$annotation_to))
+annotation_node_sizes_c  <- annotation_node_sizes %>% dplyr::filter(primary_annotation %in% connected_annots)
+
+annot_net <- igraph::graph_from_data_frame(inter_annotation_edges, directed = FALSE,
+  vertices = annotation_node_sizes_c)
+igraph::V(annot_net)$size        <- sqrt(igraph::V(annot_net)$n_proteins) * 2
+igraph::V(annot_net)$color       <- organelle_colors_network[igraph::V(annot_net)$name]
+igraph::V(annot_net)$color[is.na(igraph::V(annot_net)$color)] <- "grey70"
+igraph::V(annot_net)$label.cex   <- 0.5
+igraph::E(annot_net)$width       <- log10(igraph::E(annot_net)$n_edges + 1) * 1.5
+igraph::E(annot_net)$color       <- "grey60"
+
+pdf(file.path(out_dir_network, "Step0_baseline", "network_annotation_level.pdf"), width = 10, height = 10)
+set.seed(42)
+plot(annot_net, layout = igraph::layout_with_fr(annot_net), vertex.frame.color = "black",
+  vertex.frame.width = 0.5, edge.curved = 0.1,
+  main = "Annotation-level PPI network\n(node size = # proteins, edge width = # PPIs)")
+dev.off()
+
+pdf(file.path(out_dir_network, "Step0_baseline", "network_annotation_circular.pdf"), width = 10, height = 10)
+plot(annot_net, layout = igraph::layout_in_circle(annot_net),
+  vertex.size = sqrt(igraph::V(annot_net)$n_proteins) * 1.3,
+  vertex.label.dist = 1, vertex.label.cex = 0.4,
+  vertex.frame.color = "black", vertex.frame.width = 0.5, edge.curved = 0.2,
+  main = "Annotation-level PPI network (circular)")
+dev.off()
+
+readr::write_csv(data.frame(annotation = igraph::V(annot_net)$name, n_proteins = igraph::V(annot_net)$n_proteins,
+  degree_in_annot_net = igraph::degree(annot_net)) %>% dplyr::arrange(dplyr::desc(n_proteins)),
+  file.path(out_dir_network, "Step0_baseline", "annotation_network_summary.csv"))
+
+message("Step 0 complete.")
+```
+
+
 ## Chunk 7: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
