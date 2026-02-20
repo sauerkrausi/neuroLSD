@@ -16522,6 +16522,11 @@ dir.create(file.path(out_dir_vuln, "plots/KOxNeuron"), recursive = TRUE, showWar
 dir.create(file.path(out_dir_vuln, "plots/KOxNeuron/by_annotation"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble"), recursive = TRUE, showWarnings = FALSE)
 
+# Disease class lookup (used throughout this chunk)
+disease_class_lookup <- disease_map %>%
+  dplyr::distinct(sample, DiseaseClass) %>%
+  dplyr::rename(genotype = sample)
+
 # -----------------------------------------------------------------------------
 # 7.1 Bubble plots: iN vs iDA comparison (global, one per metric, q-value)
 # -----------------------------------------------------------------------------
@@ -16888,7 +16893,332 @@ plot_ko_bubble_in_vs_ida(tetramer_ko_states, "Tetramer", "state_q", "shared_orga
 plot_ko_bubble_in_vs_ida(complex_ko_states, "Complex", "state_q", "shared_organelle", "complex")
 
 
+# -----------------------------------------------------------------------------
+# 7.5 Heatmaps: KO x Annotation (iN and iDA separately)
+# -----------------------------------------------------------------------------
 
+for (nt in c("iN", "iDA")) {
+
+  row_annot_base <- disease_class_lookup %>%
+    dplyr::filter(genotype %in% unique(c(ppi_ko_by_annot$genotype, trimer_ko_by_annot$genotype, tetramer_ko_by_annot$genotype, complex_ko_by_annot$genotype))) %>%
+    as.data.frame()
+  rownames(row_annot_base) <- row_annot_base$genotype
+
+  # --- PPI heatmap ---
+  ppi_hm_data <- ppi_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = NA)
+
+  if (nrow(ppi_hm_data) >= 2 && ncol(ppi_hm_data) >= 3) {
+    hm_mat <- as.matrix(ppi_hm_data[, -1]); rownames(hm_mat) <- ppi_hm_data$genotype
+    row_annot <- row_annot_base[rownames(hm_mat), "DiseaseClass", drop = FALSE]
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    readr::write_csv(ppi_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_ppi_KO_annotation_", nt, "_sourcedata.csv")))
+    pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_ppi_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
+    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction PPIs lost by KO x annotation (", nt, ", q<0.05)"))
+    dev.off()
+    message("  Saved: heatmap_ppi_KO_annotation_", nt, ".pdf")
+  }
+
+  # --- Trimer heatmap ---
+  trimer_hm_data <- trimer_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, shared_organelle, frac_disrupted) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_disrupted, values_fill = NA)
+
+  if (nrow(trimer_hm_data) >= 2 && ncol(trimer_hm_data) >= 3) {
+    hm_mat <- as.matrix(trimer_hm_data[, -1]); rownames(hm_mat) <- trimer_hm_data$genotype
+    row_annot <- row_annot_base[rownames(hm_mat), "DiseaseClass", drop = FALSE]
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    readr::write_csv(trimer_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_trimer_KO_annotation_", nt, "_sourcedata.csv")))
+    pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_trimer_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
+    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#7570B3"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction trimers disrupted by KO x annotation (", nt, ", q<0.05)"))
+    dev.off()
+    message("  Saved: heatmap_trimer_KO_annotation_", nt, ".pdf")
+  }
+
+  # --- Tetramer heatmap ---
+  tetramer_hm_data <- tetramer_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, shared_organelle, frac_disrupted) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_disrupted, values_fill = NA)
+
+  if (nrow(tetramer_hm_data) >= 2 && ncol(tetramer_hm_data) >= 3) {
+    hm_mat <- as.matrix(tetramer_hm_data[, -1]); rownames(hm_mat) <- tetramer_hm_data$genotype
+    row_annot <- row_annot_base[rownames(hm_mat), "DiseaseClass", drop = FALSE]
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    readr::write_csv(tetramer_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_tetramer_KO_annotation_", nt, "_sourcedata.csv")))
+    pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_tetramer_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
+    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#E6AB02"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction tetramers disrupted by KO x annotation (", nt, ", q<0.05)"))
+    dev.off()
+    message("  Saved: heatmap_tetramer_KO_annotation_", nt, ".pdf")
+  }
+
+  # --- Complex heatmap ---
+  complex_hm_data <- complex_ko_by_annot %>%
+    dplyr::filter(neuron == nt) %>%
+    dplyr::select(genotype, shared_organelle, frac_disrupted) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_disrupted, values_fill = NA)
+
+  if (nrow(complex_hm_data) >= 2 && ncol(complex_hm_data) >= 3) {
+    hm_mat <- as.matrix(complex_hm_data[, -1]); rownames(hm_mat) <- complex_hm_data$genotype
+    row_annot <- row_annot_base[rownames(hm_mat), "DiseaseClass", drop = FALSE]
+    ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
+
+    readr::write_csv(complex_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_complex_KO_annotation_", nt, "_sourcedata.csv")))
+    pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_complex_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
+    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#1B9E77"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction complexes disrupted by KO x annotation (", nt, ", q<0.05)"))
+    dev.off()
+    message("  Saved: heatmap_complex_KO_annotation_", nt, ".pdf")
+  }
+}
+
+# -----------------------------------------------------------------------------
+# 7.6 Save summary tables
+# -----------------------------------------------------------------------------
+readr::write_csv(ppi_by_annotation, file.path(out_dir_vuln, "tables", "ppi_by_annotation_summary.csv"))
+readr::write_csv(trimer_by_annotation, file.path(out_dir_vuln, "tables", "trimer_by_annotation_summary.csv"))
+readr::write_csv(tetramer_by_annotation, file.path(out_dir_vuln, "tables", "tetramer_by_annotation_summary.csv"))
+readr::write_csv(complex_by_annotation, file.path(out_dir_vuln, "tables", "complex_by_annotation_summary.csv"))
+readr::write_csv(ppi_ko_by_annot, file.path(out_dir_vuln, "tables", "ppi_ko_by_annotation.csv"))
+readr::write_csv(trimer_ko_by_annot, file.path(out_dir_vuln, "tables", "trimer_ko_by_annotation.csv"))
+readr::write_csv(tetramer_ko_by_annot, file.path(out_dir_vuln, "tables", "tetramer_ko_by_annotation.csv"))
+readr::write_csv(complex_ko_by_annot, file.path(out_dir_vuln, "tables", "complex_ko_by_annotation.csv"))
+
+
+
+# -----------------------------------------------------------------------------
+# 7.7 PPI Confidence Boxplots: RFprob, AFMprob, CFprob per KO
+# Retained vs lost, faceted by state, colored by organelle annotation
+# Separate plots per KO x neuron x score; one source data CSV per KO x neuron
+# -----------------------------------------------------------------------------
+message("7.7: Generating confidence boxplots per KO...")
+
+dir.create(file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble/confidence"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/confidence"), recursive = TRUE, showWarnings = FALSE)
+
+# Derive organelle tags dynamically from ko_edge_states column names
+prot1_cols_conf <- grep("_prot1$", colnames(ko_edge_states), value = TRUE)
+organelle_tags_for_conf <- sub("_prot1$", "", prot1_cols_conf)
+
+# Build edge x organelle lookup (one row per edge x tag, unique edges)
+shared_long_full_list <- list()
+for (tag in organelle_tags_for_conf) {
+  col_p1 <- paste0(tag, "_prot1")
+  col_p2 <- paste0(tag, "_prot2")
+  if (col_p1 %in% colnames(ko_edge_states) && col_p2 %in% colnames(ko_edge_states)) {
+    edges_with_tag <- ko_edge_states %>%
+      dplyr::filter(.data[[col_p1]] == TRUE | .data[[col_p2]] == TRUE) %>%
+      dplyr::select(key) %>%
+      dplyr::distinct() %>%
+      dplyr::mutate(tag = tag)
+    shared_long_full_list[[tag]] <- edges_with_tag
+  }
+}
+shared_long_full <- dplyr::bind_rows(shared_long_full_list) %>% dplyr::distinct()
+message("  shared_long_full: ", nrow(shared_long_full), " edge-tag pairs across ", dplyr::n_distinct(shared_long_full$tag), " organelles")
+
+
+# --- 7.7.1 PPI Confidence Boxplots ---
+message("  PPI confidence boxplots...")
+
+ko_ppi_profiles <- ko_edge_states %>%
+  dplyr::select(key, genotype, neuron, state_q, RFprob, AFMprob, CFprob) %>%
+  dplyr::rename(state = state_q) %>%
+  dplyr::inner_join(shared_long_full, by = "key", relationship = "many-to-many") %>%
+  dplyr::filter(state %in% c("lost", "retained")) %>%
+  dplyr::mutate(state = factor(state, levels = c("retained", "lost")))
+
+n_tags_ppi <- length(unique(ko_ppi_profiles$tag))
+organelle_colors_conf <- setNames(colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_tags_ppi), sort(unique(ko_ppi_profiles$tag)))
+
+conf_out_dir <- file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble/confidence")
+
+ko_neuron_combos_ppi <- ko_ppi_profiles %>% dplyr::distinct(genotype, neuron)
+
+for (i in seq_len(nrow(ko_neuron_combos_ppi))) {
+  geno <- ko_neuron_combos_ppi$genotype[i]
+  nt   <- ko_neuron_combos_ppi$neuron[i]
+  ko_label <- paste0(geno, "_", nt)
+
+  df_ko <- ko_ppi_profiles %>% dplyr::filter(genotype == geno, neuron == nt)
+  if (nrow(df_ko) < 10) next
+
+  # Source data: one CSV per KO x neuron (all scores)
+  readr::write_csv(df_ko %>% dplyr::select(key, tag, state, RFprob, AFMprob, CFprob),
+    file.path(out_dir_vuln, "sourcedata/confidence", paste0(ko_label, "_ppi_confidence_sourcedata.csv")))
+
+  for (score in c("RFprob", "AFMprob", "CFprob")) {
+    df_score <- df_ko %>% dplyr::filter(!is.na(.data[[score]]))
+    if (nrow(df_score) < 10) next
+
+    p <- ggplot2::ggplot(df_score, ggplot2::aes(x = reorder(tag, .data[[score]], median, na.rm = TRUE), y = .data[[score]], fill = tag)) +
+      ggplot2::geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.5, linewidth = 0.3) +
+      ggplot2::facet_wrap(~state, nrow = 1) +
+      ggplot2::scale_fill_manual(values = organelle_colors_conf, guide = "none") +
+      ggplot2::labs(title = paste0(score, " by organelle (q<0.05)"), subtitle = ko_label, x = NULL, y = score) +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+    ggplot2::ggsave(file.path(conf_out_dir, paste0(ko_label, "_boxplot_", score, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
+  }
+}
+message("  PPI confidence boxplots done")
+
+
+# --- 7.7.2 Trimer Confidence Boxplots (mean of 3 constituent PPIs) ---
+message("  Trimer confidence boxplots...")
+
+# Unique edge confidence scores (key-level, not duplicated by KO x neuron)
+edge_conf_lookup <- ko_edge_states %>%
+  dplyr::distinct(key, .keep_all = TRUE) %>%
+  dplyr::select(key, RFprob, AFMprob, CFprob)
+
+trimer_confidence <- trimer_ko_states %>%
+  dplyr::select(trimer_id, genotype, neuron, state_q, shared_organelle, Gene1, Gene2, Gene3) %>%
+  dplyr::mutate(
+    key_AB = .make_undirected_key(Gene1, Gene2),
+    key_BC = .make_undirected_key(Gene2, Gene3),
+    key_AC = .make_undirected_key(Gene1, Gene3)
+  ) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_AB" = "key")) %>%
+  dplyr::rename(RFprob_AB = RFprob, AFMprob_AB = AFMprob, CFprob_AB = CFprob) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_BC" = "key")) %>%
+  dplyr::rename(RFprob_BC = RFprob, AFMprob_BC = AFMprob, CFprob_BC = CFprob) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_AC" = "key")) %>%
+  dplyr::rename(RFprob_AC = RFprob, AFMprob_AC = AFMprob, CFprob_AC = CFprob) %>%
+  dplyr::mutate(
+    mean_RFprob  = rowMeans(cbind(RFprob_AB,  RFprob_BC,  RFprob_AC),  na.rm = TRUE),
+    mean_AFMprob = rowMeans(cbind(AFMprob_AB, AFMprob_BC, AFMprob_AC), na.rm = TRUE),
+    mean_CFprob  = rowMeans(cbind(CFprob_AB,  CFprob_BC,  CFprob_AC),  na.rm = TRUE)
+  ) %>%
+  dplyr::filter(state_q %in% c("intact", "disrupted"), !is.na(shared_organelle)) %>%
+  dplyr::mutate(state = dplyr::recode(state_q, "intact" = "retained", "disrupted" = "lost"),
+                state = factor(state, levels = c("retained", "lost"))) %>%
+  dplyr::rename(tag = shared_organelle)
+
+n_tags_tri <- length(unique(trimer_confidence$tag))
+if (n_tags_tri > 0) {
+  organelle_colors_tri <- setNames(colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_tags_tri), sort(unique(trimer_confidence$tag)))
+  ko_neuron_combos_tri <- trimer_confidence %>% dplyr::distinct(genotype, neuron)
+
+  for (i in seq_len(nrow(ko_neuron_combos_tri))) {
+    geno <- ko_neuron_combos_tri$genotype[i]
+    nt   <- ko_neuron_combos_tri$neuron[i]
+    ko_label <- paste0(geno, "_", nt)
+
+    df_ko <- trimer_confidence %>% dplyr::filter(genotype == geno, neuron == nt)
+    if (nrow(df_ko) < 5) next
+
+    readr::write_csv(df_ko %>% dplyr::select(trimer_id, tag, state, mean_RFprob, mean_AFMprob, mean_CFprob),
+      file.path(out_dir_vuln, "sourcedata/confidence", paste0(ko_label, "_trimer_confidence_sourcedata.csv")))
+
+    for (score in c("mean_RFprob", "mean_AFMprob", "mean_CFprob")) {
+      df_score <- df_ko %>% dplyr::filter(!is.na(.data[[score]]))
+      if (nrow(df_score) < 5) next
+
+      p <- ggplot2::ggplot(df_score, ggplot2::aes(x = reorder(tag, .data[[score]], median, na.rm = TRUE), y = .data[[score]], fill = tag)) +
+        ggplot2::geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.5, linewidth = 0.3) +
+        ggplot2::facet_wrap(~state, nrow = 1) +
+        ggplot2::scale_fill_manual(values = organelle_colors_tri, guide = "none") +
+        ggplot2::labs(title = paste0("Trimer ", score, " (mean of 3 PPIs, q<0.05)"), subtitle = ko_label, x = NULL, y = score) +
+        ggplot2::theme_bw(base_size = 6) +
+        ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+      ggplot2::ggsave(file.path(conf_out_dir, paste0(ko_label, "_trimer_boxplot_", score, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
+    }
+  }
+}
+message("  Trimer confidence boxplots done")
+
+
+# --- 7.7.3 Tetramer Confidence Boxplots (mean of 6 constituent PPIs) ---
+message("  Tetramer confidence boxplots...")
+
+tetramer_confidence <- tetramer_ko_states %>%
+  dplyr::select(tetramer_id, genotype, neuron, state_q, shared_organelle, Gene1, Gene2, Gene3, Gene4) %>%
+  dplyr::mutate(
+    key_AB = .make_undirected_key(Gene1, Gene2),
+    key_AC = .make_undirected_key(Gene1, Gene3),
+    key_AD = .make_undirected_key(Gene1, Gene4),
+    key_BC = .make_undirected_key(Gene2, Gene3),
+    key_BD = .make_undirected_key(Gene2, Gene4),
+    key_CD = .make_undirected_key(Gene3, Gene4)
+  ) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_AB" = "key")) %>% dplyr::rename(RFprob_AB = RFprob, AFMprob_AB = AFMprob, CFprob_AB = CFprob) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_AC" = "key")) %>% dplyr::rename(RFprob_AC = RFprob, AFMprob_AC = AFMprob, CFprob_AC = CFprob) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_AD" = "key")) %>% dplyr::rename(RFprob_AD = RFprob, AFMprob_AD = AFMprob, CFprob_AD = CFprob) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_BC" = "key")) %>% dplyr::rename(RFprob_BC = RFprob, AFMprob_BC = AFMprob, CFprob_BC = CFprob) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_BD" = "key")) %>% dplyr::rename(RFprob_BD = RFprob, AFMprob_BD = AFMprob, CFprob_BD = CFprob) %>%
+  dplyr::left_join(edge_conf_lookup, by = c("key_CD" = "key")) %>% dplyr::rename(RFprob_CD = RFprob, AFMprob_CD = AFMprob, CFprob_CD = CFprob) %>%
+  dplyr::mutate(
+    mean_RFprob  = rowMeans(cbind(RFprob_AB,  RFprob_AC,  RFprob_AD,  RFprob_BC,  RFprob_BD,  RFprob_CD),  na.rm = TRUE),
+    mean_AFMprob = rowMeans(cbind(AFMprob_AB, AFMprob_AC, AFMprob_AD, AFMprob_BC, AFMprob_BD, AFMprob_CD), na.rm = TRUE),
+    mean_CFprob  = rowMeans(cbind(CFprob_AB,  CFprob_AC,  CFprob_AD,  CFprob_BC,  CFprob_BD,  CFprob_CD),  na.rm = TRUE)
+  ) %>%
+  dplyr::filter(state_q %in% c("intact", "disrupted"), !is.na(shared_organelle)) %>%
+  dplyr::mutate(state = dplyr::recode(state_q, "intact" = "retained", "disrupted" = "lost"),
+                state = factor(state, levels = c("retained", "lost"))) %>%
+  dplyr::rename(tag = shared_organelle)
+
+n_tags_tet <- length(unique(tetramer_confidence$tag))
+if (n_tags_tet > 0) {
+  organelle_colors_tet <- setNames(colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_tags_tet), sort(unique(tetramer_confidence$tag)))
+  ko_neuron_combos_tet <- tetramer_confidence %>% dplyr::distinct(genotype, neuron)
+
+  for (i in seq_len(nrow(ko_neuron_combos_tet))) {
+    geno <- ko_neuron_combos_tet$genotype[i]
+    nt   <- ko_neuron_combos_tet$neuron[i]
+    ko_label <- paste0(geno, "_", nt)
+
+    df_ko <- tetramer_confidence %>% dplyr::filter(genotype == geno, neuron == nt)
+    if (nrow(df_ko) < 5) next
+
+    readr::write_csv(df_ko %>% dplyr::select(tetramer_id, tag, state, mean_RFprob, mean_AFMprob, mean_CFprob),
+      file.path(out_dir_vuln, "sourcedata/confidence", paste0(ko_label, "_tetramer_confidence_sourcedata.csv")))
+
+    for (score in c("mean_RFprob", "mean_AFMprob", "mean_CFprob")) {
+      df_score <- df_ko %>% dplyr::filter(!is.na(.data[[score]]))
+      if (nrow(df_score) < 5) next
+
+      p <- ggplot2::ggplot(df_score, ggplot2::aes(x = reorder(tag, .data[[score]], median, na.rm = TRUE), y = .data[[score]], fill = tag)) +
+        ggplot2::geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.5, linewidth = 0.3) +
+        ggplot2::facet_wrap(~state, nrow = 1) +
+        ggplot2::scale_fill_manual(values = organelle_colors_tet, guide = "none") +
+        ggplot2::labs(title = paste0("Tetramer ", score, " (mean of 6 PPIs, q<0.05)"), subtitle = ko_label, x = NULL, y = score) +
+        ggplot2::theme_bw(base_size = 6) +
+        ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+      ggplot2::ggsave(file.path(conf_out_dir, paste0(ko_label, "_tetramer_boxplot_", score, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
+    }
+  }
+}
+message("  Tetramer confidence boxplots done")
+
+
+# --- 7.7.4 Summary table: mean confidence by state per KO x neuron ---
+ko_neuron_conf_summary <- ko_ppi_profiles %>%
+  dplyr::group_by(genotype, neuron, state) %>%
+  dplyr::summarise(
+    n_edges        = dplyr::n(),
+    RFprob_mean    = mean(RFprob, na.rm = TRUE),
+    RFprob_median  = median(RFprob, na.rm = TRUE),
+    AFMprob_mean   = mean(AFMprob, na.rm = TRUE),
+    AFMprob_median = median(AFMprob, na.rm = TRUE),
+    CFprob_mean    = mean(CFprob, na.rm = TRUE),
+    CFprob_median  = median(CFprob, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(genotype, neuron, state)
+
+readr::write_csv(ko_neuron_conf_summary, file.path(out_dir_vuln, "tables", "ko_neuron_confidence_by_state.csv"))
+
+message("  7.7 complete: confidence boxplots in plots/KOxNeuron/per_ko_bubble/confidence/")
+message("Chunk 7 complete: KO x Neuron Extended Analysis")
 
 ```
 
