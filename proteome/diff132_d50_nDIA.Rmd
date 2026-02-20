@@ -18048,6 +18048,32 @@ message("Step 0 complete.")
 ```
 
 
+### Section 10.1 Hub vulnearbility
+```{r}
+
+```
+
+
+### Section 10.2
+```{r}
+
+```
+
+
+### Section 10.3
+```{r}
+
+```
+
+
+### Section 10.4
+```{r}
+
+```
+
+
+
+
 ## Chunk 7: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
