@@ -18236,15 +18236,272 @@ message("Module 2 complete.")
 ```
 
 
-### Section 10.3
+### Section 10.3 Inter-organelle bridge disruption
 ```{r}
+# =============================================================================
+# MODULE 3: INTER-ORGANELLE BRIDGE DISRUPTION
+# =============================================================================
+message("\n--- MODULE 3: Inter-organelle Bridge Analysis ---")
+
+inter_organelle_ko_list <- list()
+
+for (i in seq_len(nrow(ko_neuron_combos))) {
+  geno <- ko_neuron_combos$genotype[i]
+  nt   <- ko_neuron_combos$neuron[i]
+
+  # Rename state_q -> state at source so downstream code is unchanged
+  edge_states_ko <- ko_edge_states %>%
+    dplyr::filter(.data$genotype == geno, .data$neuron == nt) %>%
+    dplyr::select(key, state = state_q)
+
+  edges_with_state <- edge_df %>%
+    dplyr::left_join(edge_states_ko, by = "key") %>%
+    dplyr::mutate(state = tidyr::replace_na(state, "unknown"))
+
+  inter_organelle_ko_list[[paste(geno, nt, sep = "_")]] <- edges_with_state %>%
+    dplyr::filter(edge_type == "inter") %>%
+    dplyr::group_by(annotation_pair) %>%
+    dplyr::summarise(
+      n_baseline = dplyr::n(),
+      n_retained = sum(state == "retained", na.rm = TRUE),
+      n_lost     = sum(state == "lost",     na.rm = TRUE),
+      frac_lost  = n_lost / n_baseline, .groups = "drop") %>%
+    dplyr::mutate(genotype = geno, neuron = nt)
+}
+
+inter_organelle_ko_all <- dplyr::bind_rows(inter_organelle_ko_list) %>%
+  tidyr::separate(annotation_pair, into = c("annot_A", "annot_B"), sep = "::", remove = FALSE) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype")
+
+readr::write_csv(inter_organelle_ko_all, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_edges_per_KO.csv"))
+
+inter_organelle_summary <- inter_organelle_ko_all %>%
+  dplyr::group_by(annotation_pair, annot_A, annot_B) %>%
+  dplyr::summarise(
+    mean_frac_lost      = mean(frac_lost, na.rm = TRUE),
+    median_frac_lost    = median(frac_lost, na.rm = TRUE),
+    total_baseline      = sum(n_baseline) / dplyr::n_distinct(paste(genotype, neuron)),
+    n_KOs_gt30pct_lost  = sum(frac_lost > 0.3), .groups = "drop") %>%
+  dplyr::arrange(dplyr::desc(mean_frac_lost))
+
+readr::write_csv(inter_organelle_summary, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_summary.csv"))
+
+
+# --- 3.3 Build inter-organelle loss matrix ---
+build_inter_matrix_ko <- function(inter_ko_df, all_annots) {
+  mat <- matrix(NA, nrow = length(all_annots), ncol = length(all_annots),
+    dimnames = list(all_annots, all_annots))
+  for (j in seq_len(nrow(inter_ko_df))) {
+    a1 <- inter_ko_df$annot_A[j]; a2 <- inter_ko_df$annot_B[j]
+    if (a1 %in% all_annots && a2 %in% all_annots) {
+      mat[a1, a2] <- inter_ko_df$frac_lost[j]
+      mat[a2, a1] <- inter_ko_df$frac_lost[j]
+    }
+  }
+  diag(mat) <- NA
+  mat
+}
+
+annots_for_matrix <- unique(c(inter_organelle_ko_all$annot_A, inter_organelle_ko_all$annot_B))
+annots_for_matrix <- annots_for_matrix[!is.na(annots_for_matrix) & annots_for_matrix != "Unannotated"]
+
+
+# --- 3.4 Global heatmap (mean loss across all KOs) ---
+mean_loss_matrix <- matrix(NA, nrow = length(annots_for_matrix), ncol = length(annots_for_matrix),
+  dimnames = list(annots_for_matrix, annots_for_matrix))
+for (ap in unique(inter_organelle_summary$annotation_pair)) {
+  row_data <- inter_organelle_summary %>% dplyr::filter(annotation_pair == ap)
+  a1 <- row_data$annot_A; a2 <- row_data$annot_B
+  if (a1 %in% annots_for_matrix && a2 %in% annots_for_matrix) {
+    mean_loss_matrix[a1, a2] <- row_data$mean_frac_lost
+    mean_loss_matrix[a2, a1] <- row_data$mean_frac_lost
+  }
+}
+diag(mean_loss_matrix) <- NA
+
+pairs_with_edges   <- inter_organelle_summary %>% dplyr::filter(total_baseline >= 5) %>% dplyr::pull(annotation_pair)
+annots_with_edges  <- unique(c(
+  inter_organelle_summary$annot_A[inter_organelle_summary$annotation_pair %in% pairs_with_edges],
+  inter_organelle_summary$annot_B[inter_organelle_summary$annotation_pair %in% pairs_with_edges]))
+mean_loss_matrix_f <- mean_loss_matrix[annots_with_edges, annots_with_edges]
+
+if (nrow(mean_loss_matrix_f) >= 2) {
+  mat_for_plot <- mean_loss_matrix_f
+  mat_for_plot[is.na(mat_for_plot)] <- 0
+  pdf(file.path(out_dir_network, "M3_interorganelle_bridges", "heatmap_mean_inter_organelle_loss.pdf"), width = 6, height = 6)
+  corrplot::corrplot(mat_for_plot, method = "color", type = "lower",
+    col = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+    is.corr = FALSE, cl.lim = c(0, max(mat_for_plot, na.rm = TRUE)),
+    tl.col = "black", tl.cex = 0.5, cl.cex = 0.5, diag = FALSE,
+    title = "Mean fraction inter-organelle edges lost (all KOs)", mar = c(0, 0, 2, 0))
+  corrplot::corrplot(mat_for_plot, method = "number", type = "upper", col = "black",
+    is.corr = FALSE, number.cex = 0.4, tl.pos = "n", cl.pos = "n", diag = FALSE, add = TRUE)
+  dev.off()
+  readr::write_csv(as.data.frame(mean_loss_matrix_f) %>% tibble::rownames_to_column("annotation"),
+    file.path(out_dir_network, "sourcedata", "M3_mean_inter_organelle_loss_sourcedata.csv"))
+}
+
+
+# --- 3.5 Per-KO heatmaps ---
+message("Generating per-KO inter-organelle heatmaps...")
+for (geno in unique(ko_neuron_combos$genotype)) {
+  for (nt in c("iN", "iDA")) {
+    inter_ko_df <- inter_organelle_ko_all %>% dplyr::filter(.data$genotype == geno, .data$neuron == nt)
+    if (nrow(inter_ko_df) < 2) next
+
+    mat_ko      <- build_inter_matrix_ko(inter_ko_df, annots_with_edges)
+    mat_ko_plot <- mat_ko; mat_ko_plot[is.na(mat_ko_plot)] <- 0
+    if (sum(mat_ko_plot > 0, na.rm = TRUE) < 3) next
+
+    if (nrow(mat_ko_plot) >= 3 && sum(rowSums(mat_ko_plot, na.rm = TRUE) > 0) >= 3) {
+      mat_for_dist <- mat_ko_plot; mat_for_dist[mat_for_dist == 0] <- 0.001
+      hc <- hclust(as.dist(1 - mat_for_dist), method = "ward.D2")
+      mat_ko_ordered <- mat_ko_plot[hc$order, hc$order]
+    } else {
+      mat_ko_ordered <- mat_ko_plot
+    }
+
+    pdf(file.path(out_dir_network, "M3_interorganelle_bridges/per_KO", paste0("heatmap_", geno, "_", nt, ".pdf")), width = 6, height = 6)
+    corrplot::corrplot(mat_ko_ordered, method = "color", type = "lower",
+      col = colorRampPalette(c("white", "#FDAE61", "#D53E4F"))(100),
+      is.corr = FALSE, cl.lim = c(0, 1), tl.col = "black", tl.cex = 0.5, cl.cex = 0.5,
+      diag = FALSE, title = paste0("Inter-organelle edge loss: ", geno, " ", nt), mar = c(0, 0, 2, 0))
+    corrplot::corrplot(mat_ko_ordered, method = "number", type = "upper", col = "black",
+      is.corr = FALSE, number.cex = 0.35, tl.pos = "n", cl.pos = "n", diag = FALSE, add = TRUE)
+    dev.off()
+
+    readr::write_csv(as.data.frame(mat_ko) %>% tibble::rownames_to_column("annotation"),
+      file.path(out_dir_network, "M3_interorganelle_bridges/per_KO", paste0("sourcedata_", geno, "_", nt, ".csv")))
+  }
+}
+message("  Per-KO heatmaps complete.")
+
+
+# --- 3.6 Summary barplots ---
+top_pairs <- inter_organelle_summary %>% dplyr::filter(total_baseline >= 10) %>% dplyr::slice_head(n = 20)
+
+p_top_pairs <- ggplot2::ggplot(top_pairs, ggplot2::aes(x = reorder(annotation_pair, mean_frac_lost), y = mean_frac_lost)) +
+  ggplot2::geom_col(fill = "#D53E4F", color = "black", linewidth = 0.2) +
+  ggplot2::geom_text(ggplot2::aes(label = paste0("n=", round(total_baseline))), hjust = -0.1, size = 2) +
+  ggplot2::coord_flip() +
+  ggplot2::scale_y_continuous(labels = scales::percent, expand = ggplot2::expansion(mult = c(0, 0.15))) +
+  ggplot2::labs(title = "Most disrupted inter-organelle connections", x = NULL, y = "Mean % edges lost") +
+  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_top_disrupted_pairs.pdf"), p_top_pairs, width = 5, height = 5, device = cairo_pdf)
+
+inter_organelle_total <- inter_organelle_ko_all %>%
+  dplyr::group_by(genotype, neuron, DiseaseClass) %>%
+  dplyr::summarise(
+    total_baseline_inter = sum(n_baseline, na.rm = TRUE),
+    total_lost_inter     = sum(n_lost,     na.rm = TRUE),
+    total_retained_inter = sum(n_retained, na.rm = TRUE),
+    mean_frac_lost       = mean(frac_lost, na.rm = TRUE),
+    weighted_frac_lost   = total_lost_inter / total_baseline_inter, .groups = "drop") %>%
+  dplyr::arrange(dplyr::desc(weighted_frac_lost))
+
+readr::write_csv(inter_organelle_total, file.path(out_dir_network, "M3_interorganelle_bridges", "inter_organelle_total_per_KO.csv"))
+readr::write_csv(inter_organelle_total, file.path(out_dir_network, "sourcedata", "M3_inter_organelle_total_sourcedata.csv"))
+
+p_inter_ranked <- ggplot2::ggplot(inter_organelle_total, ggplot2::aes(x = reorder(genotype, -weighted_frac_lost), y = weighted_frac_lost, fill = neuron)) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
+  ggplot2::scale_fill_manual(values = neuron_palette) +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::labs(title = "Inter-organelle bridge disruption per KO", x = NULL, y = "% inter-organelle edges lost") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
+ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_inter_organelle_ranked.pdf"), p_inter_ranked, width = 4.5, height = 4, device = cairo_pdf)
+
+message("Module 3 complete.")
+
+
 
 ```
 
 
-### Section 10.4
+### Section 10.4 Disease Class convergence
 ```{r}
+# =============================================================================
+# MODULE 4: DISEASE CLASS CONVERGENCE
+# =============================================================================
+message("\n--- MODULE 4: Disease Class Convergence ---")
 
+hub_by_disease <- hub_vuln_summary %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::group_by(DiseaseClass, neuron) %>%
+  dplyr::summarise(n_KOs = dplyr::n(), mean_hub_vuln = mean(mean_frac_lost, na.rm = TRUE),
+                   sd_hub_vuln = sd(mean_frac_lost, na.rm = TRUE), .groups = "drop")
+
+frag_by_disease <- fragmentation_all %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::group_by(DiseaseClass, neuron) %>%
+  dplyr::summarise(n_KOs = dplyr::n(), mean_frag_score = mean(fragmentation_score, na.rm = TRUE),
+                   sd_frag_score = sd(fragmentation_score, na.rm = TRUE),
+                   mean_orphan_pct = mean(orphan_pct, na.rm = TRUE), .groups = "drop")
+
+inter_by_disease <- inter_organelle_ko_all %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::group_by(DiseaseClass, neuron, annotation_pair) %>%
+  dplyr::summarise(mean_frac_lost = mean(frac_lost, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::group_by(DiseaseClass, neuron) %>%
+  dplyr::summarise(mean_inter_loss = mean(mean_frac_lost, na.rm = TRUE), .groups = "drop")
+
+disease_convergence <- hub_by_disease %>%
+  dplyr::left_join(frag_by_disease %>% dplyr::select(DiseaseClass, neuron, mean_frag_score, mean_orphan_pct), by = c("DiseaseClass", "neuron")) %>%
+  dplyr::left_join(inter_by_disease, by = c("DiseaseClass", "neuron")) %>%
+  dplyr::filter(!is.na(DiseaseClass))
+
+readr::write_csv(disease_convergence, file.path(out_dir_network, "M4_disease_convergence", "disease_class_metrics.csv"))
+readr::write_csv(disease_convergence, file.path(out_dir_network, "sourcedata", "M4_disease_convergence_sourcedata.csv"))
+
+p_disease_bar <- disease_convergence %>%
+  tidyr::pivot_longer(cols = c(mean_hub_vuln, mean_frag_score, mean_inter_loss), names_to = "metric", values_to = "value") %>%
+  dplyr::mutate(metric = dplyr::recode(metric, "mean_hub_vuln" = "Hub vulnerability",
+                                        "mean_frag_score" = "Fragmentation", "mean_inter_loss" = "Inter-organelle loss")) %>%
+  ggplot2::ggplot(ggplot2::aes(x = DiseaseClass, y = value, fill = neuron)) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2, width = 0.7) +
+  ggplot2::facet_wrap(~ metric, scales = "free_y", ncol = 3) +
+  ggplot2::scale_fill_manual(values = neuron_palette) +
+  ggplot2::labs(title = "Network disruption by disease class", x = NULL, y = "Score") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+                 strip.background = ggplot2::element_rect(fill = "white"))
+ggplot2::ggsave(file.path(out_dir_network, "M4_disease_convergence", "barplot_disease_metrics.pdf"), p_disease_bar, width = 8, height = 4, device = cairo_pdf)
+
+inter_by_disease_pair <- inter_organelle_ko_all %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::group_by(DiseaseClass, annotation_pair) %>%
+  dplyr::summarise(mean_frac_lost = mean(frac_lost, na.rm = TRUE),
+                   n_baseline = mean(n_baseline, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::filter(n_baseline >= 5) %>%
+  dplyr::arrange(DiseaseClass, dplyr::desc(mean_frac_lost))
+
+readr::write_csv(inter_by_disease_pair, file.path(out_dir_network, "M4_disease_convergence", "inter_organelle_by_disease.csv"))
+
+p_top_by_disease <- inter_by_disease_pair %>%
+  dplyr::group_by(DiseaseClass) %>% dplyr::slice_head(n = 10) %>% dplyr::ungroup() %>%
+  ggplot2::ggplot(ggplot2::aes(x = annotation_pair, y = mean_frac_lost, fill = DiseaseClass)) +
+  ggplot2::geom_col(color = "black", linewidth = 0.2) +
+  ggplot2::facet_wrap(~ DiseaseClass, scales = "free_x", ncol = 2) +
+  ggplot2::scale_fill_manual(values = disease_class_palette, guide = "none") +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::coord_flip() +
+  ggplot2::labs(title = "Top vulnerable inter-organelle connections by disease class", x = NULL, y = "Mean % edges lost") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"))
+ggplot2::ggsave(file.path(out_dir_network, "M4_disease_convergence", "barplot_top_pairs_by_disease.pdf"), p_top_by_disease, width = 7, height = 6, device = cairo_pdf)
+
+genotype_metrics <- hub_vuln_summary %>%
+  dplyr::select(genotype, neuron, mean_frac_lost, DiseaseClass) %>%
+  dplyr::rename(hub_vuln = mean_frac_lost) %>%
+  dplyr::left_join(fragmentation_all %>% dplyr::select(genotype, neuron, fragmentation_score), by = c("genotype", "neuron")) %>%
+  dplyr::left_join(inter_organelle_total %>% dplyr::select(genotype, neuron, weighted_frac_lost) %>% dplyr::rename(inter_loss = weighted_frac_lost), by = c("genotype", "neuron"))
+
+readr::write_csv(genotype_metrics, file.path(out_dir_network, "M4_disease_convergence", "genotype_all_metrics.csv"))
+
+message("Module 4 complete.")
+message(strrep("=", 70))
+message("CHUNK 10: NETWORK CONNECTIVITY ANALYSIS COMPLETE")
+message(strrep("=", 70))
 ```
 
 
