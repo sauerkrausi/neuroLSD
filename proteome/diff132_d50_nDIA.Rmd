@@ -18506,7 +18506,6 @@ message(strrep("=", 70))
 
 
 
-
 ## Chunk 11: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
