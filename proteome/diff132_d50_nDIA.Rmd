@@ -16107,7 +16107,7 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
 }
 
 trimer_ko_states <- dplyr::bind_rows(trimer_vuln_list) %>%
-  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
 
 readr::write_csv(trimer_ko_states, file.path(out_dir_vuln, "tables", "trimer_ko_states.csv"))
 message("  Saved: trimer_ko_states.csv")
@@ -16168,7 +16168,7 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
 }
 
 tetramer_ko_states <- dplyr::bind_rows(tetramer_vuln_list) %>%
-  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
 
 readr::write_csv(tetramer_ko_states, file.path(out_dir_vuln, "tables", "tetramer_ko_states.csv"))
 message("  Saved: tetramer_ko_states.csv")
@@ -16244,7 +16244,7 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
 }
 
 complex_ko_states <- dplyr::bind_rows(complex_vuln_list) %>%
-  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
 
 complex_ko_states_export <- complex_ko_states %>% dplyr::select(-members_list)
 readr::write_csv(complex_ko_states_export, file.path(out_dir_vuln, "tables", "complex_ko_states.csv"))
@@ -16552,7 +16552,8 @@ save_plot_with_sourcedata(p_bubble_ppi, "plots/KOxNeuron/bubble_ppi_iN_vs_iDA", 
 
 # --- 7.1.2 Lost Trimers bubble plot ---
 bubble_trimer <- trimer_summary_ko %>%
-  dplyr::select(genotype, neuron, frac_disrupted_q, DiseaseClass) %>%
+  dplyr::select(genotype, neuron, frac_disrupted_q) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype") %>%
   tidyr::pivot_wider(names_from = neuron, values_from = frac_disrupted_q)
 
 axis_max_tri <- max(c(bubble_trimer$iN, bubble_trimer$iDA), na.rm = TRUE) * 1.1
@@ -17466,7 +17467,7 @@ protein_gain_summary <- prot_long %>%
     loss_gain_ratio = n_lost / (n_gained + 1),
     .groups = "drop"
   ) %>%
-  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
 
 readr::write_csv(protein_gain_summary, file.path(out_dir_vuln, "tables", "protein_gain_summary.csv"))
 message("  Saved: protein_gain_summary.csv")
