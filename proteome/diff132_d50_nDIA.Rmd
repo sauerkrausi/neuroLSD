@@ -17565,6 +17565,131 @@ message("Radar plots complete.")
 
 
 
+## Chunk 9: Ternary Plots - PPI Loss by Organelle Class and Disease Class
+```{r ternary}
+# =============================================================================
+# Ternary Plots (Ternary package)
+# Each point = one KO x neuron, positioned by % lost PPIs across 3 annotation classes
+# Uses state_q == "lost" (q-value filtered)
+# =============================================================================
+message("Generating ternary plots...")
+
+dir.create(file.path(out_dir_vuln, "plots/ternary"),                recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "plots/ternary/all_combinations"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/ternary"),            recursive = TRUE, showWarnings = FALSE)
+
+# --- Build edge-tag lookup from ko_edge_states using organelle_tags ---
+# Checks column presence - safe if a tag is missing from ko_edge_states
+shared_long_ternary <- purrr::map_dfr(organelle_tags, function(tag) {
+  p1 <- paste0(tag, "_prot1")
+  p2 <- paste0(tag, "_prot2")
+  if (!p1 %in% colnames(ko_edge_states) || !p2 %in% colnames(ko_edge_states)) return(NULL)
+  ko_edge_states %>%
+    dplyr::filter(.data[[p1]] == 1 | .data[[p2]] == 1) %>%
+    dplyr::distinct(key) %>%
+    dplyr::mutate(tag = tag)
+}) %>% dplyr::distinct()
+
+message("Edge-tag pairs: ", nrow(shared_long_ternary),
+        " | Tags present: ", length(unique(shared_long_ternary$tag)),
+        " | Unique edges: ", length(unique(shared_long_ternary$key)))
+
+# --- Ternary plot function (single triplet) ---
+plot_ternary_ppi_loss <- function(df_states, shared_long_ternary, out_dir,
+                                  disease_class_palette,
+                                  tern_classes = c("SynGO", "Mito", "EndoLyso")) {
+  tern_out_dir <- file.path(out_dir, "plots/ternary")
+  tern_suffix  <- paste(tern_classes, collapse = "_")
+
+  shared_class <- shared_long_ternary %>%
+    dplyr::filter(tag %in% tern_classes) %>%
+    dplyr::rename(class = tag) %>%
+    dplyr::distinct(key, class)
+  if (nrow(shared_class) == 0) { message("  No edges for: ", tern_suffix); return(NULL) }
+
+  lost_edges <- df_states %>%
+    dplyr::filter(state_q == "lost") %>%
+    dplyr::select(key, genotype, neuron, DiseaseClass) %>%
+    dplyr::distinct()
+
+  lost_by_class <- lost_edges %>%
+    dplyr::inner_join(shared_class, by = "key", relationship = "many-to-many") %>%
+    dplyr::group_by(genotype, neuron, DiseaseClass, class) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
+
+  loss_wide <- lost_by_class %>%
+    tidyr::pivot_wider(names_from = class, values_from = n_lost, values_fill = 0)
+
+  for (tc in tern_classes) if (!tc %in% names(loss_wide)) loss_wide[[tc]] <- 0
+
+  loss_wide <- loss_wide %>%
+    dplyr::mutate(
+      total = .data[[tern_classes[1]]] + .data[[tern_classes[2]]] + .data[[tern_classes[3]]],
+      p_1   = .data[[tern_classes[1]]] / total,
+      p_2   = .data[[tern_classes[2]]] / total,
+      p_3   = .data[[tern_classes[3]]] / total) %>%
+    dplyr::filter(total > 0, !is.na(DiseaseClass))
+
+  if (nrow(loss_wide) < 3) { message("  Insufficient data for: ", tern_suffix); return(NULL) }
+  message("  Ternary data: ", nrow(loss_wide), " KO x neuron points for ", tern_suffix)
+
+  # Plot 1: combined
+  pdf(file.path(tern_out_dir, paste0("ternary_combined_", tern_suffix, ".pdf")), width = 6, height = 6)
+  Ternary::TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
+    lab.cex = 0.8, grid.lines = 5, grid.lty = "dashed", grid.minor.lines = 0,
+    axis.cex = 0.6, main = "PPI loss composition - all neurons")
+  Ternary::TernaryPoints(loss_wide[, c("p_1", "p_2", "p_3")],
+    col = disease_class_palette[as.character(loss_wide$DiseaseClass)],
+    pch = ifelse(loss_wide$neuron == "iN", 19, 17), cex = 1.2)
+  legend("topright",   legend = names(disease_class_palette), fill = disease_class_palette,  cex = 0.5, bty = "n", title = "Disease Class")
+  legend("bottomright", legend = c("iN", "iDA"), pch = c(19, 17), cex = 0.6, bty = "n", title = "Neuron")
+  dev.off()
+
+  # Plot 2: faceted by disease class x neuron
+  disease_classes <- loss_wide %>%
+    dplyr::group_by(DiseaseClass, neuron) %>%
+    dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") %>%
+    dplyr::filter(n_geno >= 3) %>%
+    dplyr::distinct(DiseaseClass) %>%
+    dplyr::pull(DiseaseClass)
+  disease_classes <- intersect(unique(loss_wide$DiseaseClass), disease_classes)
+  n_dc <- length(disease_classes)
+
+  if (n_dc > 0) {
+    pdf(file.path(tern_out_dir, paste0("ternary_faceted_", tern_suffix, ".pdf")),
+        width = 3 * n_dc, height = 6)
+    par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1))
+    for (nt in c("iN", "iDA")) {
+      for (dc in disease_classes) {
+        dd <- loss_wide %>% dplyr::filter(neuron == nt, DiseaseClass == dc)
+        Ternary::TernaryPlot(alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
+          lab.cex = 0.5, grid.lines = 4, grid.lty = "dashed", grid.minor.lines = 0,
+          axis.cex = 0.5, main = paste0(dc, "\n(", nt, ")"))
+        if (nrow(dd) >= 3) {
+          coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
+          if (nrow(coords) >= 5) tryCatch(
+            Ternary::TernaryDensityContour(coords, resolution = 50,
+              col = viridisLite::viridis, nlevels = 10, lwd = 0.25, labcex = 0.4),
+            error = function(e) NULL)
+          Ternary::TernaryPoints(coords, pch = 19, cex = 0.8, col = "red")
+          Ternary::TernaryText(coords, labels = dd$genotype, cex = 0.5, pos = 3, offset = 0.3)
+        }
+      }
+    }
+    dev.off()
+  }
+
+  readr::write_csv(loss_wide, file.path(out_dir_vuln, "sourcedata/ternary",
+    paste0("ternary_loss_", tern_suffix, "_sourcedata.csv")))
+  invisible(loss_wide)
+}
+
+# --- Priority triplet ---
+plot_ternary_ppi_loss(ko_edge_states, shared_long_ternary, out_dir_vuln,
+  disease_class_palette, tern_classes = c("SynapseSVs", "Mito", "Endo_iN_curated_Hundley"))
+```
+
+
 
 ## Chunk 7: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
