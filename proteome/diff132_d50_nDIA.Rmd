@@ -19187,70 +19187,126 @@ message("Module 13 complete: OXPHOS vulnerability analysis")
 ```
 
 
-## Chunk 14: Export Gain Analysis Metrics
+
+## Chunk 14: Gain Analysis Metrics
 ```{r gain_metrics}
 # =============================================================================
-# Export Gain Analysis Metrics (CSV for future implementation)
+# Module 14: Gain Analysis Metrics (q-sig primary, p-sig secondary)
+# Significant gain: gained_A_q < 0.05 OR gained_B_q < 0.05
 # =============================================================================
-message("Exporting gain analysis metrics...")
+message("Module 15: Gain analysis metrics...")
 
-# PPI-level gain metrics
-ppi_gain_summary <- ko_edge_states %>%
+out_dir_gain <- file.path(out_dir_vuln, "gain_analysis")
+dir.create(file.path(out_dir_gain, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+
+# -----------------------------------------------------------------------------
+# 14.1 PPI-level gain summary (q-sig)
+# -----------------------------------------------------------------------------
+ppi_gain_summary_q <- ko_edge_states %>%
   dplyr::mutate(
-    gain_A = gained_A,
-    gain_B = gained_B,
-    any_gain = gain_A | gain_B
+    gain_A    = gained_A_q < 0.05,
+    gain_B    = gained_B_q < 0.05,
+    any_gain  = gain_A | gain_B
   ) %>%
-  dplyr::group_by(genotype, neuron, genotype_neuron, DiseaseClass) %>%
+  dplyr::group_by(genotype, neuron, DiseaseClass) %>%
   dplyr::summarise(
-    total_edges = dplyr::n(),
-    n_with_gain = sum(any_gain, na.rm = TRUE),
-    frac_with_gain = n_with_gain / total_edges,
-    n_lost = sum(state == "lost", na.rm = TRUE),
-    frac_lost = n_lost / total_edges,
-    loss_gain_ratio = n_lost / (n_with_gain + 1),  # +1 to avoid div by zero
+    total_edges      = dplyr::n(),
+    n_with_gain      = sum(any_gain, na.rm = TRUE),
+    frac_with_gain   = n_with_gain / total_edges,
+    n_lost           = sum(state_q == "lost", na.rm = TRUE),
+    frac_lost        = n_lost / total_edges,
+    loss_gain_ratio  = n_lost / (n_with_gain + 1),
     .groups = "drop"
   )
 
-readr::write_csv(ppi_gain_summary, file.path(out_dir_vuln, "tables", "ppi_gain_summary.csv"))
-message("  Saved: ppi_gain_summary.csv")
+readr::write_csv(ppi_gain_summary_q, file.path(out_dir_gain, "tables", "ppi_gain_summary_q.csv"))
+message("  Saved: ppi_gain_summary_q.csv")
 
-# Protein-level gain metrics
-protein_gain_summary <- prot_long %>%
+
+# p-sig variant
+ppi_gain_summary_p <- ko_edge_states %>%
+  dplyr::mutate(
+    gain_A    = gained_A_p < 0.05,
+    gain_B    = gained_B_p < 0.05,
+    any_gain  = gain_A | gain_B
+  ) %>%
+  dplyr::group_by(genotype, neuron, DiseaseClass) %>%
+  dplyr::summarise(
+    total_edges      = dplyr::n(),
+    n_with_gain      = sum(any_gain, na.rm = TRUE),
+    frac_with_gain   = n_with_gain / total_edges,
+    n_lost           = sum(state_p == "lost", na.rm = TRUE),
+    frac_lost        = n_lost / total_edges,
+    loss_gain_ratio  = n_lost / (n_with_gain + 1),
+    .groups = "drop"
+  )
+
+readr::write_csv(ppi_gain_summary_p, file.path(out_dir_gain, "tables", "ppi_gain_summary_p.csv"))
+message("  Saved: ppi_gain_summary_p.csv")
+
+
+# -----------------------------------------------------------------------------
+# 15.2 Protein-level gain summary (q-sig)
+# -----------------------------------------------------------------------------
+protein_gain_summary_q <- prot_long %>%
   dplyr::group_by(genotype, neuron, genotype_neuron) %>%
   dplyr::summarise(
-    n_proteins = dplyr::n(),
-    n_significant = sum(is_significant, na.rm = TRUE),
-    n_lost = sum(is_lost, na.rm = TRUE),
-    n_gained = sum(is_gained, na.rm = TRUE),
-    frac_lost = n_lost / n_proteins,
-    frac_gained = n_gained / n_proteins,
-    loss_gain_ratio = n_lost / (n_gained + 1),
+    n_proteins       = dplyr::n(),
+    n_significant    = sum(is_sig_q,    na.rm = TRUE),
+    n_lost           = sum(is_lost_q,   na.rm = TRUE),
+    n_gained         = sum(is_gained_q, na.rm = TRUE),
+    frac_lost        = n_lost   / n_proteins,
+    frac_gained      = n_gained / n_proteins,
+    loss_gain_ratio  = n_lost   / (n_gained + 1),
     .groups = "drop"
   ) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+  dplyr::left_join(disease_class_lookup, by = "genotype")
 
-readr::write_csv(protein_gain_summary, file.path(out_dir_vuln, "tables", "protein_gain_summary.csv"))
-message("  Saved: protein_gain_summary.csv")
+readr::write_csv(protein_gain_summary_q, file.path(out_dir_gain, "tables", "protein_gain_summary_q.csv"))
+message("  Saved: protein_gain_summary_q.csv")
 
-# Complex-level gain metrics (proteins gained within complexes)
-complex_gain_list <- list()
+
+# p-sig variant
+protein_gain_summary_p <- prot_long %>%
+  dplyr::group_by(genotype, neuron, genotype_neuron) %>%
+  dplyr::summarise(
+    n_proteins       = dplyr::n(),
+    n_significant    = sum(is_sig_p,    na.rm = TRUE),
+    n_lost           = sum(is_lost_p,   na.rm = TRUE),
+    n_gained         = sum(is_gained_p, na.rm = TRUE),
+    frac_lost        = n_lost   / n_proteins,
+    frac_gained      = n_gained / n_proteins,
+    loss_gain_ratio  = n_lost   / (n_gained + 1),
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype")
+
+readr::write_csv(protein_gain_summary_p, file.path(out_dir_gain, "tables", "protein_gain_summary_p.csv"))
+message("  Saved: protein_gain_summary_p.csv")
+
+
+# -----------------------------------------------------------------------------
+# 15.3 Complex-level gain metrics (q-sig)
+# -----------------------------------------------------------------------------
+complex_gain_list <- vector("list", nrow(ko_neuron_grid))
+
 for (i in seq_len(nrow(ko_neuron_grid))) {
   geno <- ko_neuron_grid$genotype[i]
   neur <- ko_neuron_grid$neuron[i]
-  gn <- ko_neuron_grid$genotype_neuron[i]
+  gn   <- ko_neuron_grid$genotype_neuron[i]
 
   gain_data <- prot_long %>%
     dplyr::filter(genotype == geno, neuron == neur) %>%
-    dplyr::select(Genes, is_gained) %>%
+    dplyr::select(Genes, is_gained_q) %>%
     tibble::deframe()
 
   complex_gain <- complex_members_parsed %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
-      n_members = length(members_list),
-      n_gained = sum(gain_data[members_list], na.rm = TRUE),
-      frac_gained = n_gained / n_members
+      n_members    = length(members_list),
+      n_gained     = sum(gain_data[members_list], na.rm = TRUE),
+      frac_gained  = n_gained / n_members
     ) %>%
     dplyr::ungroup() %>%
     dplyr::mutate(genotype = geno, neuron = neur, genotype_neuron = gn)
@@ -19258,41 +19314,94 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
   complex_gain_list[[i]] <- complex_gain
 }
 
-complex_gain_states <- dplyr::bind_rows(complex_gain_list) %>%
-  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+complex_gain_states_q <- dplyr::bind_rows(complex_gain_list) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype")
 
-complex_gain_export <- complex_gain_states %>%
+complex_gain_export_q <- complex_gain_states_q %>%
   dplyr::select(-members_list) %>%
-  dplyr::select(complex_id, genotype, neuron, genotype_neuron, DiseaseClass, n_members, n_gained, frac_gained)
+  dplyr::select(complex_id, genotype, neuron, genotype_neuron, DiseaseClass,
+                n_members, n_gained, frac_gained)
 
-readr::write_csv(complex_gain_export, file.path(out_dir_vuln, "tables", "complex_gain_metrics.csv"))
-message("  Saved: complex_gain_metrics.csv")
+readr::write_csv(complex_gain_export_q, file.path(out_dir_gain, "tables", "complex_gain_metrics_q.csv"))
+message("  Saved: complex_gain_metrics_q.csv")
 
-# Summary: loss vs gain by disease class
-loss_gain_by_disease <- protein_gain_summary %>%
+
+# p-sig variant
+complex_gain_list_p <- vector("list", nrow(ko_neuron_grid))
+
+for (i in seq_len(nrow(ko_neuron_grid))) {
+  geno <- ko_neuron_grid$genotype[i]
+  neur <- ko_neuron_grid$neuron[i]
+  gn   <- ko_neuron_grid$genotype_neuron[i]
+
+  gain_data_p <- prot_long %>%
+    dplyr::filter(genotype == geno, neuron == neur) %>%
+    dplyr::select(Genes, is_gained_p) %>%
+    tibble::deframe()
+
+  complex_gain_p <- complex_members_parsed %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      n_members    = length(members_list),
+      n_gained     = sum(gain_data_p[members_list], na.rm = TRUE),
+      frac_gained  = n_gained / n_members
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(genotype = geno, neuron = neur, genotype_neuron = gn)
+
+  complex_gain_list_p[[i]] <- complex_gain_p
+}
+
+complex_gain_export_p <- dplyr::bind_rows(complex_gain_list_p) %>%
+  dplyr::left_join(disease_class_lookup, by = "genotype") %>%
+  dplyr::select(-members_list) %>%
+  dplyr::select(complex_id, genotype, neuron, genotype_neuron, DiseaseClass,
+                n_members, n_gained, frac_gained)
+
+readr::write_csv(complex_gain_export_p, file.path(out_dir_gain, "tables", "complex_gain_metrics_p.csv"))
+message("  Saved: complex_gain_metrics_p.csv")
+
+
+# -----------------------------------------------------------------------------
+# 15.4 Loss vs gain by disease class
+# -----------------------------------------------------------------------------
+loss_gain_by_disease_q <- protein_gain_summary_q %>%
   dplyr::filter(!is.na(DiseaseClass), DiseaseClass %in% disease_class_order) %>%
+  dplyr::mutate(DiseaseClass = factor(DiseaseClass, levels = disease_class_order)) %>%
   dplyr::group_by(DiseaseClass, neuron) %>%
   dplyr::summarise(
-    mean_frac_lost = mean(frac_lost, na.rm = TRUE),
-    mean_frac_gained = mean(frac_gained, na.rm = TRUE),
+    mean_frac_lost       = mean(frac_lost,       na.rm = TRUE),
+    mean_frac_gained     = mean(frac_gained,     na.rm = TRUE),
     mean_loss_gain_ratio = mean(loss_gain_ratio, na.rm = TRUE),
-    n_kos = dplyr::n(),
+    n_kos                = dplyr::n(),
     .groups = "drop"
   )
 
-readr::write_csv(loss_gain_by_disease, file.path(out_dir_vuln, "tables", "loss_gain_by_disease.csv"))
-message("  Saved: loss_gain_by_disease.csv")
+readr::write_csv(loss_gain_by_disease_q, file.path(out_dir_gain, "tables", "loss_gain_by_disease_q.csv"))
+message("  Saved: loss_gain_by_disease_q.csv")
 
-message("Module 8 complete: Gain analysis metrics exported")
-message("\nAll gain metrics CSVs ready for future analysis:")
-message("  - ppi_gain_summary.csv")
-message("  - protein_gain_summary.csv")
-message("  - complex_gain_metrics.csv")
-message("  - loss_gain_by_disease.csv")
+loss_gain_by_disease_p <- protein_gain_summary_p %>%
+  dplyr::filter(!is.na(DiseaseClass), DiseaseClass %in% disease_class_order) %>%
+  dplyr::mutate(DiseaseClass = factor(DiseaseClass, levels = disease_class_order)) %>%
+  dplyr::group_by(DiseaseClass, neuron) %>%
+  dplyr::summarise(
+    mean_frac_lost       = mean(frac_lost,       na.rm = TRUE),
+    mean_frac_gained     = mean(frac_gained,     na.rm = TRUE),
+    mean_loss_gain_ratio = mean(loss_gain_ratio, na.rm = TRUE),
+    n_kos                = dplyr::n(),
+    .groups = "drop"
+  )
+
+readr::write_csv(loss_gain_by_disease_p, file.path(out_dir_gain, "tables", "loss_gain_by_disease_p.csv"))
+message("  Saved: loss_gain_by_disease_p.csv")
+
+
+message("Module 15 complete: Gain analysis metrics exported")
+message("  q-sig outputs: ppi_gain_summary_q, protein_gain_summary_q, complex_gain_metrics_q, loss_gain_by_disease_q")
+message("  p-sig outputs: ppi_gain_summary_p, protein_gain_summary_p, complex_gain_metrics_p, loss_gain_by_disease_p")
 ```
 
-
-## Chunk 15: Master Summary Output
+## Chunk 17: Master Summary Output
 ```{r summary}
 # =============================================================================
 # Master Summary Output
