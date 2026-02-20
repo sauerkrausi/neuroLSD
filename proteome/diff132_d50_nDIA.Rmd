@@ -17227,6 +17227,139 @@ message("Chunk 7 complete: KO x Neuron Extended Analysis")
 
 
 
+### Section 7.X: Complex Network Plots per KO x Neuron
+```{r}
+# =============================================================================
+# One PDF per disrupted complex x KO x neuron (state_q == "disrupted")
+# Baseline layout fixed per complex for cross-KO comparability
+# Lost PPIs: dashed red | Retained PPIs: solid grey
+# =============================================================================
+
+out_dir_cx_nets    <- file.path(out_dir_vuln, "plots/complex_networks")
+out_dir_cx_nets_sd <- file.path(out_dir_vuln, "sourcedata/complex_networks")
+dir.create(out_dir_cx_nets,    recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_cx_nets_sd, recursive = TRUE, showWarnings = FALSE)
+
+# All distinct edge structures for layout building
+all_edges_distinct <- ko_edge_states %>% dplyr::distinct(key, Gene1, Gene2)
+
+# Disrupted complexes (q-value filtered)
+disrupted_cx_ko <- complex_ko_states %>% dplyr::filter(state_q == "disrupted")
+message("Disrupted complex x KO x neuron: ", nrow(disrupted_cx_ko))
+
+# --- Precompute baseline layout once per complex ---
+cx_indices_to_plot <- unique(disrupted_cx_ko$complex_idx)
+message("Unique complexes: ", length(cx_indices_to_plot))
+
+baseline_layouts <- list()
+
+for (cidx in cx_indices_to_plot) {
+  cx_row <- complex_evidence %>% dplyr::filter(complex_idx == cidx)
+  if (nrow(cx_row) == 0) next
+  members <- cx_row$members[[1]]
+  if (length(members) < 2) next
+
+  edges_base <- all_edges_distinct %>%
+    dplyr::filter(Gene1 %in% members, Gene2 %in% members)
+  if (nrow(edges_base) < 1) next
+
+  g_base <- igraph::graph_from_data_frame(edges_base %>% dplyr::select(Gene1, Gene2),
+    directed = FALSE, vertices = data.frame(name = members))
+
+  cx_size <- length(members)
+  layout_mat <- if (cx_size <= 10) igraph::layout_in_circle(g_base) else
+                if (cx_size <= 20) igraph::layout_with_kk(g_base) else
+                igraph::layout_with_fr(g_base)
+  rownames(layout_mat) <- igraph::V(g_base)$name
+
+  baseline_layouts[[as.character(cidx)]] <- list(layout = layout_mat, members = members)
+}
+message("Layouts precomputed: ", length(baseline_layouts))
+
+# --- Plot function ---
+plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
+                                    ko_edge_states, complex_evidence,
+                                    complex_ko_states, baseline_layouts,
+                                    out_dir, out_dir_sd) {
+  bl <- baseline_layouts[[as.character(cx_idx)]]
+  if (is.null(bl)) return(invisible(NULL))
+  members    <- bl$members
+  layout_mat <- bl$layout
+
+  # Edge states for this KO x neuron x complex
+  edges_ko <- ko_edge_states %>%
+    dplyr::filter(.data$genotype == ko_geno, .data$neuron == ko_neur,
+                  Gene1 %in% members, Gene2 %in% members) %>%
+    dplyr::select(key, Gene1, Gene2, state_q, RFprob, AFMprob, CFprob)
+  if (nrow(edges_ko) == 0) return(invisible(NULL))
+
+  # Complex-level summary
+  cx_sum <- complex_ko_states %>%
+    dplyr::filter(.data$complex_idx == cx_idx, .data$genotype == ko_geno, .data$neuron == ko_neur)
+  if (nrow(cx_sum) == 0) return(invisible(NULL))
+  n_lost   <- cx_sum$n_lost_q[1]
+  frac_lost <- cx_sum$frac_lost_q[1]
+  pct_lost  <- round(frac_lost * 100, 1)
+
+  # Complex metadata
+  cx_meta  <- complex_evidence %>% dplyr::filter(.data$complex_idx == cx_idx)
+  cx_size  <- cx_meta$complex_size[1]
+  cx_name  <- dplyr::coalesce(cx_meta$corum_matched_name[1], "")
+  cx_name  <- if (nchar(cx_name) > 0) paste0("\n", substr(cx_name, 1, 50)) else ""
+
+  # Build graph - edge order preserved from edges_ko rows
+  g_ko <- igraph::graph_from_data_frame(edges_ko %>% dplyr::select(Gene1, Gene2),
+    directed = FALSE, vertices = data.frame(name = members))
+
+  # Edge attributes (row order matches edges_ko)
+  igraph::E(g_ko)$state  <- edges_ko$state_q
+  igraph::E(g_ko)$color  <- ifelse(edges_ko$state_q == "lost", "#CC0000", "grey40")
+  igraph::E(g_ko)$lty    <- ifelse(edges_ko$state_q == "lost", 2L, 1L)
+  igraph::E(g_ko)$width  <- 1.8
+
+  # Layout: match vertex order in g_ko
+  vnames      <- igraph::V(g_ko)$name
+  layout_plot <- layout_mat[match(vnames, rownames(layout_mat)), , drop = FALSE]
+
+  vsize <- ifelse(cx_size > 30, 6, ifelse(cx_size > 15, 8, 10))
+  vlcex <- ifelse(cx_size > 30, 0.4, ifelse(cx_size > 15, 0.5, 0.6))
+
+  plot_title <- paste0(
+    "Complex ", cx_idx, " | ", ko_geno, " (", ko_neur, ")",
+    "\nSize: ", cx_size, " | Edges: ", nrow(edges_ko),
+    " | Lost: ", n_lost, " (", pct_lost, "%)", cx_name)
+
+  cx_label <- sprintf("%03d", cx_idx)
+  pdf_path <- file.path(out_dir, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_network.pdf"))
+
+  pdf(pdf_path, width = 8, height = 8)
+  par(mar = c(1, 1, 4, 1))
+  plot(g_ko,
+       layout            = layout_plot,
+       vertex.size       = vsize,
+       vertex.label.cex  = vlcex,
+       vertex.color      = "grey90",
+       vertex.frame.color = "grey50",
+       edge.color        = igraph::E(g_ko)$color,
+       edge.width        = igraph::E(g_ko)$width,
+       edge.lty          = igraph::E(g_ko)$lty,
+       main              = plot_title)
+  legend("bottomleft", legend = c("Retained", "Lost"),
+    col = c("grey40", "#CC0000"), lwd = 2, lty = c(1, 2), bty = "n", cex = 0.7,
+    title = "PPI state")
+  dev.off()
+
+  # Sourcedata
+  readr::write_csv(
+    edges_ko %>% dplyr::mutate(complex_idx = cx_idx, genotype = ko_geno, neuron = ko_neur,
+                                n_lost_q = n_lost, frac_lost_q = frac_lost),
+    file.path(out_dir_sd, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_sourcedata.csv")))
+  invisible(NULL)
+}
+```
+
+
+
 ## Chunk 8: Radar / Spider Plots
 ```{r radar}
 # =============================================================================
