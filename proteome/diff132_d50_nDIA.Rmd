@@ -17688,8 +17688,8 @@ plot_ternary_ppi_loss <- function(df_states, shared_long_ternary, out_dir,
 plot_ternary_ppi_loss(ko_edge_states, shared_long_ternary, out_dir_vuln,
   disease_class_palette, tern_classes = c("SynapseSVs", "Mito", "Endo_iN_curated_Hundley"))
 
-Sensible - 560 vs 2300. Here's Part 2 - the all-combinations function + call:
-r# --- All combinations function ---
+
+# --- All combinations function ---
 plot_all_ternary_combinations <- function(df_states, shared_long_ternary, out_dir,
                                           disease_class_palette, tags) {
   combo_out_dir    <- file.path(out_dir, "plots/ternary/all_combinations")
