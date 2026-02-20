@@ -18709,6 +18709,246 @@ message("Output: ", out_dir_sphingosine)
 ```
 
 
+
+## Chunk 12: Ceramide Pathway Disruption Analysis
+```{r ceramide}
+# =============================================================================
+# Ceramide Pathway Disruption Analysis
+# Jaccard similarity of lost PPIs + complex disruption correlation
+# across sphingolipidosis KOs
+# =============================================================================
+message("Chunk 12: Ceramide Pathway Disruption Analysis...")
+
+out_dir_ceramide <- file.path(out_dir_vuln, "ceramide_pathway")
+dir.create(out_dir_ceramide, recursive = TRUE, showWarnings = FALSE)
+
+# --- 12.1 Pathway structure ---
+sphingo_pathway <- data.frame(
+  gene                = c("HEXA", "HEXB", "GBA1", "SMPD1", "ASAH1", "PSAP"),
+  branch              = c("ganglioside", "ganglioside", "glucocerebroside", "sphingomyelin", "downstream", "activator"),
+  depth_from_ceramide = c(3, 3, 1, 1, -1, 0),
+  substrate           = c("GM2", "GM2", "Glucocerebroside", "Sphingomyelin", "Ceramide", "multiple"),
+  product             = c("GM3", "GM3", "Ceramide", "Ceramide", "Sphingosine", "multiple"),
+  disease             = c("Tay-Sachs", "Sandhoff", "Gaucher", "Niemann-Pick", "Farber", "Saposin deficiency"),
+  stringsAsFactors = FALSE)
+
+print(sphingo_pathway)
+readr::write_csv(sphingo_pathway, file.path(out_dir_ceramide, "sphingo_pathway_definition.csv"))
+
+
+# --- 12.2 Binary PPI loss matrix for sphingolipidosis KOs ---
+sphingo_genes      <- sphingo_pathway$gene
+sphingo_edge_states <- ko_edge_states %>% dplyr::filter(genotype %in% sphingo_genes)
+message("Edge states for sphingolipidosis KOs: ", nrow(sphingo_edge_states))
+
+sphingo_loss_wide <- sphingo_edge_states %>%
+  dplyr::select(key, genotype, neuron, state_q) %>%
+  dplyr::mutate(lost = as.integer(state_q == "lost"), sample = paste(genotype, neuron, sep = "_")) %>%
+  dplyr::select(key, sample, lost) %>%
+  tidyr::pivot_wider(names_from = sample, values_from = lost, values_fill = 0)
+
+message("PPI loss matrix: ", nrow(sphingo_loss_wide), " edges x ", ncol(sphingo_loss_wide) - 1, " samples")
+readr::write_csv(sphingo_loss_wide %>% dplyr::select(-key) %>%
+    tibble::rownames_to_column("key"),
+  file.path(out_dir_ceramide, "sphingo_loss_matrix_sourcedata.csv"))
+
+
+# --- 12.3 Pairwise Jaccard similarity ---
+compute_jaccard <- function(x, y) {
+  intersection <- sum(x == 1 & y == 1)
+  union        <- sum(x == 1 | y == 1)
+  if (union == 0) return(NA)
+  intersection / union
+}
+
+sample_cols <- setdiff(colnames(sphingo_loss_wide), "key")
+loss_mat    <- as.matrix(sphingo_loss_wide[, sample_cols])
+n_samples   <- length(sample_cols)
+jaccard_mat <- matrix(NA, n_samples, n_samples, dimnames = list(sample_cols, sample_cols))
+
+for (i in seq_len(n_samples)) for (j in seq_len(n_samples))
+  jaccard_mat[i, j] <- compute_jaccard(loss_mat[, i], loss_mat[, j])
+
+message("Jaccard similarity matrix computed")
+readr::write_csv(as.data.frame(jaccard_mat) %>% tibble::rownames_to_column("sample"),
+  file.path(out_dir_ceramide, "jaccard_similarity_matrix.csv"))
+
+
+# --- 12.4 Complex disruption correlation ---
+sphingo_complex_summary <- complex_ko_states %>%
+  dplyr::filter(genotype %in% sphingo_genes) %>%
+  dplyr::mutate(sample = paste(genotype, neuron, sep = "_")) %>%
+  dplyr::group_by(complex_id, sample) %>%
+  dplyr::summarise(frac_disrupted = mean(frac_lost_q, na.rm = TRUE), .groups = "drop")
+
+sphingo_complex_wide <- sphingo_complex_summary %>%
+  tidyr::pivot_wider(names_from = sample, values_from = frac_disrupted, values_fill = 0)
+
+complex_mat     <- as.matrix(sphingo_complex_wide[, -1])
+correlation_mat <- cor(complex_mat, use = "pairwise.complete.obs")
+
+message("Complex disruption correlation matrix computed")
+readr::write_csv(as.data.frame(correlation_mat) %>% tibble::rownames_to_column("sample"),
+  file.path(out_dir_ceramide, "complex_correlation_matrix.csv"))
+
+
+# --- 12.5 Key pairwise comparisons ---
+comparisons <- list(
+  "HEXA_vs_HEXB"   = list(a = "HEXA",  b = "HEXB",  hypothesis = "Same substrate (GM2), expect high similarity"),
+  "GBA1_vs_SMPD1"  = list(a = "GBA1",  b = "SMPD1", hypothesis = "Both produce ceramide, different branches"),
+  "ASAH1_vs_GBA1"  = list(a = "ASAH1", b = "GBA1",  hypothesis = "Both affect ceramide levels"),
+  "ASAH1_vs_SMPD1" = list(a = "ASAH1", b = "SMPD1", hypothesis = "Both affect ceramide levels"),
+  "HEXA_vs_ASAH1"  = list(a = "HEXA",  b = "ASAH1", hypothesis = "Distal upstream vs downstream of ceramide"),
+  "PSAP_vs_GBA1"   = list(a = "PSAP",  b = "GBA1",  hypothesis = "PSAP activates GBA1, expect similarity"))
+
+get_pair_similarity <- function(gene_a, gene_b, sim_mat, neuron = "iN") {
+  sa <- paste(gene_a, neuron, sep = "_"); sb <- paste(gene_b, neuron, sep = "_")
+  if (sa %in% rownames(sim_mat) && sb %in% colnames(sim_mat)) return(sim_mat[sa, sb])
+  NA
+}
+
+comparison_results <- data.frame(
+  comparison  = names(comparisons),
+  hypothesis  = sapply(comparisons, function(x) x$hypothesis),
+  jaccard_iN  = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, jaccard_mat,     "iN")),
+  jaccard_iDA = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, jaccard_mat,     "iDA")),
+  corr_iN     = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, correlation_mat, "iN")),
+  corr_iDA    = sapply(comparisons, function(x) get_pair_similarity(x$a, x$b, correlation_mat, "iDA")),
+  stringsAsFactors = FALSE)
+
+message("\nKey pathway comparisons:")
+print(comparison_results)
+
+
+# --- 12.6 Visualize similarity matrices ---
+pheatmap::pheatmap(jaccard_mat,
+  color = colorRampPalette(c("white", "#2166AC"))(100),
+  cluster_rows = TRUE, cluster_cols = TRUE,
+  display_numbers = TRUE, number_format = "%.2f",
+  fontsize = 6, fontsize_number = 5, border_color = NA,
+  main = "Jaccard similarity of lost PPIs\n(Sphingolipidosis KOs)",
+  filename = file.path(out_dir_ceramide, "jaccard_similarity_heatmap.pdf"), width = 6, height = 6)
+
+pheatmap::pheatmap(correlation_mat,
+  color = colorRampPalette(c("#B2182B", "white", "#2166AC"))(100),
+  breaks = seq(-1, 1, length.out = 101),
+  cluster_rows = TRUE, cluster_cols = TRUE,
+  display_numbers = TRUE, number_format = "%.2f",
+  fontsize = 6, fontsize_number = 5, border_color = NA,
+  main = "Correlation of complex disruption\n(Sphingolipidosis KOs)",
+  filename = file.path(out_dir_ceramide, "complex_correlation_heatmap.pdf"), width = 6, height = 6)
+
+
+# --- 12.7 Pathway distance vs similarity ---
+pathway_dist <- function(gene_a, gene_b, pathway_df) {
+  da <- pathway_df$depth_from_ceramide[pathway_df$gene == gene_a]
+  db <- pathway_df$depth_from_ceramide[pathway_df$gene == gene_b]
+  if (length(da) == 0 || length(db) == 0) return(NA)
+  abs(da - db)
+}
+
+all_pairs <- expand.grid(gene_a = sphingo_genes, gene_b = sphingo_genes, stringsAsFactors = FALSE) %>%
+  dplyr::filter(gene_a < gene_b) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    pathway_distance = pathway_dist(gene_a, gene_b, sphingo_pathway),
+    same_branch      = sphingo_pathway$branch[sphingo_pathway$gene == gene_a] == sphingo_pathway$branch[sphingo_pathway$gene == gene_b],
+    jaccard_iN       = get_pair_similarity(gene_a, gene_b, jaccard_mat,     "iN"),
+    jaccard_iDA      = get_pair_similarity(gene_a, gene_b, jaccard_mat,     "iDA"),
+    corr_iN          = get_pair_similarity(gene_a, gene_b, correlation_mat, "iN"),
+    corr_iDA         = get_pair_similarity(gene_a, gene_b, correlation_mat, "iDA")) %>%
+  dplyr::ungroup()
+
+readr::write_csv(all_pairs, file.path(out_dir_ceramide, "pathway_distance_vs_similarity.csv"))
+
+p_dist_jaccard <- ggplot2::ggplot(all_pairs, ggplot2::aes(x = pathway_distance, y = jaccard_iN)) +
+  ggplot2::geom_point(ggplot2::aes(color = same_branch), size = 3, alpha = 0.8) +
+  ggplot2::geom_smooth(method = "lm", se = TRUE, color = "grey40", linetype = "dashed") +
+  ggrepel::geom_text_repel(ggplot2::aes(label = paste(gene_a, gene_b, sep = "-")), size = 2, max.overlaps = 20) +
+  ggplot2::scale_color_manual(values = c("FALSE" = "#E41A1C", "TRUE" = "#377EB8"), name = "Same branch") +
+  ggplot2::labs(x = "Pathway distance (steps from ceramide)", y = "Jaccard similarity (lost PPIs)",
+    title = "Sphingolipidosis: pathway distance vs PPI disruption similarity") +
+  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+ggplot2::ggsave(file.path(out_dir_ceramide, "pathway_distance_vs_jaccard.pdf"), p_dist_jaccard, width = 5, height = 4, device = cairo_pdf)
+
+
+# --- 12.8 Background comparison ---
+sphingo_samples_iN <- paste(sphingo_genes, "iN", sep = "_")
+sphingo_samples_iN <- sphingo_samples_iN[sphingo_samples_iN %in% sample_cols]
+
+sphingo_pairs <- c()
+for (i in 1:(length(sphingo_samples_iN) - 1))
+  for (j in (i + 1):length(sphingo_samples_iN))
+    sphingo_pairs <- c(sphingo_pairs, jaccard_mat[sphingo_samples_iN[i], sphingo_samples_iN[j]])
+
+asah1_gba1_jaccard <- get_pair_similarity("ASAH1", "GBA1", jaccard_mat, "iN")
+message("\n--- Ceramide convergence ---")
+message("ASAH1 vs GBA1 Jaccard (iN): ",      round(asah1_gba1_jaccard, 3))
+message("Mean sphingolipidosis pair Jaccard: ", round(mean(sphingo_pairs, na.rm = TRUE), 3))
+message("Range: ", round(min(sphingo_pairs, na.rm = TRUE), 3), " - ", round(max(sphingo_pairs, na.rm = TRUE), 3))
+
+
+# --- 12.9 Shared disrupted complexes for high-similarity pairs ---
+jaccard_threshold <- 0.25
+
+get_shared_complexes <- function(gene_a, gene_b, complex_states) {
+  disrupted_a <- complex_states %>% dplyr::filter(genotype == gene_a, state_q == "disrupted") %>% dplyr::pull(complex_id) %>% unique()
+  disrupted_b <- complex_states %>% dplyr::filter(genotype == gene_b, state_q == "disrupted") %>% dplyr::pull(complex_id) %>% unique()
+  intersect(disrupted_a, disrupted_b)
+}
+
+high_sim_pairs <- all_pairs %>% dplyr::filter(jaccard_iN > jaccard_threshold) %>% dplyr::arrange(dplyr::desc(jaccard_iN))
+message("\nHigh-similarity pairs (Jaccard > ", jaccard_threshold, "):")
+print(high_sim_pairs %>% dplyr::select(gene_a, gene_b, jaccard_iN))
+
+shared_complexes_list <- list()
+for (i in seq_len(nrow(high_sim_pairs))) {
+  pair   <- high_sim_pairs[i, ]
+  shared <- get_shared_complexes(pair$gene_a, pair$gene_b, complex_ko_states)
+  if (length(shared) > 0)
+    shared_complexes_list[[paste(pair$gene_a, pair$gene_b, sep = "_vs_")]] <- data.frame(
+      gene_pair = paste(pair$gene_a, pair$gene_b, sep = "_vs_"), complex_id = shared)
+}
+
+if (length(shared_complexes_list) > 0) {
+  shared_complexes_all <- dplyr::bind_rows(shared_complexes_list)
+  readr::write_csv(shared_complexes_all, file.path(out_dir_ceramide, "shared_disrupted_high_similarity_pairs.csv"))
+  message("\nShared disrupted complexes by pair:")
+  print(shared_complexes_all %>% dplyr::count(gene_pair, name = "n_shared_complexes"))
+}
+
+
+# --- 12.10 Three-way intersection: ASAH1 ∩ GBA1 ∩ SMPD1 ---
+ceramide_core <- Reduce(intersect, list(
+  complex_ko_states %>% dplyr::filter(genotype == "ASAH1", state_q == "disrupted") %>% dplyr::pull(complex_id) %>% unique(),
+  complex_ko_states %>% dplyr::filter(genotype == "GBA1",  state_q == "disrupted") %>% dplyr::pull(complex_id) %>% unique(),
+  complex_ko_states %>% dplyr::filter(genotype == "SMPD1", state_q == "disrupted") %>% dplyr::pull(complex_id) %>% unique()))
+
+message("\n--- Ceramide core complexes (ASAH1 ∩ GBA1 ∩ SMPD1): ", length(ceramide_core), " ---")
+
+if (length(ceramide_core) > 0) {
+  ceramide_core_details <- complex_ko_states %>%
+    dplyr::filter(complex_id %in% ceramide_core) %>%
+    dplyr::distinct(complex_id, complex_size, shared_organelle)
+  readr::write_csv(ceramide_core_details, file.path(out_dir_ceramide, "ceramide_core_complexes.csv"))
+  print(ceramide_core_details)
+}
+
+
+# --- 12.11 Summary table ---
+summary_table <- comparison_results %>%
+  dplyr::mutate(interpretation = dplyr::case_when(
+    jaccard_iN > 0.5 ~ "High similarity",
+    jaccard_iN > 0.3 ~ "Moderate similarity",
+    jaccard_iN > 0.1 ~ "Low similarity",
+    TRUE             ~ "Minimal similarity"))
+readr::write_csv(summary_table, file.path(out_dir_ceramide, "key_comparisons_summary.csv"))
+
+message("=== Chunk 12: Ceramide pathway analysis complete ===")
+```
+
+
+
 ## Chunk 8: Export Gain Analysis Metrics
 ```{r gain_metrics}
 # =============================================================================
