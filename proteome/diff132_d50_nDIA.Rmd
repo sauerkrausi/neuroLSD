@@ -16509,6 +16509,203 @@ message("Module 6 complete: PPI vulnerability visualizations")
 ```
 
 
+
+## Chunk 7: KO x Neuron Extended Analysis
+```{r ko_neuron_extended}
+# =============================================================================
+# Chunk 7: KO x Neuron Extended Analysis
+# Bubble plots + Annotation-level barplots for lost PPI/trimers/tetramers/complexes
+# =============================================================================
+message("Chunk 7: KO x Neuron Extended Analysis...")
+
+dir.create(file.path(out_dir_vuln, "plots/KOxNeuron"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "plots/KOxNeuron/by_annotation"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble"), recursive = TRUE, showWarnings = FALSE)
+
+# -----------------------------------------------------------------------------
+# 7.1 Bubble plots: iN vs iDA comparison (global, one per metric, q-value)
+# -----------------------------------------------------------------------------
+
+# --- 7.1.1 Lost PPI bubble plot ---
+bubble_ppi <- ko_summary_global %>%
+  dplyr::select(genotype, neuron, frac_lost_q, DiseaseClass) %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = frac_lost_q)
+
+axis_max_ppi <- max(c(bubble_ppi$iN, bubble_ppi$iDA), na.rm = TRUE) * 1.1
+
+p_bubble_ppi <- ggplot2::ggplot(bubble_ppi, ggplot2::aes(x = iN, y = iDA)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  ggplot2::geom_point(ggplot2::aes(fill = DiseaseClass), shape = 21, size = 4, stroke = 0.5) +
+  ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 30, seed = 42) +
+  ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  ggplot2::coord_fixed(ratio = 1, xlim = c(0, axis_max_ppi), ylim = c(0, axis_max_ppi)) +
+  ggplot2::labs(x = "Fraction lost PPIs (iN, q<0.05)", y = "Fraction lost PPIs (iDA, q<0.05)", title = "PPI vulnerability: iN vs iDA (q<0.05)") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+save_plot_with_sourcedata(p_bubble_ppi, "plots/KOxNeuron/bubble_ppi_iN_vs_iDA", bubble_ppi, width = 5.5, height = 5)
+
+# --- 7.1.2 Lost Trimers bubble plot ---
+bubble_trimer <- trimer_summary_ko %>%
+  dplyr::select(genotype, neuron, frac_disrupted_q, DiseaseClass) %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = frac_disrupted_q)
+
+axis_max_tri <- max(c(bubble_trimer$iN, bubble_trimer$iDA), na.rm = TRUE) * 1.1
+
+p_bubble_trimer <- ggplot2::ggplot(bubble_trimer, ggplot2::aes(x = iN, y = iDA)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  ggplot2::geom_point(ggplot2::aes(fill = DiseaseClass), shape = 21, size = 4, stroke = 0.5) +
+  ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 30, seed = 42) +
+  ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  ggplot2::coord_fixed(ratio = 1, xlim = c(0, axis_max_tri), ylim = c(0, axis_max_tri)) +
+  ggplot2::labs(x = "Fraction disrupted (iN, q<0.05)", y = "Fraction disrupted (iDA, q<0.05)", title = "Trimer vulnerability: iN vs iDA (q<0.05)") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+save_plot_with_sourcedata(p_bubble_trimer, "plots/KOxNeuron/bubble_trimer_iN_vs_iDA", bubble_trimer, width = 5.5, height = 5)
+
+# --- 7.1.3 Lost Tetramers bubble plot ---
+bubble_tetramer <- tetramer_summary_ko %>%
+  dplyr::select(genotype, neuron, frac_disrupted_q, DiseaseClass) %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = frac_disrupted_q)
+
+axis_max_tet <- max(c(bubble_tetramer$iN, bubble_tetramer$iDA), na.rm = TRUE) * 1.1
+
+p_bubble_tetramer <- ggplot2::ggplot(bubble_tetramer, ggplot2::aes(x = iN, y = iDA)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  ggplot2::geom_point(ggplot2::aes(fill = DiseaseClass), shape = 21, size = 4, stroke = 0.5) +
+  ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 30, seed = 42) +
+  ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  ggplot2::coord_fixed(ratio = 1, xlim = c(0, axis_max_tet), ylim = c(0, axis_max_tet)) +
+  ggplot2::labs(x = "Fraction disrupted (iN, q<0.05)", y = "Fraction disrupted (iDA, q<0.05)", title = "Tetramer vulnerability: iN vs iDA (q<0.05)") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+save_plot_with_sourcedata(p_bubble_tetramer, "plots/KOxNeuron/bubble_tetramer_iN_vs_iDA", bubble_tetramer, width = 5.5, height = 5)
+
+# --- 7.1.4 Lost Complexes bubble plot ---
+bubble_complex <- complex_summary_ko %>%
+  dplyr::select(genotype, neuron, frac_disrupted_q, DiseaseClass) %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = frac_disrupted_q)
+
+axis_max_cpx <- max(c(bubble_complex$iN, bubble_complex$iDA), na.rm = TRUE) * 1.1
+
+p_bubble_complex <- ggplot2::ggplot(bubble_complex, ggplot2::aes(x = iN, y = iDA)) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  ggplot2::geom_point(ggplot2::aes(fill = DiseaseClass), shape = 21, size = 4, stroke = 0.5) +
+  ggrepel::geom_text_repel(ggplot2::aes(label = genotype), size = 2, max.overlaps = 30, seed = 42) +
+  ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+  ggplot2::coord_fixed(ratio = 1, xlim = c(0, axis_max_cpx), ylim = c(0, axis_max_cpx)) +
+  ggplot2::labs(x = "Fraction disrupted (iN, q<0.05)", y = "Fraction disrupted (iDA, q<0.05)", title = "Complex vulnerability: iN vs iDA (q<0.05)") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+save_plot_with_sourcedata(p_bubble_complex, "plots/KOxNeuron/bubble_complex_iN_vs_iDA", bubble_complex, width = 5.5, height = 5)
+
+
+# -----------------------------------------------------------------------------
+# 7.2 Aggregated Barplots: Mean lost structures per annotation (iN and iDA)
+# -----------------------------------------------------------------------------
+
+# --- 7.2.1 Lost PPI per annotation ---
+ppi_by_annotation <- ko_summary_by_organelle %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(neuron, shared_organelle) %>%
+  dplyr::summarise(
+    mean_frac_lost = mean(frac_lost_q, na.rm = TRUE),
+    total_lost = sum(n_lost_q, na.rm = TRUE),
+    total_edges = sum(n_edges, na.rm = TRUE),
+    n_kos = dplyr::n(),
+    .groups = "drop"
+  )
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- ppi_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(mean_frac_lost))
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, mean_frac_lost), y = mean_frac_lost)) +
+    ggplot2::geom_col(fill = "dodgerblue3", color = "black", linewidth = 0.2) +
+    ggplot2::coord_flip() +
+    ggplot2::labs(x = NULL, y = "Mean fraction PPIs lost (q<0.05)", title = paste0("Lost PPIs per annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_ppi_by_annotation_", nt), plot_data, width = 5, height = 6)
+}
+
+# --- 7.2.2 Lost Trimers per annotation ---
+trimer_by_annotation <- trimer_ko_states %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(neuron, shared_organelle) %>%
+  dplyr::summarise(
+    n_total = dplyr::n(),
+    n_disrupted = sum(state_q == "disrupted"),
+    frac_disrupted = n_disrupted / n_total,
+    .groups = "drop"
+  )
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- trimer_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(frac_disrupted))
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, frac_disrupted), y = frac_disrupted)) +
+    ggplot2::geom_col(fill = "#C51B7D", color = "black", linewidth = 0.2) +
+    ggplot2::coord_flip() +
+    ggplot2::labs(x = NULL, y = "Fraction trimers disrupted (q<0.05)", title = paste0("Lost Trimers per annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_trimer_by_annotation_", nt), plot_data, width = 5, height = 6)
+}
+
+# --- 7.2.3 Lost Tetramers per annotation ---
+tetramer_by_annotation <- tetramer_ko_states %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(neuron, shared_organelle) %>%
+  dplyr::summarise(
+    n_total = dplyr::n(),
+    n_disrupted = sum(state_q == "disrupted"),
+    frac_disrupted = n_disrupted / n_total,
+    .groups = "drop"
+  )
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- tetramer_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(frac_disrupted))
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, frac_disrupted), y = frac_disrupted)) +
+    ggplot2::geom_col(fill = "#7570B3", color = "black", linewidth = 0.2) +
+    ggplot2::coord_flip() +
+    ggplot2::labs(x = NULL, y = "Fraction tetramers disrupted (q<0.05)", title = paste0("Lost Tetramers per annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_tetramer_by_annotation_", nt), plot_data, width = 5, height = 6)
+}
+
+# --- 7.2.4 Lost Complexes per annotation ---
+complex_by_annotation <- complex_ko_states %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(neuron, shared_organelle) %>%
+  dplyr::summarise(
+    n_total = dplyr::n(),
+    n_disrupted = sum(state_q == "disrupted"),
+    frac_disrupted = n_disrupted / n_total,
+    .groups = "drop"
+  )
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- complex_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(frac_disrupted))
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, frac_disrupted), y = frac_disrupted)) +
+    ggplot2::geom_col(fill = "#E6AB02", color = "black", linewidth = 0.2) +
+    ggplot2::coord_flip() +
+    ggplot2::labs(x = NULL, y = "Fraction complexes disrupted (q<0.05)", title = paste0("Lost Complexes per annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_complex_by_annotation_", nt), plot_data, width = 5, height = 6)
+}
+```
+
+
 ## Chunk 7: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
