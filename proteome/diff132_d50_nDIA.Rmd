@@ -15857,7 +15857,7 @@ organelle_colors <- setNames(colorRampPalette(RColorBrewer::brewer.pal(12, "Set3
 # =============================================================================
 out_dir_vuln <- file.path(out_dir_ppi_dual, "KOxNeuron_eval_v6")
 dir.create(file.path(out_dir_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
+#dir.create(file.path(out_dir_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/ternary"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/disease_class"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/radar"), recursive = TRUE, showWarnings = FALSE)
@@ -17356,6 +17356,36 @@ plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
     file.path(out_dir_sd, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_sourcedata.csv")))
   invisible(NULL)
 }
+
+# --- Run for all disrupted complex x KO x neuron combinations ---
+plot_count_cx <- 0
+skipped_cx    <- 0
+
+for (i in seq_len(nrow(disrupted_cx_ko))) {
+  row <- disrupted_cx_ko[i, ]
+  result <- tryCatch(
+    plot_complex_ko_network(
+      cx_idx            = row$complex_idx,
+      ko_geno           = row$genotype,
+      ko_neur           = row$neuron,
+      ko_edge_states    = ko_edge_states,
+      complex_evidence  = complex_evidence,
+      complex_ko_states = complex_ko_states,
+      baseline_layouts  = baseline_layouts,
+      out_dir           = out_dir_cx_nets,
+      out_dir_sd        = out_dir_cx_nets_sd),
+    error = function(e) {
+      message("  SKIP complex ", row$complex_idx, " / ", row$genotype, " / ", row$neuron, ": ", e$message)
+      "error"
+    })
+  if (identical(result, "error")) { skipped_cx <- skipped_cx + 1 } else { plot_count_cx <- plot_count_cx + 1 }
+  if ((plot_count_cx + skipped_cx) %% 50 == 0) message("  Progress: ", plot_count_cx, " plots / ", skipped_cx, " skipped...")
+}
+
+message("Complex network plots complete.")
+message("  Generated: ", plot_count_cx, " | Skipped: ", skipped_cx)
+message("  PDFs: ", out_dir_cx_nets)
+message("  Sourcedata: ", out_dir_cx_nets_sd)
 ```
 
 
