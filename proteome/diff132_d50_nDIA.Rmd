@@ -17687,6 +17687,116 @@ plot_ternary_ppi_loss <- function(df_states, shared_long_ternary, out_dir,
 # --- Priority triplet ---
 plot_ternary_ppi_loss(ko_edge_states, shared_long_ternary, out_dir_vuln,
   disease_class_palette, tern_classes = c("SynapseSVs", "Mito", "Endo_iN_curated_Hundley"))
+
+Sensible - 560 vs 2300. Here's Part 2 - the all-combinations function + call:
+r# --- All combinations function ---
+plot_all_ternary_combinations <- function(df_states, shared_long_ternary, out_dir,
+                                          disease_class_palette, tags) {
+  combo_out_dir    <- file.path(out_dir, "plots/ternary/all_combinations")
+  combo_sd_out_dir <- file.path(out_dir, "sourcedata/ternary/all_combinations")
+  dir.create(combo_out_dir,    recursive = TRUE, showWarnings = FALSE)
+  dir.create(combo_sd_out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  combos   <- combn(tags, 3, simplify = FALSE)
+  n_combos <- length(combos)
+  message("Generating ", n_combos, " ternary plots from ", length(tags), " tags...")
+
+  # Precompute lost edges once
+  lost_edges <- df_states %>%
+    dplyr::filter(state_q == "lost") %>%
+    dplyr::select(key, genotype, neuron, DiseaseClass) %>%
+    dplyr::distinct()
+
+  for (i in seq_along(combos)) {
+    tern_classes <- combos[[i]]
+    tern_suffix  <- paste(tern_classes, collapse = "_")
+    if (i %% 50 == 0) message("[", i, "/", n_combos, "] ", tern_suffix)
+
+    tryCatch({
+      shared_class <- shared_long_ternary %>%
+        dplyr::filter(tag %in% tern_classes) %>%
+        dplyr::rename(class = tag) %>%
+        dplyr::distinct(key, class)
+      if (nrow(shared_class) == 0) return(NULL)
+
+      lost_by_class <- lost_edges %>%
+        dplyr::inner_join(shared_class, by = "key", relationship = "many-to-many") %>%
+        dplyr::group_by(genotype, neuron, DiseaseClass, class) %>%
+        dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
+
+      loss_wide <- lost_by_class %>%
+        tidyr::pivot_wider(names_from = class, values_from = n_lost, values_fill = 0)
+
+      for (tc in tern_classes) if (!tc %in% names(loss_wide)) loss_wide[[tc]] <- 0
+
+      loss_wide <- loss_wide %>%
+        dplyr::mutate(
+          total = .data[[tern_classes[1]]] + .data[[tern_classes[2]]] + .data[[tern_classes[3]]],
+          p_1   = .data[[tern_classes[1]]] / total,
+          p_2   = .data[[tern_classes[2]]] / total,
+          p_3   = .data[[tern_classes[3]]] / total) %>%
+        dplyr::filter(total > 0, !is.na(DiseaseClass))
+
+      if (nrow(loss_wide) < 3) return(NULL)
+
+      disease_classes <- loss_wide %>%
+        dplyr::group_by(DiseaseClass, neuron) %>%
+        dplyr::summarise(n_geno = dplyr::n(), .groups = "drop") %>%
+        dplyr::filter(n_geno >= 3) %>%
+        dplyr::distinct(DiseaseClass) %>%
+        dplyr::pull(DiseaseClass)
+      disease_classes <- intersect(unique(loss_wide$DiseaseClass), disease_classes)
+      if (length(disease_classes) == 0) return(NULL)
+
+      n_dc <- length(disease_classes)
+      pdf(file.path(combo_out_dir, paste0("ternary_", tern_suffix, ".pdf")),
+          width = 3 * n_dc, height = 7)
+      par(mfrow = c(2, n_dc), mar = c(1, 1, 2, 1), oma = c(0, 0, 3, 0))
+
+      for (nt in c("iN", "iDA")) {
+        for (dc in disease_classes) {
+          dd <- loss_wide %>% dplyr::filter(neuron == nt, DiseaseClass == dc)
+          Ternary::TernaryPlot(
+            alab = tern_classes[1], blab = tern_classes[2], clab = tern_classes[3],
+            lab.cex = 0.5, grid.lines = 4, grid.lty = "dashed", grid.col = "skyblue",
+            grid.lwd = 0.25, grid.minor.lines = 0, axis.cex = 0.5,
+            main = paste0(dc, "\n(", nt, ")"))
+          if (nrow(dd) >= 3) {
+            coords <- as.matrix(dd[, c("p_1", "p_2", "p_3")])
+            if (nrow(coords) >= 3) tryCatch(
+              Ternary::TernaryDensityContour(coords, resolution = 50,
+                col = function(n) grey.colors(n, start = 1, end = 0.1),
+                filled = TRUE, nlevels = 10, lwd = 0.25, labcex = 0.3),
+              error = function(e) NULL)
+            Ternary::TernaryPoints(coords, pch = 19, cex = 0.8, col = "red")
+            Ternary::TernaryText(coords, labels = dd$genotype, cex = 0.5,
+                                 pos = 3, offset = 0.3, col = "red")
+          }
+        }
+      }
+      mtext("Each KO: % lost PPIs per annotation. Darker = more KOs with similar profile.",
+            outer = TRUE, cex = 0.6, line = 0.5)
+      dev.off()
+
+      readr::write_csv(loss_wide, file.path(combo_sd_out_dir,
+        paste0("ternary_", tern_suffix, "_sourcedata.csv")))
+
+    }, error = function(e) NULL)
+  }
+  message("Done. ", n_combos, " combinations processed.")
+}
+
+# --- Run: 16-tag curated subset (560 combinations) ---
+ternary_tags_16 <- c(
+  "Golgi", "EarlyEndosome", "RecyclingEndosome", "Endo_iN_curated_Hundley",
+  "OXPHOS", "MitoIMS", "MitoMatrix", "MitoMIM", "mtComplexI",
+  "Lysosome", "Presynaptic", "Postsynaptic", "SynapseSVs",
+  "Svendocytosis", "Svexocytosis", "SVfusion")
+
+plot_all_ternary_combinations(ko_edge_states, shared_long_ternary, out_dir_vuln,
+  disease_class_palette, tags = ternary_tags_16)
+
+message("Chunk 9 complete: Ternary plots")
 ```
 
 
