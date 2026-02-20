@@ -18506,7 +18506,7 @@ message(strrep("=", 70))
 
 
 
-## Chunk 11: Sphingosine Pathway Disruption Analysis
+## Chunk 14: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
 # Sphingosine Pathway Disruption Analysis
@@ -18525,17 +18525,18 @@ message("Sphingosine Pathway Disruption Analysis...")
 out_dir_sphingosine <- file.path(out_dir_vuln, "sphingosine_pathway")
 dir.create(out_dir_sphingosine, recursive = TRUE, showWarnings = FALSE)
 
+
 # -----------------------------------------------------------------------------
-# 7.1 Define pathway structure (depth from sphingosine)
+# 14.1 Define pathway structure (depth from sphingosine)
 # -----------------------------------------------------------------------------
 sphingo_pathway <- data.frame(
-  gene = c("HEXA", "HEXB", "GBA1", "SMPD1", "ASAH1", "PSAP"),
-  branch = c("ganglioside", "ganglioside", "glucocerebroside", "sphingomyelin", "downstream", "activator"),
-  depth_from_ceramide = c(3, 3, 1, 1, -1, 0),
-  depth_from_sphingosine = c(4, 4, 2, 2, 1, 1),  # +1 from ceramide depth (ASAH1 at depth 1)
-  substrate = c("GM2", "GM2", "Glucocerebroside", "Sphingomyelin", "Ceramide", "multiple"),
-  product = c("GM3", "GM3", "Ceramide", "Ceramide", "Sphingosine", "multiple"),
-  disease = c("Tay-Sachs", "Sandhoff", "Gaucher", "Niemann-Pick", "Farber", "Saposin deficiency"),
+  gene                   = c("HEXA", "HEXB", "GBA1", "SMPD1", "ASAH1", "PSAP"),
+  branch                 = c("ganglioside", "ganglioside", "glucocerebroside", "sphingomyelin", "downstream", "activator"),
+  depth_from_ceramide    = c(3, 3, 1, 1, -1, 0),
+  depth_from_sphingosine = c(4, 4, 2, 2, 1, 1),
+  substrate              = c("GM2", "GM2", "Glucocerebroside", "Sphingomyelin", "Ceramide", "multiple"),
+  product                = c("GM3", "GM3", "Ceramide", "Ceramide", "Sphingosine", "multiple"),
+  disease                = c("Tay-Sachs", "Sandhoff", "Gaucher", "Niemann-Pick", "Farber", "Saposin deficiency"),
   stringsAsFactors = FALSE
 )
 
@@ -18545,35 +18546,36 @@ readr::write_csv(sphingo_pathway, file.path(out_dir_sphingosine, "sphingo_pathwa
 
 
 # -----------------------------------------------------------------------------
-# 7.2 Extract PPI loss profiles for sphingolipidosis KOs
+# 14.2 Extract PPI loss profiles for sphingolipidosis KOs
 # -----------------------------------------------------------------------------
-sphingo_genes <- sphingo_pathway$gene
+sphingo_genes      <- sphingo_pathway$gene
 sphingo_edge_states <- ko_edge_states %>% dplyr::filter(genotype %in% sphingo_genes)
 message("Edge states for sphingolipidosis KOs: ", nrow(sphingo_edge_states))
 
 sphingo_loss_wide <- sphingo_edge_states %>%
-  dplyr::select(key, genotype, neuron, state) %>%
-  dplyr::mutate(lost = as.integer(state == "lost"), sample = paste(genotype, neuron, sep = "_")) %>%
+  dplyr::select(key, genotype, neuron, state_q) %>%
+  dplyr::mutate(lost = as.integer(state_q == "lost"), sample = paste(genotype, neuron, sep = "_")) %>%
   dplyr::select(key, sample, lost) %>%
   tidyr::pivot_wider(names_from = sample, values_from = lost, values_fill = 0)
 
 message("PPI loss matrix: ", nrow(sphingo_loss_wide), " edges x ", ncol(sphingo_loss_wide) - 1, " samples")
+readr::write_csv(sphingo_loss_wide, file.path(out_dir_sphingosine, "sphingo_loss_wide_q.csv"))
 
 
 # -----------------------------------------------------------------------------
-# 7.3 Compute pairwise Jaccard similarity of lost PPIs
+# 14.3 Compute pairwise Jaccard similarity of lost PPIs
 # -----------------------------------------------------------------------------
 compute_jaccard <- function(x, y) {
   intersection <- sum(x == 1 & y == 1)
-  union <- sum(x == 1 | y == 1)
+  union        <- sum(x == 1 | y == 1)
   if (union == 0) return(NA)
   return(intersection / union)
 }
 
 sample_cols <- setdiff(colnames(sphingo_loss_wide), "key")
-loss_mat <- as.matrix(sphingo_loss_wide[, sample_cols])
+loss_mat    <- as.matrix(sphingo_loss_wide[, sample_cols])
 
-n_samples <- length(sample_cols)
+n_samples   <- length(sample_cols)
 jaccard_mat <- matrix(NA, n_samples, n_samples, dimnames = list(sample_cols, sample_cols))
 
 for (i in 1:n_samples) {
@@ -18583,11 +18585,12 @@ for (i in 1:n_samples) {
 }
 
 message("Jaccard similarity matrix computed")
-readr::write_csv(as.data.frame(jaccard_mat) %>% tibble::rownames_to_column("sample"), file.path(out_dir_sphingosine, "jaccard_similarity_matrix.csv"))
+readr::write_csv(as.data.frame(jaccard_mat) %>% tibble::rownames_to_column("sample"),
+  file.path(out_dir_sphingosine, "jaccard_similarity_matrix.csv"))
 
 
 # -----------------------------------------------------------------------------
-# 7.4 Pathway distance (from sphingosine) vs similarity analysis
+# 14.4 Pathway distance (from sphingosine) vs similarity analysis
 # -----------------------------------------------------------------------------
 pathway_dist_sphingo <- function(gene_a, gene_b, pathway_df) {
   depth_a <- pathway_df$depth_from_sphingosine[pathway_df$gene == gene_a]
@@ -18610,22 +18613,21 @@ all_pairs <- expand.grid(gene_a = sphingo_genes, gene_b = sphingo_genes, strings
   dplyr::rowwise() %>%
   dplyr::mutate(
     pathway_distance_sphingo = pathway_dist_sphingo(gene_a, gene_b, sphingo_pathway),
-    same_branch = sphingo_pathway$branch[sphingo_pathway$gene == gene_a] == sphingo_pathway$branch[sphingo_pathway$gene == gene_b],
-    jaccard_iN = get_pair_similarity(gene_a, gene_b, jaccard_mat, "iN"),
-    jaccard_iDA = get_pair_similarity(gene_a, gene_b, jaccard_mat, "iDA")
+    same_branch  = sphingo_pathway$branch[sphingo_pathway$gene == gene_a] == sphingo_pathway$branch[sphingo_pathway$gene == gene_b],
+    jaccard_iN   = get_pair_similarity(gene_a, gene_b, jaccard_mat, "iN"),
+    jaccard_iDA  = get_pair_similarity(gene_a, gene_b, jaccard_mat, "iDA")
   ) %>%
   dplyr::ungroup()
 
 readr::write_csv(all_pairs, file.path(out_dir_sphingosine, "pathway_distance_sphingo_vs_similarity.csv"))
 
-# Plot: pathway distance (from sphingosine) vs Jaccard similarity
 p_dist_jaccard <- ggplot2::ggplot(all_pairs, ggplot2::aes(x = pathway_distance_sphingo, y = jaccard_iN)) +
   ggplot2::geom_point(ggplot2::aes(color = same_branch), size = 3, alpha = 0.8) +
   ggplot2::geom_smooth(method = "lm", se = TRUE, color = "grey40", linetype = "dashed") +
   ggrepel::geom_text_repel(ggplot2::aes(label = paste(gene_a, gene_b, sep = "-")), size = 2, max.overlaps = 20) +
   ggplot2::scale_color_manual(values = c("FALSE" = "#E41A1C", "TRUE" = "#377EB8"), name = "Same branch") +
-  ggplot2::labs(x = "Pathway distance (steps from sphingosine)", y = "Jaccard similarity (lost PPIs)",
-                title = "Sphingolipidosis: pathway distance from sphingosine vs PPI disruption similarity") +
+  ggplot2::labs(x = "Pathway distance (steps from sphingosine)", y = "Jaccard similarity (lost PPIs, q-sig)",
+    title = "Sphingolipidosis: pathway distance from sphingosine vs PPI disruption similarity") +
   ggplot2::theme_bw(base_size = 6) +
   ggplot2::theme(panel.grid = ggplot2::element_blank())
 
@@ -18633,21 +18635,21 @@ ggplot2::ggsave(file.path(out_dir_sphingosine, "pathway_distance_sphingo_vs_jacc
 
 
 # -----------------------------------------------------------------------------
-# 7.5 Key comparisons for sphingosine-proximal genes
+# 14.5 Key comparisons for sphingosine-proximal genes
 # -----------------------------------------------------------------------------
 comparisons_sphingo <- list(
-  "ASAH1_vs_GBA1" = list(a = "ASAH1", b = "GBA1", hypothesis = "ASAH1 closest to sphingosine, GBA1 produces ceramide"),
+  "ASAH1_vs_GBA1"  = list(a = "ASAH1", b = "GBA1",  hypothesis = "ASAH1 closest to sphingosine, GBA1 produces ceramide"),
   "ASAH1_vs_SMPD1" = list(a = "ASAH1", b = "SMPD1", hypothesis = "ASAH1 closest to sphingosine, SMPD1 produces ceramide"),
-  "ASAH1_vs_PSAP" = list(a = "ASAH1", b = "PSAP", hypothesis = "Both proximal to sphingosine (depth 1)"),
-  "GBA1_vs_SMPD1" = list(a = "GBA1", b = "SMPD1", hypothesis = "Both at ceramide level (depth 2)"),
-  "HEXA_vs_HEXB" = list(a = "HEXA", b = "HEXB", hypothesis = "Same substrate (GM2), positive control"),
-  "HEXA_vs_ASAH1" = list(a = "HEXA", b = "ASAH1", hypothesis = "Distal (depth 4) vs proximal (depth 1)")
+  "ASAH1_vs_PSAP"  = list(a = "ASAH1", b = "PSAP",  hypothesis = "Both proximal to sphingosine (depth 1)"),
+  "GBA1_vs_SMPD1"  = list(a = "GBA1",  b = "SMPD1", hypothesis = "Both at ceramide level (depth 2)"),
+  "HEXA_vs_HEXB"   = list(a = "HEXA",  b = "HEXB",  hypothesis = "Same substrate (GM2), positive control"),
+  "HEXA_vs_ASAH1"  = list(a = "HEXA",  b = "ASAH1", hypothesis = "Distal (depth 4) vs proximal (depth 1)")
 )
 
 comparison_results_sphingo <- data.frame(
-  comparison = names(comparisons_sphingo),
-  hypothesis = sapply(comparisons_sphingo, function(x) x$hypothesis),
-  jaccard_iN = sapply(comparisons_sphingo, function(x) get_pair_similarity(x$a, x$b, jaccard_mat, "iN")),
+  comparison  = names(comparisons_sphingo),
+  hypothesis  = sapply(comparisons_sphingo, function(x) x$hypothesis),
+  jaccard_iN  = sapply(comparisons_sphingo, function(x) get_pair_similarity(x$a, x$b, jaccard_mat, "iN")),
   jaccard_iDA = sapply(comparisons_sphingo, function(x) get_pair_similarity(x$a, x$b, jaccard_mat, "iDA")),
   stringsAsFactors = FALSE
 )
@@ -18658,44 +18660,39 @@ readr::write_csv(comparison_results_sphingo, file.path(out_dir_sphingosine, "key
 
 
 # -----------------------------------------------------------------------------
-# 7.6 Jaccard similarity heatmap
+# 14.6 Jaccard similarity heatmap
 # -----------------------------------------------------------------------------
 pheatmap::pheatmap(
   jaccard_mat,
   color = colorRampPalette(c("white", "#2166AC"))(100),
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
-  display_numbers = TRUE,
-  number_format = "%.2f",
-  fontsize = 6,
-  fontsize_number = 5,
-  border_color = NA,
-  main = "Jaccard similarity of lost PPIs\n(Sphingolipidosis KOs - significance filtered)",
+  cluster_rows = TRUE, cluster_cols = TRUE,
+  display_numbers = TRUE, number_format = "%.2f",
+  fontsize = 6, fontsize_number = 5, border_color = NA,
+  main = "Jaccard similarity of lost PPIs (q-sig)\n(Sphingolipidosis KOs)",
   filename = file.path(out_dir_sphingosine, "jaccard_similarity_heatmap.pdf"),
   width = 6, height = 6
 )
 
 
 # -----------------------------------------------------------------------------
-# 7.7 Sphingosine-proximal convergence test
+# 11.7 Sphingosine-proximal convergence test
 # -----------------------------------------------------------------------------
-sphingo_proximal_genes <- c("ASAH1", "PSAP")  # depth 1 from sphingosine
-ceramide_level_genes <- c("GBA1", "SMPD1")    # depth 2 from sphingosine
+sphingo_proximal_genes <- c("ASAH1", "PSAP")
+ceramide_level_genes   <- c("GBA1", "SMPD1")
 
-# Compare within-group vs between-group similarity
 within_proximal <- get_pair_similarity("ASAH1", "PSAP", jaccard_mat, "iN")
-within_ceramide <- get_pair_similarity("GBA1", "SMPD1", jaccard_mat, "iN")
-between_groups <- mean(c(
-  get_pair_similarity("ASAH1", "GBA1", jaccard_mat, "iN"),
+within_ceramide <- get_pair_similarity("GBA1",  "SMPD1", jaccard_mat, "iN")
+between_groups  <- mean(c(
+  get_pair_similarity("ASAH1", "GBA1",  jaccard_mat, "iN"),
   get_pair_similarity("ASAH1", "SMPD1", jaccard_mat, "iN"),
-  get_pair_similarity("PSAP", "GBA1", jaccard_mat, "iN"),
-  get_pair_similarity("PSAP", "SMPD1", jaccard_mat, "iN")
+  get_pair_similarity("PSAP",  "GBA1",  jaccard_mat, "iN"),
+  get_pair_similarity("PSAP",  "SMPD1", jaccard_mat, "iN")
 ), na.rm = TRUE)
 
 message("\n--- Sphingosine convergence test ---")
 message("Within sphingosine-proximal (ASAH1-PSAP): ", round(within_proximal, 3))
-message("Within ceramide-level (GBA1-SMPD1): ", round(within_ceramide, 3))
-message("Between groups mean: ", round(between_groups, 3))
+message("Within ceramide-level (GBA1-SMPD1): ",       round(within_ceramide, 3))
+message("Between groups mean: ",                       round(between_groups, 3))
 
 convergence_summary <- data.frame(
   comparison = c("within_sphingo_proximal", "within_ceramide_level", "between_groups"),
@@ -18703,7 +18700,7 @@ convergence_summary <- data.frame(
 )
 readr::write_csv(convergence_summary, file.path(out_dir_sphingosine, "convergence_test_summary.csv"))
 
-message("\n=== Module 7: Sphingosine pathway analysis complete ===")
+message("\n=== Module 11: Sphingosine pathway analysis complete ===")
 message("Output: ", out_dir_sphingosine)
 ```
 
@@ -18948,7 +18945,7 @@ message("=== Chunk 12: Ceramide pathway analysis complete ===")
 
 
 
-## Chunk 8: Export Gain Analysis Metrics
+## Chunk 14: Export Gain Analysis Metrics
 ```{r gain_metrics}
 # =============================================================================
 # Export Gain Analysis Metrics (CSV for future implementation)
@@ -19053,7 +19050,7 @@ message("  - loss_gain_by_disease.csv")
 ```
 
 
-## Chunk 9: Master Summary Output
+## Chunk 15: Master Summary Output
 ```{r summary}
 # =============================================================================
 # Master Summary Output
@@ -19082,6 +19079,8 @@ message("    - Sphingosine pathway analysis")
 
 message("\nOutput directory: ", out_dir_vuln)
 ```
+
+
 
 # OLD: Module 9: KO Vulnerability Analysis v5
 ## Chunk 0: Setup and Configuration
