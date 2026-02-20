@@ -16703,6 +16703,193 @@ for (nt in c("iN", "iDA")) {
 
   save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_complex_by_annotation_", nt), plot_data, width = 5, height = 6)
 }
+
+
+ -----------------------------------------------------------------------------
+# 7.3 Per-KO Barplots by Annotation (faceted, separate iN and iDA)
+# -----------------------------------------------------------------------------
+
+disease_class_lookup <- disease_map %>%
+  dplyr::distinct(sample, DiseaseClass) %>%
+  dplyr::rename(genotype = sample)
+
+# --- 7.3.1 Lost PPI per KO, faceted by annotation ---
+ppi_ko_by_annot <- ko_summary_by_organelle %>%
+  dplyr::filter(!is.na(shared_organelle))
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- ppi_ko_by_annot %>% dplyr::filter(neuron == nt)
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_lost_q, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction PPIs lost (q<0.05)", title = paste0("Lost PPIs per KO by annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), strip.background = ggplot2::element_rect(fill = "white"))
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_ppi_perKO_", nt), plot_data, width = 14, height = 10)
+}
+
+# --- 7.3.2 Lost Trimers per KO, faceted by annotation ---
+trimer_ko_by_annot <- trimer_ko_states %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(genotype, neuron, shared_organelle) %>%
+  dplyr::summarise(n_total = dplyr::n(), n_disrupted = sum(state_q == "disrupted"), frac_disrupted = n_disrupted / n_total, .groups = "drop")
+trimer_ko_by_annot <- dplyr::left_join(trimer_ko_by_annot, disease_class_lookup, by = "genotype")
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- trimer_ko_by_annot %>% dplyr::filter(neuron == nt)
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_disrupted, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction trimers disrupted (q<0.05)", title = paste0("Lost Trimers per KO by annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), strip.background = ggplot2::element_rect(fill = "white"))
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_trimer_perKO_", nt), plot_data, width = 14, height = 10)
+}
+
+# --- 7.3.3 Lost Tetramers per KO, faceted by annotation ---
+tetramer_ko_by_annot <- tetramer_ko_states %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(genotype, neuron, shared_organelle) %>%
+  dplyr::summarise(n_total = dplyr::n(), n_disrupted = sum(state_q == "disrupted"), frac_disrupted = n_disrupted / n_total, .groups = "drop")
+tetramer_ko_by_annot <- dplyr::left_join(tetramer_ko_by_annot, disease_class_lookup, by = "genotype")
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- tetramer_ko_by_annot %>% dplyr::filter(neuron == nt)
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_disrupted, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction tetramers disrupted (q<0.05)", title = paste0("Lost Tetramers per KO by annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), strip.background = ggplot2::element_rect(fill = "white"))
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_tetramer_perKO_", nt), plot_data, width = 14, height = 10)
+}
+
+# --- 7.3.4 Lost Complexes per KO, faceted by annotation ---
+complex_ko_by_annot <- complex_ko_states %>%
+  dplyr::filter(!is.na(shared_organelle)) %>%
+  dplyr::group_by(genotype, neuron, shared_organelle) %>%
+  dplyr::summarise(n_total = dplyr::n(), n_disrupted = sum(state_q == "disrupted"), frac_disrupted = n_disrupted / n_total, .groups = "drop")
+complex_ko_by_annot <- dplyr::left_join(complex_ko_by_annot, disease_class_lookup, by = "genotype")
+
+for (nt in c("iN", "iDA")) {
+  plot_data <- complex_ko_by_annot %>% dplyr::filter(neuron == nt)
+  if (nrow(plot_data) == 0) next
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_disrupted, fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
+    ggplot2::labs(x = NULL, y = "Fraction complexes disrupted (q<0.05)", title = paste0("Lost Complexes per KO by annotation (", nt, ")")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), strip.background = ggplot2::element_rect(fill = "white"))
+
+  save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_complex_perKO_", nt), plot_data, width = 14, height = 10)
+}
+
+
+
+# -----------------------------------------------------------------------------
+# 7.4 Per-KO bubble plots: iN vs iDA by annotation
+# -----------------------------------------------------------------------------
+
+plot_ko_bubble_in_vs_ida <- function(df, metric_name, state_col, annot_col, out_subdir) {
+
+  out_path <- file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble", out_subdir)
+  dir.create(out_path, recursive = TRUE, showWarnings = FALSE)
+  sourcedata_path <- file.path(out_dir_vuln, "sourcedata", "per_ko_bubble", out_subdir)
+  dir.create(sourcedata_path, recursive = TRUE, showWarnings = FALSE)
+
+  counts <- df %>%
+    dplyr::filter(.data[[state_col]] %in% c("lost", "disrupted")) %>%
+    dplyr::group_by(genotype, neuron, .data[[annot_col]]) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
+
+  totals <- df %>%
+    dplyr::group_by(genotype, neuron, .data[[annot_col]]) %>%
+    dplyr::summarise(n_total = dplyr::n(), .groups = "drop")
+
+  counts <- dplyr::left_join(counts, totals, by = c("genotype", "neuron", annot_col)) %>%
+    dplyr::mutate(frac_lost = ifelse(n_total > 0, n_lost / n_total, NA_real_)) %>%
+    dplyr::filter(!is.na(.data[[annot_col]]))
+
+  counts_wide <- counts %>%
+    tidyr::pivot_wider(names_from = neuron, values_from = c(n_lost, frac_lost, n_total), values_fill = 0)
+
+  if (!all(c("n_lost_iN", "n_lost_iDA", "frac_lost_iN", "frac_lost_iDA") %in% colnames(counts_wide))) {
+    message("  Skipping ", metric_name, ": missing iN/iDA columns")
+    return(invisible(NULL))
+  }
+
+  for (geno in unique(counts_wide$genotype)) {
+    df_ko <- counts_wide %>% dplyr::filter(genotype == geno)
+    if (nrow(df_ko) == 0) next
+    message("Processing: ", geno, " | nrow: ", nrow(df_ko), " | max_abs: ", max(c(df_ko$n_lost_iN, df_ko$n_lost_iDA), na.rm = TRUE))
+    df_ko <- df_ko %>% dplyr::mutate(total_lost = n_lost_iN + n_lost_iDA)
+
+    readr::write_csv(df_ko, file.path(sourcedata_path, paste0(geno, "_sourcedata.csv")))
+
+    max_val_abs <- max(c(df_ko$n_lost_iN, df_ko$n_lost_iDA), na.rm = TRUE)
+    if (is.finite(max_val_abs) && max_val_abs > 0) {
+      axis_lim_abs <- c(0, max_val_abs * 1.1)
+      n_annot <- length(unique(df_ko[[annot_col]]))
+
+      p_abs <- ggplot2::ggplot(df_ko, ggplot2::aes(x = n_lost_iN, y = n_lost_iDA, fill = .data[[annot_col]], size = total_lost)) +
+        ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+        ggplot2::geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
+        ggplot2::scale_fill_manual(values = colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_annot)) +
+        ggrepel::geom_text_repel(ggplot2::aes(label = .data[[annot_col]]), size = 2, max.overlaps = 30, seed = 42) +
+        ggplot2::scale_size_continuous(range = c(2, 10), guide = "none") +
+        ggplot2::coord_fixed(ratio = 1, xlim = axis_lim_abs, ylim = axis_lim_abs, clip = "on") +
+        ggplot2::labs(title = paste0(geno, " - Lost ", metric_name, " (absolute, q<0.05)"), x = paste0("Lost in iN"), y = paste0("Lost in iDA")) +
+        ggplot2::theme_bw(base_size = 6) +
+        ggplot2::theme(panel.grid = ggplot2::element_blank(), legend.position = "none")
+
+      ggplot2::ggsave(file.path(out_path, paste0(geno, "_bubble_absolute_iN_vs_iDA.pdf")), p_abs, width = 6, height = 5, device = cairo_pdf)
+    }
+
+    max_val_rel <- max(c(df_ko$frac_lost_iN, df_ko$frac_lost_iDA), na.rm = TRUE)
+    if (is.finite(max_val_rel) && max_val_rel > 0) {
+      axis_lim_rel <- c(0, max_val_rel * 1.1)
+      n_annot <- length(unique(df_ko[[annot_col]]))
+
+      p_rel <- ggplot2::ggplot(df_ko, ggplot2::aes(x = frac_lost_iN, y = frac_lost_iDA, fill = .data[[annot_col]], size = total_lost)) +
+        ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+        ggplot2::geom_point(shape = 21, alpha = 0.8, stroke = 0.2) +
+        ggplot2::scale_fill_manual(values = colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_annot)) +
+        ggrepel::geom_text_repel(ggplot2::aes(label = .data[[annot_col]]), size = 2, max.overlaps = 30, seed = 42) +
+        ggplot2::scale_size_continuous(range = c(2, 10), guide = "none") +
+        ggplot2::coord_fixed(ratio = 1, xlim = axis_lim_rel, ylim = axis_lim_rel, clip = "on") +
+        ggplot2::labs(title = paste0(geno, " - Lost ", metric_name, " (relative, q<0.05)"), x = "Fraction lost in iN", y = "Fraction lost in iDA") +
+        ggplot2::theme_bw(base_size = 6) +
+        ggplot2::theme(panel.grid = ggplot2::element_blank(), legend.position = "none")
+
+      ggplot2::ggsave(file.path(out_path, paste0(geno, "_bubble_relative_iN_vs_iDA.pdf")), p_rel, width = 6, height = 5, device = cairo_pdf)
+    }
+  }
+  message("  Saved per-KO bubble plots + source data for ", metric_name)
+}
+
+# state_col is now "state_q" throughout; complex uses shared_organelle
+plot_ko_bubble_in_vs_ida(ko_edge_states, "PPI", "state_q", "shared_organelle", "ppi")
+plot_ko_bubble_in_vs_ida(trimer_ko_states, "Trimer", "state_q", "shared_organelle", "trimer")
+plot_ko_bubble_in_vs_ida(tetramer_ko_states, "Tetramer", "state_q", "shared_organelle", "tetramer")
+plot_ko_bubble_in_vs_ida(complex_ko_states, "Complex", "state_q", "shared_organelle", "complex")
+
+
+
+
 ```
 
 
