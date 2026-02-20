@@ -17280,52 +17280,54 @@ message("Layouts precomputed: ", length(baseline_layouts))
 plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
                                     ko_edge_states, complex_evidence,
                                     complex_ko_states, baseline_layouts,
-                                    out_dir, out_dir_sd) {
+                                    out_dir, out_dir_sd,
+                                    sig_col = "state_q") {   # <-- new param
   bl <- baseline_layouts[[as.character(cx_idx)]]
   if (is.null(bl)) return(invisible(NULL))
   members    <- bl$members
   layout_mat <- bl$layout
 
-  # Edge states for this KO x neuron x complex
   edges_ko <- ko_edge_states %>%
     dplyr::filter(.data$genotype == ko_geno, .data$neuron == ko_neur,
                   Gene1 %in% members, Gene2 %in% members) %>%
-    dplyr::select(key, Gene1, Gene2, state_q, RFprob, AFMprob, CFprob)
+    dplyr::select(key, Gene1, Gene2, state_q, state_p, RFprob, AFMprob, CFprob)
   if (nrow(edges_ko) == 0) return(invisible(NULL))
 
-  # Complex-level summary
   cx_sum <- complex_ko_states %>%
     dplyr::filter(.data$complex_idx == cx_idx, .data$genotype == ko_geno, .data$neuron == ko_neur)
   if (nrow(cx_sum) == 0) return(invisible(NULL))
-  n_lost   <- cx_sum$n_lost_q[1]
-  frac_lost <- cx_sum$frac_lost_q[1]
+
+  # Use correct sig column for complex-level summary
+  n_lost_col   <- sub("state_", "n_lost_",   sig_col)
+  frac_lost_col <- sub("state_", "frac_lost_", sig_col)
+  n_lost    <- cx_sum[[n_lost_col]][1]
+  frac_lost <- cx_sum[[frac_lost_col]][1]
   pct_lost  <- round(frac_lost * 100, 1)
 
-  # Complex metadata
   cx_meta  <- complex_evidence %>% dplyr::filter(.data$complex_idx == cx_idx)
   cx_size  <- cx_meta$complex_size[1]
   cx_name  <- dplyr::coalesce(cx_meta$corum_matched_name[1], "")
   cx_name  <- if (nchar(cx_name) > 0) paste0("\n", substr(cx_name, 1, 50)) else ""
 
-  # Build graph - edge order preserved from edges_ko rows
+  # Edge state from the correct column
+  edge_state_vec <- edges_ko[[sig_col]]
+
   g_ko <- igraph::graph_from_data_frame(edges_ko %>% dplyr::select(Gene1, Gene2),
     directed = FALSE, vertices = data.frame(name = members))
 
-  # Edge attributes (row order matches edges_ko)
-  igraph::E(g_ko)$state  <- edges_ko$state_q
-  igraph::E(g_ko)$color  <- ifelse(edges_ko$state_q == "lost", "#CC0000", "grey40")
-  igraph::E(g_ko)$lty    <- ifelse(edges_ko$state_q == "lost", 2L, 1L)
-  igraph::E(g_ko)$width  <- 1.8
+  igraph::E(g_ko)$color <- ifelse(edge_state_vec == "lost", "#CC0000", "grey40")
+  igraph::E(g_ko)$lty   <- ifelse(edge_state_vec == "lost", 2L, 1L)
+  igraph::E(g_ko)$width <- 1.8
 
-  # Layout: match vertex order in g_ko
   vnames      <- igraph::V(g_ko)$name
   layout_plot <- layout_mat[match(vnames, rownames(layout_mat)), , drop = FALSE]
 
   vsize <- ifelse(cx_size > 30, 6, ifelse(cx_size > 15, 8, 10))
   vlcex <- ifelse(cx_size > 30, 0.4, ifelse(cx_size > 15, 0.5, 0.6))
 
+  sig_label  <- toupper(sub("state_", "", sig_col))   # "Q" or "P"
   plot_title <- paste0(
-    "Complex ", cx_idx, " | ", ko_geno, " (", ko_neur, ")",
+    "Complex ", cx_idx, " | ", ko_geno, " (", ko_neur, ") [", sig_label, "]",
     "\nSize: ", cx_size, " | Edges: ", nrow(edges_ko),
     " | Lost: ", n_lost, " (", pct_lost, "%)", cx_name)
 
@@ -17334,25 +17336,21 @@ plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
 
   pdf(pdf_path, width = 8, height = 8)
   par(mar = c(1, 1, 4, 1))
-  plot(g_ko,
-       layout            = layout_plot,
-       vertex.size       = vsize,
-       vertex.label.cex  = vlcex,
-       vertex.color      = "grey90",
-       vertex.frame.color = "grey50",
-       edge.color        = igraph::E(g_ko)$color,
-       edge.width        = igraph::E(g_ko)$width,
-       edge.lty          = igraph::E(g_ko)$lty,
-       main              = plot_title)
+  plot(g_ko, layout = layout_plot,
+       vertex.size = vsize, vertex.label.cex = vlcex,
+       vertex.color = "grey90", vertex.frame.color = "grey50",
+       edge.color = igraph::E(g_ko)$color,
+       edge.width = igraph::E(g_ko)$width,
+       edge.lty   = igraph::E(g_ko)$lty,
+       main = plot_title)
   legend("bottomleft", legend = c("Retained", "Lost"),
     col = c("grey40", "#CC0000"), lwd = 2, lty = c(1, 2), bty = "n", cex = 0.7,
-    title = "PPI state")
+    title = paste0("PPI state (", sig_label, ")"))
   dev.off()
 
-  # Sourcedata
   readr::write_csv(
     edges_ko %>% dplyr::mutate(complex_idx = cx_idx, genotype = ko_geno, neuron = ko_neur,
-                                n_lost_q = n_lost, frac_lost_q = frac_lost),
+                                sig_col = sig_col, n_lost = n_lost, frac_lost = frac_lost),
     file.path(out_dir_sd, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_sourcedata.csv")))
   invisible(NULL)
 }
@@ -17381,6 +17379,7 @@ for (i in seq_len(nrow(disrupted_cx_ko))) {
   if (identical(result, "error")) { skipped_cx <- skipped_cx + 1 } else { plot_count_cx <- plot_count_cx + 1 }
   if ((plot_count_cx + skipped_cx) %% 50 == 0) message("  Progress: ", plot_count_cx, " plots / ", skipped_cx, " skipped...")
 }
+
 
 message("Complex network plots complete.")
 message("  Generated: ", plot_count_cx, " | Skipped: ", skipped_cx)
