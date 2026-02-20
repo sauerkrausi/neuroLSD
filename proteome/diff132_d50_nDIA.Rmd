@@ -15859,7 +15859,7 @@ out_dir_vuln <- file.path(out_dir_ppi_dual, "KOxNeuron_eval_v6")
 dir.create(file.path(out_dir_vuln, "plots/global"), recursive = TRUE, showWarnings = FALSE)
 #dir.create(file.path(out_dir_vuln, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/ternary"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_vuln, "plots/disease_class"), recursive = TRUE, showWarnings = FALSE)
+#dir.create(file.path(out_dir_vuln, "plots/disease_class"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/radar"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "plots/complexes"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "tables"), recursive = TRUE, showWarnings = FALSE)
@@ -18507,7 +18507,7 @@ message(strrep("=", 70))
 
 
 
-## Chunk 7: Sphingosine Pathway Disruption Analysis
+## Chunk 11: Sphingosine Pathway Disruption Analysis
 ```{r sphingosine}
 # =============================================================================
 # Sphingosine Pathway Disruption Analysis
