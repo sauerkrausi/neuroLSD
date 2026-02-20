@@ -19218,7 +19218,8 @@ ppi_gain_summary_q <- ko_edge_states %>%
     frac_lost        = n_lost / total_edges,
     loss_gain_ratio  = n_lost / (n_with_gain + 1),
     .groups = "drop"
-  )
+  ) %>% 
+  dplyr::filter(n_with_gain >0)
 
 readr::write_csv(ppi_gain_summary_q, file.path(out_dir_gain, "tables", "ppi_gain_summary_q.csv"))
 message("  Saved: ppi_gain_summary_q.csv")
