@@ -17335,6 +17335,61 @@ readr::write_csv(radar_data_iDA, file.path(out_dir_vuln, "tables", "radar_ppi_da
 
 
 
+# --- Plot: one line per genotype within a disease class ---
+plot_radar_diseaseclass <- function(radar_data_bygenotype, disease_class, disease_class_palette,
+                                    neuron_type, out_dir, radar_annotations, out_dir_sourcedata) {
+  dc_data <- radar_data_bygenotype %>% dplyr::filter(DiseaseClass == disease_class)
+  if (nrow(dc_data) == 0) return(invisible(NULL))
+
+  annot_cols   <- radar_annotations[radar_annotations %in% colnames(dc_data)]
+  if (length(annot_cols) < 3) return(invisible(NULL))
+
+  data_matrix  <- as.data.frame(dc_data[, annot_cols])
+  rownames(data_matrix) <- dc_data$genotype
+  max_val      <- max(data_matrix, na.rm = TRUE) * 1.1
+  if (max_val == 0) max_val <- 1
+  radar_df     <- rbind(rep(max_val, ncol(data_matrix)), rep(0, ncol(data_matrix)), data_matrix)
+  colnames(radar_df) <- annot_cols
+
+  n_geno       <- nrow(dc_data)
+  base_color   <- disease_class_palette[disease_class]
+  line_colors  <- colorRampPalette(c(base_color, adjustcolor(base_color, red.f = 1.3, green.f = 1.3, blue.f = 1.3)))(n_geno)
+  fill_colors  <- adjustcolor(line_colors, alpha.f = 0.1)
+
+  dc_label <- gsub("[^A-Za-z0-9]", "_", disease_class)
+  pdf(file.path(out_dir, paste0("radar_ppi_", dc_label, "_", neuron_type, ".pdf")), width = 8, height = 8)
+  par(mar = c(1, 1, 2, 1))
+  fmsb::radarchart(radar_df,
+    axistype   = 1,
+    pcol       = line_colors, pfcol = fill_colors,
+    plwd       = 2, plty = 1,
+    cglcol     = "grey70", cglty = 1, cglwd = 0.8,
+    axislabcol = "grey30",
+    vlcex      = 0.7, calcex = 0.6,
+    title      = paste0(disease_class, " - PPI Vulnerability (", neuron_type, ")\nLost PPIs per annotation"))
+  legend("topright", legend = dc_data$genotype, col = line_colors, lwd = 2, lty = 1, bty = "n", cex = 0.65)
+  dev.off()
+  message("  Saved: radar_ppi_", dc_label, "_", neuron_type, ".pdf")
+
+  # Sourcedata
+  src <- dc_data %>% dplyr::select(genotype, DiseaseClass, dplyr::all_of(annot_cols))
+  readr::write_csv(src, file.path(out_dir_sourcedata, paste0("radar_ppi_", dc_label, "_", neuron_type, "_sourcedata.csv")))
+}
+
+# --- Run per-disease-class radars ---
+disease_classes_present <- unique(na.omit(ko_edge_states$DiseaseClass))
+
+for (nt in c("iN", "iDA")) {
+  rd_bygenotype <- prepare_radar_data_by_genotype(ko_edge_states, shared_long_full, nt, radar_annotations)
+  for (dc in disease_classes_present) {
+    plot_radar_diseaseclass(rd_bygenotype, dc, disease_class_palette, nt,
+                            out_dir_radarDisClass, radar_annotations,
+                            file.path(out_dir_vuln, "sourcedata/radar"))
+  }
+}
+
+message("Radar plots complete.")
+
 ```
 
 
