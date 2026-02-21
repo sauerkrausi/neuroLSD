@@ -19426,6 +19426,561 @@ message("  q-sig outputs: ppi_gain_summary_q, protein_gain_summary_q, complex_ga
 message("  p-sig outputs: ppi_gain_summary_p, protein_gain_summary_p, complex_gain_metrics_p, loss_gain_by_disease_p")
 ```
 
+
+
+## Chunk 15: Multi-Genotype Timecourse (d30 & d50)
+```{r module15_timecourse_multi}
+# =============================================================================
+# Module 15: Multi-Genotype Timecourse PPI Analysis (d30 & d50)
+# d50: ko_edge_states (state_q/state_p); d30: computed from wide frame
+# =============================================================================
+message("Module 15: Multi-Genotype Timecourse (d30 & d50)...")
+
+out_dir_tc_multi <- file.path(out_dir_vuln, "timecourse_multi_genotype")
+dir.create(file.path(out_dir_tc_multi, "plots/global"),     recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tc_multi, "plots/by_genotype"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tc_multi, "sourcedata"),        recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tc_multi, "tables"),            recursive = TRUE, showWarnings = FALSE)
+
+genotypes_tc   <- c("ASAH1", "SMPD1", "GBA1", "GRN")
+neurons_tc     <- c("iN", "iDA")
+drop_thresh_tc <- drop_thresh   # reuse global threshold
+sig_thresh_tc  <- 1.301         # -log10(0.05)
+
+genotype_palette_tc <- c(ASAH1 = "#D53E4F", SMPD1 = "#F46D43", GBA1 = "#ABDDA4", GRN = "#66C2A5")
+
+
+# -----------------------------------------------------------------------------
+# 15.1 Helper: extract protein-level stats from wide day frame
+# -----------------------------------------------------------------------------
+extract_prot_stats <- function(df_wide, genotype, neuron) {
+  log2fc_col <- paste0(genotype, "_", neuron, "_log2_fold_change")
+  q_col      <- paste0(genotype, "_", neuron, "_neg_log10_q_value")
+  p_col      <- paste0(genotype, "_", neuron, "_neg_log10_p_value")
+  if (!log2fc_col %in% colnames(df_wide)) return(NULL)
+  df_wide %>%
+    dplyr::select(Genes, log2FC = dplyr::all_of(log2fc_col), neg_log10_q = dplyr::all_of(q_col), neg_log10_p = dplyr::all_of(p_col)) %>%
+    dplyr::filter(!is.na(Genes), Genes != "", !is.na(log2FC)) %>%
+    dplyr::mutate(genotype = genotype, neuron = neuron)
+}
+
+
+# -----------------------------------------------------------------------------
+# 16.2 Helper: compute edge states from protein stats + baseline
+# -----------------------------------------------------------------------------
+compute_tc_edge_states <- function(prot_stats, baseline_edges, drop_thresh, sig_thresh) {
+  detected <- unique(prot_stats$Genes)
+  edges <- baseline_edges %>% dplyr::filter(Gene1 %in% detected, Gene2 %in% detected)
+  edges %>%
+    dplyr::left_join(prot_stats %>% dplyr::select(Genes, log2FC, neg_log10_q, neg_log10_p), by = c("Gene1" = "Genes")) %>%
+    dplyr::rename(dA = log2FC, qA = neg_log10_q, pA = neg_log10_p) %>%
+    dplyr::left_join(prot_stats %>% dplyr::select(Genes, log2FC, neg_log10_q, neg_log10_p), by = c("Gene2" = "Genes")) %>%
+    dplyr::rename(dB = log2FC, qB = neg_log10_q, pB = neg_log10_p) %>%
+    dplyr::mutate(
+      state_q = dplyr::case_when(
+        (!is.na(dA) & dA < drop_thresh & !is.na(qA) & qA > sig_thresh) |
+        (!is.na(dB) & dB < drop_thresh & !is.na(qB) & qB > sig_thresh) ~ "lost",
+        (!is.na(dA) | !is.na(dB)) ~ "retained",
+        TRUE ~ "unknown"
+      ),
+      state_p = dplyr::case_when(
+        (!is.na(dA) & dA < drop_thresh & !is.na(pA) & pA > sig_thresh) |
+        (!is.na(dB) & dB < drop_thresh & !is.na(pB) & pB > sig_thresh) ~ "lost",
+        (!is.na(dA) | !is.na(dB)) ~ "retained",
+        TRUE ~ "unknown"
+      )
+    ) %>%
+    dplyr::select(key, Gene1, Gene2, state_q, state_p)
+}
+
+
+# -----------------------------------------------------------------------------
+# 16.3 Build d30 edge states for all 4 genotypes
+# -----------------------------------------------------------------------------
+d30_edge_list <- list()
+for (geno in genotypes_tc) {
+  for (nt in neurons_tc) {
+    prot <- extract_prot_stats(complete_data_annotated_day30, geno, nt)
+    if (is.null(prot) || nrow(prot) == 0) next
+    es <- compute_tc_edge_states(prot, baseline_filtered, drop_thresh_tc, sig_thresh_tc) %>%
+      dplyr::mutate(genotype = geno, neuron = nt, day = "d30")
+    d30_edge_list[[paste(geno, nt, sep = "_")]] <- es
+  }
+}
+d30_edge_states <- dplyr::bind_rows(d30_edge_list)
+message("  d30 edge states: ", nrow(d30_edge_states), " rows")
+
+
+# -----------------------------------------------------------------------------
+# 16.4 Pull d50 edge states from ko_edge_states
+# -----------------------------------------------------------------------------
+d50_edge_states <- ko_edge_states %>%
+  dplyr::filter(genotype %in% genotypes_tc) %>%
+  dplyr::select(key, Gene1, Gene2, genotype, neuron, state_q, state_p) %>%
+  dplyr::mutate(day = "d50")
+message("  d50 edge states: ", nrow(d50_edge_states), " rows")
+
+
+# -----------------------------------------------------------------------------
+# 16.5 Combine
+# -----------------------------------------------------------------------------
+tc_multi_edge_states <- dplyr::bind_rows(d30_edge_states, d50_edge_states) %>%
+  dplyr::mutate(
+    day      = factor(day, levels = c("d30", "d50")),
+    genotype = factor(genotype, levels = genotypes_tc)
+  )
+
+readr::write_csv(tc_multi_edge_states, file.path(out_dir_tc_multi, "tables", "tc_multi_edge_states.csv"))
+
+
+# -----------------------------------------------------------------------------
+# 16.6 Summary: n_lost / frac_lost per genotype x day x neuron
+# -----------------------------------------------------------------------------
+make_tc_summary <- function(edge_states, state_col) {
+  edge_states %>%
+    dplyr::group_by(genotype, day, neuron) %>%
+    dplyr::summarise(
+      total_edges = dplyr::n(),
+      n_lost      = sum(.data[[state_col]] == "lost", na.rm = TRUE),
+      n_retained  = sum(.data[[state_col]] == "retained", na.rm = TRUE),
+      frac_lost   = n_lost / total_edges,
+      .groups = "drop"
+    )
+}
+
+tc_multi_summary_q <- make_tc_summary(tc_multi_edge_states, "state_q")
+tc_multi_summary_p <- make_tc_summary(tc_multi_edge_states, "state_p")
+
+readr::write_csv(tc_multi_summary_q, file.path(out_dir_tc_multi, "tables", "tc_multi_summary_q.csv"))
+readr::write_csv(tc_multi_summary_p, file.path(out_dir_tc_multi, "tables", "tc_multi_summary_p.csv"))
+message("  Summary (q): "); print(tc_multi_summary_q)
+
+
+# -----------------------------------------------------------------------------
+# 16.7 Barplot: lost PPIs per genotype x day
+# -----------------------------------------------------------------------------
+for (sig in c("q", "p")) {
+  summ <- if (sig == "q") tc_multi_summary_q else tc_multi_summary_p
+  p <- ggplot2::ggplot(summ, ggplot2::aes(x = day, y = n_lost, fill = neuron)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    ggplot2::geom_text(ggplot2::aes(label = n_lost), position = ggplot2::position_dodge(0.7), vjust = -0.5, size = 2) +
+    ggplot2::facet_wrap(~genotype, ncol = 4, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = neuron_palette, name = "Neuron") +
+    ggplot2::labs(title = paste0("Lost PPIs (", sig, "-sig) d30 vs d50"), x = NULL, y = "N lost PPIs") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"))
+  ggplot2::ggsave(file.path(out_dir_tc_multi, "plots/global", paste0("bars_lost_ppis_", sig, ".pdf")), p, width = 8, height = 4, device = cairo_pdf)
+  readr::write_csv(summ, file.path(out_dir_tc_multi, "sourcedata", paste0("bars_lost_ppis_", sig, ".csv")))
+}
+
+
+# -----------------------------------------------------------------------------
+# 16.8 Line plot: trajectory comparison across genotypes
+# -----------------------------------------------------------------------------
+for (sig in c("q", "p")) {
+  summ <- if (sig == "q") tc_multi_summary_q else tc_multi_summary_p
+  summ_num <- summ %>% dplyr::mutate(day_num = as.numeric(gsub("d", "", as.character(day))))
+  p <- ggplot2::ggplot(summ_num, ggplot2::aes(x = day_num, y = n_lost, color = genotype, linetype = neuron, group = interaction(genotype, neuron))) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 2.5, shape = 21, fill = "white", stroke = 0.8) +
+    ggplot2::scale_color_manual(values = genotype_palette_tc) +
+    ggplot2::scale_linetype_manual(values = c(iN = "solid", iDA = "dashed")) +
+    ggplot2::scale_x_continuous(breaks = c(30, 50), labels = c("d30", "d50")) +
+    ggplot2::labs(title = paste0("PPI loss trajectory (", sig, "-sig)"), x = "Day", y = "N lost PPIs") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::ggsave(file.path(out_dir_tc_multi, "plots/global", paste0("lines_trajectory_", sig, ".pdf")), p, width = 5, height = 4, device = cairo_pdf)
+  readr::write_csv(summ_num, file.path(out_dir_tc_multi, "sourcedata", paste0("lines_trajectory_", sig, ".csv")))
+}
+
+
+# -----------------------------------------------------------------------------
+# 16.9 Annotation breakdown via shared_long_full
+# -----------------------------------------------------------------------------
+for (sig in c("q", "p")) {
+  state_col <- paste0("state_", sig)
+  by_annot <- tc_multi_edge_states %>%
+    dplyr::filter(.data[[state_col]] == "lost") %>%
+    dplyr::left_join(shared_long_full, by = "key", relationship = "many-to-many") %>%
+    dplyr::filter(!is.na(tag)) %>%
+    dplyr::group_by(genotype, day, neuron, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop")
+  readr::write_csv(by_annot, file.path(out_dir_tc_multi, "tables", paste0("tc_multi_lost_by_annotation_", sig, ".csv")))
+
+  # Global heatmap per neuron
+  for (nt in neurons_tc) {
+    hm_data <- by_annot %>%
+      dplyr::filter(neuron == nt) %>%
+      tidyr::unite("Geno_Day", genotype, day, sep = "_") %>%
+      tidyr::pivot_wider(names_from = Geno_Day, values_from = n_lost, values_fill = 0)
+    if (nrow(hm_data) < 2) next
+    hm_mat <- as.matrix(hm_data[, -c(1:2)])
+    rownames(hm_mat) <- hm_data$tag
+    readr::write_csv(as.data.frame(hm_mat) %>% tibble::rownames_to_column("tag"),
+      file.path(out_dir_tc_multi, "sourcedata", paste0("heatmap_annotation_", sig, "_", nt, ".csv")))
+    pdf(file.path(out_dir_tc_multi, "plots/global", paste0("heatmap_annotation_", sig, "_", nt, ".pdf")), width = 8, height = 10)
+    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Lost PPIs by annotation (", sig, "-sig) - ", nt))
+    dev.off()
+  }
+
+  # Per-genotype heatmaps
+  for (geno in genotypes_tc) {
+    for (nt in neurons_tc) {
+      hm_data <- by_annot %>%
+        dplyr::filter(as.character(genotype) == geno, neuron == nt) %>%
+        tidyr::pivot_wider(id_cols = tag, names_from = day, values_from = n_lost, values_fill = 0)
+      if (nrow(hm_data) < 2) next
+      hm_mat <- as.matrix(hm_data[, -1])
+      rownames(hm_mat) <- hm_data$tag
+      pdf(file.path(out_dir_tc_multi, "plots/by_genotype", paste0("heatmap_", geno, "_", nt, "_", sig, ".pdf")), width = 4, height = 8)
+      pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0(geno, " ", nt, " (", sig, "-sig)"))
+      dev.off()
+    }
+  }
+}
+
+
+# -----------------------------------------------------------------------------
+# 16.10 Delta analysis (d50 - d30)
+# -----------------------------------------------------------------------------
+for (sig in c("q", "p")) {
+  summ <- if (sig == "q") tc_multi_summary_q else tc_multi_summary_p
+  delta <- summ %>%
+    dplyr::select(genotype, day, neuron, n_lost) %>%
+    tidyr::pivot_wider(names_from = day, values_from = n_lost) %>%
+    dplyr::mutate(delta = d50 - d30, abs_delta = abs(delta))
+  p <- ggplot2::ggplot(delta, ggplot2::aes(x = reorder(genotype, -abs_delta), y = delta, fill = neuron)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    ggplot2::geom_hline(yintercept = 0, linewidth = 0.3) +
+    ggplot2::scale_fill_manual(values = neuron_palette) +
+    ggplot2::labs(title = paste0("Delta lost PPIs d50-d30 (", sig, "-sig)"), x = NULL, y = "Delta N lost") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::ggsave(file.path(out_dir_tc_multi, "plots/global", paste0("bars_delta_", sig, ".pdf")), p, width = 4, height = 3.5, device = cairo_pdf)
+  readr::write_csv(delta, file.path(out_dir_tc_multi, "sourcedata", paste0("bars_delta_", sig, ".csv")))
+}
+
+
+# -----------------------------------------------------------------------------
+# 16.11 Complex analysis (rebuilt from complex_members_parsed)
+# -----------------------------------------------------------------------------
+# Build complex -> edge key map once
+complex_edge_map <- complex_members_parsed %>%
+  dplyr::select(complex_id, complex_size, shared_organelle, members_list) %>%
+  dplyr::rowwise() %>%
+  dplyr::filter(length(members_list) >= 2) %>%
+  dplyr::mutate(pairs = list(combn(members_list, 2, simplify = FALSE))) %>%
+  dplyr::ungroup() %>%
+  tidyr::unnest(pairs) %>%
+  dplyr::mutate(Gene1 = purrr::map_chr(pairs, 1), Gene2 = purrr::map_chr(pairs, 2)) %>%
+  dplyr::select(complex_id, complex_size, shared_organelle, Gene1, Gene2) %>%
+  dplyr::inner_join(baseline_filtered %>% dplyr::select(key, Gene1, Gene2), by = c("Gene1", "Gene2")) %>%
+  dplyr::select(complex_id, complex_size, shared_organelle, key)
+
+message("  Complex edge map: ", nrow(complex_edge_map), " complex-edge pairs")
+
+for (sig in c("q", "p")) {
+  state_col <- paste0("state_", sig)
+  geno_day_neuron_combos <- tc_multi_edge_states %>% dplyr::distinct(genotype, day, neuron)
+
+  complex_states <- complex_edge_map %>%
+    dplyr::select(complex_id, key) %>%
+    tidyr::crossing(geno_day_neuron_combos) %>%
+    dplyr::left_join(tc_multi_edge_states %>% dplyr::select(key, genotype, day, neuron, dplyr::all_of(state_col)), by = c("key", "genotype", "day", "neuron")) %>%
+    dplyr::mutate(edge_lost = tidyr::replace_na(.data[[state_col]], "retained") == "lost")
+
+  complex_summary <- complex_states %>%
+    dplyr::group_by(complex_id, genotype, day, neuron) %>%
+    dplyr::summarise(n_edges_total = dplyr::n(), n_edges_lost = sum(edge_lost), frac_edges_lost = n_edges_lost / n_edges_total, .groups = "drop") %>%
+    dplyr::left_join(complex_members_parsed %>% dplyr::select(complex_id, complex_size, shared_organelle) %>% dplyr::distinct(), by = "complex_id") %>%
+    dplyr::mutate(complex_state = dplyr::case_when(frac_edges_lost >= 0.75 ~ "disrupted", frac_edges_lost >= 0.25 ~ "partial", TRUE ~ "intact"))
+
+  disruption_summary <- complex_summary %>%
+    dplyr::group_by(genotype, day, neuron) %>%
+    dplyr::summarise(n_complexes = dplyr::n(), n_disrupted = sum(complex_state == "disrupted"), n_partial = sum(complex_state == "partial"), n_intact = sum(complex_state == "intact"), frac_disrupted = n_disrupted / n_complexes, .groups = "drop")
+
+  readr::write_csv(disruption_summary, file.path(out_dir_tc_multi, "tables", paste0("tc_multi_complex_disruption_", sig, ".csv")))
+
+  p_cx <- ggplot2::ggplot(disruption_summary, ggplot2::aes(x = day, y = n_disrupted, fill = neuron)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    ggplot2::facet_wrap(~genotype, ncol = 4, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = neuron_palette) +
+    ggplot2::labs(title = paste0("Disrupted complexes (", sig, "-sig)"), x = NULL, y = "N disrupted") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"))
+  ggplot2::ggsave(file.path(out_dir_tc_multi, "plots/global", paste0("bars_disrupted_complexes_", sig, ".pdf")), p_cx, width = 8, height = 4, device = cairo_pdf)
+  readr::write_csv(disruption_summary, file.path(out_dir_tc_multi, "sourcedata", paste0("bars_disrupted_complexes_", sig, ".csv")))
+}
+
+message("Module 15 complete: Multi-genotype timecourse")
+```
+
+
+
+## Chunk 16: ASAH1 Long Timecourse (d30, d50, d70)
+```{r module16_timecourse_asah1}
+# =============================================================================
+# Module 17: ASAH1 Long Timecourse (d30, d50, d70)
+# d50: ko_edge_states; d30/d70: computed with q/p sig cutoffs
+# Note: d70 uses d70-specific baseline (genes detected at d70 only)
+# =============================================================================
+message("Module 17: ASAH1 Long Timecourse (d30/d50/d70)...")
+
+out_dir_tc_asah1 <- file.path(out_dir_vuln, "timecourse_ASAH1")
+dir.create(file.path(out_dir_tc_asah1, "plots"),      recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tc_asah1, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tc_asah1, "tables"),     recursive = TRUE, showWarnings = FALSE)
+
+day_palette_long <- c(d30 = "#4575b4", d50 = "#91bfdb", d70 = "#e0f3f8")
+
+
+# -----------------------------------------------------------------------------
+# 17.1 d30 edge states for ASAH1
+# -----------------------------------------------------------------------------
+asah1_d30_edge_list <- list()
+for (nt in neurons_tc) {
+  prot <- extract_prot_stats(complete_data_annotated_day30, "ASAH1", nt)
+  if (is.null(prot) || nrow(prot) == 0) next
+  es <- compute_tc_edge_states(prot, baseline_filtered, drop_thresh_tc, sig_thresh_tc) %>%
+    dplyr::mutate(genotype = "ASAH1", neuron = nt, day = "d30")
+  asah1_d30_edge_list[[nt]] <- es
+}
+asah1_d30_states <- dplyr::bind_rows(asah1_d30_edge_list)
+message("  d30 ASAH1 edge states: ", nrow(asah1_d30_states))
+
+
+# -----------------------------------------------------------------------------
+# 17.2 d50 edge states from ko_edge_states
+# -----------------------------------------------------------------------------
+asah1_d50_states <- ko_edge_states %>%
+  dplyr::filter(genotype == "ASAH1") %>%
+  dplyr::select(key, Gene1, Gene2, genotype, neuron, state_q, state_p) %>%
+  dplyr::mutate(day = "d50")
+message("  d50 ASAH1 edge states: ", nrow(asah1_d50_states))
+
+
+# -----------------------------------------------------------------------------
+# 17.3 d70 edge states -- d70-specific baseline + q/p sig cutoffs
+# -----------------------------------------------------------------------------
+d70_detected_genes <- diff132_d70_df_annotated %>%
+  dplyr::filter(!is.na(Genes), Genes != "") %>%
+  dplyr::pull(Genes) %>% unique()
+
+baseline_d70 <- baseline_filtered %>%
+  dplyr::filter(Gene1 %in% d70_detected_genes, Gene2 %in% d70_detected_genes)
+
+message("  d70 baseline edges: ", nrow(baseline_d70), " (vs ", nrow(baseline_filtered), " full baseline)")
+
+asah1_d70_edge_list <- list()
+for (nt in neurons_tc) {
+  log2fc_col <- paste0("d70_", nt, "_log2fc_ASAH1")
+  q_col      <- paste0("d70_", nt, "_neg_log10_q_value")
+  p_col      <- paste0("d70_", nt, "_neg_log10_p_value")
+
+  prot <- diff132_d70_df_annotated %>%
+    dplyr::select(Genes, log2FC = dplyr::all_of(log2fc_col), neg_log10_q = dplyr::all_of(q_col), neg_log10_p = dplyr::all_of(p_col)) %>%
+    dplyr::filter(!is.na(Genes), Genes != "", !is.na(log2FC)) %>%
+    dplyr::mutate(genotype = "ASAH1", neuron = nt)
+
+  es <- compute_tc_edge_states(prot, baseline_d70, drop_thresh_tc, sig_thresh_tc) %>%
+    dplyr::mutate(genotype = "ASAH1", neuron = nt, day = "d70")
+  asah1_d70_edge_list[[nt]] <- es
+}
+asah1_d70_states <- dplyr::bind_rows(asah1_d70_edge_list)
+message("  d70 ASAH1 edge states: ", nrow(asah1_d70_states))
+
+
+# -----------------------------------------------------------------------------
+# 17.4 Combine all timepoints
+# -----------------------------------------------------------------------------
+tc_asah1_edge_states <- dplyr::bind_rows(asah1_d30_states, asah1_d50_states, asah1_d70_states) %>%
+  dplyr::mutate(day = factor(day, levels = c("d30", "d50", "d70")))
+
+readr::write_csv(tc_asah1_edge_states, file.path(out_dir_tc_asah1, "tables", "tc_asah1_edge_states.csv"))
+
+
+# -----------------------------------------------------------------------------
+# 17.5 Summary
+# -----------------------------------------------------------------------------
+tc_asah1_summary_q <- make_tc_summary(tc_asah1_edge_states, "state_q")
+tc_asah1_summary_p <- make_tc_summary(tc_asah1_edge_states, "state_p")
+
+readr::write_csv(tc_asah1_summary_q, file.path(out_dir_tc_asah1, "tables", "tc_asah1_summary_q.csv"))
+readr::write_csv(tc_asah1_summary_p, file.path(out_dir_tc_asah1, "tables", "tc_asah1_summary_p.csv"))
+message("  ASAH1 timecourse summary (q):"); print(tc_asah1_summary_q)
+
+
+# -----------------------------------------------------------------------------
+# 17.6 Barplot: lost PPIs over time
+# -----------------------------------------------------------------------------
+for (sig in c("q", "p")) {
+  summ <- if (sig == "q") tc_asah1_summary_q else tc_asah1_summary_p
+  p <- ggplot2::ggplot(summ, ggplot2::aes(x = day, y = n_lost, fill = neuron)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    ggplot2::geom_text(ggplot2::aes(label = n_lost), position = ggplot2::position_dodge(0.7), vjust = -0.5, size = 2.5) +
+    ggplot2::scale_fill_manual(values = neuron_palette) +
+    ggplot2::labs(title = paste0("ASAH1 lost PPIs over time (", sig, "-sig, d70 baseline-corrected)"), x = NULL, y = "N lost PPIs") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::ggsave(file.path(out_dir_tc_asah1, "plots", paste0("bars_lost_ppis_", sig, ".pdf")), p, width = 4, height = 4, device = cairo_pdf)
+  readr::write_csv(summ, file.path(out_dir_tc_asah1, "sourcedata", paste0("bars_lost_ppis_", sig, ".csv")))
+}
+
+
+# -----------------------------------------------------------------------------
+# 17.7 Annotation breakdown via shared_long_full
+# -----------------------------------------------------------------------------
+for (sig in c("q", "p")) {
+  state_col <- paste0("state_", sig)
+  by_annot <- tc_asah1_edge_states %>%
+    dplyr::filter(.data[[state_col]] == "lost") %>%
+    dplyr::left_join(shared_long_full, by = "key", relationship = "many-to-many") %>%
+    dplyr::filter(!is.na(tag)) %>%
+    dplyr::group_by(day, neuron, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    dplyr::mutate(day = factor(day, levels = c("d30", "d50", "d70")))
+
+  readr::write_csv(by_annot, file.path(out_dir_tc_asah1, "tables", paste0("tc_asah1_lost_by_annotation_", sig, ".csv")))
+
+  for (nt in neurons_tc) {
+    hm_data <- by_annot %>%
+      dplyr::filter(neuron == nt) %>%
+      tidyr::pivot_wider(names_from = day, values_from = n_lost, values_fill = 0)
+    if (nrow(hm_data) < 2) next
+    hm_mat <- as.matrix(hm_data[, setdiff(colnames(hm_data), c("neuron", "tag"))])
+    rownames(hm_mat) <- hm_data$tag
+    readr::write_csv(as.data.frame(hm_mat) %>% tibble::rownames_to_column("tag"),
+      file.path(out_dir_tc_asah1, "sourcedata", paste0("heatmap_annotation_", sig, "_", nt, ".csv")))
+    pdf(file.path(out_dir_tc_asah1, "plots", paste0("heatmap_annotation_", sig, "_", nt, ".pdf")), width = 5, height = 8)
+    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("ASAH1 lost PPIs by annotation (", sig, "-sig) - ", nt))
+    dev.off()
+  }
+}
+
+
+# -----------------------------------------------------------------------------
+# 17.8 Line plots: selected annotations over time
+# -----------------------------------------------------------------------------
+selected_annotations <- c("Mito", "OXPHOS", "MitoMIM", "SynGO", "Svexocytosis", "SynapseSVs")
+
+for (sig in c("q", "p")) {
+  state_col <- paste0("state_", sig)
+  by_annot <- tc_asah1_edge_states %>%
+    dplyr::filter(.data[[state_col]] == "lost") %>%
+    dplyr::left_join(shared_long_full, by = "key", relationship = "many-to-many") %>%
+    dplyr::filter(tag %in% selected_annotations) %>%
+    dplyr::group_by(day, neuron, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    dplyr::mutate(day_num = as.numeric(gsub("d", "", as.character(day))))
+
+  p <- ggplot2::ggplot(by_annot, ggplot2::aes(x = day_num, y = n_lost, color = neuron, group = neuron)) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 2, shape = 21, fill = "white", stroke = 0.8) +
+    ggplot2::facet_wrap(~tag, scales = "free_y", ncol = 3) +
+    ggplot2::scale_color_manual(values = neuron_palette) +
+    ggplot2::scale_x_continuous(breaks = c(30, 50, 70), labels = c("d30", "d50", "d70")) +
+    ggplot2::labs(title = paste0("ASAH1 lost PPIs by annotation (", sig, "-sig)"), x = "Day", y = "N lost PPIs") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "grey90"))
+  ggplot2::ggsave(file.path(out_dir_tc_asah1, "plots", paste0("lines_selected_annotations_", sig, ".pdf")), p, width = 9, height = 6, device = cairo_pdf)
+  readr::write_csv(by_annot, file.path(out_dir_tc_asah1, "sourcedata", paste0("lines_selected_annotations_", sig, ".csv")))
+}
+
+
+# -----------------------------------------------------------------------------
+# 17.9 Complex analysis
+# -----------------------------------------------------------------------------
+# Reuse complex_edge_map from Chunk 16 (or rebuild if chunks run independently)
+if (!exists("complex_edge_map")) {
+  complex_edge_map <- complex_members_parsed %>%
+    dplyr::select(complex_id, complex_size, shared_organelle, members_list) %>%
+    dplyr::rowwise() %>%
+    dplyr::filter(length(members_list) >= 2) %>%
+    dplyr::mutate(pairs = list(combn(members_list, 2, simplify = FALSE))) %>%
+    dplyr::ungroup() %>%
+    tidyr::unnest(pairs) %>%
+    dplyr::mutate(Gene1 = purrr::map_chr(pairs, 1), Gene2 = purrr::map_chr(pairs, 2)) %>%
+    dplyr::select(complex_id, complex_size, shared_organelle, Gene1, Gene2) %>%
+    dplyr::inner_join(baseline_filtered %>% dplyr::select(key, Gene1, Gene2), by = c("Gene1", "Gene2")) %>%
+    dplyr::select(complex_id, complex_size, shared_organelle, key)
+}
+
+for (sig in c("q", "p")) {
+  state_col <- paste0("state_", sig)
+  day_neuron_combos <- tc_asah1_edge_states %>% dplyr::distinct(day, neuron)
+
+  complex_states <- complex_edge_map %>%
+    dplyr::select(complex_id, key) %>%
+    tidyr::crossing(day_neuron_combos) %>%
+    dplyr::left_join(tc_asah1_edge_states %>% dplyr::select(key, day, neuron, dplyr::all_of(state_col)), by = c("key", "day", "neuron")) %>%
+    dplyr::mutate(edge_lost = tidyr::replace_na(.data[[state_col]], "retained") == "lost")
+
+  complex_summary <- complex_states %>%
+    dplyr::group_by(complex_id, day, neuron) %>%
+    dplyr::summarise(n_edges_total = dplyr::n(), n_edges_lost = sum(edge_lost), frac_edges_lost = n_edges_lost / n_edges_total, .groups = "drop") %>%
+    dplyr::left_join(complex_members_parsed %>% dplyr::select(complex_id, complex_size, shared_organelle) %>% dplyr::distinct(), by = "complex_id") %>%
+    dplyr::mutate(complex_state = dplyr::case_when(frac_edges_lost >= 0.75 ~ "disrupted", frac_edges_lost >= 0.25 ~ "partial", TRUE ~ "intact"),
+                  day = factor(day, levels = c("d30", "d50", "d70")))
+
+  readr::write_csv(complex_summary, file.path(out_dir_tc_asah1, "tables", paste0("tc_asah1_complex_states_", sig, ".csv")))
+
+  disruption_summary <- complex_summary %>%
+    dplyr::group_by(day, neuron) %>%
+    dplyr::summarise(n_complexes = dplyr::n(), n_disrupted = sum(complex_state == "disrupted"), n_partial = sum(complex_state == "partial"), n_intact = sum(complex_state == "intact"), frac_disrupted = n_disrupted / n_complexes, .groups = "drop")
+
+  p_cx <- ggplot2::ggplot(disruption_summary, ggplot2::aes(x = day, y = n_disrupted, fill = neuron)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.3, width = 0.7) +
+    ggplot2::geom_text(ggplot2::aes(label = n_disrupted), position = ggplot2::position_dodge(0.7), vjust = -0.5, size = 2.5) +
+    ggplot2::scale_fill_manual(values = neuron_palette) +
+    ggplot2::labs(title = paste0("ASAH1 disrupted complexes over time (", sig, "-sig)"), x = NULL, y = "N disrupted") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::ggsave(file.path(out_dir_tc_asah1, "plots", paste0("bars_disrupted_complexes_", sig, ".pdf")), p_cx, width = 4, height = 4, device = cairo_pdf)
+  readr::write_csv(disruption_summary, file.path(out_dir_tc_asah1, "sourcedata", paste0("bars_disrupted_complexes_", sig, ".csv")))
+
+  # Bubble plot: iDA vs iN trajectory coloured by day
+  bubble_data <- complex_summary %>%
+    dplyr::select(complex_id, day, neuron, frac_edges_lost, complex_size, shared_organelle) %>%
+    tidyr::pivot_wider(names_from = neuron, values_from = frac_edges_lost, values_fill = 0)
+
+  p_bub <- ggplot2::ggplot(bubble_data, ggplot2::aes(x = iN, y = iDA, size = complex_size, fill = day)) +
+    ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+    ggplot2::geom_point(shape = 21, color = "black", stroke = 0.25, alpha = 0.9) +
+    ggplot2::scale_fill_manual(values = day_palette_long) +
+    ggplot2::scale_size_continuous(range = c(2, 8), name = "Complex size") +
+    ggplot2::scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    ggplot2::labs(title = paste0("ASAH1 complex disruption trajectory (", sig, "-sig)"), x = "Frac lost edges (iN)", y = "Frac lost edges (iDA)") +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), aspect.ratio = 1)
+  ggplot2::ggsave(file.path(out_dir_tc_asah1, "plots", paste0("bubble_trajectory_", sig, ".pdf")), p_bub, width = 5, height = 4, device = cairo_pdf)
+  readr::write_csv(bubble_data, file.path(out_dir_tc_asah1, "sourcedata", paste0("bubble_trajectory_", sig, ".csv")))
+
+  # Per-day bubble: iDA vs iN coloured by shared_organelle
+  for (d in c("d30", "d50", "d70")) {
+    plot_data <- bubble_data %>% dplyr::filter(day == d)
+    if (nrow(plot_data) == 0) next
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = iN, y = iDA, size = complex_size, fill = shared_organelle)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.3) +
+      ggplot2::geom_point(shape = 21, color = "black", alpha = 0.9, stroke = 0.15) +
+      ggrepel::geom_text_repel(ggplot2::aes(label = complex_id), size = 2, max.overlaps = 50, seed = 42) +
+      ggplot2::scale_fill_manual(values = organelle_colors, name = "Organelle") +
+      ggplot2::scale_size_continuous(range = c(2, 8), name = "Complex size") +
+      ggplot2::scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+      ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+      ggplot2::labs(title = paste0("Complex disruption ASAH1 ", d, " (", sig, "-sig)"), x = "Frac lost edges (iN)", y = "Frac lost edges (iDA)") +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(), aspect.ratio = 1)
+    ggplot2::ggsave(file.path(out_dir_tc_asah1, "plots", paste0("bubble_", d, "_", sig, ".pdf")), p, width = 7, height = 5, device = cairo_pdf)
+  }
+}
+
+message("Module 16 complete: ASAH1 long timecourse (d30/d50/d70)")
+```
+
+
+
+
 ## Chunk 17: Master Summary Output
 ```{r summary}
 # =============================================================================
