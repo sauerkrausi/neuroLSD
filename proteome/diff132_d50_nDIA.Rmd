@@ -5101,17 +5101,38 @@ rep_cols_iDA_Ctrl  <- grep("^d70_iDA_Ctrl_rep[0-9]+$", colnames(diff132_d70_df_f
 rep_cols_iDA_ASAH1 <- grep("^d70_iDA_ASAH1_rep[0-9]+$", colnames(diff132_d70_df_full), value = TRUE)
 
 
-# --- 2. Per condition means and log2FC (ASAH1 vs Ctrl) per neuron
+# --- 2. Per condition means, log2FC, and p/q values
 diff132_d70_df_proc <- diff132_d70_df_full %>%
-  mutate(
-    d70_iN_Ctrl_mean   = rowMeans(across(all_of(rep_cols_iN_Ctrl)),  na.rm = TRUE),
-    d70_iN_ASAH1_mean  = rowMeans(across(all_of(rep_cols_iN_ASAH1)), na.rm = TRUE),
-    d70_iDA_Ctrl_mean  = rowMeans(across(all_of(rep_cols_iDA_Ctrl)),  na.rm = TRUE),
-    d70_iDA_ASAH1_mean = rowMeans(across(all_of(rep_cols_iDA_ASAH1)), na.rm = TRUE),
+  dplyr::mutate(
+    d70_iN_Ctrl_mean   = rowMeans(dplyr::across(dplyr::all_of(rep_cols_iN_Ctrl)),   na.rm = TRUE),
+    d70_iN_ASAH1_mean  = rowMeans(dplyr::across(dplyr::all_of(rep_cols_iN_ASAH1)),  na.rm = TRUE),
+    d70_iDA_Ctrl_mean  = rowMeans(dplyr::across(dplyr::all_of(rep_cols_iDA_Ctrl)),  na.rm = TRUE),
+    d70_iDA_ASAH1_mean = rowMeans(dplyr::across(dplyr::all_of(rep_cols_iDA_ASAH1)), na.rm = TRUE),
     d70_iN_log2fc_ASAH1  = log2(d70_iN_ASAH1_mean  + 1) - log2(d70_iN_Ctrl_mean  + 1),
     d70_iDA_log2fc_ASAH1 = log2(d70_iDA_ASAH1_mean + 1) - log2(d70_iDA_Ctrl_mean + 1)
+  ) %>%
+  # Rowwise Welch t-test per neuron
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    d70_iN_p_value = tryCatch(
+      t.test(dplyr::c_across(dplyr::all_of(rep_cols_iN_ASAH1)),
+             dplyr::c_across(dplyr::all_of(rep_cols_iN_Ctrl)))$p.value,
+      error = function(e) NA_real_
+    ),
+    d70_iDA_p_value = tryCatch(
+      t.test(dplyr::c_across(dplyr::all_of(rep_cols_iDA_ASAH1)),
+             dplyr::c_across(dplyr::all_of(rep_cols_iDA_Ctrl)))$p.value,
+      error = function(e) NA_real_
+    )
+  ) %>%
+  dplyr::ungroup() %>%
+  # BH correction + neg_log10 transform
+  dplyr::mutate(
+    d70_iN_neg_log10_p_value  = -log10(d70_iN_p_value),
+    d70_iDA_neg_log10_p_value = -log10(d70_iDA_p_value),
+    d70_iN_neg_log10_q_value  = -log10(p.adjust(d70_iN_p_value,  method = "BH")),
+    d70_iDA_neg_log10_q_value = -log10(p.adjust(d70_iDA_p_value, method = "BH"))
   )
-
 # --- 3. Add subcell annotations for day70 (from SubCellAnnotation.csv) + contaminant filter
 # 3.1 Remove contaminants 
 contaminant_genes_d70 <- c(
