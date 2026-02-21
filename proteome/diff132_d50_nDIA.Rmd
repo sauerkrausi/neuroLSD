@@ -19466,7 +19466,7 @@ extract_prot_stats <- function(df_wide, genotype, neuron) {
 
 
 # -----------------------------------------------------------------------------
-# 16.2 Helper: compute edge states from protein stats + baseline
+# 15.2 Helper: compute edge states from protein stats + baseline
 # -----------------------------------------------------------------------------
 compute_tc_edge_states <- function(prot_stats, baseline_edges, drop_thresh, sig_thresh) {
   detected <- unique(prot_stats$Genes)
@@ -19495,7 +19495,7 @@ compute_tc_edge_states <- function(prot_stats, baseline_edges, drop_thresh, sig_
 
 
 # -----------------------------------------------------------------------------
-# 16.3 Build d30 edge states for all 4 genotypes
+# 15.3 Build d30 edge states for all 4 genotypes
 # -----------------------------------------------------------------------------
 d30_edge_list <- list()
 for (geno in genotypes_tc) {
@@ -19512,7 +19512,7 @@ message("  d30 edge states: ", nrow(d30_edge_states), " rows")
 
 
 # -----------------------------------------------------------------------------
-# 16.4 Pull d50 edge states from ko_edge_states
+# 15.4 Pull d50 edge states from ko_edge_states
 # -----------------------------------------------------------------------------
 d50_edge_states <- ko_edge_states %>%
   dplyr::filter(genotype %in% genotypes_tc) %>%
@@ -19522,7 +19522,7 @@ message("  d50 edge states: ", nrow(d50_edge_states), " rows")
 
 
 # -----------------------------------------------------------------------------
-# 16.5 Combine
+# 15.5 Combine
 # -----------------------------------------------------------------------------
 tc_multi_edge_states <- dplyr::bind_rows(d30_edge_states, d50_edge_states) %>%
   dplyr::mutate(
@@ -19534,7 +19534,7 @@ readr::write_csv(tc_multi_edge_states, file.path(out_dir_tc_multi, "tables", "tc
 
 
 # -----------------------------------------------------------------------------
-# 16.6 Summary: n_lost / frac_lost per genotype x day x neuron
+# 15.6 Summary: n_lost / frac_lost per genotype x day x neuron
 # -----------------------------------------------------------------------------
 make_tc_summary <- function(edge_states, state_col) {
   edge_states %>%
@@ -19557,7 +19557,7 @@ message("  Summary (q): "); print(tc_multi_summary_q)
 
 
 # -----------------------------------------------------------------------------
-# 16.7 Barplot: lost PPIs per genotype x day
+# 15.7 Barplot: lost PPIs per genotype x day
 # -----------------------------------------------------------------------------
 for (sig in c("q", "p")) {
   summ <- if (sig == "q") tc_multi_summary_q else tc_multi_summary_p
@@ -19575,7 +19575,7 @@ for (sig in c("q", "p")) {
 
 
 # -----------------------------------------------------------------------------
-# 16.8 Line plot: trajectory comparison across genotypes
+# 15.8 Line plot: trajectory comparison across genotypes
 # -----------------------------------------------------------------------------
 for (sig in c("q", "p")) {
   summ <- if (sig == "q") tc_multi_summary_q else tc_multi_summary_p
@@ -19595,7 +19595,7 @@ for (sig in c("q", "p")) {
 
 
 # -----------------------------------------------------------------------------
-# 16.9 Annotation breakdown via shared_long_full
+# 15.9 Annotation breakdown via shared_long_full
 # -----------------------------------------------------------------------------
 for (sig in c("q", "p")) {
   state_col <- paste0("state_", sig)
@@ -19641,7 +19641,7 @@ for (sig in c("q", "p")) {
 
 
 # -----------------------------------------------------------------------------
-# 16.10 Delta analysis (d50 - d30)
+# 15.10 Delta analysis (d50 - d30)
 # -----------------------------------------------------------------------------
 for (sig in c("q", "p")) {
   summ <- if (sig == "q") tc_multi_summary_q else tc_multi_summary_p
@@ -19662,7 +19662,7 @@ for (sig in c("q", "p")) {
 
 
 # -----------------------------------------------------------------------------
-# 16.11 Complex analysis (rebuilt from complex_members_parsed)
+# 15.11 Complex analysis (rebuilt from complex_members_parsed)
 # -----------------------------------------------------------------------------
 # Build complex -> edge key map once
 complex_edge_map <- complex_members_parsed %>%
@@ -19720,11 +19720,11 @@ message("Module 15 complete: Multi-genotype timecourse")
 ## Chunk 16: ASAH1 Long Timecourse (d30, d50, d70)
 ```{r module16_timecourse_asah1}
 # =============================================================================
-# Module 17: ASAH1 Long Timecourse (d30, d50, d70)
+# Module 16: ASAH1 Long Timecourse (d30, d50, d70)
 # d50: ko_edge_states; d30/d70: computed with q/p sig cutoffs
 # Note: d70 uses d70-specific baseline (genes detected at d70 only)
 # =============================================================================
-message("Module 17: ASAH1 Long Timecourse (d30/d50/d70)...")
+message("Module 16=56: ASAH1 Long Timecourse (d30/d50/d70)...")
 
 out_dir_tc_asah1 <- file.path(out_dir_vuln, "timecourse_ASAH1")
 dir.create(file.path(out_dir_tc_asah1, "plots"),      recursive = TRUE, showWarnings = FALSE)
@@ -19735,7 +19735,7 @@ day_palette_long <- c(d30 = "#4575b4", d50 = "#91bfdb", d70 = "#e0f3f8")
 
 
 # -----------------------------------------------------------------------------
-# 17.1 d30 edge states for ASAH1
+# 16.1 d30 edge states for ASAH1
 # -----------------------------------------------------------------------------
 asah1_d30_edge_list <- list()
 for (nt in neurons_tc) {
@@ -19750,7 +19750,7 @@ message("  d30 ASAH1 edge states: ", nrow(asah1_d30_states))
 
 
 # -----------------------------------------------------------------------------
-# 17.2 d50 edge states from ko_edge_states
+# 16.2 d50 edge states from ko_edge_states
 # -----------------------------------------------------------------------------
 asah1_d50_states <- ko_edge_states %>%
   dplyr::filter(genotype == "ASAH1") %>%
@@ -19760,7 +19760,7 @@ message("  d50 ASAH1 edge states: ", nrow(asah1_d50_states))
 
 
 # -----------------------------------------------------------------------------
-# 17.3 d70 edge states -- d70-specific baseline + q/p sig cutoffs
+# 16.3 d70 edge states -- d70-specific baseline + q/p sig cutoffs
 # -----------------------------------------------------------------------------
 d70_detected_genes <- diff132_d70_df_annotated %>%
   dplyr::filter(!is.na(Genes), Genes != "") %>%
@@ -19791,7 +19791,7 @@ message("  d70 ASAH1 edge states: ", nrow(asah1_d70_states))
 
 
 # -----------------------------------------------------------------------------
-# 17.4 Combine all timepoints
+# 16.4 Combine all timepoints
 # -----------------------------------------------------------------------------
 tc_asah1_edge_states <- dplyr::bind_rows(asah1_d30_states, asah1_d50_states, asah1_d70_states) %>%
   dplyr::mutate(day = factor(day, levels = c("d30", "d50", "d70")))
@@ -19800,7 +19800,7 @@ readr::write_csv(tc_asah1_edge_states, file.path(out_dir_tc_asah1, "tables", "tc
 
 
 # -----------------------------------------------------------------------------
-# 17.5 Summary
+# 16.5 Summary
 # -----------------------------------------------------------------------------
 tc_asah1_summary_q <- make_tc_summary(tc_asah1_edge_states, "state_q")
 tc_asah1_summary_p <- make_tc_summary(tc_asah1_edge_states, "state_p")
@@ -19811,7 +19811,7 @@ message("  ASAH1 timecourse summary (q):"); print(tc_asah1_summary_q)
 
 
 # -----------------------------------------------------------------------------
-# 17.6 Barplot: lost PPIs over time
+# 16.6 Barplot: lost PPIs over time
 # -----------------------------------------------------------------------------
 for (sig in c("q", "p")) {
   summ <- if (sig == "q") tc_asah1_summary_q else tc_asah1_summary_p
@@ -19828,7 +19828,7 @@ for (sig in c("q", "p")) {
 
 
 # -----------------------------------------------------------------------------
-# 17.7 Annotation breakdown via shared_long_full
+# 16.7 Annotation breakdown via shared_long_full
 # -----------------------------------------------------------------------------
 for (sig in c("q", "p")) {
   state_col <- paste0("state_", sig)
@@ -19859,7 +19859,7 @@ for (sig in c("q", "p")) {
 
 
 # -----------------------------------------------------------------------------
-# 17.8 Line plots: selected annotations over time
+# 16.8 Line plots: selected annotations over time
 # -----------------------------------------------------------------------------
 selected_annotations <- c("Mito", "OXPHOS", "MitoMIM", "SynGO", "Svexocytosis", "SynapseSVs")
 
@@ -19888,7 +19888,7 @@ for (sig in c("q", "p")) {
 
 
 # -----------------------------------------------------------------------------
-# 17.9 Complex analysis
+# 16.9 Complex analysis
 # -----------------------------------------------------------------------------
 # Reuse complex_edge_map from Chunk 16 (or rebuild if chunks run independently)
 if (!exists("complex_edge_map")) {
