@@ -5129,7 +5129,7 @@ diff132_d70_df_proc <- split_genes_rows(diff132_d70_df_proc)
 # 3.2 Read and prepare SubCellAnnotation.csv
 cols_to_read_d70 <- c(1,2,3,4,5,6,7,9,10,12,15,16,17,18,19,20,21,22,23,25,26,27,28,29,30,31,32,33,34)
 subcell_d70_df <- read.csv(
-  "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/neuroLSDgit/proteome/SubCellAnnotation.csv",
+  "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/SubCellAnnotation.csv",
   stringsAsFactors = FALSE
 )[, cols_to_read_d70]
 subcell_d70_df[] <- lapply(subcell_d70_df, as.character)
@@ -19219,7 +19219,7 @@ ppi_gain_summary_q <- ko_edge_states %>%
     loss_gain_ratio  = n_lost / (n_with_gain + 1),
     .groups = "drop"
   ) %>% 
-  dplyr::filter(n_with_gain >0)
+  dplyr::filter(n_with_gain > 0) # exclude KOs with no PPIs gained
 
 readr::write_csv(ppi_gain_summary_q, file.path(out_dir_gain, "tables", "ppi_gain_summary_q.csv"))
 message("  Saved: ppi_gain_summary_q.csv")
@@ -19241,14 +19241,15 @@ ppi_gain_summary_p <- ko_edge_states %>%
     frac_lost        = n_lost / total_edges,
     loss_gain_ratio  = n_lost / (n_with_gain + 1),
     .groups = "drop"
-  )
+  ) %>% 
+  dplyr::filter(n_with_gain > 0)
 
 readr::write_csv(ppi_gain_summary_p, file.path(out_dir_gain, "tables", "ppi_gain_summary_p.csv"))
 message("  Saved: ppi_gain_summary_p.csv")
 
 
 # -----------------------------------------------------------------------------
-# 15.2 Protein-level gain summary (q-sig)
+# 14.2 Protein-level gain summary (q-sig)
 # -----------------------------------------------------------------------------
 protein_gain_summary_q <- prot_long %>%
   dplyr::group_by(genotype, neuron, genotype_neuron) %>%
@@ -19288,7 +19289,7 @@ message("  Saved: protein_gain_summary_p.csv")
 
 
 # -----------------------------------------------------------------------------
-# 15.3 Complex-level gain metrics (q-sig)
+# 14.3 Complex-level gain metrics (q-sig)
 # -----------------------------------------------------------------------------
 complex_gain_list <- vector("list", nrow(ko_neuron_grid))
 
@@ -19321,7 +19322,8 @@ complex_gain_states_q <- dplyr::bind_rows(complex_gain_list) %>%
 complex_gain_export_q <- complex_gain_states_q %>%
   dplyr::select(-members_list) %>%
   dplyr::select(complex_id, genotype, neuron, genotype_neuron, DiseaseClass,
-                n_members, n_gained, frac_gained)
+                n_members, n_gained, frac_gained) %>% 
+  dplyr::filter(n_gained > 0)  # exclude complexes with no gained proteins
 
 readr::write_csv(complex_gain_export_q, file.path(out_dir_gain, "tables", "complex_gain_metrics_q.csv"))
 message("  Saved: complex_gain_metrics_q.csv")
@@ -19357,7 +19359,8 @@ complex_gain_export_p <- dplyr::bind_rows(complex_gain_list_p) %>%
   dplyr::left_join(disease_class_lookup, by = "genotype") %>%
   dplyr::select(-members_list) %>%
   dplyr::select(complex_id, genotype, neuron, genotype_neuron, DiseaseClass,
-                n_members, n_gained, frac_gained)
+                n_members, n_gained, frac_gained) %>% 
+  dplyr::filter(n_gained > 0 )
 
 readr::write_csv(complex_gain_export_p, file.path(out_dir_gain, "tables", "complex_gain_metrics_p.csv"))
 message("  Saved: complex_gain_metrics_p.csv")
