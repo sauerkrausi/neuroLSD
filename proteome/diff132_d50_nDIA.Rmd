@@ -20341,7 +20341,16 @@ for (sig in c("q", "p")) {
     readr::write_csv(tibble::rownames_to_column(as.data.frame(hm_mat), "organelle"),
       file.path(out_dir_tc_multi, "sourcedata", paste0("heatmap_complex_org_", sig, "_", nt, ".csv")))
     pdf(file.path(out_dir_tc_multi, "plots/global", paste0("heatmap_complex_org_", sig, "_", nt, ".pdf")), width = 8, height = 8)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#762A83"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Disrupted complexes by organelle (", sig, "-sig) - ", nt))
+    pheatmap::pheatmap(
+      hm_mat, 
+      color = colorRampPalette(c("white", "#762A83"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      main = paste0("Disrupted complexes by organelle (", sig, "-sig) - ", nt))
     dev.off()
   }
 }
@@ -20375,7 +20384,16 @@ for (sig in c("q", "p")) {
     readr::write_csv(tibble::rownames_to_column(as.data.frame(hm_mat), "tag"),
       file.path(out_dir_tc_multi, "sourcedata", paste0("heatmap_sphingo_ppi_", sig, "_", nt, ".csv")))
     pdf(file.path(out_dir_tc_multi, "plots/global", paste0("heatmap_sphingo_ppi_", sig, "_", nt, ".pdf")), width = 7, height = 10)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Sphingolipidoses lost PPIs (", sig, "-sig) - ", nt))
+    pheatmap::pheatmap(
+      hm_mat, 
+      color = colorRampPalette(c("white", "#C51B7D"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      main = paste0("Sphingolipidoses lost PPIs (", sig, "-sig) - ", nt))
     dev.off()
   }
 
@@ -20397,7 +20415,16 @@ for (sig in c("q", "p")) {
     readr::write_csv(tibble::rownames_to_column(as.data.frame(hm_mat), "majority_org"),
       file.path(out_dir_tc_multi, "sourcedata", paste0("heatmap_sphingo_trimer_", sig, "_", nt, ".csv")))
     pdf(file.path(out_dir_tc_multi, "plots/global", paste0("heatmap_sphingo_trimer_", sig, "_", nt, ".pdf")), width = 7, height = 8)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#2166AC"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Sphingolipidoses disrupted trimers (", sig, "-sig) - ", nt))
+    pheatmap::pheatmap(
+      hm_mat, 
+      color = colorRampPalette(c("white", "#2166AC"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      main = paste0("Sphingolipidoses disrupted trimers (", sig, "-sig) - ", nt))
     dev.off()
   }
 
@@ -20437,7 +20464,16 @@ for (sig in c("q", "p")) {
     readr::write_csv(tibble::rownames_to_column(as.data.frame(hm_mat), "organelle"),
       file.path(out_dir_tc_multi, "sourcedata", paste0("heatmap_sphingo_complex_", sig, "_", nt, ".csv")))
     pdf(file.path(out_dir_tc_multi, "plots/global", paste0("heatmap_sphingo_complex_", sig, "_", nt, ".pdf")), width = 7, height = 8)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#762A83"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Sphingolipidoses disrupted complexes (", sig, "-sig) - ", nt))
+    pheatmap::pheatmap(
+      hm_mat, 
+      color = colorRampPalette(c("white", "#762A83"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      main = paste0("Sphingolipidoses disrupted complexes (", sig, "-sig) - ", nt))
     dev.off()
   }
 }
@@ -20461,7 +20497,7 @@ dir.create(file.path(out_dir_tc_asah1, "plots"),      recursive = TRUE, showWarn
 dir.create(file.path(out_dir_tc_asah1, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_tc_asah1, "tables"),     recursive = TRUE, showWarnings = FALSE)
 
-day_palette_long <- c(d30 = "#4575b4", d50 = "#91bfdb", d70 = "#e0f3f8")
+day_palette_long <- c(d30 = "#e0f3f8", d50 = "#91bfdb", d70 = "#4575b4")
 
 
 # -----------------------------------------------------------------------------
