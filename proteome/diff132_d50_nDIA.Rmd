@@ -19897,7 +19897,9 @@ message("  Saved: loss_gain_by_disease_p.csv")
 message("Module 15 complete: Gain analysis metrics exported")
 message("  q-sig outputs: ppi_gain_summary_q, protein_gain_summary_q, complex_gain_metrics_q, loss_gain_by_disease_q")
 message("  p-sig outputs: ppi_gain_summary_p, protein_gain_summary_p, complex_gain_metrics_p, loss_gain_by_disease_p")
+
 ```
+
 
 
 ## Chunk 15: Multi-Genotype Timecourse (d30 & d50)
@@ -20091,7 +20093,15 @@ for (sig in c("q", "p")) {
     readr::write_csv(as.data.frame(hm_mat) %>% tibble::rownames_to_column("tag"),
       file.path(out_dir_tc_multi, "sourcedata", paste0("heatmap_annotation_", sig, "_", nt, ".csv")))
     pdf(file.path(out_dir_tc_multi, "plots/global", paste0("heatmap_annotation_", sig, "_", nt, ".pdf")), width = 8, height = 10)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Lost PPIs by annotation (", sig, "-sig) - ", nt))
+    pheatmap::pheatmap(
+      hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      main = paste0("Lost PPIs by annotation (", sig, "-sig) - ", nt))
     dev.off()
   }
 
@@ -20105,7 +20115,16 @@ for (sig in c("q", "p")) {
       hm_mat <- as.matrix(hm_data[, -1])
       rownames(hm_mat) <- hm_data$tag
       pdf(file.path(out_dir_tc_multi, "plots/by_genotype", paste0("heatmap_", geno, "_", nt, "_", sig, ".pdf")), width = 4, height = 8)
-      pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0(geno, " ", nt, " (", sig, "-sig)"))
+      pheatmap::pheatmap(
+        hm_mat, 
+        color = colorRampPalette(c("white", "#C51B7D"))(100), 
+        cluster_rows = TRUE, 
+        cluster_cols = FALSE, 
+        fontsize = 6, 
+        cellwidth = 10, 
+        cellheight = 10, 
+        border_color = NA, 
+        main = paste0(geno, " ", nt, " (", sig, "-sig)"))
       dev.off()
     }
   }
@@ -20267,7 +20286,16 @@ for (sig in c("q", "p")) {
     readr::write_csv(tibble::rownames_to_column(as.data.frame(hm_mat), "majority_org"),
       file.path(out_dir_tc_multi, "sourcedata", paste0("heatmap_trimer_org_", sig, "_", nt, ".csv")))
     pdf(file.path(out_dir_tc_multi, "plots/global", paste0("heatmap_trimer_org_", sig, "_", nt, ".pdf")), width = 8, height = 8)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#2166AC"))(100), cluster_rows = TRUE, cluster_cols = TRUE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, main = paste0("Disrupted trimers by organelle (", sig, "-sig) - ", nt))
+    pheatmap::pheatmap(
+      hm_mat, 
+      color = colorRampPalette(c("white", "#2166AC"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      main = paste0("Disrupted trimers by organelle (", sig, "-sig) - ", nt))
     dev.off()
   }
 }
