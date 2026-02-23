@@ -19297,13 +19297,19 @@ for (dc in disease_classes_present) {
     pheatmap::pheatmap(
       hm_mat,
       color = colorRampPalette(c("grey97", "#FC9272", "#C51B7D"))(100),
-      cluster_rows = FALSE, cluster_cols = FALSE,
-      display_numbers = TRUE, number_format = "%.3f",
-      fontsize = 6, fontsize_number = 5,
-      cellwidth = 14, cellheight = 12, border_color = NA,
+      cluster_rows = FALSE, 
+      cluster_cols = FALSE,
+      display_numbers = TRUE, 
+      number_format = "%.2f",
+      fontsize = 6, 
+      fontsize_number = 5,
+      cellwidth = 12, 
+      cellheight = 12, 
+      border_color = NA,
       main = paste0(dc, " | ", nt, "\nFrac lost (q-sig) / baseline"),
       filename = file.path(out_dir_mito_sub, "plots", paste0(fname, ".pdf")),
-      width = 5, height = max(3, nrow(hm_mat) * 0.4 + 2)
+      width = 5, 
+      height = max(3, nrow(hm_mat) * 0.4 + 2)
     )
     message("  Saved: ", fname, ".pdf")
   }
