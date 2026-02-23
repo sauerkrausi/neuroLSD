@@ -19365,55 +19365,67 @@ readr::write_csv(sphingo_sub,
 
 
 
+
 # -----------------------------------------------------------------------------
 # 13E.5 Trimer-level mito subcompartment vulnerability
-# Denominator: total trimers per compartment across all genotypes (baseline)
+# "at least one of Gene1/Gene2/Gene3 annotated to compartment" (from subcell_df)
 # -----------------------------------------------------------------------------
 message("  13E.5: Trimer mito subcompartment analysis...")
 
-mito_trimer_states <- trimer_ko_states %>%
-  dplyr::filter(shared_organelle %in% mito_sub_tags)
+# Gene lookup per compartment from subcell_df
+mito_gene_lookup <- purrr::map(mito_sub_tags, function(tag) {
+  if (!tag %in% colnames(subcell_df)) return(character(0))
+  na.omit(unique(subcell_df[[tag]]))
+})
+names(mito_gene_lookup) <- mito_sub_tags
 
-if (nrow(mito_trimer_states) == 0) {
-  message("  No mito trimers found in trimer_ko_states -- skipping trimer section")
+# Filter trimers: at least one of Gene1/Gene2/Gene3 in compartment
+mito_trimer_filtered <- purrr::map_dfr(mito_sub_tags, function(tag) {
+  genes <- mito_gene_lookup[[tag]]
+  if (length(genes) == 0) return(NULL)
+  trimer_ko_states %>%
+    dplyr::filter(Gene1 %in% genes | Gene2 %in% genes | Gene3 %in% genes) %>%
+    dplyr::mutate(tag = tag)
+})
+
+message("  Mito trimers (at least one node): ", nrow(mito_trimer_filtered), " rows")
+
+if (nrow(mito_trimer_filtered) == 0) {
+  message("  Still no mito trimers found -- check gene name overlap between subcell_df and trimer_ko_states")
 } else {
 
-  # Baseline trimer counts per compartment (across all genotypes, used as denominator)
-  trimer_baseline_counts <- trimer_ko_states %>%
-    dplyr::filter(shared_organelle %in% mito_sub_tags) %>%
-    dplyr::distinct(trimer_id, shared_organelle) %>%
-    dplyr::count(shared_organelle, name = "n_baseline_trimers")
+  # Baseline: unique trimers per compartment
+  trimer_baseline_counts <- mito_trimer_filtered %>%
+    dplyr::distinct(trimer_id, tag) %>%
+    dplyr::count(tag, name = "n_baseline_trimers")
 
   message("  Baseline trimers per mito subcompartment:")
   print(trimer_baseline_counts)
   readr::write_csv(trimer_baseline_counts,
     file.path(out_dir_mito_sub, "tables", "trimer_baseline_sub_counts.csv"))
 
-  # Per-KO x neuron lost trimer counts per subcompartment
-  mito_trimer_lost <- mito_trimer_states %>%
-    dplyr::group_by(genotype, neuron, DiseaseClass, shared_organelle) %>%
+  # Per-KO x neuron lost trimer counts
+  mito_trimer_lost <- mito_trimer_filtered %>%
+    dplyr::group_by(genotype, neuron, DiseaseClass, tag) %>%
     dplyr::summarise(
       n_trimers_total  = dplyr::n(),
-      n_lost_q         = sum(state_q == "lost", na.rm = TRUE),
-      n_lost_p         = sum(state_p == "lost", na.rm = TRUE),
+      n_lost_q         = sum(state_q == "lost",    na.rm = TRUE),
+      n_lost_p         = sum(state_p == "lost",    na.rm = TRUE),
       n_partial_q      = sum(state_q == "partial", na.rm = TRUE),
       n_disrupted_q    = sum(state_q %in% c("lost", "partial"), na.rm = TRUE),
       .groups = "drop"
     ) %>%
-    dplyr::left_join(trimer_baseline_counts, by = "shared_organelle") %>%
+    dplyr::left_join(trimer_baseline_counts, by = "tag") %>%
     dplyr::mutate(
-      frac_lost_q      = n_lost_q     / n_baseline_trimers,
-      frac_lost_p      = n_lost_p     / n_baseline_trimers,
+      frac_lost_q      = n_lost_q      / n_baseline_trimers,
+      frac_lost_p      = n_lost_p      / n_baseline_trimers,
       frac_disrupted_q = n_disrupted_q / n_baseline_trimers
-    ) %>%
-    dplyr::rename(tag = shared_organelle)
+    )
 
   readr::write_csv(mito_trimer_lost,
     file.path(out_dir_mito_sub, "tables", "mito_trimer_lost_per_ko.csv"))
-  message("  Trimer loss data: ", nrow(mito_trimer_lost), " rows")
 
-
-  # Heatmaps per disease class x neuron (fully lost trimers, q-sig)
+  # Heatmaps per disease class x neuron
   for (dc in disease_classes_present) {
     for (nt in c("iN", "iDA")) {
       hm_data <- mito_trimer_lost %>%
@@ -19438,11 +19450,16 @@ if (nrow(mito_trimer_states) == 0) {
       pheatmap::pheatmap(
         hm_mat,
         color = colorRampPalette(c("grey97", "#FEC44F", "#D95F0E"))(100),
-        cluster_rows = FALSE, cluster_cols = FALSE,
-        display_numbers = TRUE, number_format = "%.3f",
-        fontsize = 6, fontsize_number = 5,
-        cellwidth = 14, cellheight = 12, border_color = NA,
-        main = paste0(dc, " | ", nt, " | Trimers\nFrac fully lost (q-sig) / baseline"),
+        cluster_rows = FALSE,
+        cluster_cols = FALSE,
+        display_numbers = TRUE, 
+        number_format = "%.2f",
+        fontsize = 6, 
+        fontsize_number = 5,
+        cellwidth = 12, 
+        cellheight = 12, 
+        border_color = NA,
+        main = paste0(dc, " | ", nt, " | Trimers\nFrac lost (q-sig) / baseline"),
         filename = file.path(out_dir_mito_sub, "plots", paste0(fname, ".pdf")),
         width = 5, height = max(3, nrow(hm_mat) * 0.4 + 2)
       )
@@ -19450,8 +19467,7 @@ if (nrow(mito_trimer_states) == 0) {
     }
   }
 
-
-  # Sphingolipidoses x iDA spotlight -- trimers
+  # Sphingolipidoses x iDA spotlight
   sphingo_trimer_sub <- mito_trimer_lost %>%
     dplyr::filter(genotype %in% sphingo_kos) %>%
     dplyr::mutate(tag = factor(tag, levels = mito_sub_tags))
