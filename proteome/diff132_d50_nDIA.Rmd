@@ -19365,7 +19365,6 @@ readr::write_csv(sphingo_sub,
 
 
 
-
 # -----------------------------------------------------------------------------
 # 13E.5 Trimer-level mito subcompartment vulnerability
 # "at least one of Gene1/Gene2/Gene3 annotated to compartment" (from subcell_df)
@@ -19501,14 +19500,41 @@ if (nrow(mito_trimer_filtered) == 0) {
 }
 
 
+
 # -----------------------------------------------------------------------------
 # 13E.6 Complex-level mito subcompartment vulnerability
 # Denominator: total complexes per compartment in complex_ko_states (baseline)
 # -----------------------------------------------------------------------------
 message("  13E.6: Complex mito subcompartment analysis...")
 
+# Build complex_id -> mito subcompartment membership
+# at least one member annotated to compartment (via subcell_df)
+mito_complex_ids <- purrr::map_dfr(mito_sub_tags, function(tag) {
+  genes <- mito_gene_lookup[[tag]] 
+  if (length(genes) == 0) return(NULL)
+  complex_members_parsed %>%
+    dplyr::rowwise() %>%
+    dplyr::filter(any(members_list %in% genes)) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(complex_id) %>%
+    dplyr::mutate(tag = tag)
+})
+
+message("  Mito complex-tag pairs: ", nrow(mito_complex_ids))
+
+# Join to complex_ko_states via complex_id + tag
+mito_complex_filtered <- complex_ko_states %>%
+  dplyr::inner_join(mito_complex_ids, by = "complex_id", relationship = "many-to-many")
+
+# Split semicolon-separated shared_organelle and explode to one row per tag
+# Filter to mito subcompartments only ("Mito" excluded per original design)
 mito_complex_states <- complex_ko_states %>%
-  dplyr::filter(shared_organelle %in% mito_sub_tags)
+  dplyr::mutate(organelle_list = stringr::str_split(shared_organelle, ";\\s*")) %>%
+  tidyr::unnest(organelle_list) %>%
+  dplyr::filter(organelle_list %in% mito_sub_tags) %>%
+  dplyr::rename(tag = organelle_list)
+
+message("  Mito complex rows after split: ", nrow(mito_complex_states))
 
 if (nrow(mito_complex_states) == 0) {
   message("  No mito complexes found -- skipping complex section")
@@ -19516,9 +19542,12 @@ if (nrow(mito_complex_states) == 0) {
 
   # Baseline complex counts per compartment
   complex_baseline_counts <- complex_ko_states %>%
-    dplyr::filter(shared_organelle %in% mito_sub_tags) %>%
-    dplyr::distinct(complex_id, shared_organelle) %>%
-    dplyr::count(shared_organelle, name = "n_baseline_complexes")
+    dplyr::mutate(organelle_list = stringr::str_split(shared_organelle, ";\\s*")) %>%
+    tidyr::unnest(organelle_list) %>%
+    dplyr::filter(organelle_list %in% mito_sub_tags) %>%
+    dplyr::distinct(complex_id, organelle_list) %>%
+    dplyr::count(organelle_list, name = "n_baseline_complexes") %>%
+    dplyr::rename(tag = organelle_list)
 
   message("  Baseline complexes per mito subcompartment:")
   print(complex_baseline_counts)
@@ -19573,10 +19602,15 @@ if (nrow(mito_complex_states) == 0) {
       pheatmap::pheatmap(
         hm_mat,
         color = colorRampPalette(c("grey97", "#9ECAE1", "#2171B5"))(100),
-        cluster_rows = FALSE, cluster_cols = FALSE,
-        display_numbers = TRUE, number_format = "%.3f",
-        fontsize = 6, fontsize_number = 5,
-        cellwidth = 14, cellheight = 12, border_color = NA,
+        cluster_rows = FALSE, 
+        cluster_cols = FALSE,
+        display_numbers = TRUE, 
+        number_format = "%.2f",
+        fontsize = 6, 
+        fontsize_number = 5,
+        cellwidth = 12, 
+        cellheight = 12, 
+        border_color = NA,
         main = paste0(dc, " | ", nt, " | Complexes\nFrac disrupted (q-sig) / baseline"),
         filename = file.path(out_dir_mito_sub, "plots", paste0(fname, ".pdf")),
         width = 5, height = max(3, nrow(hm_mat) * 0.4 + 2)
