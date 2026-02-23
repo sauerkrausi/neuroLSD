@@ -19204,6 +19204,160 @@ if (nrow(mito_ppi_summary) == 0) {
   }
 }
 
+
+## Chunk 13 Extended: Mito Subcompartment Vulnerability
+
+# =============================================================================
+# Module 13 Extended: Mito Subcompartment Vulnerability (PPI level)
+# Fraction denominator: baseline_filtered edges (at least one protein annotated)
+# "Mito" excluded -- it is the totality
+# =============================================================================
+message("Module 13 Extended: Mito subcompartment vulnerability...")
+
+out_dir_mito_sub <- file.path(out_dir_mito, "subcompartments")
+dir.create(file.path(out_dir_mito_sub, "plots"),      recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_mito_sub, "sourcedata"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_mito_sub, "tables"),     recursive = TRUE, showWarnings = FALSE)
+
+mito_sub_tags <- c("MitoIMS", "MitoMatrix", "MitoMIM", "MitoMOM", "OXPHOS", "mtComplexI", "mtCI_AF")
+
+
+# -----------------------------------------------------------------------------
+# 13E.1 Baseline edge counts per subcompartment (fixed denominator)
+# at least one protein annotated to compartment
+# -----------------------------------------------------------------------------
+baseline_sub_counts <- purrr::map_dfr(mito_sub_tags, function(tag) {
+  p1 <- paste0(tag, "_prot1")
+  p2 <- paste0(tag, "_prot2")
+  n <- baseline_filtered %>%
+    dplyr::filter(dplyr::coalesce(.data[[p1]], FALSE) | dplyr::coalesce(.data[[p2]], FALSE)) %>%
+    nrow()
+  tibble::tibble(tag = tag, n_baseline = n)
+})
+
+message("  Baseline edges per mito subcompartment:")
+print(baseline_sub_counts)
+readr::write_csv(baseline_sub_counts, file.path(out_dir_mito_sub, "tables", "baseline_sub_counts.csv"))
+
+
+# -----------------------------------------------------------------------------
+# 13E.2 Per-KO x neuron lost counts per subcompartment
+# -----------------------------------------------------------------------------
+mito_sub_lost <- purrr::map_dfr(mito_sub_tags, function(tag) {
+  p1 <- paste0(tag, "_prot1")
+  p2 <- paste0(tag, "_prot2")
+  ko_edge_states %>%
+    dplyr::filter(dplyr::coalesce(.data[[p1]], FALSE) | dplyr::coalesce(.data[[p2]], FALSE)) %>%
+    dplyr::group_by(genotype, neuron, DiseaseClass) %>%
+    dplyr::summarise(
+      n_lost_q = sum(state_q == "lost", na.rm = TRUE),
+      n_lost_p = sum(state_p == "lost", na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(tag = tag)
+}) %>%
+  dplyr::left_join(baseline_sub_counts, by = "tag") %>%
+  dplyr::mutate(
+    frac_lost_q = n_lost_q / n_baseline,
+    frac_lost_p = n_lost_p / n_baseline
+  )
+
+readr::write_csv(mito_sub_lost, file.path(out_dir_mito_sub, "tables", "mito_sub_lost_per_ko.csv"))
+message("  Rows: ", nrow(mito_sub_lost))
+
+
+# -----------------------------------------------------------------------------
+# 13E.3 Heatmaps per disease class x neuron (KOs x subcompartments)
+# -----------------------------------------------------------------------------
+disease_classes_present <- intersect(disease_class_order, unique(na.omit(mito_sub_lost$DiseaseClass)))
+
+for (dc in disease_classes_present) {
+  for (nt in c("iN", "iDA")) {
+    hm_data <- mito_sub_lost %>%
+      dplyr::filter(DiseaseClass == dc, neuron == nt) %>%
+      dplyr::select(genotype, tag, frac_lost_q) %>%
+      tidyr::pivot_wider(names_from = tag, values_from = frac_lost_q, values_fill = 0) %>%
+      dplyr::arrange(genotype)
+
+    if (nrow(hm_data) < 1) next
+
+    # Keep only subcompartments present as columns, in fixed order
+    present_tags <- intersect(mito_sub_tags, colnames(hm_data))
+    hm_mat <- as.matrix(hm_data[, present_tags, drop = FALSE])
+    rownames(hm_mat) <- hm_data$genotype
+    hm_mat <- hm_mat[order(rowSums(hm_mat, na.rm = TRUE), decreasing = TRUE), , drop = FALSE]
+
+    dc_clean <- gsub("\\.", "_", dc)
+    fname    <- paste0("heatmap_mito_sub_", dc_clean, "_", nt)
+
+    readr::write_csv(
+      as.data.frame(hm_mat) %>% tibble::rownames_to_column("genotype"),
+      file.path(out_dir_mito_sub, "sourcedata", paste0(fname, ".csv"))
+    )
+    pheatmap::pheatmap(
+      hm_mat,
+      color = colorRampPalette(c("grey97", "#FC9272", "#C51B7D"))(100),
+      cluster_rows = FALSE, cluster_cols = FALSE,
+      display_numbers = TRUE, number_format = "%.3f",
+      fontsize = 6, fontsize_number = 5,
+      cellwidth = 14, cellheight = 12, border_color = NA,
+      main = paste0(dc, " | ", nt, "\nFrac lost (q-sig) / baseline"),
+      filename = file.path(out_dir_mito_sub, "plots", paste0(fname, ".pdf")),
+      width = 5, height = max(3, nrow(hm_mat) * 0.4 + 2)
+    )
+    message("  Saved: ", fname, ".pdf")
+  }
+}
+
+
+# -----------------------------------------------------------------------------
+# 13E.4 Sphingolipidoses x iDA spotlight
+# -----------------------------------------------------------------------------
+sphingo_kos <- mito_sub_lost %>%
+  dplyr::filter(DiseaseClass == "Sphingolipidoses") %>%
+  dplyr::pull(genotype) %>% unique()
+
+sphingo_sub <- mito_sub_lost %>%
+  dplyr::filter(genotype %in% sphingo_kos) %>%
+  dplyr::mutate(tag = factor(tag, levels = mito_sub_tags))
+
+# iDA focus (paper angle)
+p_sphingo_iDA <- ggplot2::ggplot(
+  sphingo_sub %>% dplyr::filter(neuron == "iDA"),
+  ggplot2::aes(x = tag, y = frac_lost_q, fill = genotype)
+) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+  ggplot2::scale_fill_brewer(palette = "Set2", name = "KO") +
+  ggplot2::labs(
+    x = NULL, y = "Frac lost PPIs / baseline (q-sig)",
+    title = "Sphingolipidoses: mito subcompartment vulnerability (iDA)"
+  ) +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                 axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+ggplot2::ggsave(file.path(out_dir_mito_sub, "plots", "sphingo_iDA_mito_sub_barplot.pdf"),
+  p_sphingo_iDA, width = 6, height = 4, device = cairo_pdf)
+readr::write_csv(sphingo_sub %>% dplyr::filter(neuron == "iDA"),
+  file.path(out_dir_mito_sub, "sourcedata", "sphingo_iDA_mito_sub_barplot.csv"))
+
+# Both neurons for completeness
+p_sphingo_both <- ggplot2::ggplot(sphingo_sub, ggplot2::aes(x = tag, y = frac_lost_q, fill = genotype)) +
+  ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+  ggplot2::facet_wrap(~neuron) +
+  ggplot2::scale_fill_brewer(palette = "Set2", name = "KO") +
+  ggplot2::labs(x = NULL, y = "Frac lost PPIs / baseline (q-sig)",
+                title = "Sphingolipidoses: mito subcompartment vulnerability") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                 axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+ggplot2::ggsave(file.path(out_dir_mito_sub, "plots", "sphingo_both_mito_sub_barplot.pdf"),
+  p_sphingo_both, width = 8, height = 4, device = cairo_pdf)
+readr::write_csv(sphingo_sub,
+  file.path(out_dir_mito_sub, "sourcedata", "sphingo_both_mito_sub_barplot.csv"))
+
+
 message("Module 13 complete: OXPHOS vulnerability analysis")
 ```
 
