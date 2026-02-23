@@ -19363,6 +19363,239 @@ ggplot2::ggsave(file.path(out_dir_mito_sub, "plots", "sphingo_both_mito_sub_barp
 readr::write_csv(sphingo_sub,
   file.path(out_dir_mito_sub, "sourcedata", "sphingo_both_mito_sub_barplot.csv"))
 
+# -----------------------------------------------------------------------------
+# 13E.5 Trimer-level mito subcompartment vulnerability
+# Denominator: total trimers per compartment across all genotypes (baseline)
+# -----------------------------------------------------------------------------
+message("  13E.5: Trimer mito subcompartment analysis...")
+
+mito_trimer_states <- trimer_ko_states %>%
+  dplyr::filter(shared_organelle %in% mito_sub_tags)
+
+if (nrow(mito_trimer_states) == 0) {
+  message("  No mito trimers found in trimer_ko_states -- skipping trimer section")
+} else {
+
+  # Baseline trimer counts per compartment (across all genotypes, used as denominator)
+  trimer_baseline_counts <- trimer_ko_states %>%
+    dplyr::filter(shared_organelle %in% mito_sub_tags) %>%
+    dplyr::distinct(trimer_id, shared_organelle) %>%
+    dplyr::count(shared_organelle, name = "n_baseline_trimers")
+
+  message("  Baseline trimers per mito subcompartment:")
+  print(trimer_baseline_counts)
+  readr::write_csv(trimer_baseline_counts,
+    file.path(out_dir_mito_sub, "tables", "trimer_baseline_sub_counts.csv"))
+
+  # Per-KO x neuron lost trimer counts per subcompartment
+  mito_trimer_lost <- mito_trimer_states %>%
+    dplyr::group_by(genotype, neuron, DiseaseClass, shared_organelle) %>%
+    dplyr::summarise(
+      n_trimers_total  = dplyr::n(),
+      n_lost_q         = sum(state_q == "lost", na.rm = TRUE),
+      n_lost_p         = sum(state_p == "lost", na.rm = TRUE),
+      n_partial_q      = sum(state_q == "partial", na.rm = TRUE),
+      n_disrupted_q    = sum(state_q %in% c("lost", "partial"), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::left_join(trimer_baseline_counts, by = "shared_organelle") %>%
+    dplyr::mutate(
+      frac_lost_q      = n_lost_q     / n_baseline_trimers,
+      frac_lost_p      = n_lost_p     / n_baseline_trimers,
+      frac_disrupted_q = n_disrupted_q / n_baseline_trimers
+    ) %>%
+    dplyr::rename(tag = shared_organelle)
+
+  readr::write_csv(mito_trimer_lost,
+    file.path(out_dir_mito_sub, "tables", "mito_trimer_lost_per_ko.csv"))
+  message("  Trimer loss data: ", nrow(mito_trimer_lost), " rows")
+
+
+  # Heatmaps per disease class x neuron (fully lost trimers, q-sig)
+  for (dc in disease_classes_present) {
+    for (nt in c("iN", "iDA")) {
+      hm_data <- mito_trimer_lost %>%
+        dplyr::filter(DiseaseClass == dc, neuron == nt) %>%
+        dplyr::select(genotype, tag, frac_lost_q) %>%
+        tidyr::pivot_wider(names_from = tag, values_from = frac_lost_q, values_fill = 0)
+
+      if (nrow(hm_data) < 1) next
+
+      present_tags <- intersect(mito_sub_tags, colnames(hm_data))
+      hm_mat <- as.matrix(hm_data[, present_tags, drop = FALSE])
+      rownames(hm_mat) <- hm_data$genotype
+      hm_mat <- hm_mat[order(rowSums(hm_mat, na.rm = TRUE), decreasing = TRUE), , drop = FALSE]
+
+      dc_clean <- gsub("\\.", "_", dc)
+      fname    <- paste0("heatmap_trimer_mito_sub_", dc_clean, "_", nt)
+
+      readr::write_csv(
+        as.data.frame(hm_mat) %>% tibble::rownames_to_column("genotype"),
+        file.path(out_dir_mito_sub, "sourcedata", paste0(fname, ".csv"))
+      )
+      pheatmap::pheatmap(
+        hm_mat,
+        color = colorRampPalette(c("grey97", "#FEC44F", "#D95F0E"))(100),
+        cluster_rows = FALSE, cluster_cols = FALSE,
+        display_numbers = TRUE, number_format = "%.3f",
+        fontsize = 6, fontsize_number = 5,
+        cellwidth = 14, cellheight = 12, border_color = NA,
+        main = paste0(dc, " | ", nt, " | Trimers\nFrac fully lost (q-sig) / baseline"),
+        filename = file.path(out_dir_mito_sub, "plots", paste0(fname, ".pdf")),
+        width = 5, height = max(3, nrow(hm_mat) * 0.4 + 2)
+      )
+      message("  Saved: ", fname, ".pdf")
+    }
+  }
+
+
+  # Sphingolipidoses x iDA spotlight -- trimers
+  sphingo_trimer_sub <- mito_trimer_lost %>%
+    dplyr::filter(genotype %in% sphingo_kos) %>%
+    dplyr::mutate(tag = factor(tag, levels = mito_sub_tags))
+
+  if (nrow(sphingo_trimer_sub) > 0) {
+    p_sphingo_trimer_iDA <- ggplot2::ggplot(
+      sphingo_trimer_sub %>% dplyr::filter(neuron == "iDA"),
+      ggplot2::aes(x = tag, y = frac_lost_q, fill = genotype)
+    ) +
+      ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+      ggplot2::scale_fill_brewer(palette = "Set2", name = "KO") +
+      ggplot2::labs(
+        x = NULL, y = "Frac lost trimers / baseline (q-sig)",
+        title = "Sphingolipidoses: mito subcompartment trimer vulnerability (iDA)"
+      ) +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                     axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+    ggplot2::ggsave(
+      file.path(out_dir_mito_sub, "plots", "sphingo_iDA_trimer_mito_sub_barplot.pdf"),
+      p_sphingo_trimer_iDA, width = 6, height = 4, device = cairo_pdf)
+    readr::write_csv(
+      sphingo_trimer_sub %>% dplyr::filter(neuron == "iDA"),
+      file.path(out_dir_mito_sub, "sourcedata", "sphingo_iDA_trimer_mito_sub_barplot.csv"))
+  }
+
+  message("  13E.5 trimer section complete")
+}
+
+Now the complex section:
+r# -----------------------------------------------------------------------------
+# 13E.6 Complex-level mito subcompartment vulnerability
+# Denominator: total complexes per compartment in complex_ko_states (baseline)
+# -----------------------------------------------------------------------------
+message("  13E.6: Complex mito subcompartment analysis...")
+
+mito_complex_states <- complex_ko_states %>%
+  dplyr::filter(shared_organelle %in% mito_sub_tags)
+
+if (nrow(mito_complex_states) == 0) {
+  message("  No mito complexes found -- skipping complex section")
+} else {
+
+  # Baseline complex counts per compartment
+  complex_baseline_counts <- complex_ko_states %>%
+    dplyr::filter(shared_organelle %in% mito_sub_tags) %>%
+    dplyr::distinct(complex_id, shared_organelle) %>%
+    dplyr::count(shared_organelle, name = "n_baseline_complexes")
+
+  message("  Baseline complexes per mito subcompartment:")
+  print(complex_baseline_counts)
+  readr::write_csv(complex_baseline_counts,
+    file.path(out_dir_mito_sub, "tables", "complex_baseline_sub_counts.csv"))
+
+  # Per-KO x neuron complex states per subcompartment
+  mito_complex_lost <- mito_complex_states %>%
+    dplyr::group_by(genotype, neuron, DiseaseClass, shared_organelle) %>%
+    dplyr::summarise(
+      n_complexes_total = dplyr::n(),
+      n_disrupted_q     = sum(state_q == "disrupted", na.rm = TRUE),
+      n_disrupted_p     = sum(state_p == "disrupted", na.rm = TRUE),
+      n_partial_q       = sum(state_q == "partial",   na.rm = TRUE),
+      mean_frac_lost_q  = mean(frac_lost_q, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::left_join(complex_baseline_counts, by = "shared_organelle") %>%
+    dplyr::mutate(
+      frac_disrupted_q = n_disrupted_q / n_baseline_complexes,
+      frac_disrupted_p = n_disrupted_p / n_baseline_complexes
+    ) %>%
+    dplyr::rename(tag = shared_organelle)
+
+  readr::write_csv(mito_complex_lost,
+    file.path(out_dir_mito_sub, "tables", "mito_complex_lost_per_ko.csv"))
+  message("  Complex disruption data: ", nrow(mito_complex_lost), " rows")
+
+
+  # Heatmaps per disease class x neuron
+  for (dc in disease_classes_present) {
+    for (nt in c("iN", "iDA")) {
+      hm_data <- mito_complex_lost %>%
+        dplyr::filter(DiseaseClass == dc, neuron == nt) %>%
+        dplyr::select(genotype, tag, frac_disrupted_q) %>%
+        tidyr::pivot_wider(names_from = tag, values_from = frac_disrupted_q, values_fill = 0)
+
+      if (nrow(hm_data) < 1) next
+
+      present_tags <- intersect(mito_sub_tags, colnames(hm_data))
+      hm_mat <- as.matrix(hm_data[, present_tags, drop = FALSE])
+      rownames(hm_mat) <- hm_data$genotype
+      hm_mat <- hm_mat[order(rowSums(hm_mat, na.rm = TRUE), decreasing = TRUE), , drop = FALSE]
+
+      dc_clean <- gsub("\\.", "_", dc)
+      fname    <- paste0("heatmap_complex_mito_sub_", dc_clean, "_", nt)
+
+      readr::write_csv(
+        as.data.frame(hm_mat) %>% tibble::rownames_to_column("genotype"),
+        file.path(out_dir_mito_sub, "sourcedata", paste0(fname, ".csv"))
+      )
+      pheatmap::pheatmap(
+        hm_mat,
+        color = colorRampPalette(c("grey97", "#9ECAE1", "#2171B5"))(100),
+        cluster_rows = FALSE, cluster_cols = FALSE,
+        display_numbers = TRUE, number_format = "%.3f",
+        fontsize = 6, fontsize_number = 5,
+        cellwidth = 14, cellheight = 12, border_color = NA,
+        main = paste0(dc, " | ", nt, " | Complexes\nFrac disrupted (q-sig) / baseline"),
+        filename = file.path(out_dir_mito_sub, "plots", paste0(fname, ".pdf")),
+        width = 5, height = max(3, nrow(hm_mat) * 0.4 + 2)
+      )
+      message("  Saved: ", fname, ".pdf")
+    }
+  }
+
+
+  # Sphingolipidoses x iDA spotlight -- complexes
+  sphingo_complex_sub <- mito_complex_lost %>%
+    dplyr::filter(genotype %in% sphingo_kos) %>%
+    dplyr::mutate(tag = factor(tag, levels = mito_sub_tags))
+
+  if (nrow(sphingo_complex_sub) > 0) {
+    p_sphingo_cx_iDA <- ggplot2::ggplot(
+      sphingo_complex_sub %>% dplyr::filter(neuron == "iDA"),
+      ggplot2::aes(x = tag, y = frac_disrupted_q, fill = genotype)
+    ) +
+      ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+      ggplot2::scale_fill_brewer(palette = "Set2", name = "KO") +
+      ggplot2::labs(
+        x = NULL, y = "Frac disrupted complexes / baseline (q-sig)",
+        title = "Sphingolipidoses: mito subcompartment complex vulnerability (iDA)"
+      ) +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                     axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+    ggplot2::ggsave(
+      file.path(out_dir_mito_sub, "plots", "sphingo_iDA_complex_mito_sub_barplot.pdf"),
+      p_sphingo_cx_iDA, width = 6, height = 4, device = cairo_pdf)
+    readr::write_csv(
+      sphingo_complex_sub %>% dplyr::filter(neuron == "iDA"),
+      file.path(out_dir_mito_sub, "sourcedata", "sphingo_iDA_complex_mito_sub_barplot.csv"))
+  }
+
+  message("  13E.6 complex section complete")
+}
 
 message("Module 13 complete: OXPHOS vulnerability analysis")
 ```
