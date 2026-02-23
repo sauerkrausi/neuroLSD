@@ -19408,18 +19408,15 @@ if (nrow(mito_trimer_filtered) == 0) {
   mito_trimer_lost <- mito_trimer_filtered %>%
     dplyr::group_by(genotype, neuron, DiseaseClass, tag) %>%
     dplyr::summarise(
-      n_trimers_total  = dplyr::n(),
-      n_lost_q         = sum(state_q == "lost",    na.rm = TRUE),
-      n_lost_p         = sum(state_p == "lost",    na.rm = TRUE),
-      n_partial_q      = sum(state_q == "partial", na.rm = TRUE),
-      n_disrupted_q    = sum(state_q %in% c("lost", "partial"), na.rm = TRUE),
+      n_trimers_total = dplyr::n(),
+      n_disrupted_q   = sum(state_q == "disrupted", na.rm = TRUE),
+      n_disrupted_p   = sum(state_p == "disrupted", na.rm = TRUE),
       .groups = "drop"
     ) %>%
     dplyr::left_join(trimer_baseline_counts, by = "tag") %>%
     dplyr::mutate(
-      frac_lost_q      = n_lost_q      / n_baseline_trimers,
-      frac_lost_p      = n_lost_p      / n_baseline_trimers,
-      frac_disrupted_q = n_disrupted_q / n_baseline_trimers
+      frac_disrupted_q = n_disrupted_q / n_baseline_trimers,
+      frac_disrupted_p = n_disrupted_p / n_baseline_trimers
     )
 
   readr::write_csv(mito_trimer_lost,
@@ -19430,8 +19427,8 @@ if (nrow(mito_trimer_filtered) == 0) {
     for (nt in c("iN", "iDA")) {
       hm_data <- mito_trimer_lost %>%
         dplyr::filter(DiseaseClass == dc, neuron == nt) %>%
-        dplyr::select(genotype, tag, frac_lost_q) %>%
-        tidyr::pivot_wider(names_from = tag, values_from = frac_lost_q, values_fill = 0)
+        dplyr::select(genotype, tag, frac_disrupted_q) %>%
+        tidyr::pivot_wider(names_from = tag, values_from = frac_disrupted_q, values_fill = 0)
 
       if (nrow(hm_data) < 1) next
 
@@ -19447,6 +19444,11 @@ if (nrow(mito_trimer_filtered) == 0) {
         as.data.frame(hm_mat) %>% tibble::rownames_to_column("genotype"),
         file.path(out_dir_mito_sub, "sourcedata", paste0(fname, ".csv"))
       )
+      # check range of matrix
+      if (max(hm_mat, na.rm = TRUE) == 0 || diff(range(hm_mat, na.rm = TRUE)) == 0) {
+        message("  Skipping ", fname, " -- no variation in values")
+        next
+      }
       pheatmap::pheatmap(
         hm_mat,
         color = colorRampPalette(c("grey97", "#FEC44F", "#D95F0E"))(100),
@@ -19475,12 +19477,12 @@ if (nrow(mito_trimer_filtered) == 0) {
   if (nrow(sphingo_trimer_sub) > 0) {
     p_sphingo_trimer_iDA <- ggplot2::ggplot(
       sphingo_trimer_sub %>% dplyr::filter(neuron == "iDA"),
-      ggplot2::aes(x = tag, y = frac_lost_q, fill = genotype)
+      ggplot2::aes(x = tag, y = frac_disrupted_q, fill = genotype)
     ) +
       ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
       ggplot2::scale_fill_brewer(palette = "Set2", name = "KO") +
       ggplot2::labs(
-        x = NULL, y = "Frac lost trimers / baseline (q-sig)",
+        x = NULL, y = "Frac disrupted trimers / baseline (q-sig)",
         title = "Sphingolipidoses: mito subcompartment trimer vulnerability (iDA)"
       ) +
       ggplot2::theme_bw(base_size = 6) +
