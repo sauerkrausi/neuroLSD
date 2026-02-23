@@ -19555,22 +19555,21 @@ if (nrow(mito_complex_states) == 0) {
     file.path(out_dir_mito_sub, "tables", "complex_baseline_sub_counts.csv"))
 
   # Per-KO x neuron complex states per subcompartment
+  # group_by: shared_organelle -> tag
   mito_complex_lost <- mito_complex_states %>%
-    dplyr::group_by(genotype, neuron, DiseaseClass, shared_organelle) %>%
+    dplyr::group_by(genotype, neuron, DiseaseClass, tag) %>%    # <-- was shared_organelle
     dplyr::summarise(
       n_complexes_total = dplyr::n(),
       n_disrupted_q     = sum(state_q == "disrupted", na.rm = TRUE),
       n_disrupted_p     = sum(state_p == "disrupted", na.rm = TRUE),
-      n_partial_q       = sum(state_q == "partial",   na.rm = TRUE),
       mean_frac_lost_q  = mean(frac_lost_q, na.rm = TRUE),
       .groups = "drop"
     ) %>%
-    dplyr::left_join(complex_baseline_counts, by = "shared_organelle") %>%
+    dplyr::left_join(complex_baseline_counts, by = "tag") %>%   # <-- was shared_organelle
     dplyr::mutate(
       frac_disrupted_q = n_disrupted_q / n_baseline_complexes,
       frac_disrupted_p = n_disrupted_p / n_baseline_complexes
-    ) %>%
-    dplyr::rename(tag = shared_organelle)
+    )
 
   readr::write_csv(mito_complex_lost,
     file.path(out_dir_mito_sub, "tables", "mito_complex_lost_per_ko.csv"))
@@ -19599,6 +19598,11 @@ if (nrow(mito_complex_states) == 0) {
         as.data.frame(hm_mat) %>% tibble::rownames_to_column("genotype"),
         file.path(out_dir_mito_sub, "sourcedata", paste0(fname, ".csv"))
       )
+      # check range of matrix
+      if (max(hm_mat, na.rm = TRUE) == 0 || diff(range(hm_mat, na.rm = TRUE)) == 0) {
+        message("  Skipping ", fname, " -- no variation in values")
+        next
+      }
       pheatmap::pheatmap(
         hm_mat,
         color = colorRampPalette(c("grey97", "#9ECAE1", "#2171B5"))(100),
