@@ -19363,6 +19363,8 @@ ggplot2::ggsave(file.path(out_dir_mito_sub, "plots", "sphingo_both_mito_sub_barp
 readr::write_csv(sphingo_sub,
   file.path(out_dir_mito_sub, "sourcedata", "sphingo_both_mito_sub_barplot.csv"))
 
+
+
 # -----------------------------------------------------------------------------
 # 13E.5 Trimer-level mito subcompartment vulnerability
 # Denominator: total trimers per compartment across all genotypes (baseline)
@@ -19480,8 +19482,8 @@ if (nrow(mito_trimer_states) == 0) {
   message("  13E.5 trimer section complete")
 }
 
-Now the complex section:
-r# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # 13E.6 Complex-level mito subcompartment vulnerability
 # Denominator: total complexes per compartment in complex_ko_states (baseline)
 # -----------------------------------------------------------------------------
