@@ -18733,6 +18733,28 @@ message("Output: ", out_dir_sphingosine)
 # Ceramide Pathway Disruption Analysis
 # Jaccard similarity of lost PPIs + complex disruption correlation
 # across sphingolipidosis KOs
+#
+# Hypothesis: Enzymes proximal to ceramide (ASAH1, GBA1, SMPD1) show 
+# convergent PPI/complex disruption despite acting on different substrates,
+# because they all affect ceramide homeostasis.
+#
+# Approach:
+# 1. Encode sphingolipid pathway as branch + depth from ceramide
+# 2. Compute Jaccard similarity of lost PPIs between all sphingolipidosis KOs
+# 3. Compute correlation of complex disruption profiles
+# 4. Test if ceramide-proximal enzymes cluster together
+# 5. Identify shared disrupted complexes (ceramide-sensitive machinery)
+#
+# Key comparisons:
+# - ASAH1 vs GBA1: Both affect ceramide, opposite directions
+# - HEXA vs HEXB: Same substrate (GM2), positive control
+# - GBA1 vs SMPD1: Both produce ceramide, different branches
+
+# Jaccard similarity as measure:
+# - Jaccard measures overlap of binary sets (lost vs not lost).
+# - PPI loss is binary (edge lost or not)
+# - Handles sparse data well (most PPIs are not lost in any given KO)
+# - Intuitive: intersection / union = what fraction of affected PPIs are shared
 # =============================================================================
 message("Chunk 12: Ceramide Pathway Disruption Analysis...")
 
