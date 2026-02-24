@@ -2446,6 +2446,7 @@ dir.create(out_dir_d50_semicircos, recursive = TRUE, showWarnings = FALSE)
 
 # --- Step 2: Define function
 plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir, 
+                                    filename = "halfcircos_log2fc",
                                     disease_class_palette,
                                     celltype_colors = c(iDA = "grey80", iN = "grey40"),
                                     annotations = c("Lysosome", "Mito", "OXPHOS", "Golgi", 
@@ -2493,7 +2494,7 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   summary_df$overall_mean <- rowMeans(summary_df[, annotations], na.rm = TRUE)
   
   # Save summary
-  write.csv(summary_df, file.path(out_dir, "halfcircos_log2fc_summary.csv"), row.names = FALSE)
+  write.csv(summary_df, file.path(out_dir, paste0(filename, "_summary.csv")), row.names = FALSE)
   message("Summary saved: ", nrow(summary_df), " KO x neuron combinations")
   
   # Sort: within each neuron type, sort by overall_mean
@@ -2534,7 +2535,7 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   
   
   # --- Plot ---
-  pdf(file.path(out_dir, "halfcircos_log2fc.pdf"), width = 14, height = 20)
+  pdf(file.path(out_dir, paste0(filename, ".pdf")), width = 14, height = 20)
   
   circos.clear()
   
@@ -2638,10 +2639,40 @@ plot_halfcircos_log2fc(
   log2fc_mat = log2FC_d50_annotated,
   disease_class_df = disease_class_df,
   out_dir = out_dir_d50_semicircos,
+  filename = "halfcircos_log2fc",
   disease_class_palette = disease_class_palette,
   celltype_colors = c(iDA = "grey80", iN = "grey40"),
   annotations = c("Lysosome", "Mito", "OXPHOS", "Golgi", "Endo_iN_curated_Hundley", 
                   "EarlyEndosome", "RecyclingEndosome", "SynapseSVs", "ER", "Autophagy")
+)
+
+
+
+
+
+## --- q-value filtered half-circos
+# mask non-significant values to NA
+fc_cols_circos <- grep("^[A-Z0-9]+_(iN|iDA)$", colnames(log2FC_d50_annotated), value = TRUE)
+
+q_sig_pairs <- diff132_log2fc_df %>%
+  dplyr::filter(day == 50, q_value < 0.05) %>%
+  dplyr::select(Genes, sample_id)
+
+log2FC_d50_qsig <- log2FC_d50_annotated
+for (col in fc_cols_circos) {
+  sig_genes <- q_sig_pairs$Genes[q_sig_pairs$sample_id == col]
+  log2FC_d50_qsig[[col]][!log2FC_d50_qsig$Genes %in% sig_genes] <- NA
+}
+
+plot_halfcircos_log2fc(
+  log2fc_mat          = log2FC_d50_qsig,
+  filename = "halfcircos_log2fc_qsig",
+  disease_class_df    = disease_class_df,
+  out_dir             = out_dir_d50_semicircos,
+  disease_class_palette = disease_class_palette,
+  celltype_colors     = c(iDA = "grey80", iN = "grey40"),
+  annotations         = c("Lysosome", "Mito", "OXPHOS", "Golgi", "Endo_iN_curated_Hundley",
+                           "EarlyEndosome", "RecyclingEndosome", "SynapseSVs", "ER", "Autophagy")
 )
 ```
 
