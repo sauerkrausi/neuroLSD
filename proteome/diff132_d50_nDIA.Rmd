@@ -6116,7 +6116,7 @@ ph <- pheatmap::pheatmap(hm_mat,
   gaps_row = length(gene_sets),
   main = "Autophagy Machinery & Cargo — Mean log2FC")
 
-ggplot2::ggsave(file.path(out_dir_d50_violins, "diff132_d50_Autophagy_heatmap.pdf"), ph, width = 12, height = 6, device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "diff132_d50_Autophagy_heatmap.pdf"), ph, width = 12, height = 6, device = grDevices::cairo_pdf)
 ```
 
 
@@ -11419,7 +11419,7 @@ pheatmap::pheatmap(
 
 
 # =================================================
-# Module 11b: Master PPI Evidence Table
+# Module 11: Master PPI Evidence & Analysis 
 # =================================================
 
 # PPI vulnerability pipeline in iN and iDA LSD mutants from two PPI datasets
@@ -12388,7 +12388,7 @@ p_support_baseline <- ggplot(baseline_ppi_v3, aes(x = factor(support_score))) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_baseline, "qc", "barplot_support_score_baseline.pdf"), p_support_baseline, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_baseline, "qc", "barplot_support_score_baseline.pdf"), p_support_baseline, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 3: Organelle edge counts ---
 if (nrow(organelle_edge_counts) > 0) {
@@ -12414,7 +12414,7 @@ if (nrow(organelle_edge_counts) > 0) {
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-  ggsave(file.path(out_dir_baseline, "qc", "barplot_organelle_edges_baseline.pdf"), p_organelle, width = 5, height = 6, device = cairo_pdf)
+  ggsave(file.path(out_dir_baseline, "qc", "barplot_organelle_edges_baseline.pdf"), p_organelle, width = 5, height = 4.5, device = cairo_pdf)
 }
 
 # --- Plot 4: Node degree distribution ---
@@ -12992,7 +12992,7 @@ p_db_trimers <- ggplot(db_support_trimers_long, aes(x = database, y = n_trimers,
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
 
-ggsave(file.path(out_dir_trimer, "qc", "barplot_database_support_trimers.pdf"), p_db_trimers, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "barplot_database_support_trimers.pdf"), p_db_trimers, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 2: Validation tier distribution ---
 validation_counts <- trimers_df %>%
@@ -14316,7 +14316,7 @@ p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 4, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 3.5, height = 3.5, device = cairo_pdf)
 
 # --- Plot 4: Validation by source (CORUM, ComplexPortal, PDB separate) ---
 validation_by_source <- data.frame(
