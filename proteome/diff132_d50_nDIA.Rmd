@@ -12192,7 +12192,7 @@ p_support_tier <- ggplot(support_by_tier_long, aes(x = factor(confidence_tier, l
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
 
-ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_by_tier.pdf"), p_support_tier, width = 5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_ppi_dual, "qc/plots", "barplot_support_by_tier.pdf"), p_support_tier, width = 4, height = 4, device = cairo_pdf)
 
 # --- Save outputs ---
 readr::write_csv(master_ppi_v3, file.path(out_dir_ppi_dual, "tables", "master_ppi_v3.csv"))
