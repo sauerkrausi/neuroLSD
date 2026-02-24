@@ -2779,11 +2779,21 @@ p_sig_q_iDA <- ggplot2::ggplot(sig_df_q_iDA, ggplot2::aes(x = Genotype, y = Coun
 ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_qvalue_iDA_barplot.pdf"), p_sig_q_iDA, width = 3.5, height = 3)
 
 # Plot q-value iN
-p_sig_q_iN <- ggplot2::ggplot(sig_df_q_iN, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iN) + ggplot2::labs(x = NULL, y = "Significant proteins (q < 0.05)", fill = NULL, title = "iN") + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
+p_sig_q_iN <- ggplot2::ggplot(sig_df_q_iN, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + 
+  ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iN) + 
+  ggplot2::labs(x = NULL, y = "Significant proteins (q < 0.05)", fill = NULL, title = "iN") + 
+  ggplot2::theme_bw(base_size = 6) + 
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank(), 
+    axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
 ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_qvalue_iN_barplot.pdf"), p_sig_q_iN, width = 3.5, height = 3)
 
 # Plot p-value iDA
-p_sig_p_iDA <- ggplot2::ggplot(sig_df_p_iDA, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iDA) + ggplot2::labs(x = NULL, y = "Significant proteins (p < 0.05)", fill = NULL, title = "iDA") + ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
+p_sig_p_iDA <- ggplot2::ggplot(sig_df_p_iDA, ggplot2::aes(x = Genotype, y = Count, fill = Direction)) + 
+  ggplot2::geom_col() + ggplot2::scale_fill_manual(values = direction_colors_iDA) + 
+  ggplot2::labs(x = NULL, y = "Significant proteins (p < 0.05)", fill = NULL, title = "iDA") + 
+  ggplot2::theme_bw(base_size = 6) + 
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
 ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "sig_proteins_pvalue_iDA_barplot.pdf"), p_sig_p_iDA, width = 3.5, height = 3)
 
 # Plot p-value iN
