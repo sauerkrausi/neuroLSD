@@ -694,12 +694,15 @@ ggsave(file.path(out_dir_d50_QC, "diff132_d50_noQC_PCA_byDay.pdf"),      d50plot
 ```
 
 
-
 # QC plot: Protein ID per sample x neuron
 ``` {r}
 # --------------------------------------------------- #
 # QC plot - Protein ID per sample x neuron 
 # --------------------------------------------------- #
+
+n_genotypes_noQC <- n_geno_nqc
+n_neurons_noQC   <- length(unique(pc_df_noqc$neuron))
+n_days_noQC      <- n_days_nqc
 
 # --- Step 1. Average number of ProteinIDs per type on neuron
 gene_counts_neuron <- cleaned_df %>%
@@ -833,8 +836,8 @@ ProteinID_avg_neuron <- ggplot(avg_IDs_by_neuron, aes(x = neuron, y = mean_IDs, 
   geom_text(aes(label = round(mean_IDs, 0)), vjust = -0.5, size = 3)
 
 # --- Step 4. Save QC plots as PDFs in homedir of the project
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_neuronquant.pdf"), neuronquant,width = 12, height = 6, units = "cm", dpi=600)
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_ProteinID_genotype_neurontypee.pdf"), ProteinID_genotype_neurontype, width =25, height = 10, units = "cm", dpi=600)
+ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_neuronquant.pdf"), neuronquant, width = 8, height = 10, units = "cm", dpi=600)
+ggsave(file.path(out_dir_d50_QC,"diff132_d50_QC_ProteinID_genotype_neurontypee.pdf"), ProteinID_genotype_neurontype, width =15, height = 15, units = "cm", dpi=600)
 ggsave(file.path(out_dir_d50_QC, "diff132_d50_QC_ProteinID_avg_by_neuron.pdf"),ProteinID_avg_neuron, width =12 , height = 6, units = "cm", dpi = 600)
 
 
@@ -892,12 +895,13 @@ load("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/da
 # - Calculate the IQR (Q3 - Q1)
 # - Define lower and upper bounds as median ± half IQR
 rsd_filtered <- rsd_q1_to_q3 %>%
-  filter(Day %in% c("30", "50")) %>%
-  mutate(
-    IQR   = Q3 - Q1,
-    lower = medianRSD - (IQR / 2),
-    upper = medianRSD + (IQR / 2)
-  )
+  dplyr::mutate(
+    Day      = sub("^(\\d+)\\..*", "\\1", day_neuron_geno),
+    Neuron   = sub("^\\d+\\.(\\w+)\\..*", "\\1", day_neuron_geno),
+    Genotype = sub("^\\d+\\.\\w+\\.(.*)", "\\1", day_neuron_geno)
+  ) %>%
+  dplyr::filter(Day %in% c("30", "50")) %>%
+  dplyr::mutate(IQR = Q3 - Q1, lower = medianRSD - IQR / 2, upper = medianRSD + IQR / 2)
 
 # --- 1. Function to generate a single plot for one neuron type and one day
 make_day_plot <- function(df, neuron_type, day_label) {
