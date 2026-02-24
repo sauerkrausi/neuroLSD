@@ -1139,7 +1139,7 @@ dev.off()
 
 
 
-# Add subcell annotation
+# Add subcell annotation & plot basic heatmaps
 add subcell annotation to df and save
 sub sub-matrix for d30 and d50
 export heatmap as csv file
@@ -1307,7 +1307,48 @@ sig_heatmap_matrix <- sig_annotation_heatmap %>%
   as.matrix()
 
 # Plot
- 
+neuron_colors <- c("iN" = "grey50", "iDA" = "grey80")
+
+# reorder columns
+sig_heatmap_matrix <- sig_heatmap_matrix[, sample_order]
+
+# filter for only day 50
+sig_annotation_heatmap <- sig_annotation_heatmap %>%
+  dplyr::filter(day == 50)
+
+# --- Column annotation
+col_ann <- sig_annotation_heatmap %>%
+  dplyr::distinct(sample_id, day, neuron) %>%
+  dplyr::arrange(day, neuron, sample_id) %>%
+  tibble::column_to_rownames("sample_id") %>%
+  dplyr::mutate(day = factor(day))
+
+# --- Color scale
+lim    <- max(abs(sig_heatmap_matrix), na.rm = TRUE)
+breaks <- seq(-lim, lim, length.out = 101)
+colors <- colorRampPalette(rev(brewer.pal(11,"RdYlBu")))(100)
+
+# --- Plot
+ann_colors <- list(neuron = c("iN" = "grey50", "iDA" = "grey80"))
+sig_heatmap_matrix[is.na(sig_heatmap_matrix)] <- 0
+
+ph_sig <- pheatmap::pheatmap(sig_heatmap_matrix,
+  color                    = colors,
+  breaks                   = breaks,
+  annotation_col           = col_ann,
+  annotation_colors        = ann_colors,
+  cluster_rows             = TRUE,
+  cluster_cols             = TRUE,
+  clustering_method        = "ward.D2",
+  border_color             = NA,
+  cellheight               = 8,
+  cellwidth                = 8,
+  fontsize                 = 6,
+  angle_col                = 90,
+  na_col                   = "grey90",
+  main                     = "Mean log2FC by Localization (p < 0.05)")
+
+ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "diff132_d50_subcell_heatmap_pval.pdf"), ph_sig, width = 14, height = 10, device = grDevices::cairo_pdf)
 ```
 
 
