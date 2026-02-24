@@ -592,409 +592,105 @@ ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, 
 # PCA plots
 # =============================================================================
 
-# --- Load phenotype table
-lsd_pro_phen <- readr::read_csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/lsd_pro_phen.csv", show_col_types = FALSE)
-lsd_pro_quan_na <- readr::read_csv("//Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/lsd_pro_quan_na.csv", show_col_types = FALSE)
+# --- Load data
+lsd_pro_phen  <- readr::read_csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/lsd_pro_phen.csv", show_col_types = FALSE)
+.quan_raw     <- readr::read_csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/lsd_pro_quan_na.csv", show_col_types = FALSE)
+lsd_pro_quan_na <- as.matrix(.quan_raw[, -1]); rownames(lsd_pro_quan_na) <- .quan_raw[[1]]; rm(.quan_raw)
 
-# --- Gene detection filter before pivot
-n_samples_total <- cleaned_df %>%
-  dplyr::distinct(genotype, neuron, day, replicate) %>%
-  nrow()
+# --- Align phenotype to matrix column order
+phen_ord <- lsd_pro_phen[match(colnames(lsd_pro_quan_na), lsd_pro_phen$sample), ]
+is_qc    <- is.na(phen_ord$genotype)
 
-keep_genes <- cleaned_df %>%
-  dplyr::group_by(Genes) %>%
-  dplyr::summarise(n = dplyr::n_distinct(paste(genotype, neuron, day, replicate)), .groups = "drop") %>%
-  dplyr::filter(n >= 0.5 * n_samples_total) %>%
-  dplyr::pull(Genes)
+# --- PCA: all samples
+mat_all <- lsd_pro_quan_na[complete.cases(lsd_pro_quan_na), ]
+pca_all <- prcomp(t(mat_all), scale. = TRUE)
+var_all <- round(100 * pca_all$sdev^2 / sum(pca_all$sdev^2), 1)
 
-message("Genes retained for PCA (>=50% detection): ", length(keep_genes))
+pc_df <- data.frame(PC1 = pca_all$x[, 1], PC2 = pca_all$x[, 2],
+  genotype = ifelse(is_qc, "", phen_ord$genotype),
+  neuron   = ifelse(is_qc, "QC", phen_ord$neuron),
+  day      = factor(phen_ord$day))
 
-# --- Step 5: Single pivot (filtered)
-d50_df_wide <- cleaned_df %>%
-  dplyr::filter(Genes %in% keep_genes) %>%
-  group_by(Genes, genotype, neuron, day, replicate) %>%
-  summarise(across(quan, sum), .groups = "drop") %>%
-  pivot_wider(names_from = Genes, values_from = quan, values_fill = list(quan = NA))
+# --- PCA: noQC
+mat_noqc   <- lsd_pro_quan_na[, !is_qc]; mat_noqc <- mat_noqc[complete.cases(mat_noqc), ]
+pca_noqc   <- prcomp(t(mat_noqc), scale. = TRUE)
+var_noqc   <- round(100 * pca_noqc$sdev^2 / sum(pca_noqc$sdev^2), 1)
+phen_noqc  <- phen_ord[!is_qc, ]
 
-# --- Step 6: Metadata + numeric matrix
-sample_metadata <- d50_df_wide %>% select(genotype, neuron, day, replicate)
+pc_df_noqc <- data.frame(PC1 = pca_noqc$x[, 1], PC2 = pca_noqc$x[, 2],
+  genotype = phen_noqc$genotype, neuron = phen_noqc$neuron, day = factor(phen_noqc$day))
 
-d50_numeric_data <- d50_df_wide %>%
-  select(where(is.numeric))
+# --- Palettes
+n_geno_nqc <- length(unique(pc_df_noqc$genotype))
+n_days     <- length(unique(pc_df$day))
+n_days_nqc <- length(unique(pc_df_noqc$day))
 
-# Median imputation (NA = not detected, not 0)
-col_med <- apply(d50_numeric_data, 2, median, na.rm = TRUE)
-for (j in seq_len(ncol(d50_numeric_data))) {
-  nas <- is.na(d50_numeric_data[[j]])
-  if (any(nas)) d50_numeric_data[[j]][nas] <- col_med[j]
-}
-d50_numeric_data <- d50_numeric_data[, apply(d50_numeric_data, 2, var) > 0]
+geno_cols     <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(length(unique(pc_df$genotype)))
+geno_cols_nqc <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(n_geno_nqc)
+day_cols      <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(n_days)
+day_cols_nqc  <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(n_days_nqc)
+neuron_cols   <- c("iDA" = "#A50026", "iN" = "#313695", "QC" = "grey50")
 
-# --- Step 7: PCA all samples
-pca_res_d50 <- irlba::prcomp_irlba(d50_numeric_data, n = 10, scale. = TRUE)
-total_var_d50 <- sum(apply(scale(d50_numeric_data), 2, var))
-pct_d50 <- round(pca_res_d50$sdev^2 / total_var_d50 * 100, 1)
+lab_x  <- paste0("PC1 (", var_all[1],  "% variance)"); lab_y  <- paste0("PC2 (", var_all[2],  "% variance)")
+lab_xn <- paste0("PC1 (", var_noqc[1], "% variance)"); lab_yn <- paste0("PC2 (", var_noqc[2], "% variance)")
+bt <- theme_minimal() + theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
 
-# --- Step 8/9: Scores + metadata
-pca_scores_d50 <- as.data.frame(pca_res_d50$x)
-pca_scores_d50$genotype  <- d50_df_wide$genotype
-pca_scores_d50$neuron    <- d50_df_wide$neuron
-pca_scores_d50$day       <- factor(d50_df_wide$day)
-
-# --- Step 10: Palettes
-n_genotypes <- length(unique(pca_scores_d50$genotype))
-n_neurons   <- length(unique(pca_scores_d50$neuron))
-n_days      <- length(unique(pca_scores_d50$day))
-
-genotype_colors <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(n_genotypes)
-neuron_colors   <- c("#A50026", "#313695", "grey50")
-day_colors      <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(n_days)
-
-lab_x <- paste0("PC1 (", pct_d50[1], "% variance)")
-lab_y <- paste0("PC2 (", pct_d50[2], "% variance)")
-
-d50plot1 <- ggplot(pca_scores_d50, aes(x = PC1, y = PC2, color = genotype)) +
+# --- All-sample plots
+d50plot1 <- ggplot(pc_df, aes(x = PC1, y = PC2, color = genotype)) +
   geom_point(size = 3, alpha = 0.8) +
-  geom_text_repel(data = pca_scores_d50 %>% distinct(genotype, .keep_all = TRUE), aes(label = genotype), size = 2, box.padding = 0.5, point.padding = 0.5, max.overlaps = 200) +
-  scale_color_manual(values = genotype_colors) +
+  geom_text_repel(data = dplyr::distinct(pc_df, genotype, .keep_all = TRUE), aes(label = genotype), size = 2, box.padding = 0.5, point.padding = 0.5, max.overlaps = 200) +
+  scale_color_manual(values = geno_cols) +
   labs(title = "PCA of Gene Intensities Colored by Genotype", x = lab_x, y = lab_y) +
-  coord_fixed(ratio = 1.75) + theme_minimal() +
-  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+  coord_fixed(ratio = 1.75) + bt
 
-d50plot2 <- ggplot(pca_scores_d50, aes(x = PC1, y = PC2, color = neuron)) +
+d50plot2 <- ggplot(pc_df, aes(x = PC1, y = PC2, color = neuron)) +
   geom_point(size = 3, alpha = 0.8) +
   stat_ellipse(aes(fill = neuron), geom = "polygon", alpha = 0.2, level = 0.95) +
-  scale_color_manual(values = neuron_colors) + scale_fill_manual(values = neuron_colors) +
+  scale_color_manual(values = neuron_cols) + scale_fill_manual(values = neuron_cols) +
   labs(title = "PCA of Gene Intensities Colored by Neuron Type", x = lab_x, y = lab_y) +
-  coord_fixed(ratio = 1) + theme_minimal() +
-  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+  coord_fixed(ratio = 1) + bt
 
-d50plot3 <- ggplot(pca_scores_d50, aes(x = PC1, y = PC2, color = factor(day))) +
+d50plot3 <- ggplot(pc_df, aes(x = PC1, y = PC2, color = day)) +
   geom_point(size = 3, alpha = 0.8) +
-  stat_ellipse(aes(fill = factor(day)), geom = "polygon", alpha = 0.2, level = 0.95) +
-  scale_color_manual(values = day_colors) + scale_fill_manual(values = day_colors) +
+  stat_ellipse(aes(fill = day), geom = "polygon", alpha = 0.2, level = 0.95) +
+  scale_color_manual(values = day_cols) + scale_fill_manual(values = day_cols) +
   labs(title = "PCA of Gene Intensities Colored by Day of Differentiation", x = lab_x, y = lab_y) +
-  coord_fixed(ratio = 1) + theme_minimal() +
-  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+  coord_fixed(ratio = 1) + bt
 
-# --- Step 11: noQC -- subset rows, no re-pivot
-d50_df_wide_noQC     <- d50_df_wide %>% filter(neuron != "QC")
-d50_numeric_data_noQC <- d50_df_wide_noQC %>% select(where(is.numeric))
-
-col_med_noqc <- apply(d50_numeric_data_noQC, 2, median, na.rm = TRUE)
-for (j in seq_len(ncol(d50_numeric_data_noQC))) {
-  nas <- is.na(d50_numeric_data_noQC[[j]])
-  if (any(nas)) d50_numeric_data_noQC[[j]][nas] <- col_med_noqc[j]
-}
-d50_numeric_data_noQC <- d50_numeric_data_noQC[, apply(d50_numeric_data_noQC, 2, var) > 0]
-
-pca_res_d50_noQC <- irlba::prcomp_irlba(d50_numeric_data_noQC, n = 10, scale. = TRUE)
-total_var_noqc   <- sum(apply(scale(d50_numeric_data_noQC), 2, var))
-pct_noqc         <- round(pca_res_d50_noQC$sdev^2 / total_var_noqc * 100, 1)
-
-pca_scores_d50_noQC          <- as.data.frame(pca_res_d50_noQC$x)
-pca_scores_d50_noQC$genotype <- d50_df_wide_noQC$genotype
-pca_scores_d50_noQC$neuron   <- d50_df_wide_noQC$neuron
-pca_scores_d50_noQC$day      <- factor(d50_df_wide_noQC$day)
-
-# --- Step 12: Palettes noQC
-n_genotypes_noQC <- length(unique(pca_scores_d50_noQC$genotype))
-n_neurons_noQC   <- length(unique(pca_scores_d50_noQC$neuron))
-n_days_noQC      <- length(unique(pca_scores_d50_noQC$day))
-
-genotype_colors_noQC <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(n_genotypes_noQC)
-neuron_colors_noQC   <- c("#A50026", "#313695", "grey50")
-day_colors_noQC      <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdYlBu"))(n_days_noQC)
-
-lab_x_nq <- paste0("PC1 (", pct_noqc[1], "% variance)")
-lab_y_nq <- paste0("PC2 (", pct_noqc[2], "% variance)")
-
-d50plot1_noQC <- ggplot(pca_scores_d50_noQC, aes(x = PC1, y = PC2, color = genotype, alpha = day)) +
+# --- noQC plots
+d50plot1_noQC <- ggplot(pc_df_noqc, aes(x = PC1, y = PC2, color = genotype, alpha = day)) +
   geom_point(size = 3) +
-  scale_alpha_manual(values = setNames(seq(0.4, 1, length.out = n_days_noQC), sort(unique(pca_scores_d50_noQC$day)))) +
-  geom_text_repel(data = pca_scores_d50_noQC %>% distinct(genotype, .keep_all = TRUE), aes(label = genotype), color = "black", size = 6, box.padding = 0.5, point.padding = 0.5, max.overlaps = 1000) +
-  scale_color_manual(values = genotype_colors_noQC) +
-  labs(title = "PCA of Gene Intensities Colored by Genotype", x = lab_x_nq, y = lab_y_nq) +
-  coord_fixed(ratio = 0.5) + theme_minimal() +
-  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1), legend.position = "bottom")
+  scale_alpha_manual(values = setNames(seq(0.4, 1, length.out = n_days_nqc), sort(unique(pc_df_noqc$day)))) +
+  geom_text_repel(data = dplyr::distinct(pc_df_noqc, genotype, .keep_all = TRUE), aes(label = genotype), color = "black", size = 6, box.padding = 0.5, point.padding = 0.5, max.overlaps = 1000) +
+  scale_color_manual(values = geno_cols_nqc) +
+  labs(title = "PCA of Gene Intensities Colored by Genotype", x = lab_xn, y = lab_yn) +
+  coord_fixed(ratio = 0.5) + bt + theme(legend.position = "bottom")
 
-d50plot2_noQC <- ggplot(pca_scores_d50_noQC, aes(x = PC1, y = PC2, color = neuron)) +
+d50plot2_noQC <- ggplot(pc_df_noqc, aes(x = PC1, y = PC2, color = neuron)) +
   geom_point(size = 3, alpha = 0.8) +
   stat_ellipse(aes(fill = neuron), geom = "polygon", alpha = 0.2, level = 0.998) +
-  scale_color_manual(values = neuron_colors_noQC) + scale_fill_manual(values = neuron_colors_noQC) +
-  labs(title = "PCA of Gene Intensities Colored by Neuron Type", x = lab_x_nq, y = lab_y_nq) +
-  coord_fixed(ratio = 0.5) + theme_minimal() +
-  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+  scale_color_manual(values = neuron_cols) + scale_fill_manual(values = neuron_cols) +
+  labs(title = "PCA of Gene Intensities Colored by Neuron Type", x = lab_xn, y = lab_yn) +
+  coord_fixed(ratio = 0.5) + bt
 
-d50plot3_noQC <- ggplot(pca_scores_d50_noQC, aes(x = PC1, y = PC2, color = factor(day))) +
+d50plot3_noQC <- ggplot(pc_df_noqc, aes(x = PC1, y = PC2, color = day)) +
   geom_point(size = 3, alpha = 0.8) +
-  stat_ellipse(aes(fill = factor(day)), geom = "polygon", alpha = 0.2, level = 0.95) +
-  scale_color_manual(values = day_colors_noQC) + scale_fill_manual(values = day_colors_noQC) +
-  labs(title = "PCA of Gene Intensities Colored by Day of Differentiation", x = lab_x_nq, y = lab_y_nq) +
-  coord_fixed(ratio = 1) + theme_minimal() +
-  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+  stat_ellipse(aes(fill = day), geom = "polygon", alpha = 0.2, level = 0.95) +
+  scale_color_manual(values = day_cols_nqc) + scale_fill_manual(values = day_cols_nqc) +
+  labs(title = "PCA of Gene Intensities Colored by Day of Differentiation", x = lab_xn, y = lab_yn) +
+  coord_fixed(ratio = 1) + bt
 
 # --- Display
 d50plot1; d50plot2; d50plot3
 d50plot1_noQC; d50plot2_noQC; d50plot3_noQC
 
-# --- Step 13: Save
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_PCA_byGenotype.pdf"),         d50plot1,       width = 15, height = 15, units = "cm", dpi = 600)
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_PCA_byCelltype.pdf"),          d50plot2,       width = 15, height = 15, units = "cm", dpi = 600)
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_PCA_byDay.pdf"),               d50plot3,       width = 15, height = 15, units = "cm", dpi = 600)
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_noQC_PCA_byGenotype.pdf"),     d50plot1_noQC,  width = 15, height = 15, units = "cm", dpi = 600)
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_noQC_PCA_byCelltype.pdf"),     d50plot2_noQC,  width = 15, height = 15, units = "cm", dpi = 600)
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_noQC_PCA_byDay.pdf"),          d50plot3_noQC,  width = 15, height = 15, units = "cm", dpi = 600)
-```
-
-
-#  PCA plots of data
-```{r}
-# --- Step 5: Reshape the data from long to wide format
-# Each gene will become a separate column, with 'quan' values as the data points.
-# Missing values are filled with 0, and duplicate entries are summed.
-d50_df_wide <- cleaned_df %>%
-  group_by(Genes, genotype, neuron, day, replicate) %>%  # keep day info here
-  summarise(across(quan, sum), .groups = "drop") %>%
-  pivot_wider(
-    names_from = Genes, # Column whose unique values will become new column names
-    values_from = quan, # Column providing values for the new columns
-    values_fill = list(quan = 0), # Fill missing values with 0
-    values_fn = list(quan = sum) # Sum values if there are duplicates
-  )
-
-
-
-# --- Step 6: Select only numeric columns for PCA
-# Keep sample-level metadata
-sample_metadata <- d50_df_wide %>%
-  select(genotype, neuron, day, replicate)
-
-# Non-numeric data (like sample IDs) are excluded to prevent errors in PCA computation.
-d50_numeric_data <- d50_df_wide %>%
-  select_if(is.numeric)
-
-
-# --- Step 7: Perform Principal Component Analysis (PCA)
-# Step 7.1: PCA calculation is too large.. have to find different approach 
-  # The data is scaled to ensure each variable contributes equally to the analysis.
-  # Use irlba::prcomp_irlba() for approximate PCA
-  # Much less memory required. You specify how many PCs (n) you want.
-pca_res_d50 <- prcomp_irlba(d50_numeric_data, n = 10, scale. = TRUE)
-
-
-# --- Step 8: Extract PCA scores into a data frame
-# These scores represent the principal components for each sample.
-pca_scores_d50 <- as.data.frame(pca_res_d50$x)
-pca_scores_d50 <- cbind(sample_metadata, pca_scores_d50)
-pca_scores_d50$day <- factor(pca_scores_d50$day)
-
-
-# --- Step 9: Add metadata back into the PCA scores for plotting
-# This allows for visualization of the PCA results with respect to sample characteristics.
-pca_scores_d50$genotype <- d50_df_wide$genotype
-pca_scores_d50$neuron   <- d50_df_wide$neuron
-pca_scores_d50$day <- d50_df_wide$day
-
-
-# --- Step 10. PLOTTING 
-# Determine the number of unique genotypes and neurons
-n_genotypes <- length(unique(pca_scores_d50$genotype))
-n_neurons <- length(unique(pca_scores_d50$neuron))
-n_days <- length(unique(pca_scores_d50$day))
-
-# Create color palettes
-genotype_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_genotypes)
-neuron_colors <- c("#A50026", "#313695", "grey50") 
-#neuron_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_neurons)
-day_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_days)
-
-## --- Step 10.1: Plot Colored by Genotype: Generate the first PCA plot with points colored by genotype.
-# PC1 and PC2 are plotted on the x and y axes, respectively.
-d50plot1 <- ggplot(pca_scores_d50, aes(x = PC1, y = PC2, color = genotype)) +
-  geom_point(size = 3, alpha = 0.8) +
-  geom_text_repel(
-                  data = pca_scores_d50 %>% distinct(genotype, .keep_all = TRUE),
-                  aes(label=genotype),
-                  size = 2,                # Adjust text size as needed
-                  box.padding = 0.5,       # Padding around labels
-                  point.padding = 0.5,     # Padding around data points
-                  max.overlaps = 200) +    # Ensure all labels are displayed
-  scale_color_manual(values = genotype_colors) +
-  labs(
-    title = "PCA of Gene Intensities Colored by Genotype",
-    x = paste0("PC1 (", round(summary(pca_res_d50)$importance[2, 1] * 100, 1), "% variance)"),
-    y = paste0("PC2 (", round(summary(pca_res_d50)$importance[2, 2] * 100, 1), "% variance)")
-  ) +
-  coord_fixed(ratio = 1.75) +
-  theme_minimal() +
-     theme(
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
-  )
-
-
-## --- Step 10.2: Plot Colored by Neuron: Generate the second PCA plot with points colored by neuron.
-d50plot2 <- ggplot(pca_scores_d50, aes(x = PC1, y = PC2, color = neuron)) +
-  geom_point(size = 3, alpha = 0.8) +
-  stat_ellipse(aes(fill = neuron), geom = "polygon", alpha = 0.2, level = 0.95) + # 95% confidence ellipses
-  scale_color_manual(values = neuron_colors) +
-  scale_fill_manual(values = neuron_colors) +
-  labs(
-    title = "PCA of Gene Intensities Colored by Neuron Type",
-    x = paste0("PC1 (", round(summary(pca_res_d50)$importance[2, 1] * 100, 1), "% variance)"),
-    y = paste0("PC2 (", round(summary(pca_res_d50)$importance[2, 2] * 100, 1), "% variance)")
-  ) +
-  coord_fixed(ratio = 1) +
-  theme_minimal() +
-   theme(
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
-  )
-
-
-## --- Step 10.3: Plot Colored by day: Generate the second PCA plot with points colored by day of differentiation
-d50plot3 <- ggplot(pca_scores_d50, aes(x = PC1, y = PC2, color = factor(day))) +
-  geom_point(size = 3, alpha = 0.8) +
-  stat_ellipse(aes(fill = factor(day)), geom = "polygon", alpha = 0.2, level = 0.95) +
-  scale_color_manual(values = day_colors) +
-  scale_fill_manual(values = day_colors) +
-  labs(
-    title = "PCA of Gene Intensities Colored by Day of Differentiation",
-    x = paste0("PC1 (", round(summary(pca_res_d50)$importance[2, 1] * 100, 1), "% variance)"),
-    y = paste0("PC2 (", round(summary(pca_res_d50)$importance[2, 2] * 100, 1), "% variance)")
-  ) +
-  coord_fixed(ratio = 1) +
-  theme_minimal() +
-  theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
-
-
-
-# --- Step 11. Calculate PCA for excluding QC datasets
-# since the PCA is skewed when the QCs are in there, have a 2nd run on the PCA calculation where QC datasets are removed.
-# remove QC from "neuron" column in d50_df_wide df and then calculate the pca again 
-# Step 5: Reshape the data from long to wide format
-d50_df_wide <- cleaned_df %>%
-  group_by(Genes, genotype, neuron, day, replicate) %>%  # keep day info
-  summarise(across(quan, sum), .groups = "drop") %>%
-  pivot_wider(
-    names_from = Genes,
-    values_from = quan,
-    values_fill = list(quan = 0),
-    values_fn = list(quan = sum)
-  )
-
-## --- Step 11.1: Remove QC-labeled samples before PCA
-d50_df_wide_noQC <- d50_df_wide %>%
-  filter(neuron != "QC")
-
-## --- Step 11.2: Select only numeric columns for PCA
-d50_numeric_data <- d50_df_wide_noQC %>%
-  select(where(is.numeric))
-
-## --- Step 11.3: Perform PCA using memory-efficient method
-pca_res_d50_noQC <- irlba::prcomp_irlba(d50_numeric_data, n = 10, scale. = TRUE)
-
-## --- Step 11.4: Extract PCA scores and attach metadata
-pca_scores_d50_noQC <- as.data.frame(pca_res_d50_noQC$x)  # not pca_res_d50
-pca_scores_d50_noQC$genotype <- d50_df_wide_noQC$genotype
-pca_scores_d50_noQC$neuron   <- d50_df_wide_noQC$neuron
-pca_scores_d50_noQC$day      <- factor(d50_df_wide_noQC$day)
-
-
-# --- Step 12. plotting of PCA etc w/o QC samples 
-# Determine the number of unique genotypes and neurons
-n_genotypes_noQC <- length(unique(pca_scores_d50_noQC$genotype))
-n_neurons_noQC <- length(unique(pca_scores_d50_noQC$neuron))
-n_days_noQC <- length(unique(pca_scores_d50_noQC$day))
-
-# Create color palettes
-genotype_colors_noQC <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_genotypes_noQC)
-neuron_colors_noQC <- c("#A50026", "#313695", "grey50") 
-#neuron_colors <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_neurons)
-day_colors_noQC <- colorRampPalette(brewer.pal(11, "RdYlBu"))(n_days_noQC)
-
-## --- Step 12.1: Plot Colored by Genotype
-d50plot1_noQC <- ggplot(pca_scores_d50_noQC, aes(x = PC1, y = PC2, color = genotype, alpha = day)) +
-  geom_point(size = 3) +
-  scale_alpha_manual(values = c("30" = 0.5, "50" = 1)) + # adjust as needed 
-  geom_text_repel(
-                  data = pca_scores_d50_noQC %>% distinct(genotype, .keep_all = TRUE),
-                  aes(label=genotype),
-                  color = "black",  
-                  size = 6,                # Adjust text size as needed
-                  box.padding = 0.5,       # Padding around labels
-                  point.padding = 0.5,     # Padding around data points
-                  max.overlaps = 1000) +    # Ensure all labels are displayed
-  scale_color_manual(values = genotype_colors_noQC) +
-  labs(
-    title = "PCA of Gene Intensities Colored by Genotype",
-    x = paste0("PC1 (", round(summary(pca_res_d50_noQC)$importance[2, 1] * 100, 1), "% variance)"),
-    y = paste0("PC2 (", round(summary(pca_res_d50_noQC)$importance[2, 2] * 100, 1), "% variance)")
-  ) +
-  coord_fixed(ratio = 0.5) +
-  theme_minimal() +
-     theme(
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
-    legend.position = "bottom"
-  )
-
-
-  ## --- Step 12.2: Plot Colored by Neuron: Generate the second PCA plot with points colored by neuron.
-  d50plot2_noQC <- ggplot(pca_scores_d50_noQC, aes(x = PC1, y = PC2, color = neuron)) +
-    geom_point(size = 3, alpha = 0.8) +
-    stat_ellipse(aes(fill = neuron), geom = "polygon", alpha = 0.2, level = 0.998) + # 99.8% confidence ellipses
-    scale_color_manual(values = neuron_colors_noQC) +
-    scale_fill_manual(values = neuron_colors_noQC) +
-    labs(
-      title = "PCA of Gene Intensities Colored by Neuron Type",
-      x = paste0("PC1 (", round(summary(pca_res_d50_noQC)$importance[2, 1] * 100, 1), "% variance)"),
-      y = paste0("PC2 (", round(summary(pca_res_d50_noQC)$importance[2, 2] * 100, 1), "% variance)")
-    ) +
-    coord_fixed(ratio = 0.5) +
-    theme_minimal() +
-     theme(
-      panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
-    )
-
-
-  ## --- Step 12.3: Plot Colored by day: Generate the second PCA plot with points colored by day of differentiation
-  d50plot3_noQC <- ggplot(pca_scores_d50_noQC, aes(x = PC1, y = PC2, color = factor(day))) +
-    geom_point(size = 3, alpha = 0.8) +
-    stat_ellipse(aes(fill = factor(day)), geom = "polygon", alpha = 0.2, level = 0.95) +
-    scale_color_manual(values = day_colors_noQC) +
-    scale_fill_manual(values = day_colors_noQC) +
-    labs(
-      title = "PCA of Gene Intensities Colored by Day of Differentiation",
-      x = paste0("PC1 (", round(summary(pca_res_d50_noQC)$importance[2, 1] * 100, 1), "% variance)"),
-      y = paste0("PC2 (", round(summary(pca_res_d50_noQC)$importance[2, 2] * 100, 1), "% variance)")
-    ) +
-    coord_fixed(ratio = 1) +
-    theme_minimal() +
-    theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
-
-
-
-# ----- call all plots ---- #
-d50plot1
-d50plot2
-d50plot3
-d50plot1_noQC
-d50plot2_noQC
-d50plot3_noQC
-
-
-# --- Step 13. Save plots as PDFs
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_PCA_byGenotype.pdf"), d50plot1,width =15, height = 15, units = "cm", dpi=600)
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_PCA_byCelltype.pdf"), d50plot2, width =15, height = 15, units = "cm", dpi=600)
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_PCA_byDay.pdf"), d50plot3, width =15, height = 15, units = "cm", dpi=600)
-
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_noQC_PCA_byGenotype.pdf"), d50plot1_noQC,width =15, height = 15, units = "cm", dpi=600)
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_noQC_PCA_byCelltype.pdf"), d50plot2_noQC, width =15, height = 15, units = "cm", dpi=600)
-ggsave(file.path(out_dir_d50_QC,"diff132_d50_noQC_PCA_byDay.pdf"), d50plot3_noQC, width =15, height = 15, units = "cm", dpi=600)
-
-
-# save pivoted df (d50_wide) 
-#write.csv(d50_df_wide, file = file.path(out_dir_d50_QC, "d50_wide.csv"),row.names = FALSE)
-
+# --- Save
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_PCA_byGenotype.pdf"),      d50plot1,       width = 15, height = 15, units = "cm", dpi = 600)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_PCA_byCelltype.pdf"),      d50plot2,       width = 15, height = 15, units = "cm", dpi = 600)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_PCA_byDay.pdf"),           d50plot3,       width = 15, height = 15, units = "cm", dpi = 600)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_noQC_PCA_byGenotype.pdf"), d50plot1_noQC,  width = 15, height = 15, units = "cm", dpi = 600)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_noQC_PCA_byCelltype.pdf"), d50plot2_noQC,  width = 15, height = 15, units = "cm", dpi = 600)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_noQC_PCA_byDay.pdf"),      d50plot3_noQC,  width = 15, height = 15, units = "cm", dpi = 600)
 ```
 
 
