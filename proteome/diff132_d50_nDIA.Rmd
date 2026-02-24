@@ -594,6 +594,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, 
 
 # --- Load phenotype table
 lsd_pro_phen <- readr::read_csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/lsd_pro_phen.csv", show_col_types = FALSE)
+lsd_pro_quan_na <- readr::read_csv("//Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneurogit/proteome/lsd_pro_quan_na.csv", show_col_types = FALSE)
 
 # --- Gene detection filter before pivot
 n_samples_total <- cleaned_df %>%
