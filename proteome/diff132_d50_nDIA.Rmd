@@ -1838,8 +1838,8 @@ make_ann_heatmap_pvals(
   annot_wide   = complete_data_annotated_day50,
   neuron_type  = "iN",
   loc_ann      = loc_ann,
-  out_file     = file.path(out_dir_d50_ascd_avg, "heatmap_d50_iN_pvals_byGenotype.pdf"),
-  out_csv_base = file.path(out_dir_d50_ascd_avg, "heatmap_d50"),
+  out_file     = file.path(out_dir_d50_heatmaps, "heatmap_d50_iN_pvals_byGenotype.pdf"),
+  out_csv_base = file.path(out_dir_d50_heatmaps, "heatmap_d50"),
   row_order    = row_order_iN
 )
 
@@ -1848,8 +1848,8 @@ make_ann_heatmap_pvals(
   annot_wide   = complete_data_annotated_day50,
   neuron_type  = "iDA",
   loc_ann      = loc_ann,
-  out_file     = file.path(out_dir_d50_ascd_avg, "heatmap_d50_iDA_pvals_byGenotype.pdf"),
-  out_csv_base = file.path(out_dir_d50_ascd_avg, "heatmap_d50"),
+  out_file     = file.path(out_dir_d50_heatmaps, "heatmap_d50_iDA_pvals_byGenotype.pdf"),
+  out_csv_base = file.path(out_dir_d50_heatmaps, "heatmap_d50"),
   row_order    = row_order_iDA
 )
 
@@ -5944,7 +5944,7 @@ ggsave(file.path(out_dir_d50_violins,
 
 
 
-# Barplots of Autophagy machinery and cargo across all genotypes x neuron types
+# Heatmap of Autophagy machinery and cargo across all genotypes x neuron types
 ```{r}
 # --- Autophagy Cargo Barplots (Core & Receptor)
 
@@ -6002,7 +6002,7 @@ ann_colors <- list(Category = c("Autophagy" = "#4DAF4A", "Organelle" = "#984EA3"
 # --- Color scale
 lim    <- max(abs(hm_mat), na.rm = TRUE)
 breaks <- seq(-lim, lim, length.out = 101)
-colors <- colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100)
+colors <- colorRampPalette(rev(brewer.pal(11, "RdBu")))(100)
 
 # --- Plot + save
 ph <- pheatmap::pheatmap(hm_mat,
