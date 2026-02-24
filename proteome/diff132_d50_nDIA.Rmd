@@ -2188,7 +2188,7 @@ plot_ternary_log2fc(
   disease_class_df = disease_class_df,
   out_dir = out_dir_d50_ternaryplots,
   disease_class_palette = disease_class_palette,
-  tern_classes = c("SynapseSV", "OXPHOS", "Postsynaptic")
+  tern_classes = c("SynapseSVs", "OXPHOS", "Postsynaptic")
 )
 
 
