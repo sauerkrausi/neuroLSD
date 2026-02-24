@@ -2526,7 +2526,7 @@ plot_halfcircos_log2fc <- function(log2fc_mat, disease_class_df, out_dir,
   spectral_cols <- colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100)
   
   get_color <- function(val) {
-    if (is.na(val)) return("white")
+    if (is.na(val)) return("grey70")
     idx <- round((val + log2fc_max) / (2 * log2fc_max) * 99) + 1
     idx <- max(1, min(100, idx))
     spectral_cols[idx]
