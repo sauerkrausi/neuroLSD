@@ -1740,6 +1740,76 @@ row_order_iDA <- make_ann_heatmap(
   file.path(out_dir_d50_ascd_avg, "heatmap_d50_iDA_rowZ_byGenotype.pdf")
 )
 
+# Sig-filtered heatmaps (p and q versions)
+# --------------------------------------------------- #
+# Same as make_ann_heatmap but masks non-significant
+# log2FC values to NA before computing means
+# sig_type: "p" or "q"
+# --------------------------------------------------- #
+make_ann_heatmap_sig <- function(df, neuron_type, loc_ann, out_file,
+                                  sig_type = "q", sig_threshold = 0.05) {
+  val_suffix       <- if (sig_type == "q") "neg_log10_q_value" else "neg_log10_p_value"
+  neg_log10_thresh <- -log10(sig_threshold)
+
+  long_fc <- df %>%
+    pivot_longer(cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
+                 names_to = "Condition", values_to = "log2FC") %>%
+    mutate(genotype = sub("_.*", "", Condition))
+
+  long_sig <- df %>%
+    pivot_longer(cols = matches(paste0("_", neuron_type, "_", val_suffix, "$")),
+                 names_to = "Condition_sig", values_to = "sig_val") %>%
+    mutate(genotype = sub("_.*", "", Condition_sig)) %>%
+    dplyr::select(Genes, genotype, sig_val)
+
+  long_df <- long_fc %>%
+    left_join(long_sig, by = c("Genes", "genotype")) %>%
+    mutate(log2FC = ifelse(!is.na(sig_val) & sig_val >= neg_log10_thresh, log2FC, NA)) %>%
+    pivot_longer(cols = all_of(loc_ann), names_to = "Annotation", values_to = "is_annotated") %>%
+    filter(is_annotated == 1)
+
+  ann_matrix <- long_df %>%
+    group_by(genotype, Annotation) %>%
+    summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = Annotation, values_from = mean_log2FC) %>%
+    column_to_rownames("genotype")
+
+  ann_mat <- as.matrix(ann_matrix)
+  ann_mat <- ann_mat[, loc_ann, drop = FALSE]
+  ann_mat[!is.finite(ann_mat)] <- NA
+  ann_mat <- ann_mat[rowSums(!is.na(ann_mat)) > 0, , drop = FALSE]
+
+  ph <- pheatmap::pheatmap(
+    mat           = ann_mat,
+    scale         = "row",
+    color         = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+    cluster_rows  = TRUE,
+    cluster_cols  = FALSE,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    border_color  = NA,
+    fontsize      = 6,
+    cellheight    = 8,
+    cellwidth     = 8,
+    na_col        = "grey90",
+    main          = paste0("Mean log2FC (", sig_type, " < ", sig_threshold, ") - ", neuron_type),
+    filename      = out_file
+  )
+  return(rownames(ann_mat)[ph$tree_row$order])
+}
+
+# --- p-value filtered
+make_ann_heatmap_sig(complete_data_annotated_day50, "iN",  loc_ann,
+  file.path(out_dir_d50_ascd_avg, "heatmap_d50_iN_rowZ_byGenotype_psig.pdf"),  sig_type = "p")
+make_ann_heatmap_sig(complete_data_annotated_day50, "iDA", loc_ann,
+  file.path(out_dir_d50_ascd_avg, "heatmap_d50_iDA_rowZ_byGenotype_psig.pdf"), sig_type = "p")
+
+# --- q-value filtered
+make_ann_heatmap_sig(complete_data_annotated_day50, "iN",  loc_ann,
+  file.path(out_dir_d50_ascd_avg, "heatmap_d50_iN_rowZ_byGenotype_qsig.pdf"),  sig_type = "q")
+make_ann_heatmap_sig(complete_data_annotated_day50, "iDA", loc_ann,
+  file.path(out_dir_d50_ascd_avg, "heatmap_d50_iDA_rowZ_byGenotype_qsig.pdf"), sig_type = "q")
+
 ```
 
 
