@@ -12992,7 +12992,7 @@ p_db_trimers <- ggplot(db_support_trimers_long, aes(x = database, y = n_trimers,
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
 
-ggsave(file.path(out_dir_trimer, "qc", "barplot_database_support_trimers.pdf"), p_db_trimers, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_trimer, "qc", "barplot_database_support_trimers.pdf"), p_db_trimers, width = 3.5, height = 4, device = cairo_pdf)
 
 # --- Plot 2: Validation tier distribution ---
 validation_counts <- trimers_df %>%
@@ -14316,7 +14316,7 @@ p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 3.5, height = 3.5, device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_validation_status.pdf"), p_validation, width = 2, height = 4, device = cairo_pdf)
 
 # --- Plot 4: Validation by source (CORUM, ComplexPortal, PDB separate) ---
 validation_by_source <- data.frame(
