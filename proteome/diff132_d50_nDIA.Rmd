@@ -17377,8 +17377,13 @@ disrupted_cx_ko <- complex_ko_states %>% dplyr::filter(state_q == "disrupted")
 message("Disrupted complex x KO x neuron: ", nrow(disrupted_cx_ko))
 
 # --- Precompute baseline layout once per complex ---
-cx_indices_to_plot <- unique(disrupted_cx_ko$complex_idx)
-message("Unique complexes: ", length(cx_indices_to_plot))
+cx_indices_to_plot <- complex_ko_states %>%
+  dplyr::filter(state_q == "disrupted" | state_p == "disrupted") %>%
+  dplyr::pull(complex_idx) %>%
+  unique()
+
+# cx_indices_to_plot <- unique(disrupted_cx_ko$complex_idx)
+# message("Unique complexes: ", length(cx_indices_to_plot))
 
 baseline_layouts <- list()
 
