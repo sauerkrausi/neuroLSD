@@ -16989,7 +16989,20 @@ for (nt in c("iN", "iDA")) {
 
     readr::write_csv(ppi_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_ppi_KO_annotation_", nt, "_sourcedata.csv")))
     pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_ppi_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction PPIs lost by KO x annotation (", nt, ", q<0.05)"))
+    pheatmap::pheatmap(
+      hm_mat, c
+      olor = colorRampPalette(c("white", "#C51B7D"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      clustering_method = "ward.D2", 
+      display_numbers = FALSE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      annotation_row = row_annot, 
+      annotation_colors = ann_colors, 
+      main = paste0("Fraction PPIs lost by KO x annotation (", nt, ", q<0.05)"))
     dev.off()
     message("  Saved: heatmap_ppi_KO_annotation_", nt, ".pdf")
   }
@@ -17007,7 +17020,20 @@ for (nt in c("iN", "iDA")) {
 
     readr::write_csv(trimer_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_trimer_KO_annotation_", nt, "_sourcedata.csv")))
     pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_trimer_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#7570B3"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction trimers disrupted by KO x annotation (", nt, ", q<0.05)"))
+    pheatmap::pheatmap(
+      hm_mat, 
+      color = colorRampPalette(c("white", "#7570B3"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      clustering_method = "ward.D2", 
+      display_numbers = FALSE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      annotation_row = row_annot, 
+      annotation_colors = ann_colors, 
+      main = paste0("Fraction trimers disrupted by KO x annotation (", nt, ", q<0.05)"))
     dev.off()
     message("  Saved: heatmap_trimer_KO_annotation_", nt, ".pdf")
   }
@@ -17025,7 +17051,20 @@ for (nt in c("iN", "iDA")) {
 
     readr::write_csv(tetramer_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_tetramer_KO_annotation_", nt, "_sourcedata.csv")))
     pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_tetramer_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#E6AB02"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction tetramers disrupted by KO x annotation (", nt, ", q<0.05)"))
+    pheatmap::pheatmap(
+      hm_mat, 
+      color = colorRampPalette(c("white", "#E6AB02"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      clustering_method = "ward.D2", 
+      display_numbers = FALSE, 
+      fontsize = 6, 
+      cellwidth = 10, c
+      ellheight = 10, 
+      border_color = NA, 
+      annotation_row = row_annot, 
+      annotation_colors = ann_colors, 
+      main = paste0("Fraction tetramers disrupted by KO x annotation (", nt, ", q<0.05)"))
     dev.off()
     message("  Saved: heatmap_tetramer_KO_annotation_", nt, ".pdf")
   }
@@ -17043,7 +17082,19 @@ for (nt in c("iN", "iDA")) {
 
     readr::write_csv(complex_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_complex_KO_annotation_", nt, "_sourcedata.csv")))
     pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_complex_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
-    pheatmap::pheatmap(hm_mat, color = colorRampPalette(c("white", "#1B9E77"))(100), cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2", display_numbers = FALSE, fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA, annotation_row = row_annot, annotation_colors = ann_colors, main = paste0("Fraction complexes disrupted by KO x annotation (", nt, ", q<0.05)"))
+    pheatmap::pheatmap(
+      hm_mat, color = colorRampPalette(c("white", "#1B9E77"))(100), 
+      cluster_rows = TRUE, 
+      cluster_cols = TRUE, 
+      clustering_method = "ward.D2", 
+      display_numbers = FALSE, 
+      fontsize = 6, 
+      cellwidth = 10, 
+      cellheight = 10, 
+      border_color = NA, 
+      annotation_row = row_annot, 
+      annotation_colors = ann_colors, 
+      main = paste0("Fraction complexes disrupted by KO x annotation (", nt, ", q<0.05)"))
     dev.off()
     message("  Saved: heatmap_complex_KO_annotation_", nt, ".pdf")
   }
@@ -17134,7 +17185,10 @@ for (i in seq_len(nrow(ko_neuron_combos_ppi))) {
       ggplot2::scale_fill_manual(values = organelle_colors_conf, guide = "none") +
       ggplot2::labs(title = paste0(score, " by organelle (q<0.05)"), subtitle = ko_label, x = NULL, y = score) +
       ggplot2::theme_bw(base_size = 6) +
-      ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+      ggplot2::theme(
+        panel.grid = ggplot2::element_blank(), 
+        strip.background = ggplot2::element_rect(fill = "white"), 
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
     ggplot2::ggsave(file.path(conf_out_dir, paste0(ko_label, "_boxplot_", score, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
   }
@@ -17199,7 +17253,10 @@ if (n_tags_tri > 0) {
         ggplot2::scale_fill_manual(values = organelle_colors_tri, guide = "none") +
         ggplot2::labs(title = paste0("Trimer ", score, " (mean of 3 PPIs, q<0.05)"), subtitle = ko_label, x = NULL, y = score) +
         ggplot2::theme_bw(base_size = 6) +
-        ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+        ggplot2::theme(
+          panel.grid = ggplot2::element_blank(), 
+          strip.background = ggplot2::element_rect(fill = "white"), 
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
       ggplot2::ggsave(file.path(conf_out_dir, paste0(ko_label, "_trimer_boxplot_", score, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
     }
@@ -17263,7 +17320,10 @@ if (n_tags_tet > 0) {
         ggplot2::scale_fill_manual(values = organelle_colors_tet, guide = "none") +
         ggplot2::labs(title = paste0("Tetramer ", score, " (mean of 6 PPIs, q<0.05)"), subtitle = ko_label, x = NULL, y = score) +
         ggplot2::theme_bw(base_size = 6) +
-        ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+        ggplot2::theme(
+          panel.grid = ggplot2::element_blank(), 
+          strip.background = ggplot2::element_rect(fill = "white"), 
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
       ggplot2::ggsave(file.path(conf_out_dir, paste0(ko_label, "_tetramer_boxplot_", score, "_by_organelle.pdf")), p, width = 12, height = 5, device = cairo_pdf)
     }
