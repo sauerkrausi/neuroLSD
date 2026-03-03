@@ -13056,7 +13056,7 @@ db_support_trimers_long <- db_support_trimers %>%
 p_db_trimers <- ggplot(db_support_trimers_long, aes(x = database, y = n_trimers, fill = coverage)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = n_trimers), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("all_3_edges" = "#E41A1C", "at_least_2" = "#377EB8"), name = "Coverage") +
+  scale_fill_manual(values = c("all_3_edges" = "grey55", "at_least_2" = "#377EB8"), name = "Coverage") +
   labs(title = "Trimer database support", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
