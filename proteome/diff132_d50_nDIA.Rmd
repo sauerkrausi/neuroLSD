@@ -18536,18 +18536,19 @@ top_pairs_by_dc <- inter_organelle_ko_all %>%
   dplyr::slice_max(order_by = mean_frac_lost, n = 15) %>%
   dplyr::ungroup()
 
-p_top_pairs_dc <- ggplot2::ggplot(top_pairs_by_dc,
-    ggplot2::aes(x = reorder(annotation_pair, mean_frac_lost), y = mean_frac_lost)) +
-  ggplot2::geom_col(fill = "#D53E4F", color = "black", linewidth = 0.2) +
-  ggplot2::geom_text(ggplot2::aes(label = paste0("n=", round(total_baseline))), hjust = -0.1, size = 1.8) +
-  ggplot2::coord_flip() +
-  ggplot2::scale_y_continuous(labels = scales::percent, expand = ggplot2::expansion(mult = c(0, 0.2))) +
-  ggplot2::facet_wrap(~ DiseaseClass, scales = "free_y", ncol = 2) +
-  ggplot2::labs(title = "Most disrupted inter-organelle connections by disease class", x = NULL, y = "Mean % edges lost") +
-  ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"))
-ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_top_disrupted_pairs_by_DiseaseClass.pdf"),
-  p_top_pairs_dc, width = 8, height = 10, device = cairo_pdf)
+for (dc in unique(top_pairs_by_dc$DiseaseClass)) {
+  dc_data <- top_pairs_by_dc %>% dplyr::filter(DiseaseClass == dc)
+  p_dc <- ggplot2::ggplot(dc_data, ggplot2::aes(x = reorder(annotation_pair, mean_frac_lost), y = mean_frac_lost)) +
+    ggplot2::geom_col(fill = "#D53E4F", color = "black", linewidth = 0.2) +
+    ggplot2::geom_text(ggplot2::aes(label = paste0("n=", round(total_baseline))), hjust = -0.1, size = 1.8) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_y_continuous(labels = scales::percent, expand = ggplot2::expansion(mult = c(0, 0.2))) +
+    ggplot2::labs(title = paste0("Most disrupted inter-organelle connections - ", dc), x = NULL, y = "Mean % edges lost") +
+    ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges",
+    paste0("barplot_top_disrupted_pairs_", gsub(" ", "_", dc), ".pdf")),
+    p_dc, width = 5, height = 5, device = cairo_pdf)
+}
 
 inter_organelle_total <- inter_organelle_ko_all %>%
   dplyr::group_by(genotype, neuron, DiseaseClass) %>%
