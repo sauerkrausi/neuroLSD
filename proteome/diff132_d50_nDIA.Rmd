@@ -12207,7 +12207,7 @@ filter_counts <- master_ppi_v3 %>%
 p_db_support <- ggplot(filter_counts, aes(x = reorder(database, -n_edges), y = n_edges, fill = db_group)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = scales::comma(n_edges)), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Structural" = "grey75", "Complex" = "#377EB8", "Interaction" = "grey40"), name = "Type") +
+  scale_fill_manual(values = c("Structural" = "grey75", "Complex" = "grey55", "Interaction" = "grey40"), name = "Type") +
   labs(title = "PPI edges by database/structure support", x = NULL, y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
@@ -12257,7 +12257,7 @@ support_by_tier_long <- support_by_tier %>%
 p_support_tier <- ggplot(support_by_tier_long, aes(x = factor(confidence_tier, levels = c("gold", "silver", "bronze")), y = percentage, fill = metric)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(percentage, "%")), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("PDB" = "#E41A1C", "CORUM" = "grey40", "ComplexPortal" = "#377EB8"), name = "Database") +
+  scale_fill_manual(values = c("PDB" = "#E41A1C", "CORUM" = "grey40", "ComplexPortal" = "grey55"), name = "Database") +
   labs(title = "Database support by confidence tier", x = NULL, y = "Percentage of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
@@ -13121,7 +13121,7 @@ readr::write_csv(known_summary, file.path(out_dir_trimer, "qc", "sourcedata_know
 p_known <- ggplot(known_summary, aes(x = category, y = n, fill = category)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "grey75", "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Trimers: known vs novel complexes", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -13670,7 +13670,7 @@ if (nrow(tetramers_df) > 0) {
   p_known_tet <- ggplot(known_summary_tet, aes(x = category, y = n, fill = category)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+    scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "grey75", "Novel" = "#E41A1C"), guide = "none") +
     labs(title = "Tetramers: known vs novel complexes", x = NULL, y = "Number of tetramers") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -14381,7 +14381,7 @@ readr::write_csv(validation_counts, file.path(out_dir_complex, "qc", "sourcedata
 p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill = validation_status)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(n, " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("strict_match" = "grey40", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("strict_match" = "grey40", "relaxed_match" = "grey75", "novel" = "#E41A1C"), guide = "none") +
   labs(title = "Complex validation status", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -14424,7 +14424,7 @@ readr::write_csv(support_by_validation, file.path(out_dir_complex, "qc", "source
 
 p_support_validation <- ggplot(complex_evidence, aes(x = validation_status, y = complex_support_mean, fill = validation_status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
-  scale_fill_manual(values = c("strict_match" = "grey40", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("strict_match" = "grey40", "relaxed_match" = "grey75", "novel" = "#E41A1C"), guide = "none") +
   labs(title = "Support score by validation status", x = NULL, y = "Mean support score") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -14779,7 +14779,7 @@ if (exists("corum_coverage")) {
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
     scale_fill_manual(values = c("complete" = "grey40", "high_80pct" = "grey55",
-                                  "partial_50pct" = "#FFFF33", "low" = "#E41A1C"), guide = "none") +
+                                  "partial_50pct" = "grey75", "low" = "#E41A1C"), guide = "none") +
     labs(title = "CORUM complex coverage in detected proteome", x = "Coverage tier", y = "Number of complexes") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -14834,7 +14834,7 @@ if (exists("cp_coverage") && nrow(cp_coverage) > 0) {
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
     scale_fill_manual(values = c("complete" = "grey40", "high_80pct" = "grey55",
-                                  "partial_50pct" = "#FFFF33", "low" = "#E41A1C"), guide = "none") +
+                                  "partial_50pct" = "grey75", "low" = "#E41A1C"), guide = "none") +
     labs(title = "ComplexPortal coverage in detected proteome", x = "Coverage tier", y = "Number of complexes") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
