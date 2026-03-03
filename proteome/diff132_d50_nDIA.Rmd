@@ -16540,7 +16540,7 @@ for (neuron_filter in c("iN", "iDA")) {
   
   p_q <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = n_lost_q, fill = structure)) +
     ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
-    ggplot2::scale_fill_brewer(palette = "Set2", name = "Structure") +
+    ggplot2::scale_fill_brewer(palette = "Blues", name = "Structure") +
     ggplot2::labs(x = NULL, y = "Number lost/disrupted (q < 0.05)", 
                   title = paste0("Significant losses across structure types (", neuron_filter, ", q-value)")) +
     ggplot2::theme_bw(base_size = 6) +
@@ -16555,7 +16555,7 @@ for (neuron_filter in c("iN", "iDA")) {
   
   p_p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = n_lost_p, fill = structure)) +
     ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
-    ggplot2::scale_fill_brewer(palette = "Set2", name = "Structure") +
+    ggplot2::scale_fill_brewer(palette = "BuGn", name = "Structure") +
     ggplot2::labs(x = NULL, y = "Number lost/disrupted (p < 0.05)", 
                   title = paste0("Significant losses across structure types (", neuron_filter, ", p-value)")) +
     ggplot2::theme_bw(base_size = 6) +
