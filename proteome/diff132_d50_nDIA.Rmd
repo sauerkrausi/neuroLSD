@@ -12207,7 +12207,7 @@ filter_counts <- master_ppi_v3 %>%
 p_db_support <- ggplot(filter_counts, aes(x = reorder(database, -n_edges), y = n_edges, fill = db_group)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = scales::comma(n_edges)), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Structural" = "#E41A1C", "Complex" = "#377EB8", "Interaction" = "#4DAF4A"), name = "Type") +
+  scale_fill_manual(values = c("Structural" = "grey75", "Complex" = "#377EB8", "Interaction" = "grey40"), name = "Type") +
   labs(title = "PPI edges by database/structure support", x = NULL, y = "Number of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
@@ -12257,7 +12257,7 @@ support_by_tier_long <- support_by_tier %>%
 p_support_tier <- ggplot(support_by_tier_long, aes(x = factor(confidence_tier, levels = c("gold", "silver", "bronze")), y = percentage, fill = metric)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(percentage, "%")), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("PDB" = "#E41A1C", "CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), name = "Database") +
+  scale_fill_manual(values = c("PDB" = "#E41A1C", "CORUM" = "grey40", "ComplexPortal" = "#377EB8"), name = "Database") +
   labs(title = "Database support by confidence tier", x = NULL, y = "Percentage of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
@@ -13097,9 +13097,9 @@ readr::write_csv(known_summary_sep, file.path(out_dir_trimer, "qc", "sourcedata_
 p_known_sep <- ggplot(known_summary_sep, aes(x = reorder(source, -n), y = n, fill = source)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("CORUM_strict" = "#4DAF4A", "CORUM_relaxed" = "#A6D854",
-                               "ComplexPortal_strict" = "#377EB8", "ComplexPortal_relaxed" = "#7FC8F8",
-                               "PDB_exact_3" = "#984EA3", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "grey40",
+                               "ComplexPortal_strict" = "grey55", "ComplexPortal_relaxed" = "grey55",
+                               "PDB_exact_3" = "grey75","Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Trimers: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
@@ -13121,7 +13121,7 @@ readr::write_csv(known_summary, file.path(out_dir_trimer, "qc", "sourcedata_know
 p_known <- ggplot(known_summary, aes(x = category, y = n, fill = category)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("Known (strict)" = "#4DAF4A", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Trimers: known vs novel complexes", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -13153,7 +13153,7 @@ scores_by_known_long <- scores_by_known %>%
 p_scores_known <- ggplot(scores_by_known_long, aes(x = status, y = value, fill = status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
   facet_wrap(~metric, scales = "free_y") +
-  scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("Known" = "grey40", "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Trimer scores by validation status", x = NULL, y = "Score") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
@@ -13646,8 +13646,8 @@ if (nrow(tetramers_df) > 0) {
   p_known_sep_tet <- ggplot(known_summary_sep_tet, aes(x = reorder(source, -n), y = n, fill = source)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("CORUM_strict" = "#4DAF4A", "CORUM_relaxed" = "#A6D854",
-                                 "ComplexPortal_strict" = "#377EB8", "ComplexPortal_relaxed" = "#7FC8F8",
+    scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "#A6D854",
+                                 "ComplexPortal_strict" = "grey55", "ComplexPortal_relaxed" = "#7FC8F8",
                                  "PDB_exact_6" = "#984EA3", "Novel" = "#E41A1C"), guide = "none") +
     labs(title = "Tetramers: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of tetramers") +
     theme_bw(base_size = 6) +
@@ -13670,7 +13670,7 @@ if (nrow(tetramers_df) > 0) {
   p_known_tet <- ggplot(known_summary_tet, aes(x = category, y = n, fill = category)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("Known (strict)" = "#4DAF4A", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
+    scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "#FFFF33", "Novel" = "#E41A1C"), guide = "none") +
     labs(title = "Tetramers: known vs novel complexes", x = NULL, y = "Number of tetramers") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -13702,7 +13702,7 @@ if (nrow(tetramers_df) > 0) {
   p_scores_known_tet <- ggplot(scores_by_known_tet_long, aes(x = status, y = value, fill = status)) +
     geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
     facet_wrap(~metric, scales = "free_y") +
-    scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), guide = "none") +
+    scale_fill_manual(values = c("Known" = "grey40", "Novel" = "#E41A1C"), guide = "none") +
     labs(title = "Tetramer scores by validation status", x = NULL, y = "Score") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
@@ -14381,7 +14381,7 @@ readr::write_csv(validation_counts, file.path(out_dir_complex, "qc", "sourcedata
 p_validation <- ggplot(validation_counts, aes(x = validation_status, y = n, fill = validation_status)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(n, " (", pct, "%)")), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("strict_match" = "#4DAF4A", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("strict_match" = "grey40", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
   labs(title = "Complex validation status", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -14406,8 +14406,8 @@ readr::write_csv(validation_by_source, file.path(out_dir_complex, "qc", "sourced
 p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y = n, fill = source)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = n), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("CORUM_strict" = "#4DAF4A", "CORUM_relaxed" = "#A6D854",
-                               "ComplexPortal_strict" = "#377EB8", "ComplexPortal_relaxed" = "#7FC8F8",
+  scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "#A6D854",
+                               "ComplexPortal_strict" = "grey55", "ComplexPortal_relaxed" = "#7FC8F8",
                                "PDB_exact" = "#8B0000", "PDB_homolog" = "#FF6B6B",
                                "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Complexes: validation by source (CORUM, CP, PDB)", x = NULL, y = "Number of complexes") +
@@ -14424,7 +14424,7 @@ readr::write_csv(support_by_validation, file.path(out_dir_complex, "qc", "source
 
 p_support_validation <- ggplot(complex_evidence, aes(x = validation_status, y = complex_support_mean, fill = validation_status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
-  scale_fill_manual(values = c("strict_match" = "#4DAF4A", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("strict_match" = "grey40", "relaxed_match" = "#FFFF33", "novel" = "#E41A1C"), guide = "none") +
   labs(title = "Support score by validation status", x = NULL, y = "Mean support score") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -14778,7 +14778,7 @@ if (exists("corum_coverage")) {
   p_corum_coverage <- ggplot(coverage_dist_corum, aes(x = coverage_tier, y = n_complexes, fill = coverage_tier)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("complete" = "#4DAF4A", "high_80pct" = "#377EB8",
+    scale_fill_manual(values = c("complete" = "grey40", "high_80pct" = "grey55",
                                   "partial_50pct" = "#FFFF33", "low" = "#E41A1C"), guide = "none") +
     labs(title = "CORUM complex coverage in detected proteome", x = "Coverage tier", y = "Number of complexes") +
     theme_bw(base_size = 6) +
@@ -14833,7 +14833,7 @@ if (exists("cp_coverage") && nrow(cp_coverage) > 0) {
   p_cp_coverage <- ggplot(coverage_dist_cp, aes(x = coverage_tier, y = n_complexes, fill = coverage_tier)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("complete" = "#4DAF4A", "high_80pct" = "#377EB8",
+    scale_fill_manual(values = c("complete" = "grey40", "high_80pct" = "grey55",
                                   "partial_50pct" = "#FFFF33", "low" = "#E41A1C"), guide = "none") +
     labs(title = "ComplexPortal coverage in detected proteome", x = "Coverage tier", y = "Number of complexes") +
     theme_bw(base_size = 6) +
@@ -14876,7 +14876,7 @@ if (exists("corum_coverage") && exists("cp_coverage") && nrow(cp_coverage) > 0) 
   p_combined <- ggplot(combined_coverage, aes(x = tier, y = n, fill = database)) +
     geom_col(position = "dodge", color = "black", linewidth = 0.3) +
     geom_text(aes(label = n), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), name = NULL) +
+    scale_fill_manual(values = c("CORUM" = "grey40", "ComplexPortal" = "#377EB8"), name = NULL) +
     labs(title = "Coverage comparison: CORUM vs ComplexPortal", x = "Coverage tier", y = "Number of complexes") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
@@ -14936,7 +14936,7 @@ p_validation_db <- ggplot(validation_by_db, aes(x = database, y = n, fill = data
   geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 1.8) +
   facet_wrap(~level, scales = "free_y", ncol = 3) +
   scale_fill_manual(values = c("PDB_exact" = "#E41A1C", "PDB_any" = "#FC8D62",
-                               "CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8",
+                               "CORUM" = "grey40", "ComplexPortal" = "grey55",
                                "STRING" = "#984EA3", "BIOGRID" = "#FF7F00"), guide = "none") +
   labs(title = "Validation by database at each level", x = NULL, y = "Count") +
   theme_bw(base_size = 6) +
@@ -15004,7 +15004,7 @@ comparison_df <- data.frame(
 p_comparison <- ggplot(comparison_df, aes(x = level, y = n, fill = status)) +
   geom_col(position = "fill", color = "black", linewidth = 0.3) +
   geom_text(aes(label = n), position = position_fill(vjust = 0.5), size = 2) +
-  scale_fill_manual(values = c("Known" = "#4DAF4A", "Novel" = "#E41A1C"), name = NULL) +
+  scale_fill_manual(values = c("Known" = "grey40", "Novel" = "#E41A1C"), name = NULL) +
   scale_y_continuous(labels = scales::percent) +
   labs(title = "Known vs novel by detection level", x = NULL, y = "Proportion") +
   theme_bw(base_size = 6) +
@@ -15743,7 +15743,7 @@ if (!is.null(corum_stoich_summary) || !is.null(cp_stoich_summary)) {
   p_db_multimeric <- ggplot(db_multimeric, aes(x = database, y = pct, fill = database)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = paste0(multimeric, "/", total, "\n(", pct, "%)")), vjust = -0.1, size = 2) +
-    scale_fill_manual(values = c("CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), guide = "none") +
+    scale_fill_manual(values = c("CORUM" = "grey40", "ComplexPortal" = "#377EB8"), guide = "none") +
     labs(title = "Complexes with multimeric subunits by database", x = NULL, y = "% with multimeric") +
     coord_cartesian(ylim = c(0, max(db_multimeric$pct) * 1.3)) +
     theme_bw(base_size = 6) +
@@ -15764,7 +15764,7 @@ if (nrow(trimer_stoich_combined) > 0 && sum(trimer_stoich_combined$n_matched) > 
   p_trimer_stoich <- ggplot(trimer_stoich_plot, aes(x = source, y = n, fill = type)) +
     geom_col(color = "black", linewidth = 0.3, position = "stack") +
     geom_text(aes(label = n), position = position_stack(vjust = 0.5), size = 2) +
-    scale_fill_manual(values = c("With multimeric" = "#4DAF4A", "Without multimeric" = "grey70"), name = NULL) +
+    scale_fill_manual(values = c("With multimeric" = "grey40", "Without multimeric" = "grey70"), name = NULL) +
     labs(title = "Trimer stoichiometry by database", x = NULL, y = "Number of trimers") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
@@ -15804,7 +15804,7 @@ if (nrow(all_stoich) > 0 && sum(all_stoich$n_matched) > 0) {
   p_combined <- ggplot(all_stoich, aes(x = interaction(level, source), y = pct_multimeric, fill = source)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = paste0(n_multimeric, "/", n_matched)), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("CORUM" = "#4DAF4A", "ComplexPortal" = "#377EB8"), name = "Database") +
+    scale_fill_manual(values = c("CORUM" = "grey40", "ComplexPortal" = "#377EB8"), name = "Database") +
     scale_x_discrete(labels = c("Trimers.CORUM" = "Trimers\nCORUM", "Trimers.ComplexPortal" = "Trimers\nCP",
                                 "Tetramers.CORUM" = "Tetramers\nCORUM", "Tetramers.ComplexPortal" = "Tetramers\nCP")) +
     labs(title = "Multimeric subunits in matched structures", x = NULL, y = "% with multimeric subunit") +
