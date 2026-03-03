@@ -16483,9 +16483,16 @@ for (neuron_filter in c("iN", "iDA")) {
   
   pdf(file.path(out_dir_vuln, "plots/global", paste0("heatmap_organelle_ko_qval_", neuron_filter, ".pdf")), width = 12, height = 10)
   pheatmap::pheatmap(
-    hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), border_color = NA,
-    fontsize = 6, cellwidth = 10, cellheight = 10, cluster_rows = TRUE, cluster_cols = TRUE,
-    clustering_method = "ward.D2", annotation_row = annotation_row, annotation_colors = ann_colors,
+    hm_mat, color = colorRampPalette(c("white", "#C51B7D"))(100), 
+    border_color = NA,
+    fontsize = 6, 
+    cellwidth = 10, 
+    cellheight = 10, 
+    cluster_rows = TRUE, 
+    cluster_cols = TRUE,
+    clustering_method = "ward.D2", 
+    annotation_row = annotation_row, 
+    annotation_colors = ann_colors,
     main = paste0("Fraction PPIs lost by organelle (", neuron_filter, ", q < 0.05)"))
   dev.off()
   message("  Saved: heatmap_organelle_ko_qval_", neuron_filter, ".pdf")
@@ -16572,7 +16579,7 @@ for (sig_type in c("q", "p")) {
     ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
                    strip.background = ggplot2::element_rect(fill = "white"))
   
-  save_plot_with_sourcedata(p_facet, paste0("plots/global/barplot_structure_loss_faceted_", sig_type, "val"), comparison_data, width = 10, height = 12)
+  save_plot_with_sourcedata(p_facet, paste0("plots/global/barplot_structure_loss_faceted_", sig_type, "val"), comparison_data, width = 9, height = 12)
 }
 
 message("Module 6 complete: PPI vulnerability visualizations")
@@ -16991,8 +16998,8 @@ for (nt in c("iN", "iDA")) {
     readr::write_csv(ppi_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_ppi_KO_annotation_", nt, "_sourcedata.csv")))
     pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_ppi_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
     pheatmap::pheatmap(
-      hm_mat, c
-      olor = colorRampPalette(c("white", "#C51B7D"))(100), 
+      hm_mat, 
+      color = colorRampPalette(c("white", "#C51B7D"))(100), 
       cluster_rows = TRUE, 
       cluster_cols = TRUE, 
       clustering_method = "ward.D2", 
@@ -17060,8 +17067,8 @@ for (nt in c("iN", "iDA")) {
       clustering_method = "ward.D2", 
       display_numbers = FALSE, 
       fontsize = 6, 
-      cellwidth = 10, c
-      ellheight = 10, 
+      cellwidth = 10,
+      cellheight = 10, 
       border_color = NA, 
       annotation_row = row_annot, 
       annotation_colors = ann_colors, 
@@ -17075,16 +17082,22 @@ for (nt in c("iN", "iDA")) {
     dplyr::filter(neuron == nt) %>%
     dplyr::select(genotype, shared_organelle, frac_disrupted) %>%
     tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_disrupted, values_fill = NA)
+  
 
   if (nrow(complex_hm_data) >= 2 && ncol(complex_hm_data) >= 3) {
     hm_mat <- as.matrix(complex_hm_data[, -1]); rownames(hm_mat) <- complex_hm_data$genotype
+    frac_threshold <- 0.25
+    keep_cols <- apply(hm_mat, 2, function(x) max(x, na.rm = TRUE) >= frac_threshold)
+    hm_mat <- hm_mat[, keep_cols, drop = FALSE]
+    if (ncol(hm_mat) < 2) next
     row_annot <- row_annot_base[rownames(hm_mat), "DiseaseClass", drop = FALSE]
     ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(row_annot$DiseaseClass)))])
 
     readr::write_csv(complex_hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_complex_KO_annotation_", nt, "_sourcedata.csv")))
     pdf(file.path(out_dir_vuln, "plots/KOxNeuron", paste0("heatmap_complex_KO_annotation_", nt, ".pdf")), width = 12, height = 10)
     pheatmap::pheatmap(
-      hm_mat, color = colorRampPalette(c("white", "#1B9E77"))(100), 
+      hm_mat,
+      color = colorRampPalette(c("white", "#1B9E77"))(100), 
       cluster_rows = TRUE, 
       cluster_cols = TRUE, 
       clustering_method = "ward.D2", 
@@ -17095,7 +17108,7 @@ for (nt in c("iN", "iDA")) {
       border_color = NA, 
       annotation_row = row_annot, 
       annotation_colors = ann_colors, 
-      main = paste0("Fraction complexes disrupted by KO x annotation (", nt, ", q<0.05)"))
+      main = paste0("Fraction complexes disrupted by KO x annotation, at least 25% lost (", nt, ", q<0.05)"))
     dev.off()
     message("  Saved: heatmap_complex_KO_annotation_", nt, ".pdf")
   }
