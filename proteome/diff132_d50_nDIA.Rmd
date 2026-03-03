@@ -18116,8 +18116,9 @@ p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(pri
   ggplot2::scale_fill_manual(values = organelle_colors_network, guide = "none") +
   ggplot2::coord_flip() +
   ggplot2::labs(title = "Degree by annotation", x = NULL, y = "Degree (log10)") +
-  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
-ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 6, device = cairo_pdf)
+  ggplot2::theme_bw(base_size = 6) + 
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 5, device = cairo_pdf)
 
 annots_with_edges_base <- rownames(inter_matrix_baseline)[rowSums(inter_matrix_baseline) > 10]
 inter_matrix_filtered  <- inter_matrix_baseline[annots_with_edges_base, annots_with_edges_base]
@@ -18522,6 +18523,31 @@ p_top_pairs <- ggplot2::ggplot(top_pairs, ggplot2::aes(x = reorder(annotation_pa
   ggplot2::labs(title = "Most disrupted inter-organelle connections", x = NULL, y = "Mean % edges lost") +
   ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
 ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_top_disrupted_pairs.pdf"), p_top_pairs, width = 5, height = 5, device = cairo_pdf)
+
+# --- Per-disease-class version of top disrupted pairs ---
+top_pairs_by_dc <- inter_organelle_ko_all %>%
+  dplyr::filter(!is.na(DiseaseClass)) %>%
+  dplyr::group_by(DiseaseClass, annotation_pair) %>%
+  dplyr::summarise(
+    mean_frac_lost = mean(frac_lost, na.rm = TRUE),
+    total_baseline = mean(n_baseline, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::filter(total_baseline >= 5) %>%
+  dplyr::group_by(DiseaseClass) %>%
+  dplyr::slice_max(order_by = mean_frac_lost, n = 15) %>%
+  dplyr::ungroup()
+
+p_top_pairs_dc <- ggplot2::ggplot(top_pairs_by_dc,
+    ggplot2::aes(x = reorder(annotation_pair, mean_frac_lost), y = mean_frac_lost)) +
+  ggplot2::geom_col(fill = "#D53E4F", color = "black", linewidth = 0.2) +
+  ggplot2::geom_text(ggplot2::aes(label = paste0("n=", round(total_baseline))), hjust = -0.1, size = 1.8) +
+  ggplot2::coord_flip() +
+  ggplot2::scale_y_continuous(labels = scales::percent, expand = ggplot2::expansion(mult = c(0, 0.2))) +
+  ggplot2::facet_wrap(~ DiseaseClass, scales = "free_y", ncol = 2) +
+  ggplot2::labs(title = "Most disrupted inter-organelle connections by disease class", x = NULL, y = "Mean % edges lost") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(), strip.background = ggplot2::element_rect(fill = "white"))
+ggplot2::ggsave(file.path(out_dir_network, "M3_interorganelle_bridges", "barplot_top_disrupted_pairs_by_DiseaseClass.pdf"),
+  p_top_pairs_dc, width = 8, height = 10, device = cairo_pdf)
 
 inter_organelle_total <- inter_organelle_ko_all %>%
   dplyr::group_by(genotype, neuron, DiseaseClass) %>%
