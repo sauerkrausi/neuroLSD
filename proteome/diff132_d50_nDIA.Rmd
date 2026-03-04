@@ -16546,7 +16546,7 @@ for (neuron_filter in c("iN", "iDA")) {
     ggplot2::theme_bw(base_size = 6) +
     ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1))
   
-  save_plot_with_sourcedata(p_q, paste0("plots/global/barplot_structure_loss_qval_", neuron_filter), plot_data, width = 12, height = 5)
+  save_plot_with_sourcedata(p_q, paste0("plots/global/barplot_structure_loss_qval_", neuron_filter), plot_data, width = 8, height = 5)
 }
 
 # --- Barplots: p-value, separate for iN and iDA ---
