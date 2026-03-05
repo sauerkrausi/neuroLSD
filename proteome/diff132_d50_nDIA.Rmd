@@ -12777,6 +12777,38 @@ if (nrow(shared_long_baseline) > 0) {
   }
 }
 
+# Heatmap: mean confidence scores per organelle (rows) x score (cols)
+if (exists("organelle_score_summary") && nrow(organelle_score_summary) >= 2) {
+  score_hm_data <- organelle_score_summary %>%
+    dplyr::select(tag, dplyr::starts_with("mean_")) %>%
+    as.data.frame()
+  hm_mat_scores <- as.matrix(score_hm_data[, -1])
+  rownames(hm_mat_scores) <- score_hm_data$tag
+  colnames(hm_mat_scores) <- sub("mean_", "", colnames(hm_mat_scores))
+  hm_mat_scores <- hm_mat_scores[, colSums(!is.na(hm_mat_scores)) > 0, drop = FALSE]
+
+  if (ncol(hm_mat_scores) >= 2) {
+    pheatmap::pheatmap(
+      hm_mat_scores,
+      color = colorRampPalette(c("white", "#2166AC"))(100),
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      clustering_method = "ward.D2",
+      display_numbers = TRUE,
+      number_format = "%.2f",
+      fontsize = 8,
+      border_color = NA,
+      cellheight = 12,
+      cellwidth = 20,
+      main = "Mean confidence scores by organelle (baseline PPIs)",
+      filename = file.path(out_dir_baseline, "qc", "heatmap_confidence_by_organelle.pdf"),
+      width = 5,
+      height = max(4, nrow(hm_mat_scores) * 0.3)
+    )
+    message("Heatmap saved: confidence scores by organelle")
+  }
+}
+
 message("\nModule 2 complete. Baseline PPI saved with ", nrow(baseline_ppi_v3), " edges")
 message("QC plots saved to: ", file.path(out_dir_baseline, "qc"))
 ```
