@@ -14425,7 +14425,7 @@ readr::write_csv(support_by_validation, file.path(out_dir_complex, "qc", "source
 p_support_validation <- ggplot(complex_evidence, aes(x = validation_status, y = complex_support_mean, fill = validation_status)) +
   geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
   scale_fill_manual(values = c("strict_match" = "grey40", "relaxed_match" = "grey75", "novel" = "#E41A1C"), guide = "none") +
-  labs(title = "Support score by validation status", x = NULL, y = "Mean support score") +
+  labs(title = "Support score by validation status", x = NULL, y = "Mean support score of complexes") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
@@ -16561,7 +16561,7 @@ for (neuron_filter in c("iN", "iDA")) {
     ggplot2::theme_bw(base_size = 6) +
     ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1))
   
-  save_plot_with_sourcedata(p_p, paste0("plots/global/barplot_structure_loss_pval_", neuron_filter), plot_data, width = 12, height = 5)
+  save_plot_with_sourcedata(p_p, paste0("plots/global/barplot_structure_loss_pval_", neuron_filter), plot_data, width = 8, height = 5)
 }
 
 # --- Faceted version: all structures in one plot per significance type ---
