@@ -19821,7 +19821,7 @@ if (nrow(mito_complex_states) == 0) {
         color = colorRampPalette(c("grey97", "#9ECAE1", "#2171B5"))(100),
         cluster_rows = FALSE, 
         cluster_cols = FALSE,
-        display_numbers = TRUE, 
+        display_numbers = FALSE, 
         number_format = "%.2f",
         fontsize = 6, 
         fontsize_number = 5,
