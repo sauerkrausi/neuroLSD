@@ -21334,6 +21334,149 @@ for (sig in c("q", "p")) {
   }
 }
 
+
+
+# =============================================================================
+# 16.13 ASAH1 Complex Network Plots: per day x neuron + 3-day trajectory
+# =============================================================================
+message("16.13: ASAH1 complex network plots (d30/d50/d70)...")
+
+out_dir_cx_a1    <- file.path(out_dir_tc_asah1, "plots/complex_networks")
+out_dir_cx_a1_sd <- file.path(out_dir_tc_asah1, "sourcedata/complex_networks")
+dir.create(out_dir_cx_a1,    recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_cx_a1_sd, recursive = TRUE, showWarnings = FALSE)
+
+if (!exists("complex_edge_map")) {
+  complex_edge_map <- complex_members_parsed %>%
+    dplyr::select(complex_id, complex_size, shared_organelle, members_list) %>%
+    dplyr::rowwise() %>% dplyr::filter(length(members_list) >= 2) %>%
+    dplyr::mutate(pairs = list(combn(members_list, 2, simplify = FALSE))) %>%
+    dplyr::ungroup() %>% tidyr::unnest(pairs) %>%
+    dplyr::mutate(Gene1 = purrr::map_chr(pairs, 1), Gene2 = purrr::map_chr(pairs, 2)) %>%
+    dplyr::select(complex_id, complex_size, shared_organelle, Gene1, Gene2) %>%
+    dplyr::inner_join(baseline_filtered %>% dplyr::select(key, Gene1, Gene2), by = c("Gene1", "Gene2")) %>%
+    dplyr::select(complex_id, complex_size, shared_organelle, key)
+}
+
+# --- Build complex-level states per day x neuron ---
+complex_a1_states <- complex_edge_map %>%
+  dplyr::select(complex_id, key) %>%
+  tidyr::crossing(tc_asah1_edge_states %>% dplyr::distinct(day, neuron)) %>%
+  dplyr::left_join(tc_asah1_edge_states %>% dplyr::select(key, day, neuron, state_q, state_p), by = c("key", "day", "neuron")) %>%
+  dplyr::mutate(edge_lost_q = tidyr::replace_na(state_q, "retained") == "lost", edge_lost_p = tidyr::replace_na(state_p, "retained") == "lost") %>%
+  dplyr::group_by(complex_id, day, neuron) %>%
+  dplyr::summarise(n_edges = dplyr::n(), n_lost_q = sum(edge_lost_q), frac_lost_q = n_lost_q / n_edges, n_lost_p = sum(edge_lost_p), frac_lost_p = n_lost_p / n_edges, .groups = "drop") %>%
+  dplyr::mutate(state_q = dplyr::case_when(frac_lost_q >= 0.75 ~ "disrupted", frac_lost_q >= 0.25 ~ "partial", TRUE ~ "intact"), state_p = dplyr::case_when(frac_lost_p >= 0.75 ~ "disrupted", frac_lost_p >= 0.25 ~ "partial", TRUE ~ "intact")) %>%
+  dplyr::left_join(complex_members_parsed %>% dplyr::select(complex_id, complex_size, shared_organelle) %>% dplyr::distinct(), by = "complex_id")
+
+cx_ids_a1 <- complex_a1_states %>% dplyr::filter(state_q == "disrupted" | state_p == "disrupted") %>% dplyr::pull(complex_id) %>% unique()
+message("  Complexes to plot: ", length(cx_ids_a1))
+
+# --- Precompute baseline layouts ---
+all_edges_base_a1 <- baseline_filtered %>% dplyr::select(key, Gene1, Gene2) %>% dplyr::distinct()
+a1_cx_layouts <- list()
+for (cid in cx_ids_a1) {
+  cx_row <- complex_members_parsed %>% dplyr::filter(complex_id == cid) %>% dplyr::slice(1)
+  if (nrow(cx_row) == 0) next
+  members <- cx_row$members_list[[1]]
+  if (length(members) < 2) next
+  edges_base <- all_edges_base_a1 %>% dplyr::filter(Gene1 %in% members, Gene2 %in% members)
+  if (nrow(edges_base) < 1) next
+  g_base <- igraph::graph_from_data_frame(edges_base %>% dplyr::select(Gene1, Gene2), directed = FALSE, vertices = data.frame(name = members))
+  cx_size <- length(members)
+  layout_mat <- if (cx_size <= 10) igraph::layout_in_circle(g_base) else if (cx_size <= 20) igraph::layout_with_kk(g_base) else igraph::layout_with_fr(g_base)
+  rownames(layout_mat) <- igraph::V(g_base)$name
+  a1_cx_layouts[[cid]] <- list(layout = layout_mat, members = members, cx_size = cx_size)
+}
+message("  Layouts precomputed: ", length(a1_cx_layouts))
+
+# --- Plot function: single day (no genotype col) ---
+plot_a1_cx_day <- function(cid, day_val, neur, tc_edge_states, complex_a1_states, a1_cx_layouts, complex_members_parsed, out_dir, sig_col = "state_q") {
+  bl <- a1_cx_layouts[[cid]]; if (is.null(bl)) return(invisible(NULL))
+  members <- bl$members; layout_mat <- bl$layout; cx_size <- bl$cx_size
+  edges_dn <- tc_edge_states %>% dplyr::filter(day == day_val, neuron == neur, Gene1 %in% members, Gene2 %in% members) %>% dplyr::select(key, Gene1, Gene2, dplyr::all_of(sig_col))
+  if (nrow(edges_dn) == 0) return(invisible(NULL))
+  cx_sum <- complex_a1_states %>% dplyr::filter(complex_id == cid, day == day_val, neuron == neur)
+  if (nrow(cx_sum) == 0) return(invisible(NULL))
+  sig_tag <- sub("state_", "", sig_col)
+  n_lost <- cx_sum[[paste0("n_lost_", sig_tag)]][1]; frac_lost <- cx_sum[[paste0("frac_lost_", sig_tag)]][1]
+  pct_lost <- round(frac_lost * 100, 1); edge_state <- edges_dn[[sig_col]]
+  cx_meta <- complex_members_parsed %>% dplyr::filter(complex_id == cid) %>% dplyr::slice(1)
+  cx_name <- if ("corum_matched_name" %in% colnames(cx_meta) && !is.na(cx_meta$corum_matched_name[1]) && nchar(cx_meta$corum_matched_name[1]) > 0) paste0("\n", substr(cx_meta$corum_matched_name[1], 1, 50)) else ""
+  g <- igraph::graph_from_data_frame(edges_dn %>% dplyr::select(Gene1, Gene2), directed = FALSE, vertices = data.frame(name = members))
+  igraph::E(g)$color <- ifelse(edge_state == "lost", "#CC0000", "grey40"); igraph::E(g)$lty <- ifelse(edge_state == "lost", 2L, 1L); igraph::E(g)$width <- 1.8
+  layout_plot <- layout_mat[match(igraph::V(g)$name, rownames(layout_mat)), , drop = FALSE]
+  vsize <- ifelse(cx_size > 30, 6, ifelse(cx_size > 15, 8, 10)); vlcex <- ifelse(cx_size > 30, 0.4, ifelse(cx_size > 15, 0.5, 0.6))
+  plot_title <- paste0("ASAH1 Complex ", cid, " (", neur, ") [", toupper(sig_tag), "] | ", day_val, cx_name, "\nSize: ", cx_size, " | Edges: ", nrow(edges_dn), " | Lost: ", n_lost, " (", pct_lost, "%)")
+  pdf(file.path(out_dir, paste0(cid, "_", neur, "_", day_val, "_", sig_tag, "_network.pdf")), width = 8, height = 8)
+  par(mar = c(1, 1, 4, 1))
+  plot(g, layout = layout_plot, vertex.size = vsize, vertex.label.cex = vlcex, vertex.color = "grey90", vertex.frame.color = "grey50", edge.color = igraph::E(g)$color, edge.width = igraph::E(g)$width, edge.lty = igraph::E(g)$lty, main = plot_title)
+  legend("bottomleft", legend = c("Retained", "Lost"), col = c("grey40", "#CC0000"), lwd = 2, lty = c(1, 2), bty = "n", cex = 0.7, title = toupper(sig_tag))
+  dev.off(); invisible(NULL)
+}
+
+# --- Plot function: 3-day trajectory ---
+plot_a1_cx_trajectory_3d <- function(cid, neur, tc_edge_states, a1_cx_layouts, complex_members_parsed, out_dir, days = c("d30", "d50", "d70"), sig_col = "state_q") {
+  bl <- a1_cx_layouts[[cid]]; if (is.null(bl)) return(invisible(NULL))
+  members <- bl$members; layout_mat <- bl$layout; cx_size <- bl$cx_size
+  base_edges <- tc_edge_states %>% dplyr::filter(neuron == neur, Gene1 %in% members, Gene2 %in% members) %>% dplyr::distinct(key, Gene1, Gene2)
+  if (nrow(base_edges) == 0) return(invisible(NULL))
+  get_day <- function(d) tc_edge_states %>% dplyr::filter(day == d, neuron == neur, Gene1 %in% members, Gene2 %in% members) %>% dplyr::select(key, dplyr::all_of(sig_col)) %>% dplyr::rename(!!paste0("s_", d) := dplyr::all_of(sig_col))
+  edges_traj <- base_edges %>% dplyr::left_join(get_day(days[1]), by = "key") %>% dplyr::left_join(get_day(days[2]), by = "key") %>% dplyr::left_join(get_day(days[3]), by = "key") %>%
+    dplyr::mutate(
+      s1 = tidyr::replace_na(.data[[paste0("s_", days[1])]], "retained") == "lost",
+      s2 = tidyr::replace_na(.data[[paste0("s_", days[2])]], "retained") == "lost",
+      s3 = tidyr::replace_na(.data[[paste0("s_", days[3])]], "retained") == "lost",
+      trajectory = dplyr::case_when(
+        s1 & s2 & s3   ~ "lost_all",
+        s1 & s2 & !s3  ~ "lost_d30_d50",
+        s1 & !s2 & s3  ~ "lost_d30_d70",
+        !s1 & s2 & s3  ~ "lost_d50_d70",
+        s1 & !s2 & !s3 ~ "lost_d30_only",
+        !s1 & s2 & !s3 ~ "lost_d50_only",
+        !s1 & !s2 & s3 ~ "lost_d70_only",
+        TRUE           ~ "retained"
+      ))
+  if (all(edges_traj$trajectory == "retained")) return(invisible(NULL))
+  traj_pal <- c(retained = "grey60", lost_d30_only = "#FEE391", lost_d50_only = "#FEC44F", lost_d70_only = "#FE9929", lost_d30_d50 = "#EC7014", lost_d30_d70 = "#CC4C02", lost_d50_d70 = "#993404", lost_all = "#CC0000")
+  leg_map  <- c(retained = "Retained", lost_d30_only = "Lost d30 only", lost_d50_only = "Lost d50 only", lost_d70_only = "Lost d70 only", lost_d30_d50 = "Lost d30+d50", lost_d30_d70 = "Lost d30+d70", lost_d50_d70 = "Lost d50+d70", lost_all = "Lost all")
+  present_cats <- intersect(unique(edges_traj$trajectory), names(traj_pal))
+  g <- igraph::graph_from_data_frame(edges_traj %>% dplyr::select(Gene1, Gene2), directed = FALSE, vertices = data.frame(name = members))
+  igraph::E(g)$color <- traj_pal[edges_traj$trajectory]; igraph::E(g)$lty <- ifelse(edges_traj$trajectory == "retained", 1L, 2L); igraph::E(g)$width <- 1.8
+  layout_plot <- layout_mat[match(igraph::V(g)$name, rownames(layout_mat)), , drop = FALSE]
+  vsize <- ifelse(cx_size > 30, 6, ifelse(cx_size > 15, 8, 10)); vlcex <- ifelse(cx_size > 30, 0.4, ifelse(cx_size > 15, 0.5, 0.6))
+  sig_tag <- sub("state_", "", sig_col)
+  cx_meta <- complex_members_parsed %>% dplyr::filter(complex_id == cid) %>% dplyr::slice(1)
+  cx_name <- if ("corum_matched_name" %in% colnames(cx_meta) && !is.na(cx_meta$corum_matched_name[1]) && nchar(cx_meta$corum_matched_name[1]) > 0) paste0("\n", substr(cx_meta$corum_matched_name[1], 1, 50)) else ""
+  plot_title <- paste0("ASAH1 Complex ", cid, " (", neur, ") [", toupper(sig_tag), "] Trajectory", cx_name, "\nSize: ", cx_size, " | Edges: ", nrow(edges_traj))
+  pdf(file.path(out_dir, paste0(cid, "_", neur, "_", sig_tag, "_trajectory.pdf")), width = 8, height = 8)
+  par(mar = c(1, 1, 4, 1))
+  plot(g, layout = layout_plot, vertex.size = vsize, vertex.label.cex = vlcex, vertex.color = "grey90", vertex.frame.color = "grey50", edge.color = igraph::E(g)$color, edge.width = igraph::E(g)$width, edge.lty = igraph::E(g)$lty, main = plot_title)
+  legend("bottomleft", legend = leg_map[present_cats], col = traj_pal[present_cats], lwd = 2, lty = ifelse(present_cats == "retained", 1, 2), bty = "n", cex = 0.6)
+  dev.off(); invisible(NULL)
+}
+
+# --- Run ---
+for (sig in c("state_q", "state_p")) {
+  sig_tag  <- sub("state_", "", sig)
+  out_day  <- file.path(out_dir_cx_a1, paste0("per_day_",    sig_tag)); dir.create(out_day,  recursive = TRUE, showWarnings = FALSE)
+  out_traj <- file.path(out_dir_cx_a1, paste0("trajectory_", sig_tag)); dir.create(out_traj, recursive = TRUE, showWarnings = FALSE)
+  disrupted_sig <- complex_a1_states %>% dplyr::filter(.data[[sig]] == "disrupted")
+  n_day <- 0; n_traj <- 0
+  for (i in seq_len(nrow(disrupted_sig))) {
+    row <- disrupted_sig[i, ]
+    tryCatch(plot_a1_cx_day(row$complex_id, row$day, row$neuron, tc_asah1_edge_states, complex_a1_states, a1_cx_layouts, complex_members_parsed, out_day, sig_col = sig), error = function(e) message("  SKIP day ", row$complex_id, "/", row$day, "/", row$neuron, ": ", e$message))
+    n_day <- n_day + 1
+  }
+  traj_combos <- complex_a1_states %>% dplyr::filter(state_q == "disrupted" | state_p == "disrupted") %>% dplyr::distinct(complex_id, neuron)
+  for (i in seq_len(nrow(traj_combos))) {
+    row <- traj_combos[i, ]
+    tryCatch(plot_a1_cx_trajectory_3d(row$complex_id, row$neuron, tc_asah1_edge_states, a1_cx_layouts, complex_members_parsed, out_traj, days = c("d30", "d50", "d70"), sig_col = sig), error = function(e) message("  SKIP traj ", row$complex_id, "/", row$neuron, ": ", e$message))
+    n_traj <- n_traj + 1
+  }
+  message("  ASAH1 ", toupper(sig_tag), ": ", n_day, " day plots, ", n_traj, " trajectory plots")
+}
+message("16.12 complete: ASAH1 complex network plots -> ", out_dir_cx_a1)
 message("Module 16 complete: ASAH1 long timecourse (PPIs + trimers + complexes + mito bubbles)")
 ```
 
