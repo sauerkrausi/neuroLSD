@@ -20686,6 +20686,177 @@ for (sig in c("q", "p")) {
 
 
 
+# =============================================================================
+# 15.15  Complex network plots (per-day + trajectory)
+# =============================================================================
+
+# Edge-level states per complex -- basis for all downstream summaries
+complex_tc_states <- complex_edge_map %>%
+  dplyr::select(complex_id, key) %>%
+  dplyr::inner_join(tc_multi_edge_states, by = "key") %>%
+  dplyr::select(complex_id, key, Gene1, Gene2, genotype, day, neuron, state_q, state_p)
+
+readr::write_csv(complex_tc_states, file.path(out_dir_tc_multi, "tables", "complex_tc_states.csv"))
+
+# Summarise to complex level: frac lost edges and disruption state per sig
+# disrupted >= 0.75, partial >= 0.25, intact otherwise
+complex_tc_summary <- complex_tc_states %>%
+  dplyr::group_by(complex_id, genotype, day, neuron) %>%
+  dplyr::summarise(
+    n_edges_total = dplyr::n(),
+    n_lost_q      = sum(state_q == "lost", na.rm = TRUE),
+    n_lost_p      = sum(state_p == "lost", na.rm = TRUE),
+    frac_lost_q   = n_lost_q / n_edges_total,
+    frac_lost_p   = n_lost_p / n_edges_total,
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(complex_members_parsed %>% dplyr::select(complex_id, complex_size, shared_organelle) %>% dplyr::distinct(), by = "complex_id") %>%
+  dplyr::mutate(
+    complex_state_q = dplyr::case_when(frac_lost_q >= 0.75 ~ "disrupted", frac_lost_q >= 0.25 ~ "partial", TRUE ~ "intact"),
+    complex_state_p = dplyr::case_when(frac_lost_p >= 0.75 ~ "disrupted", frac_lost_p >= 0.25 ~ "partial", TRUE ~ "intact")
+  )
+
+readr::write_csv(complex_tc_summary, file.path(out_dir_tc_multi, "tables", "complex_tc_summary.csv"))
+
+message("  Disrupted complexes: q=", sum(complex_tc_summary$complex_state_q == "disrupted"),
+        "  p=", sum(complex_tc_summary$complex_state_p == "disrupted"))
+
+# Precompute baseline layouts for union of all disrupted complexes
+# Using baseline_filtered so layout is comparable across conditions
+tc_cx_layouts <- list()
+cx_union <- union(
+  complex_tc_summary %>% dplyr::filter(complex_state_q == "disrupted") %>% dplyr::pull(complex_id) %>% unique(),
+  complex_tc_summary %>% dplyr::filter(complex_state_p == "disrupted") %>% dplyr::pull(complex_id) %>% unique()
+)
+for (cx_idx in cx_union) {
+  cx_keys  <- complex_edge_map %>% dplyr::filter(complex_id == cx_idx) %>% dplyr::pull(key)
+  cx_edges <- baseline_filtered %>% dplyr::filter(key %in% cx_keys) %>% dplyr::select(Gene1, Gene2)
+  if (nrow(cx_edges) == 0) next
+  g_base <- igraph::graph_from_data_frame(cx_edges, directed = FALSE)
+  tc_cx_layouts[[cx_idx]] <- igraph::layout_with_fr(g_base, niter = 500)
+  attr(tc_cx_layouts[[cx_idx]], "node_names") <- igraph::V(g_base)$name
+}
+
+tc_traj_palette_2d <- c(
+  retained        = "grey60",
+  lost_d30_only   = "#FDB863",
+  lost_d50_only   = "#F4A582",
+  lost_d30_and_d50 = "#CC0000"
+)
+
+# Output folders: separate by significance threshold
+dir.create(file.path(out_dir_tc_multi, "plots/networks/qsig"), recursive = TRUE, showWarnings = FALSE)
+net_dir_q <- file.path(out_dir_tc_multi, "plots/networks/qsig")
+
+dir.create(file.path(out_dir_tc_multi, "plots/networks/psig"), recursive = TRUE, showWarnings = FALSE)
+net_dir_p <- file.path(out_dir_tc_multi, "plots/networks/psig")
+
+dir.create(file.path(out_dir_tc_multi, "sourcedata/qsig"), recursive = TRUE, showWarnings = FALSE)
+sd_dir_q <- file.path(out_dir_tc_multi, "sourcedata/qsig")
+
+dir.create(file.path(out_dir_tc_multi, "sourcedata/psig"), recursive = TRUE, showWarnings = FALSE)
+sd_dir_p <- file.path(out_dir_tc_multi, "sourcedata/psig")
+
+# Per-day network: one PDF per disrupted complex x genotype x day x neuron combination
+# Edges colored lost (red) vs retained (grey); source data written per plot
+plot_tc_cx_day <- function(cx_idx, geno, neur, day_val, edge_states, layout_list, out_dir_plots, out_dir_sd, sig = "q") {
+  state_col <- paste0("state_", sig)
+  cx_keys   <- complex_edge_map %>% dplyr::filter(complex_id == cx_idx) %>% dplyr::pull(key)
+  edges_day <- baseline_filtered %>%
+    dplyr::filter(key %in% cx_keys) %>%
+    dplyr::left_join(edge_states %>% dplyr::filter(genotype == geno, day == day_val, neuron == neur) %>% dplyr::select(key, dplyr::all_of(state_col)), by = "key") %>%
+    dplyr::mutate(edge_state = tidyr::replace_na(.data[[state_col]], "retained"),
+                  edge_color = dplyr::if_else(edge_state == "lost", "#CC0000", "grey60"))
+  n_lost    <- sum(edges_day$edge_state == "lost")
+  frac_lost <- n_lost / nrow(edges_day)
+  # Truncate + checksum to avoid OS path length limit on large complex IDs
+  cx_label  <- paste0(substr(gsub("[^A-Za-z0-9_]", "_", cx_idx), 1, 40), "_", abs(sum(utf8ToInt(cx_idx))) %% 9999)
+  readr::write_csv(
+    edges_day %>% dplyr::mutate(complex_id = cx_idx, genotype = geno, day = day_val, neuron = neur, n_lost = n_lost, frac_lost = frac_lost),
+    file.path(out_dir_sd, paste0(cx_label, "_", geno, "_", day_val, "_", neur, "_", sig, "_sourcedata.csv"))
+  )
+  if (nrow(edges_day) == 0 || !cx_idx %in% names(layout_list)) return(invisible(NULL))
+  lay   <- layout_list[[cx_idx]]
+  nodes <- attr(lay, "node_names")
+  g <- igraph::graph_from_data_frame(edges_day %>% dplyr::select(Gene1, Gene2), directed = FALSE, vertices = data.frame(name = nodes))
+  igraph::E(g)$color <- edges_day$edge_color
+  pdf(file.path(out_dir_plots, paste0(cx_label, "_", geno, "_", day_val, "_", neur, "_", sig, ".pdf")), width = 4, height = 4)
+  plot(g, layout = lay, vertex.size = 8, vertex.label.cex = 0.5, vertex.color = "white", vertex.frame.color = "grey40",
+       edge.color = igraph::E(g)$color, edge.width = 1.5,
+       main = paste0(cx_idx, "\n", geno, " ", day_val, " ", neur, " (", sig, ")\n", sprintf("lost: %d/%d (%.0f%%)", n_lost, nrow(edges_day), frac_lost * 100)))
+  dev.off()
+}
+
+# Trajectory plot: edges colored by d30/d50 loss category across both timepoints
+# Only run for complexes disrupted at d50 to ensure temporal context
+plot_tc_cx_trajectory_2d <- function(cx_idx, geno, neur, edge_states, layout_list, out_dir_plots, out_dir_sd, sig = "q") {
+  state_col <- paste0("state_", sig)
+  cx_keys   <- complex_edge_map %>% dplyr::filter(complex_id == cx_idx) %>% dplyr::pull(key)
+  traj_data <- baseline_filtered %>%
+    dplyr::filter(key %in% cx_keys) %>%
+    dplyr::left_join(edge_states %>% dplyr::filter(genotype == geno, day == "d30", neuron == neur) %>% dplyr::select(key, state_d30 = dplyr::all_of(state_col)), by = "key") %>%
+    dplyr::left_join(edge_states %>% dplyr::filter(genotype == geno, day == "d50", neuron == neur) %>% dplyr::select(key, state_d50 = dplyr::all_of(state_col)), by = "key") %>%
+    dplyr::mutate(
+      state_d30 = tidyr::replace_na(state_d30, "retained"),
+      state_d50 = tidyr::replace_na(state_d50, "retained"),
+      traj_cat  = dplyr::case_when(
+        state_d30 == "lost" & state_d50 == "lost"  ~ "lost_d30_and_d50",
+        state_d30 == "lost" & state_d50 != "lost"  ~ "lost_d30_only",
+        state_d30 != "lost" & state_d50 == "lost"  ~ "lost_d50_only",
+        TRUE                                        ~ "retained"
+      ),
+      edge_color = tc_traj_palette_2d[traj_cat]
+    )
+  cx_label <- paste0(substr(gsub("[^A-Za-z0-9_]", "_", cx_idx), 1, 40), "_", abs(sum(utf8ToInt(cx_idx))) %% 9999)
+  readr::write_csv(
+    traj_data %>% dplyr::mutate(complex_id = cx_idx, genotype = geno, neuron = neur),
+    file.path(out_dir_sd, paste0(cx_label, "_", geno, "_", neur, "_trajectory_", sig, "_sourcedata.csv"))
+  )
+  if (nrow(traj_data) == 0 || !cx_idx %in% names(layout_list)) return(invisible(NULL))
+  lay   <- layout_list[[cx_idx]]
+  nodes <- attr(lay, "node_names")
+  g <- igraph::graph_from_data_frame(traj_data %>% dplyr::select(Gene1, Gene2), directed = FALSE, vertices = data.frame(name = nodes))
+  igraph::E(g)$color <- traj_data$edge_color
+  n_any_lost <- sum(traj_data$traj_cat != "retained")
+  pdf(file.path(out_dir_plots, paste0(cx_label, "_", geno, "_", neur, "_trajectory_", sig, ".pdf")), width = 4, height = 4)
+  plot(g, layout = lay, vertex.size = 8, vertex.label.cex = 0.5, vertex.color = "white", vertex.frame.color = "grey40",
+       edge.color = igraph::E(g)$color, edge.width = 1.5,
+       main = paste0(cx_idx, "\n", geno, " ", neur, " traj (", sig, ")\nlost: ", n_any_lost, " edges"))
+  legend("bottomleft", legend = names(tc_traj_palette_2d), col = tc_traj_palette_2d, lwd = 2, cex = 0.5, bty = "n")
+  dev.off()
+}
+
+# Execute: only plot specific (complex_id, genotype, day, neuron) combinations that are disrupted
+# Trajectory only for complexes disrupted at d50 (ensures meaningful temporal context)
+for (sig in c("q", "p")) {
+  state_col <- paste0("complex_state_", sig)
+  net_dir   <- if (sig == "q") net_dir_q else net_dir_p
+  sd_dir    <- if (sig == "q") sd_dir_q  else sd_dir_p
+
+  disrupted_combos <- complex_tc_summary %>%
+    dplyr::filter(.data[[state_col]] == "disrupted") %>%
+    dplyr::select(complex_id, genotype, day, neuron)
+
+  for (i in seq_len(nrow(disrupted_combos))) {
+    plot_tc_cx_day(disrupted_combos$complex_id[i], as.character(disrupted_combos$genotype[i]),
+                   as.character(disrupted_combos$neuron[i]), as.character(disrupted_combos$day[i]),
+                   tc_multi_edge_states, tc_cx_layouts, net_dir, sd_dir, sig = sig)
+  }
+
+  # Trajectory: only for (complex_id, genotype, neuron) where d50 is disrupted
+  traj_combos <- disrupted_combos %>%
+    dplyr::filter(day == "d50") %>%
+    dplyr::distinct(complex_id, genotype, neuron)
+
+  for (i in seq_len(nrow(traj_combos))) {
+    plot_tc_cx_trajectory_2d(traj_combos$complex_id[i], as.character(traj_combos$genotype[i]),
+                              as.character(traj_combos$neuron[i]), tc_multi_edge_states, tc_cx_layouts,
+                              net_dir, sd_dir, sig = sig)
+  }
+}
+
+message("  15.15 complex network plots done")
+
 message("Module 15 complete: Multi-genotype timecourse (PPIs + trimers + complexes + sphingolipidosis)")
 ```
 
