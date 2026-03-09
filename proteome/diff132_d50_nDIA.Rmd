@@ -18158,7 +18158,7 @@ p_degree_dist <- ggplot2::ggplot(node_metrics_baseline, ggplot2::aes(x = degree)
   ggplot2::scale_x_log10() +
   ggplot2::labs(title = "Baseline degree distribution", x = "Edge count per node", y = "Count") +
   ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
-ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
+ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "EdgeCount_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
 
 p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(primary_annotation != "Unannotated"),
     ggplot2::aes(x = reorder(primary_annotation, degree, median), y = degree, fill = primary_annotation)) +
@@ -18168,7 +18168,7 @@ p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(pri
   ggplot2::labs(title = "Degree by annotation", x = NULL, y = "Edge count per node") +
   ggplot2::theme_bw(base_size = 6) + 
   ggplot2::theme(panel.grid = ggplot2::element_blank())
-ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 5, device = cairo_pdf)
+ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "EdgeCount_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 5, device = cairo_pdf)
 
 annots_with_edges_base <- rownames(inter_matrix_baseline)[rowSums(inter_matrix_baseline) > 10]
 inter_matrix_filtered  <- inter_matrix_baseline[annots_with_edges_base, annots_with_edges_base]
