@@ -17482,19 +17482,24 @@ plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
     dplyr::filter(.data$complex_idx == cx_idx, .data$genotype == ko_geno, .data$neuron == ko_neur)
   if (nrow(cx_sum) == 0) return(invisible(NULL))
 
-  # Use correct sig column for complex-level summary
-  n_lost_col   <- sub("state_", "n_lost_",   sig_col)
-  frac_lost_col <- sub("state_", "frac_lost_", sig_col)
-  n_lost    <- cx_sum[[n_lost_col]][1]
-  frac_lost <- cx_sum[[frac_lost_col]][1]
-  pct_lost  <- round(frac_lost * 100, 1)
-
   cx_meta  <- complex_evidence %>% dplyr::filter(.data$complex_idx == cx_idx)
   cx_size  <- cx_meta$complex_size[1]
   cx_name  <- dplyr::coalesce(cx_meta$corum_matched_name[1], "")
   cx_name  <- if (nchar(cx_name) > 0) paste0("\n", substr(cx_name, 1, 50)) else ""
 
-  # Edge state from the correct column
+  # Node states derived from edge states (edge-based definition, no protein-level data needed)
+  # lost = all edges in complex lost; disrupted = some edges lost; retained = no edges lost
+  node_edge_states <- dplyr::bind_rows(
+    edges_ko %>% dplyr::select(node = Gene1, edge_state = dplyr::all_of(sig_col)),
+    edges_ko %>% dplyr::select(node = Gene2, edge_state = dplyr::all_of(sig_col))
+  ) %>%
+    dplyr::group_by(node) %>%
+    dplyr::summarise(n_edges_cx = dplyr::n(), n_edges_lost = sum(edge_state == "lost", na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(node_state = dplyr::case_when(n_edges_lost == n_edges_cx ~ "lost", n_edges_lost > 0 ~ "disrupted", TRUE ~ "retained"))
+
+  n_lost_nodes      <- sum(node_edge_states$node_state == "lost")
+  n_disrupted_nodes <- sum(node_edge_states$node_state == "disrupted")
+
   edge_state_vec <- edges_ko[[sig_col]]
 
   g_ko <- igraph::graph_from_data_frame(edges_ko %>% dplyr::select(Gene1, Gene2),
@@ -17507,14 +17512,20 @@ plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
   vnames      <- igraph::V(g_ko)$name
   layout_plot <- layout_mat[match(vnames, rownames(layout_mat)), , drop = FALSE]
 
+  # Map node states to vertex colors
+  node_palette   <- c(lost = "#CC0000", disrupted = "#FD8D3C", retained = "white")
+  node_state_vec <- node_edge_states$node_state[match(vnames, node_edge_states$node)]
+  node_state_vec[is.na(node_state_vec)] <- "retained"
+  vertex_colors  <- node_palette[node_state_vec]
+
   vsize <- ifelse(cx_size > 30, 6, ifelse(cx_size > 15, 8, 10))
   vlcex <- ifelse(cx_size > 30, 0.4, ifelse(cx_size > 15, 0.5, 0.6))
 
-  sig_label  <- toupper(sub("state_", "", sig_col))   # "Q" or "P"
+  sig_label  <- toupper(sub("state_", "", sig_col))
   plot_title <- paste0(
     "Complex ", cx_idx, " | ", ko_geno, " (", ko_neur, ") [", sig_label, "]",
     "\nSize: ", cx_size, " | Edges: ", nrow(edges_ko),
-    " | Lost Nodes: ", n_lost, " (", pct_lost, "%)", cx_name)
+    " | Lost nodes: ", n_lost_nodes, " | Disrupted nodes: ", n_disrupted_nodes, cx_name)
 
   cx_label <- sprintf("%03d", cx_idx)
   pdf_path <- file.path(out_dir, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_network.pdf"))
@@ -17523,20 +17534,29 @@ plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
   par(mar = c(1, 1, 4, 1))
   plot(g_ko, layout = layout_plot,
        vertex.size = vsize, vertex.label.cex = vlcex,
-       vertex.color = "grey90", vertex.frame.color = "grey50",
+       vertex.color = vertex_colors, vertex.frame.color = "grey50",
        edge.color = igraph::E(g_ko)$color,
        edge.width = igraph::E(g_ko)$width,
        edge.lty   = igraph::E(g_ko)$lty,
        main = plot_title)
-  legend("bottomleft", legend = c("Retained", "Lost"),
-    col = c("grey40", "#CC0000"), lwd = 2, lty = c(1, 2), bty = "n", cex = 0.7,
-    title = paste0("PPI state (", sig_label, ")"))
+  legend("bottomleft",
+    legend = c("Retained", "Lost", "Node: retained", "Node: disrupted", "Node: lost"),
+    col    = c("grey40", "#CC0000", "grey50", "grey50", "grey50"),
+    pt.bg  = c(NA, NA, "white", "#FD8D3C", "#CC0000"),
+    lwd    = c(2, 2, NA, NA, NA), pch = c(NA, NA, 21, 21, 21),
+    lty    = c(1, 2, NA, NA, NA), pt.cex = c(NA, NA, 1.2, 1.2, 1.2),
+    bty    = "n", cex = 0.7, title = paste0("PPI state (", sig_label, ")"))
   dev.off()
 
   readr::write_csv(
     edges_ko %>% dplyr::mutate(complex_idx = cx_idx, genotype = ko_geno, neuron = ko_neur,
-                                sig_col = sig_col, n_lost = n_lost, frac_lost = frac_lost),
+                                sig_col = sig_col, n_lost_nodes = n_lost_nodes, n_disrupted_nodes = n_disrupted_nodes),
     file.path(out_dir_sd, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_sourcedata.csv")))
+
+  readr::write_csv(
+    node_edge_states %>% dplyr::mutate(complex_idx = cx_idx, genotype = ko_geno, neuron = ko_neur, sig = sig_label),
+    file.path(out_dir_sd, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_nodestates.csv")))
+
   invisible(NULL)
 }
 
@@ -17579,6 +17599,101 @@ message("Complex network plots complete.")
 message("  Generated: ", plot_count_cx, " | Skipped: ", skipped_cx)
 message("  PDFs: ", out_dir_cx_nets)
 message("  Sourcedata: ", out_dir_cx_nets_sd)
+
+# =============================================================================
+# Node state summary table + barplot (post-loop)
+# =============================================================================
+
+# Build members lookup from precomputed baseline_layouts
+cx_members_long <- purrr::imap_dfr(baseline_layouts, function(bl, cx) {
+  data.frame(complex_idx = as.integer(cx), node = bl$members, stringsAsFactors = FALSE)
+})
+
+# Within-complex edges: Gene1 in members AND Gene2 in members
+cx_edges_all <- cx_members_long %>%
+  dplyr::inner_join(ko_edge_states %>% dplyr::select(key, Gene1, Gene2, genotype, neuron, state_q, state_p), by = c("node" = "Gene1")) %>%
+  dplyr::inner_join(cx_members_long %>% dplyr::select(complex_idx, Gene2 = node), by = c("complex_idx", "Gene2"))
+
+# Node-level states: pivot so each edge contributes to both endpoints
+cx_node_states <- cx_edges_all %>%
+  tidyr::pivot_longer(cols = c(node, Gene2), names_to = NULL, values_to = "node_name") %>%
+  dplyr::group_by(complex_idx, node_name, genotype, neuron) %>%
+  dplyr::summarise(
+    n_edges_cx = dplyr::n(),
+    n_lost_q   = sum(state_q == "lost", na.rm = TRUE),
+    n_lost_p   = sum(state_p == "lost", na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    node_state_q = dplyr::case_when(n_lost_q == n_edges_cx ~ "lost", n_lost_q > 0 ~ "disrupted", TRUE ~ "retained"),
+    node_state_p = dplyr::case_when(n_lost_p == n_edges_cx ~ "lost", n_lost_p > 0 ~ "disrupted", TRUE ~ "retained")
+  )
+
+readr::write_csv(cx_node_states, file.path(out_dir_vuln, "tables", "complex_ko_node_states.csv"))
+
+# Summary: per complex x genotype x neuron
+complex_ko_node_summary <- cx_node_states %>%
+  dplyr::group_by(complex_idx, genotype, neuron) %>%
+  dplyr::summarise(
+    n_nodes          = dplyr::n_distinct(node_name),
+    n_lost_q         = sum(node_state_q == "lost"),
+    n_disrupted_q    = sum(node_state_q == "disrupted"),
+    n_retained_q     = sum(node_state_q == "retained"),
+    frac_lost_q      = n_lost_q / n_nodes,
+    frac_disrupted_q = n_disrupted_q / n_nodes,
+    n_lost_p         = sum(node_state_p == "lost"),
+    n_disrupted_p    = sum(node_state_p == "disrupted"),
+    n_retained_p     = sum(node_state_p == "retained"),
+    frac_lost_p      = n_lost_p / n_nodes,
+    frac_disrupted_p = n_disrupted_p / n_nodes,
+    .groups = "drop"
+  )
+
+readr::write_csv(complex_ko_node_summary, file.path(out_dir_vuln, "tables", "complex_ko_node_summary.csv"))
+message("Node state summary written: ", nrow(complex_ko_node_summary), " rows")
+
+# Barplots: mean frac lost/disrupted per genotype x neuron, disrupted complexes only
+node_palette_bar <- c(disrupted = "#FD8D3C", lost = "#CC0000")
+dir.create(file.path(out_dir_vuln, "plots/complex_networks_node_barplots"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln, "sourcedata/complex_networks_node_barplots"), recursive = TRUE, showWarnings = FALSE)
+
+for (sig_tag in c("q", "p")) {
+  sig_col <- paste0("state_", sig_tag)
+
+  disrupted_ids <- complex_ko_states %>%
+    dplyr::filter(.data[[sig_col]] == "disrupted") %>%
+    dplyr::distinct(complex_idx, genotype, neuron)
+
+  bar_data <- complex_ko_node_summary %>%
+    dplyr::inner_join(disrupted_ids, by = c("complex_idx", "genotype", "neuron")) %>%
+    dplyr::group_by(genotype, neuron) %>%
+    dplyr::summarise(
+      mean_frac_lost      = mean(.data[[paste0("frac_lost_", sig_tag)]], na.rm = TRUE),
+      mean_frac_disrupted = mean(.data[[paste0("frac_disrupted_", sig_tag)]], na.rm = TRUE),
+      n_complexes         = dplyr::n(),
+      .groups = "drop"
+    ) %>%
+    tidyr::pivot_longer(cols = c(mean_frac_disrupted, mean_frac_lost), names_to = "node_state", values_to = "mean_frac") %>%
+    dplyr::mutate(node_state = factor(node_state, levels = c("mean_frac_disrupted", "mean_frac_lost"), labels = c("disrupted", "lost")))
+
+  p_bar <- ggplot2::ggplot(bar_data, ggplot2::aes(x = genotype, y = mean_frac, fill = node_state)) +
+    ggplot2::geom_col(position = "stack") +
+    ggplot2::facet_wrap(~neuron) +
+    ggplot2::scale_fill_manual(values = node_palette_bar) +
+    ggplot2::scale_y_continuous(limits = c(0, 1)) +
+    ggplot2::labs(x = "Genotype", y = "Mean fraction of nodes", fill = "Node state",
+                  title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+  readr::write_csv(bar_data, file.path(out_dir_vuln, paste0("sourcedata/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, "_sourcedata.csv")))
+  pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 5, height = 4)
+  print(p_bar)
+  dev.off()
+  message("  Node barplot (", sig_tag, ") saved")
+}
+
+message("Node state summary and barplots complete.")
 ```
 
 
