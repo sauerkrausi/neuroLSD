@@ -17652,6 +17652,23 @@ complex_ko_node_summary <- cx_node_states %>%
 readr::write_csv(complex_ko_node_summary, file.path(out_dir_vuln, "tables", "complex_ko_node_summary.csv"))
 message("Node state summary written: ", nrow(complex_ko_node_summary), " rows")
 
+# Enrich complex_ko_states with edge-based node state counts and re-write CSV
+# (n_lost_q/p in Module9base are protein-level; n_lost_nodes_q/p here are edge-based)
+node_cols <- complex_ko_node_summary %>%
+  dplyr::select(complex_idx, genotype, neuron,
+                n_lost_nodes_q = n_lost_q, n_disrupted_nodes_q = n_disrupted_q,
+                frac_lost_nodes_q = frac_lost_q, frac_disrupted_nodes_q = frac_disrupted_q,
+                n_lost_nodes_p = n_lost_p, n_disrupted_nodes_p = n_disrupted_p,
+                frac_lost_nodes_p = frac_lost_p, frac_disrupted_nodes_p = frac_disrupted_p)
+
+complex_ko_states_export_v2 <- complex_ko_states %>%
+  dplyr::select(-members_list) %>%
+  dplyr::left_join(node_cols, by = c("complex_idx", "genotype", "neuron"))
+
+readr::write_csv(complex_ko_states_export_v2, file.path(out_dir_vuln, "tables", "complex_ko_states.csv"))
+message("  Updated: complex_ko_states.csv (added edge-based node state columns)")
+
+
 # Barplots: mean frac lost/disrupted per genotype x neuron, disrupted complexes only
 node_palette_bar <- c(disrupted = "#FD8D3C", lost = "#CC0000")
 dir.create(file.path(out_dir_vuln, "plots/complex_networks_node_barplots"), recursive = TRUE, showWarnings = FALSE)
