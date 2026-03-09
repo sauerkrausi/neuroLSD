@@ -18156,17 +18156,16 @@ p_degree_dist <- ggplot2::ggplot(node_metrics_baseline, ggplot2::aes(x = degree)
   ggplot2::geom_vline(xintercept = degree_threshold_top10, linetype = "dashed", color = "red", linewidth = 0.5) +
   ggplot2::annotate("text", x = degree_threshold_top10 + 5, y = Inf, label = "Top 10%", vjust = 2, hjust = 0, size = 2.5, color = "red") +
   ggplot2::scale_x_log10() +
-  ggplot2::labs(title = "Baseline degree distribution", x = "Degree (log10)", y = "Count") +
+  ggplot2::labs(title = "Baseline degree distribution", x = "Edge count per node", y = "Count") +
   ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
 ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
 
 p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(primary_annotation != "Unannotated"),
     ggplot2::aes(x = reorder(primary_annotation, degree, median), y = degree, fill = primary_annotation)) +
   ggplot2::geom_boxplot(outlier.size = 0.3, linewidth = 0.3) +
-  ggplot2::scale_y_log10() +
   ggplot2::scale_fill_manual(values = organelle_colors_network, guide = "none") +
   ggplot2::coord_flip() +
-  ggplot2::labs(title = "Degree by annotation", x = NULL, y = "Degree (log10)") +
+  ggplot2::labs(title = "Degree by annotation", x = NULL, y = "Edge count per node") +
   ggplot2::theme_bw(base_size = 6) + 
   ggplot2::theme(panel.grid = ggplot2::element_blank())
 ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "degree_by_annotation.pdf"), p_degree_by_annot, width = 5, height = 5, device = cairo_pdf)
