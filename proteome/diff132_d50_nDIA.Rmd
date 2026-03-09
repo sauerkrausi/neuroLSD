@@ -18155,7 +18155,6 @@ p_degree_dist <- ggplot2::ggplot(node_metrics_baseline, ggplot2::aes(x = degree)
   ggplot2::geom_histogram(bins = 50, fill = "dodgerblue3", color = "black", linewidth = 0.2) +
   ggplot2::geom_vline(xintercept = degree_threshold_top10, linetype = "dashed", color = "red", linewidth = 0.5) +
   ggplot2::annotate("text", x = degree_threshold_top10 + 5, y = Inf, label = "Top 10%", vjust = 2, hjust = 0, size = 2.5, color = "red") +
-  ggplot2::scale_x_log10() +
   ggplot2::labs(title = "Baseline degree distribution", x = "Edge count per node", y = "Count") +
   ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
 ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "EdgeCount_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
