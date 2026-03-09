@@ -17683,8 +17683,10 @@ for (sig_tag in c("q", "p")) {
     ggplot2::scale_y_continuous(limits = c(0, 1)) +
     ggplot2::labs(x = "Genotype", y = "Mean fraction of nodes", fill = "Node state",
                   title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
-    ggplot2::theme_bw(base_size = 10) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(),
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
   readr::write_csv(bar_data, file.path(out_dir_vuln, paste0("sourcedata/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, "_sourcedata.csv")))
   pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 5, height = 4)
@@ -18271,7 +18273,8 @@ p_degree_dist <- ggplot2::ggplot(node_metrics_baseline, ggplot2::aes(x = degree)
   ggplot2::geom_vline(xintercept = degree_threshold_top10, linetype = "dashed", color = "red", linewidth = 0.5) +
   ggplot2::annotate("text", x = degree_threshold_top10 + 5, y = Inf, label = "Top 10%", vjust = 2, hjust = 0, size = 2.5, color = "red") +
   ggplot2::labs(title = "Baseline Edge Count distribution", x = "Edge count per node", y = "Count") +
-  ggplot2::theme_bw(base_size = 6) + ggplot2::theme(panel.grid = ggplot2::element_blank())
+  ggplot2::theme_bw(base_size = 6) + 
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
 ggplot2::ggsave(file.path(out_dir_network, "Step0_baseline", "EdgeCount_distribution.pdf"), p_degree_dist, width = 3, height = 3, device = cairo_pdf)
 
 p_degree_by_annot <- ggplot2::ggplot(node_metrics_baseline %>% dplyr::filter(primary_annotation != "Unannotated"),
@@ -18288,10 +18291,17 @@ annots_with_edges_base <- rownames(inter_matrix_baseline)[rowSums(inter_matrix_b
 inter_matrix_filtered  <- inter_matrix_baseline[annots_with_edges_base, annots_with_edges_base]
 if (nrow(inter_matrix_filtered) >= 2) {
   pdf(file.path(out_dir_network, "Step0_baseline", "heatmap_inter_organelle_baseline.pdf"), width = 10, height = 9)
-  pheatmap::pheatmap(inter_matrix_filtered, scale = "none",
+  pheatmap::pheatmap(
+    inter_matrix_filtered, 
+    scale = "none",
     color = colorRampPalette(c("white", "dodgerblue", "dodgerblue4"))(100),
-    cluster_rows = TRUE, cluster_cols = TRUE, display_numbers = FALSE,
-    fontsize = 6, cellwidth = 10, cellheight = 10, border_color = NA,
+    cluster_rows = TRUE, 
+    cluster_cols = TRUE, 
+    display_numbers = FALSE,
+    fontsize = 6, 
+    cellwidth = 10, 
+    cellheight = 10, 
+    border_color = NA,
     main = "Baseline inter-organelle edge counts")
   dev.off()
 }
