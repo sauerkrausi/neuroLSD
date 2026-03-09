@@ -17514,7 +17514,7 @@ plot_complex_ko_network <- function(cx_idx, ko_geno, ko_neur,
   plot_title <- paste0(
     "Complex ", cx_idx, " | ", ko_geno, " (", ko_neur, ") [", sig_label, "]",
     "\nSize: ", cx_size, " | Edges: ", nrow(edges_ko),
-    " | Lost: ", n_lost, " (", pct_lost, "%)", cx_name)
+    " | Lost Nodes: ", n_lost, " (", pct_lost, "%)", cx_name)
 
   cx_label <- sprintf("%03d", cx_idx)
   pdf_path <- file.path(out_dir, paste0(cx_label, "_", ko_geno, "_", ko_neur, "_network.pdf"))
