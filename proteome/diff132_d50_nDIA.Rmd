@@ -16948,7 +16948,7 @@ message("Module 4 complete: Tetramer vulnerability analysis")
 message("Analyzing complex vulnerability...")
 
 complex_members_parsed <- complex_evidence %>%
-  dplyr::select(complex_idx, complex_id, complex_size, origin, shared_organelle, cp_strict_match, cp_relaxed_match, members) %>%
+  dplyr::select(complex_idx, complex_id, complex_size, origin, compartment_group, shared_organelle, cp_strict_match, cp_relaxed_match, members) %>%
   dplyr::mutate(members_list = members)
 
 message("  Total complexes: ", nrow(complex_members_parsed))
@@ -17038,11 +17038,13 @@ for (neuron_type in c("iN", "iDA")) {
   complex_annot <- complex_ko_states %>%
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::distinct(complex_id, .keep_all = TRUE) %>%
-    dplyr::select(complex_id, origin) %>%
+    dplyr::select(complex_id, origin, compartment_group) %>%
     as.data.frame()
   rownames(complex_annot) <- complex_annot$complex_id
   complex_annot <- complex_annot[rownames(hm_mat), , drop = FALSE]
-  row_annot <- data.frame(origin = complex_annot$origin, row.names = rownames(complex_annot))
+  row_annot <- data.frame(origin = complex_annot$origin,
+                          compartment_group = complex_annot$compartment_group,
+                          row.names = rownames(complex_annot))
 
   col_annot <- disease_map %>%
     dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
@@ -17054,10 +17056,12 @@ for (neuron_type in c("iN", "iDA")) {
   col_annot <- col_annot[colnames(hm_mat), "DiseaseClass", drop = FALSE]
 
   origin_levels <- unique(na.omit(row_annot$origin))
-  origin_pal <- setNames(RColorBrewer::brewer.pal(max(3, length(origin_levels)), "Dark2")[seq_along(origin_levels)], origin_levels)
+  origin_pal    <- setNames(RColorBrewer::brewer.pal(max(3, length(origin_levels)), "Dark2")[seq_along(origin_levels)], origin_levels)
   disease_levels <- unique(na.omit(col_annot$DiseaseClass))
-  disease_pal <- disease_class_palette[intersect(names(disease_class_palette), disease_levels)]
-  ann_colors <- list(DiseaseClass = disease_pal, origin = origin_pal)
+  disease_pal    <- disease_class_palette[intersect(names(disease_class_palette), disease_levels)]
+  cg_levels <- unique(na.omit(row_annot$compartment_group))
+  cg_pal    <- setNames(RColorBrewer::brewer.pal(max(3, length(cg_levels)), "Set1")[seq_along(cg_levels)], cg_levels)
+  ann_colors <- list(DiseaseClass = disease_pal, origin = origin_pal, compartment_group = cg_pal)
 
   row_sums <- rowSums(hm_mat)
   row_order <- order(row_sums, decreasing = TRUE)
@@ -18345,13 +18349,11 @@ for (sig_tag in c("q", "p")) {
     ggplot2::scale_fill_manual(values = node_palette_bar) +
     ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = "Node state",
                   title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
-    ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(
-      panel.grid = element_blank(), 
-      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1))
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
   readr::write_csv(bar_data, file.path(out_dir_vuln, paste0("sourcedata/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, "_sourcedata.csv")))
-  pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 6, height = 4)
+  pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 5, height = 4)
   print(p_bar)
   dev.off()
   message("  Node barplot (", sig_tag, ") saved")
