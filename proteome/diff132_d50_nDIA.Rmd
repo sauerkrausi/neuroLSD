@@ -17498,7 +17498,10 @@ for (nt in c("iN", "iDA")) {
     ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
     ggplot2::labs(x = NULL, y = "Fraction PPIs lost (q<0.05)", title = paste0("Lost PPIs per KO by annotation (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), strip.background = ggplot2::element_rect(fill = "white"))
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(), 
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), 
+      strip.background = ggplot2::element_rect(fill = "white"))
 
   save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_ppi_perKO_", nt), plot_data, width = 14, height = 10)
 }
@@ -17520,7 +17523,10 @@ for (nt in c("iN", "iDA")) {
     ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
     ggplot2::labs(x = NULL, y = "Fraction trimers disrupted (q<0.05)", title = paste0("Lost Trimers per KO by annotation (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), strip.background = ggplot2::element_rect(fill = "white"))
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(), 
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 4), 
+      strip.background = ggplot2::element_rect(fill = "white"))
 
   save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/by_annotation/barplot_lost_trimer_perKO_", nt), plot_data, width = 14, height = 10)
 }
@@ -17549,8 +17555,8 @@ for (nt in c("iN", "iDA")) {
 
 # --- 7.3.4 Lost Complexes per KO, faceted by annotation ---
 complex_ko_by_annot <- complex_ko_states %>%
-  dplyr::filter(!is.na(shared_organelle)) %>%
-  dplyr::group_by(genotype, neuron, shared_organelle) %>%
+  dplyr::filter(!is.na(compartment_group)) %>%
+  dplyr::group_by(genotype, neuron, compartment_group) %>%
   dplyr::summarise(n_total = dplyr::n(), n_disrupted = sum(state_q == "disrupted"), frac_disrupted = n_disrupted / n_total, .groups = "drop")
 complex_ko_by_annot <- dplyr::left_join(complex_ko_by_annot, disease_class_lookup, by = "genotype")
 
@@ -17560,7 +17566,7 @@ for (nt in c("iN", "iDA")) {
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = genotype, y = frac_disrupted, fill = DiseaseClass)) +
     ggplot2::geom_col(color = "black", linewidth = 0.2) +
-    ggplot2::facet_wrap(~shared_organelle, scales = "free_y") +
+    ggplot2::facet_wrap(~compartment_group, scales = "free_y") +
     ggplot2::scale_fill_manual(values = disease_class_palette, name = "Disease Class") +
     ggplot2::labs(x = NULL, y = "Fraction complexes disrupted (q<0.05)", title = paste0("Lost Complexes per KO by annotation (", nt, ")")) +
     ggplot2::theme_bw(base_size = 6) +
@@ -17766,13 +17772,13 @@ for (nt in c("iN", "iDA")) {
   # --- Complex heatmap ---
   complex_hm_data <- complex_ko_by_annot %>%
     dplyr::filter(neuron == nt) %>%
-    dplyr::select(genotype, shared_organelle, frac_disrupted) %>%
-    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_disrupted, values_fill = NA)
+    dplyr::select(genotype, compartment_group, frac_disrupted) %>%
+    tidyr::pivot_wider(names_from = compartment_group, values_from = frac_disrupted, values_fill = NA)
   
 
   if (nrow(complex_hm_data) >= 2 && ncol(complex_hm_data) >= 3) {
     hm_mat <- as.matrix(complex_hm_data[, -1]); rownames(hm_mat) <- complex_hm_data$genotype
-    frac_threshold <- 0.25
+    frac_threshold <- 0.01
     keep_cols <- apply(hm_mat, 2, function(x) max(x, na.rm = TRUE) >= frac_threshold)
     hm_mat <- hm_mat[, keep_cols, drop = FALSE]
     if (ncol(hm_mat) < 2) next
@@ -17794,7 +17800,7 @@ for (nt in c("iN", "iDA")) {
       border_color = NA, 
       annotation_row = row_annot, 
       annotation_colors = ann_colors, 
-      main = paste0("Fraction complexes disrupted by KO x annotation, at least 25% lost (", nt, ", q<0.05)"))
+      main = paste0("Fraction complexes disrupted by KO x annotation, at least 5% lost (", nt, ", q<0.05)"))
     dev.off()
     message("  Saved: heatmap_complex_KO_annotation_", nt, ".pdf")
   }
@@ -18347,7 +18353,7 @@ for (sig_tag in c("q", "p")) {
     ggplot2::geom_col(position = "stack") +
     ggplot2::facet_wrap(~neuron) +
     ggplot2::scale_fill_manual(values = node_palette_bar) +
-    ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = "Node state",
+    ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = "Node sta/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/ppi_dual_evidence/KOxNeuron_eval_v6/plots/KOxNeuron/barplot_lost_tetramer_by_annotation_iN.pdfte",
                   title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
     ggplot2::theme_bw(base_size = 6) +
     ggplot2::theme(
