@@ -18349,11 +18349,13 @@ for (sig_tag in c("q", "p")) {
     ggplot2::scale_fill_manual(values = node_palette_bar) +
     ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = "Node state",
                   title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
-    ggplot2::theme_bw(base_size = 10) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(
+      panel.grid = element_blank(),
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1))
 
   readr::write_csv(bar_data, file.path(out_dir_vuln, paste0("sourcedata/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, "_sourcedata.csv")))
-  pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 5, height = 4)
+  pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 6, height = 4)
   print(p_bar)
   dev.off()
   message("  Node barplot (", sig_tag, ") saved")
