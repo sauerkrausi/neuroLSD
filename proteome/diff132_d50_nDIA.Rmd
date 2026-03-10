@@ -17668,8 +17668,7 @@ complex_ko_states_export_v2 <- complex_ko_states %>%
 readr::write_csv(complex_ko_states_export_v2, file.path(out_dir_vuln, "tables", "complex_ko_states.csv"))
 message("  Updated: complex_ko_states.csv (added edge-based node state columns)")
 
-
-# Barplots: mean frac lost/disrupted per genotype x neuron, disrupted complexes only
+# Barplots: total lost/disrupted node counts per genotype x neuron, disrupted complexes only
 node_palette_bar <- c(disrupted = "#FD8D3C", lost = "#CC0000")
 dir.create(file.path(out_dir_vuln, "plots/complex_networks_node_barplots"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_vuln, "sourcedata/complex_networks_node_barplots"), recursive = TRUE, showWarnings = FALSE)
@@ -17677,33 +17676,32 @@ dir.create(file.path(out_dir_vuln, "sourcedata/complex_networks_node_barplots"),
 for (sig_tag in c("q", "p")) {
   sig_col <- paste0("state_", sig_tag)
 
+  # All disrupted complex x genotype x neuron combos -- left join so genotypes
+  # with protein-level disruption but no edge data still appear (as 0)
   disrupted_ids <- complex_ko_states %>%
     dplyr::filter(.data[[sig_col]] == "disrupted") %>%
     dplyr::distinct(complex_idx, genotype, neuron)
 
-  bar_data <- complex_ko_node_summary %>%
-    dplyr::inner_join(disrupted_ids, by = c("complex_idx", "genotype", "neuron")) %>%
+  bar_data <- disrupted_ids %>%
+    dplyr::left_join(complex_ko_node_summary, by = c("complex_idx", "genotype", "neuron")) %>%
     dplyr::group_by(genotype, neuron) %>%
     dplyr::summarise(
-      mean_frac_lost      = mean(.data[[paste0("frac_lost_", sig_tag)]], na.rm = TRUE),
-      mean_frac_disrupted = mean(.data[[paste0("frac_disrupted_", sig_tag)]], na.rm = TRUE),
-      n_complexes         = dplyr::n(),
+      n_lost      = sum(.data[[paste0("n_lost_", sig_tag)]], na.rm = TRUE),
+      n_disrupted = sum(.data[[paste0("n_disrupted_", sig_tag)]], na.rm = TRUE),
+      n_complexes = dplyr::n(),
       .groups = "drop"
     ) %>%
-    tidyr::pivot_longer(cols = c(mean_frac_disrupted, mean_frac_lost), names_to = "node_state", values_to = "mean_frac") %>%
-    dplyr::mutate(node_state = factor(node_state, levels = c("mean_frac_disrupted", "mean_frac_lost"), labels = c("disrupted", "lost")))
+    tidyr::pivot_longer(cols = c(n_disrupted, n_lost), names_to = "node_state", values_to = "n_nodes") %>%
+    dplyr::mutate(node_state = factor(node_state, levels = c("n_disrupted", "n_lost"), labels = c("disrupted", "lost")))
 
-  p_bar <- ggplot2::ggplot(bar_data, ggplot2::aes(x = genotype, y = mean_frac, fill = node_state)) +
+  p_bar <- ggplot2::ggplot(bar_data, ggplot2::aes(x = genotype, y = n_nodes, fill = node_state)) +
     ggplot2::geom_col(position = "stack") +
     ggplot2::facet_wrap(~neuron) +
     ggplot2::scale_fill_manual(values = node_palette_bar) +
-    ggplot2::scale_y_continuous(limits = c(0, 1)) +
-    ggplot2::labs(x = "Genotype", y = "Mean fraction of nodes", fill = "Node state",
+    ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = "Node state",
                   title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
-    ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(
-      panel.grid = ggplot2::element_blank(),
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
   readr::write_csv(bar_data, file.path(out_dir_vuln, paste0("sourcedata/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, "_sourcedata.csv")))
   pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 5, height = 4)
