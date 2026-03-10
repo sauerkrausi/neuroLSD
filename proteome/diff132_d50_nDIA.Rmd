@@ -14585,9 +14585,9 @@ readr::write_csv(validation_by_source, file.path(out_dir_complex, "qc", "sourced
 p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y = n, fill = source)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = n), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "#A6D854",
-                               "ComplexPortal_strict" = "grey55", "ComplexPortal_relaxed" = "#7FC8F8",
-                               "PDB_exact" = "#8B0000", "PDB_homolog" = "#FF6B6B",
+  scale_fill_manual(values = c("CORUM_strict" = "grey50", "CORUM_relaxed" = "grey50",
+                               "ComplexPortal_strict" = "grey60", "ComplexPortal_relaxed" = "grey60",
+                               "PDB_exact" = "grey80", "PDB_homolog" = "grey80",
                                "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Complexes: validation by source (CORUM, CP, PDB)", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
@@ -16448,7 +16448,7 @@ message("Module 4 complete: Tetramer vulnerability analysis")
 message("Analyzing complex vulnerability...")
 
 complex_members_parsed <- complex_evidence %>%
-  dplyr::select(complex_idx, complex_id, complex_size, origin, compartment_group, shared_organelle, cp_strict_match, cp_relaxed_match, has_known_match, validation_status, corum_matched_name, corum_matched_id, cp_matched_id, members) %>%
+  dplyr::select(complex_idx, complex_id, complex_size, origin, compartment_group, shared_organelle, cp_strict_match, cp_relaxed_match, has_known_match, validation_status, corum_matched_name, corum_matched_id, cp_matched_id, cp_name, cp_description, members) %>%
   dplyr::mutate(members_list = members)
 
 message("  Total complexes: ", nrow(complex_members_parsed))
