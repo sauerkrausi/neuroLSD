@@ -13975,15 +13975,18 @@ message("Adjacency list: ", length(adj_list), " nodes")
 compartment_groups <- list(
   SynapticGeneral = c("SynGO", "SynapseSVs", "Postsynaptic", "Presynaptic",
                       "Svendocytosis", "Svexocytosis", "SVfusion", "vATPase"),
-  Nucleus         = c("Nucleus", "ER"),
+  Nucleus         = c("Nucleus"),
+  ER              = c("ER"),
+  Golgi           = c("Golgi", "ER", "EarlyEndosome"),
   Mito            = c("Mito", "MitoMatrix", "MitoMIM", "MitoMOM", "MitoIMS", "OXPHOS", "mtComplexI"),
+  Lysosome        = c("Lysosome", "vATPase", "Endo_iN_curated_Hundley"),
   Endosome        = c("Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome",
-                      "Lysosome", "Golgi", "vATPase"),
+                      "Lysosome", "vATPase"),
   Autophagy       = c("Autophagy", "Lysosome", "Endo_iN_curated_Hundley", "vATPase")
 )
 
 # Endosome + Autophagy are compatible (endolysosomal pathway)
-compatible_multi_groups <- c("Endosome", "Autophagy")
+compatible_multi_groups <- c("ER", "Golgi", "Lysosome", "Endosome", "Autophagy")
 
 # Build tag -> groups lookup
 tag_to_groups <- list()
@@ -14439,6 +14442,525 @@ print(complex_evidence %>% dplyr::count(origin))
 
 
 
+# Module 5: Complex Growing from Trimers and Tetramers
+Grows complexes by iteratively adding neighbors connected to ≥2 members
+Requires: baseline_ppi_v3, trimer_evidence, tetramer_evidence
+
+ALGORITHM:
+   1. Start with trimer/tetramer seeds (3-4 protein subunits)
+   2. Iteratively grow by adding neighbors connected to ≥2 current members (min_edges=2)
+   3. Continue until no more candidates or max_size reached
+   4. Merge overlapping complexes at 80% threshold
+
+ VALIDATION:
+   - CORUM: gene-based matching, strict = all members in same CORUM complex
+   - ComplexPortal: UniProt-based matching, strict = all members in same CP complex
+   - relaxed match: ≥50% of members found in reference complex
+
+## Chunk 1: Build Adjacency and Growth Functions
+```{r complex_setup}
+# =============================================================================
+# Complex Growing: Setup
+# =============================================================================
+
+out_dir_complex <- file.path(out_dir_ppi_dual, "complexes")
+dir.create(file.path(out_dir_complex, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_complex, "qc"), recursive = TRUE, showWarnings = FALSE)
+
+message("=== Complex Growing from Trimers/Tetramers ===")
+
+# --- Build adjacency list from gold-only baseline ---
+message("Building adjacency structures from baseline (gold-only)...")
+
+adj_list <- baseline_ppi_v3 %>%
+  dplyr::select(Gene1, Gene2) %>%
+  {
+    edges <- rbind(
+      data.frame(from = .$Gene1, to = .$Gene2, stringsAsFactors = FALSE),
+      data.frame(from = .$Gene2, to = .$Gene1, stringsAsFactors = FALSE)
+    )
+    split(edges$to, edges$from)
+  }
+
+message("Adjacency list: ", length(adj_list), " nodes")
+
+# =============================================================================
+# Compartment constraints for complex expansion
+# =============================================================================
+
+compartment_groups <- list(
+  SynapticGeneral = c("SynGO", "SynapseSVs", "Postsynaptic", "Presynaptic",
+                      "Svendocytosis", "Svexocytosis", "SVfusion", "vATPase"),
+  Nucleus         = c("Nucleus"),
+  ER              = c("ER"),
+  Golgi           = c("Golgi","ER","EarlyEndosome"),
+  Mito            = c("Mito", "MitoMatrix", "MitoMIM", "MitoMOM", "MitoIMS", "OXPHOS", "mtComplexI"),
+  Endosome        = c("Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome",
+                      "Lysosome", "vATPase"),
+  Autophagy       = c("Autophagy", "Lysosome", "Endo_iN_curated_Hundley", "vATPase")
+)
+
+# ER -> Golgi -> Endosome -> Lysosome -> Autophagy: one continuous pathway
+# Tags shared across these groups (ER, EarlyEndosome, Lysosome, vATPase, Endo_iN_curated_Hundley)
+# are biologically valid in all of them -> mark all as compatible
+compatible_multi_groups <- c("ER", "Golgi", "Lysosome", "Endosome", "Autophagy")
+
+# Build tag -> groups lookup
+tag_to_groups <- list()
+for (.grp in names(compartment_groups))
+  for (.tg in compartment_groups[[.grp]]) tag_to_groups[[.tg]] <- unique(c(tag_to_groups[[.tg]], .grp))
+
+# Build protein -> allowed_groups from gene_to_org
+# Drop proteins spanning incompatible groups (e.g. Nucleus + SynGO)
+# For compatible multi-group proteins: allowed = their actual groups (not the full set)
+.present_cx_tags <- intersect(unique(unlist(compartment_groups)), colnames(gene_to_org))
+
+protein_allowed_df <- gene_to_org %>%
+  dplyr::select(Genes, dplyr::all_of(.present_cx_tags)) %>%
+  tidyr::pivot_longer(-Genes, names_to = "tag", values_to = "present") %>%
+  dplyr::filter(!is.na(present) & as.logical(present)) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(groups = list(unique(unlist(purrr::map(tag, ~tag_to_groups[[.x]])))), .groups = "drop") %>%
+  dplyr::rowwise() %>%
+  dplyr::filter(length(groups) == 1 | all(groups %in% compatible_multi_groups)) %>%
+  dplyr::mutate(allowed = list(if (all(groups %in% compatible_multi_groups)) unlist(groups) else groups[[1]])) %>%
+  dplyr::ungroup()
+
+# Named list: gene -> character vector of allowed groups
+protein_allowed <- setNames(protein_allowed_df$allowed, protein_allowed_df$Genes)
+
+message("Compartment-constrained proteins: ", length(protein_allowed), " / ", nrow(gene_to_org))
+
+# Determine allowed expansion groups from seed members:
+# If all seed groups are within compatible_multi_groups -> return their union (secretory/endolysosomal)
+# Otherwise majority vote -> single dominant group
+.get_seed_allowed <- function(seed_members) {
+  all_grps <- unlist(purrr::map(seed_members, ~protein_allowed[[.x]]))
+  if (length(all_grps) == 0) return(NULL)
+  unique_grps <- unique(all_grps)
+  if (all(unique_grps %in% compatible_multi_groups)) return(unique_grps)
+  names(sort(table(all_grps), decreasing = TRUE))[1]
+}
+
+# --- Growth functions (compartment-constrained) ---
+# protein_allowed is resolved from enclosing environment
+.grow_complex <- function(members, adj_list, min_edges = 2, allowed_groups = NULL) {
+  all_neighbors <- unlist(adj_list[members])
+  if (is.null(all_neighbors) || length(all_neighbors) == 0) return(character(0))
+  neighbor_counts <- table(all_neighbors)
+  candidates <- names(neighbor_counts)[neighbor_counts >= min_edges]
+  candidates <- setdiff(candidates, members)
+  if (!is.null(allowed_groups) && length(candidates) > 0) {
+    candidates <- candidates[vapply(candidates, function(cand) {
+      cg <- protein_allowed[[cand]]
+      !is.null(cg) && any(cg %in% allowed_groups)
+    }, logical(1))]
+  }
+  return(candidates)
+}
+
+.grow_complex_iterative <- function(seed_members, adj_list, min_edges = 2, max_size = 100, allowed_groups = NULL) {
+  current <- seed_members
+  repeat {
+    if (length(current) >= max_size) break
+    candidates <- .grow_complex(current, adj_list, min_edges, allowed_groups)
+    if (length(candidates) == 0) break
+    current <- c(current, candidates)
+  }
+  return(sort(current))
+}
+
+.overlap_fraction <- function(a, b) {
+  length(intersect(a, b)) / min(length(a), length(b))
+}
+```
+
+
+## Chunk 2: Grow Complexes from Seeds
+```{r complex_growing}
+# =============================================================================
+# Complex Growing: From Trimers and Tetramers
+# =============================================================================
+
+# --- Grow from trimers ---
+message("Growing complexes from trimers...")
+
+trimer_seeds <- trimer_evidence %>%
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(seed_members = list(c(Gene1, Gene2, Gene3))) %>%
+  dplyr::ungroup()
+
+grown_from_trimers <- trimer_seeds %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    seed_allowed  = list(.get_seed_allowed(seed_members)),
+    grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2, allowed_groups = seed_allowed)),
+    grown_size    = length(grown_members),
+    complex_id    = paste(sort(grown_members), collapse = "::")
+  ) %>%
+  dplyr::ungroup()
+
+message("  Trimers grown: ", nrow(grown_from_trimers))
+message("  Trimers with compartment constraint: ", sum(!sapply(grown_from_trimers$seed_allowed, is.null)), " / ", nrow(grown_from_trimers))
+message("  Unique complexes from trimers: ", length(unique(grown_from_trimers$complex_id)))
+
+# --- Grow from tetramers ---
+message("Growing complexes from tetramers...")
+
+if (nrow(tetramer_evidence) > 0) {
+  tetramer_seeds <- tetramer_evidence %>%
+    dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(seed_members = list(c(Gene1, Gene2, Gene3, Gene4))) %>%
+    dplyr::ungroup()
+
+  grown_from_tetramers <- tetramer_seeds %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      seed_allowed  = list(.get_seed_allowed(seed_members)),
+      grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2, allowed_groups = seed_allowed)),
+      grown_size    = length(grown_members),
+      complex_id    = paste(sort(grown_members), collapse = "::")
+    ) %>%
+    dplyr::ungroup()
+
+  message("  Tetramers grown: ", nrow(grown_from_tetramers))
+  message("  Tetramers with compartment constraint: ", sum(!sapply(grown_from_tetramers$seed_allowed, is.null)), " / ", nrow(grown_from_tetramers))
+  message("  Unique complexes from tetramers: ", length(unique(grown_from_tetramers$complex_id)))
+} else {
+  grown_from_tetramers <- data.frame(
+    tetramer_id = character(), grown_members = I(list()), grown_size = integer(),
+    complex_id = character(), stringsAsFactors = FALSE
+  )
+}
+
+# --- Internal QC: Trimer+1 vs Tetramer ---
+message("\n=== Internal QC: Trimer+1 vs Tetramer ===")
+
+trimer_plus_one <- grown_from_trimers %>% dplyr::filter(grown_size == 4)
+message("Trimers that grew to size 4: ", nrow(trimer_plus_one))
+
+if (nrow(tetramer_evidence) > 0 && nrow(trimer_plus_one) > 0) {
+  tetramer_ids <- tetramer_evidence %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(complex_id = paste(sort(c(Gene1, Gene2, Gene3, Gene4)), collapse = "::")) %>%
+    dplyr::pull(complex_id)
+
+  trimer_plus_one_overlap <- trimer_plus_one %>%
+    dplyr::mutate(matches_tetramer = complex_id %in% tetramer_ids)
+
+  message("  Trimer+1 matching de novo tetramers: ", sum(trimer_plus_one_overlap$matches_tetramer), " / ", nrow(trimer_plus_one_overlap))
+  message("  Match rate: ", round(100 * mean(trimer_plus_one_overlap$matches_tetramer), 1), "%")
+}
+
+# --- Combine and count seeds ---
+message("\nCombining complexes from all seeds...")
+
+all_grown <- dplyr::bind_rows(
+  grown_from_trimers %>% dplyr::select(complex_id, grown_members, grown_size) %>% dplyr::mutate(seed_type = "trimer"),
+  grown_from_tetramers %>% dplyr::select(complex_id, grown_members, grown_size) %>% dplyr::mutate(seed_type = "tetramer")
+)
+
+complex_seed_counts <- all_grown %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(
+    n_trimer_seeds = sum(seed_type == "trimer"),
+    n_tetramer_seeds = sum(seed_type == "tetramer"),
+    n_total_seeds = dplyr::n(),
+    .groups = "drop"
+  )
+
+unique_complexes <- all_grown %>%
+  dplyr::distinct(complex_id, .keep_all = TRUE) %>%
+  dplyr::left_join(complex_seed_counts, by = "complex_id")
+
+message("Unique complexes (before merging): ", nrow(unique_complexes))
+```
+
+
+## Chunk 3: Merge Overlapping Complexes
+```{r complex_merging}
+# =============================================================================
+# Complex Growing: Merge Overlapping Complexes (80% threshold)
+# =============================================================================
+
+message("Merging overlapping complexes (80% threshold)...")
+
+unique_complexes <- unique_complexes %>% dplyr::arrange(dplyr::desc(grown_size))
+
+merged_complexes <- list()
+used <- rep(FALSE, nrow(unique_complexes))
+
+for (i in seq_len(nrow(unique_complexes))) {
+  if (used[i]) next
+  current <- unique_complexes$grown_members[[i]]
+  current_seeds <- c(unique_complexes$n_trimer_seeds[i], unique_complexes$n_tetramer_seeds[i])
+
+  for (j in seq_len(nrow(unique_complexes))) {
+    if (i == j || used[j]) next
+    other <- unique_complexes$grown_members[[j]]
+    overlap <- .overlap_fraction(current, other)
+    if (overlap >= 0.8) {
+      current <- union(current, other)
+      current_seeds <- current_seeds + c(unique_complexes$n_trimer_seeds[j], unique_complexes$n_tetramer_seeds[j])
+      used[j] <- TRUE
+    }
+  }
+
+  merged_complexes[[length(merged_complexes) + 1]] <- list(
+    members = sort(current),
+    size = length(current),
+    n_trimer_seeds = current_seeds[1],
+    n_tetramer_seeds = current_seeds[2]
+  )
+  used[i] <- TRUE
+}
+
+message("Complexes after merging: ", length(merged_complexes))
+
+# --- Convert to dataframe ---
+complex_evidence <- dplyr::bind_rows(lapply(seq_along(merged_complexes), function(i) {
+  data.frame(
+    complex_id = paste(merged_complexes[[i]]$members, collapse = "::"),
+    complex_size = merged_complexes[[i]]$size,
+    n_trimer_seeds = merged_complexes[[i]]$n_trimer_seeds,
+    n_tetramer_seeds = merged_complexes[[i]]$n_tetramer_seeds,
+    members = I(list(merged_complexes[[i]]$members)),
+    stringsAsFactors = FALSE
+  )
+}))
+
+complex_evidence <- complex_evidence %>%
+  dplyr::mutate(complex_idx = dplyr::row_number()) %>%
+  dplyr::select(complex_idx, complex_id, complex_size, n_trimer_seeds, n_tetramer_seeds, members)
+
+message("Final complex count: ", nrow(complex_evidence))
+
+# Size distribution
+size_dist <- complex_evidence %>%
+  dplyr::count(complex_size, name = "n_complexes") %>%
+  dplyr::arrange(complex_size)
+
+message("\nComplex size distribution:")
+print(size_dist)
+```
+
+
+## Chunk 4: Add Support Scores and Validation
+```{r complex_scoring}
+# =============================================================================
+# Complex Growing: Support Scores and Validation
+# =============================================================================
+# SUPPORT SCORING (per edge, max = 9):
+#   PDB exact structure:    +3 points
+#   PDB homolog:            +1 point
+#   ComplexPortal strict:   +3 points
+#   ComplexPortal relaxed:  +1 point
+#   STRING:                 +1 point
+#   BIOGRID:                +1 point
+#   CORUM:                  +1 point
+#
+# COMPLEX SUPPORT: sum/mean of all edge support scores within the complex
+#
+# VALIDATION STATUS:
+#   strict_match:  All members found in same CORUM OR ComplexPortal reference complex
+#   relaxed_match: ≥50% of members found in same reference complex
+#   novel:         No significant overlap with known complexes
+# =============================================================================
+
+message("\nComputing support scores for complexes...")
+
+# Create support lookup
+support_lookup <- baseline_ppi_v3 %>%
+  dplyr::mutate(edge_key = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::select(edge_key, support_score, filter_BIOGRID, filter_STRING, filter_PDB, filter_ComplexPortal, filter_CORUM,
+                corum_complex_ids, corum_complex_names)
+
+# Function to compute support
+.compute_complex_support <- function(members, support_lookup) {
+  if (length(members) < 2) return(list(n_edges = 0, support_total = 0, support_mean = NA_real_,
+                                        n_with_PDB_exact = 0, n_with_PDB_homolog = 0))
+
+  pairs <- t(combn(sort(unique(members)), 2))
+  edge_keys <- apply(pairs, 1, function(p) .make_undirected_key(p[1], p[2]))
+
+  matched <- support_lookup %>% dplyr::filter(edge_key %in% edge_keys)
+
+  list(
+    n_edges = nrow(matched),
+    n_edges_possible = length(edge_keys),
+    support_total = sum(matched$support_score, na.rm = TRUE),
+    support_mean = if (nrow(matched) > 0) round(mean(matched$support_score, na.rm = TRUE), 2) else NA_real_,
+    n_in_CORUM = sum(matched$filter_CORUM == "present", na.rm = TRUE),
+    n_with_PDB = sum(matched$filter_PDB != "none", na.rm = TRUE),
+    n_with_PDB_exact = sum(matched$filter_PDB == "exact", na.rm = TRUE),
+    n_with_PDB_homolog = sum(matched$filter_PDB == "homolog", na.rm = TRUE),
+    n_in_ComplexPortal = sum(matched$filter_ComplexPortal != "none", na.rm = TRUE)
+  )
+}
+
+complex_evidence <- complex_evidence %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    support_info = list(.compute_complex_support(members, support_lookup)),
+    n_edges_in_baseline = support_info$n_edges,
+    n_edges_possible = support_info$n_edges_possible,
+    edge_coverage = round(n_edges_in_baseline / n_edges_possible, 2),
+    complex_support_total = support_info$support_total,
+    complex_support_mean = support_info$support_mean,
+    n_edges_in_CORUM = support_info$n_in_CORUM,
+    n_edges_with_PDB = support_info$n_with_PDB,
+    n_edges_with_PDB_exact = support_info$n_with_PDB_exact,
+    n_edges_with_PDB_homolog = support_info$n_with_PDB_homolog,
+    n_edges_in_ComplexPortal = support_info$n_in_ComplexPortal,
+    pct_edges_CORUM = round(100 * n_edges_in_CORUM / n_edges_in_baseline, 1),
+    pct_edges_PDB = round(100 * n_edges_with_PDB / n_edges_in_baseline, 1),
+    pct_edges_PDB_exact = round(100 * n_edges_with_PDB_exact / n_edges_in_baseline, 1),
+    pct_edges_PDB_homolog = round(100 * n_edges_with_PDB_homolog / n_edges_in_baseline, 1),
+    # PDB-based validation flags (majority of edges have PDB support)
+    has_PDB_exact_majority = (n_edges_with_PDB_exact / n_edges_in_baseline) >= 0.5,
+    has_PDB_any_majority = (n_edges_with_PDB / n_edges_in_baseline) >= 0.5
+  ) %>%
+  dplyr::select(-support_info) %>%
+  dplyr::ungroup()
+
+message("Mean complex support score: ", round(mean(complex_evidence$complex_support_mean, na.rm = TRUE), 2))
+
+# --- Create uniprot_lookup if not exists ---
+if (!exists("uniprot_lookup") || nrow(uniprot_lookup) == 0) {
+  uniprot_lookup <- baseline_ppi_v3 %>%
+    dplyr::select(Gene1, Protein1) %>%
+    dplyr::rename(gene = Gene1, uniprot = Protein1) %>%
+    dplyr::bind_rows(baseline_ppi_v3 %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(gene = Gene2, uniprot = Protein2)) %>%
+    dplyr::distinct(gene, .keep_all = TRUE)
+}
+
+# --- ComplexPortal validation ---
+message("\nValidating complexes against ComplexPortal...")
+
+if (exists("complex_to_proteins") && exists("uniprot_lookup")) {
+  .check_complex_match_any <- function(members, complex_to_proteins, uniprot_lookup) {
+    uniprots <- uniprot_lookup$uniprot[match(members, uniprot_lookup$gene)]
+    uniprots <- uniprots[!is.na(uniprots)]
+
+    if (length(uniprots) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_, match_fraction = 0))
+
+    best_match <- list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_, match_fraction = 0)
+
+    for (i in seq_len(nrow(complex_to_proteins))) {
+      complex_proteins <- complex_to_proteins$proteins[[i]]
+      n_match <- sum(uniprots %in% complex_proteins)
+      match_frac <- n_match / length(uniprots)
+
+      if (match_frac > best_match$match_fraction) {
+        best_match$match_fraction <- match_frac
+        best_match$complex_id <- complex_to_proteins$complex_id[i]
+        best_match$strict <- (n_match == length(uniprots) && n_match == length(complex_proteins))
+        best_match$relaxed <- (match_frac >= 0.5)
+      }
+    }
+    return(best_match)
+  }
+
+  complex_evidence <- complex_evidence %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      cp_match = list(.check_complex_match_any(members, complex_to_proteins, uniprot_lookup)),
+      cp_strict_match = cp_match$strict,
+      cp_relaxed_match = cp_match$relaxed,
+      cp_matched_id = cp_match$complex_id,
+      cp_match_fraction = round(cp_match$match_fraction, 2)
+    ) %>%
+    dplyr::select(-cp_match) %>%
+    dplyr::ungroup()
+
+  message("  ComplexPortal strict match: ", sum(complex_evidence$cp_strict_match))
+  message("  ComplexPortal relaxed match (>=50%): ", sum(complex_evidence$cp_relaxed_match))
+} else {
+  complex_evidence$cp_strict_match <- NA
+  complex_evidence$cp_relaxed_match <- NA
+  complex_evidence$cp_matched_id <- NA_character_
+  complex_evidence$cp_match_fraction <- NA_real_
+}
+
+# --- CORUM validation (UniProt-based) ---
+message("Validating complexes against CORUM (UniProt-based)...")
+
+if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  # UniProt-based matching for complexes
+  .check_corum_match_any_uniprot <- function(members, corum_members, uniprot_lookup) {
+    # Convert gene names to UniProt IDs
+    member_uniprots <- uniprot_lookup$uniprot[match(members, uniprot_lookup$gene)]
+    member_uniprots <- member_uniprots[!is.na(member_uniprots)]
+
+    if (length(member_uniprots) == 0) {
+      return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_, match_fraction = 0))
+    }
+
+    best_match <- list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_, match_fraction = 0)
+
+    for (i in seq_len(nrow(corum_members))) {
+      complex_proteins <- corum_members$proteins[[i]]
+      n_match <- sum(member_uniprots %in% complex_proteins)
+      match_frac <- n_match / length(member_uniprots)
+
+      if (match_frac > best_match$match_fraction) {
+        best_match$match_fraction <- match_frac
+        best_match$complex_id <- corum_members$complex_id[i]
+        best_match$complex_name <- corum_members$complex_name[i]
+        best_match$strict <- (n_match == length(member_uniprots) && n_match == length(complex_proteins))
+        best_match$relaxed <- (match_frac >= 0.5)
+      }
+    }
+    return(best_match)
+  }
+
+  complex_evidence <- complex_evidence %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      corum_match = list(.check_corum_match_any_uniprot(members, corum_complex_members, uniprot_lookup)),
+      corum_strict_match = corum_match$strict,
+      corum_relaxed_match = corum_match$relaxed,
+      corum_matched_id = corum_match$complex_id,
+      corum_matched_name = corum_match$complex_name,
+      corum_match_fraction = round(corum_match$match_fraction, 2)
+    ) %>%
+    dplyr::select(-corum_match) %>%
+    dplyr::ungroup()
+
+  message("  CORUM strict match: ", sum(complex_evidence$corum_strict_match, na.rm = TRUE))
+  message("  CORUM relaxed match (>=50%): ", sum(complex_evidence$corum_relaxed_match, na.rm = TRUE))
+} else {
+  complex_evidence$corum_strict_match <- NA
+  complex_evidence$corum_relaxed_match <- NA
+  complex_evidence$corum_matched_id <- NA_integer_
+  complex_evidence$corum_matched_name <- NA_character_
+  complex_evidence$corum_match_fraction <- NA_real_
+}
+
+# --- Origin classification ---
+complex_evidence <- complex_evidence %>%
+  dplyr::mutate(
+    origin = dplyr::case_when(
+      n_trimer_seeds > 0 & n_tetramer_seeds > 0 ~ "both",
+      n_trimer_seeds > 0 ~ "trimer_only",
+      n_tetramer_seeds > 0 ~ "tetramer_only",
+      TRUE ~ "unknown"
+    ),
+    has_known_match = (cp_relaxed_match %in% TRUE) | (corum_relaxed_match %in% TRUE),
+    validation_status = dplyr::case_when(
+      (cp_strict_match %in% TRUE) | (corum_strict_match %in% TRUE) ~ "strict_match",
+      (cp_relaxed_match %in% TRUE) | (corum_relaxed_match %in% TRUE) ~ "relaxed_match",
+      TRUE ~ "novel"
+    )
+  )
+
+message("\nOrigin summary:")
+print(complex_evidence %>% dplyr::count(origin))
+```
+
+
 ## Chunk 5: QC Plots
 ```{r complex_qc_plots, fig.width=10, fig.height=8}
 # =============================================================================
@@ -14454,13 +14976,25 @@ complex_evidence <- complex_evidence %>%
     member_groups     = list(unique(unlist(purrr::map(members, ~protein_allowed[[.x]])))),
     compartment_group = {
       grps <- member_groups
-      if (is.null(grps) || length(grps) == 0)        "unannotated"
-      else if (all(grps %in% compatible_multi_groups)) "Endosome/Autophagy"
-      else if (length(grps) == 1)                     grps
-      else                                            paste(sort(grps), collapse = "+")
+      if (is.null(grps) || length(grps) == 0) "unannotated"
+      else if (length(grps) == 1)             grps
+      else {
+        # Majority group vote across all member annotations (not unique)
+        all_grps <- unlist(purrr::map(members, ~protein_allowed[[.x]]))
+        if (is.null(all_grps) || length(all_grps) == 0) "unannotated"
+        else names(sort(table(all_grps), decreasing = TRUE))[1]
+      }
     }
   ) %>%
   dplyr::ungroup()
+
+# Save complex_evidence (list columns collapsed to ";"-separated strings)
+complex_evidence %>%
+  dplyr::mutate(
+    members       = purrr::map_chr(members, ~paste(.x, collapse = ";")),
+    member_groups = purrr::map_chr(member_groups, ~paste(.x, collapse = ";"))
+  ) %>%
+  readr::write_csv(file.path(out_dir_complex, "tables", "complex_evidence.csv"))
 
 cx_group_counts <- complex_evidence %>%
   dplyr::count(compartment_group, name = "n_complexes") %>%
@@ -14471,13 +15005,12 @@ message("Compartment group distribution:")
 print(cx_group_counts)
 
 # Flag any cross-compartment complexes (should be zero if constraints worked)
-n_cross <- sum(!cx_group_counts$compartment_group %in%
-                 c(names(compartment_groups), "Endosome/Autophagy", "unannotated"))
+n_cross <- sum(!cx_group_counts$compartment_group %in% c(names(compartment_groups), "unannotated"))
 message("Cross-compartment complexes (expect 0): ", n_cross)
 
 p_cx_groups <- ggplot(cx_group_counts,
                       aes(x = reorder(compartment_group, n_complexes), y = n_complexes,
-                          fill = compartment_group %in% c(names(compartment_groups), "Endosome/Autophagy", "unannotated"))) +
+                          fill = compartment_group %in% c(names(compartment_groups), "unannotated"))) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = n_complexes), hjust = -0.2, size = 2) +
   scale_fill_manual(values = c("TRUE" = "grey75", "FALSE" = "#E41A1C"),
@@ -14490,9 +15023,9 @@ p_cx_groups <- ggplot(cx_group_counts,
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_complex, "qc", "barplot_compartment_groups.pdf"),p_cx_groups, width = 5, height = max(3, nrow(cx_group_counts) * 0.25), device = cairo_pdf)
+ggsave(file.path(out_dir_complex, "qc", "barplot_compartment_groups.pdf"), p_cx_groups, width = 4, height = max(3, nrow(cx_group_counts) * 0.25), device = cairo_pdf)
 
- # --- Plot 1: Size distribution ---
+# --- Plot 1: Size distribution ---
 readr::write_csv(size_dist, file.path(out_dir_complex, "qc", "sourcedata_size_distribution.csv"))
 
 p_size <- ggplot(size_dist, aes(x = factor(complex_size), y = n_complexes)) +
@@ -14553,7 +15086,7 @@ p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y 
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = n), vjust = -0.3, size = 2) +
   scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "grey40",
-                               "ComplexPortal_strict" = "grey70", "ComplexPortal_relaxed" = "grey70",
+                               "ComplexPortal_strict" = "grey75", "ComplexPortal_relaxed" = "grey75",
                                "PDB_exact" = "grey90", "PDB_homolog" = "grey90",
                                "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Complexes: validation by source (CORUM, CP, PDB)", x = NULL, y = "Number of complexes") +
