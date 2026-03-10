@@ -11663,6 +11663,10 @@ complexportal <- complexportal_raw %>%
 
 message("  ComplexPortal complexes: ", nrow(complexportal))
 
+# Metadata lookup for joining onto matched complexes
+cp_metadata <- complexportal %>%
+  dplyr::select(complex_id, cp_name = complex_name, cp_description = description)
+
 # Create lookup: complex_id -> all proteins
 complex_to_proteins <- complexportal %>%
   dplyr::select(complex_id, proteins_list) %>%
@@ -12119,7 +12123,7 @@ print(score_dist)
 ## Chunk 5: Confidence Tier Assignment
 ```{r ppi_db_confidence_tiers}
 # =============================================================================
-# PPI Database: Confidence Tier Assignment (Gold-Only for downstream)
+# PPI Database: Confidence Tier Assignment (Tier1-Only for downstream)
 # =============================================================================
 # Gold criteria:
 #   - in both prediction sources (convergent evidence)
@@ -12131,13 +12135,13 @@ message("Assigning confidence tiers...")
 master_ppi_v3 <- master_ppi_v3 %>%
   dplyr::mutate(
     confidence_tier = dplyr::case_when(
-      in_both_predictions ~ "gold",
-      AFMprob >= 0.9 & RFprob >= 0.9 ~ "gold",
-      SPOC_score >= 0.95 ~ "gold",
-      AFMprob >= 0.8 ~ "silver",
-      RFprob >= 0.8 ~ "silver",
-      SPOC_score >= 0.9 ~ "silver",
-      TRUE ~ "bronze"
+      in_both_predictions ~ "Tier1",
+      AFMprob >= 0.9 & RFprob >= 0.9 ~ "Tier1",
+      SPOC_score >= 0.95 ~ "Tier1",
+      AFMprob >= 0.8 ~ "Tier2",
+      RFprob >= 0.8 ~ "Tier2",
+      SPOC_score >= 0.9 ~ "Tier2",
+      TRUE ~ "Tie3"
     ),
     confidence_tier_rationale = dplyr::case_when(
       in_both_predictions ~ "both_prediction_sources",
@@ -12254,10 +12258,10 @@ support_by_tier_long <- support_by_tier %>%
     TRUE ~ sub("pct_", "", metric)
   ))
 
-p_support_tier <- ggplot(support_by_tier_long, aes(x = factor(confidence_tier, levels = c("gold", "silver", "bronze")), y = percentage, fill = metric)) +
+p_support_tier <- ggplot(support_by_tier_long, aes(x = factor(confidence_tier, levels = c("Tier1", "Tier2", "Tier3")), y = percentage, fill = metric)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = paste0(percentage, "%")), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("PDB" = "#E41A1C", "CORUM" = "grey40", "ComplexPortal" = "grey55"), name = "Database") +
+  scale_fill_manual(values = c("PDB" = "#E41A1C", "CORUM" = "grey55", "ComplexPortal" = "grey75"), name = "Database") +
   labs(title = "Database support by confidence tier", x = NULL, y = "Percentage of edges") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
@@ -12272,6 +12276,9 @@ readr::write_csv(as.data.frame(support_by_tier), file.path(out_dir_ppi_dual, "qc
 message("\nModule 1 complete. master_ppi_v3 saved with ", nrow(master_ppi_v3), " edges")
 ```
 
+
+
+
 # Module 2: Baseline PPI Network
 Filters to gold tier + neuronal proteome, adds organelle annotations
 Requires: master_ppi_v3 from Module 1, complete_data_annotated_day50, binary_matrix
@@ -12279,7 +12286,7 @@ Requires: master_ppi_v3 from Module 1, complete_data_annotated_day50, binary_mat
 ## Chunk 1: Gold-Only Baseline Filtering
 ```{r baseline_gold_filtering}
 # =============================================================================
-# Baseline PPI: Gold-Only Filtering to Neuronal Proteome
+# Baseline PPI: Tier1-Only Filtering to Neuronal Proteome
 # =============================================================================
 
 # --- Setup ---
@@ -12294,7 +12301,7 @@ message("Neuronal proteome: ", length(neuronal_genes), " proteins")
 # --- Filter to gold tier ---
 message("Filtering to gold tier only...")
 master_ppi_gold <- master_ppi_v3 %>%
-  dplyr::filter(confidence_tier == "gold")
+  dplyr::filter(confidence_tier == "Tier1")
 
 message("  Gold tier edges: ", nrow(master_ppi_gold))
 
@@ -16948,7 +16955,7 @@ message("Module 4 complete: Tetramer vulnerability analysis")
 message("Analyzing complex vulnerability...")
 
 complex_members_parsed <- complex_evidence %>%
-  dplyr::select(complex_idx, complex_id, complex_size, origin, compartment_group, shared_organelle, cp_strict_match, cp_relaxed_match, members) %>%
+  dplyr::select(complex_idx, complex_id, complex_size, origin, compartment_group, shared_organelle, cp_strict_match, cp_relaxed_match, has_known_match, validation_status, corum_matched_name, corum_matched_id, cp_matched_id, members) %>%
   dplyr::mutate(members_list = members)
 
 message("  Total complexes: ", nrow(complex_members_parsed))
