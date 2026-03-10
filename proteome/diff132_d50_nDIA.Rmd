@@ -17451,10 +17451,11 @@ for (nt in c("iN", "iDA")) {
   save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_tetramer_by_annotation_", nt), plot_data, width = 5, height = 6)
 }
 
+
 # --- 7.2.4 Lost Complexes per annotation ---
 complex_by_annotation <- complex_ko_states %>%
-  dplyr::filter(!is.na(shared_organelle)) %>%
-  dplyr::group_by(neuron, shared_organelle) %>%
+  dplyr::filter(!is.na(compartment_group)) %>%
+  dplyr::group_by(neuron, compartment_group) %>%
   dplyr::summarise(
     n_total = dplyr::n(),
     n_disrupted = sum(state_q == "disrupted"),
@@ -17465,7 +17466,7 @@ complex_by_annotation <- complex_ko_states %>%
 for (nt in c("iN", "iDA")) {
   plot_data <- complex_by_annotation %>% dplyr::filter(neuron == nt) %>% dplyr::arrange(dplyr::desc(frac_disrupted))
 
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(shared_organelle, frac_disrupted), y = frac_disrupted)) +
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = reorder(compartment_group, frac_disrupted), y = frac_disrupted)) +
     ggplot2::geom_col(fill = "#E6AB02", color = "black", linewidth = 0.2) +
     ggplot2::coord_flip() +
     ggplot2::labs(x = NULL, y = "Fraction complexes disrupted (q<0.05)", title = paste0("Lost Complexes per annotation (", nt, ")")) +
@@ -17474,6 +17475,7 @@ for (nt in c("iN", "iDA")) {
 
   save_plot_with_sourcedata(p, paste0("plots/KOxNeuron/barplot_lost_complex_by_annotation_", nt), plot_data, width = 5, height = 6)
 }
+
 
 
 # -----------------------------------------------------------------------------
@@ -17778,7 +17780,7 @@ for (nt in c("iN", "iDA")) {
 
   if (nrow(complex_hm_data) >= 2 && ncol(complex_hm_data) >= 3) {
     hm_mat <- as.matrix(complex_hm_data[, -1]); rownames(hm_mat) <- complex_hm_data$genotype
-    frac_threshold <- 0.01
+    frac_threshold <- 0.05
     keep_cols <- apply(hm_mat, 2, function(x) max(x, na.rm = TRUE) >= frac_threshold)
     hm_mat <- hm_mat[, keep_cols, drop = FALSE]
     if (ncol(hm_mat) < 2) next
@@ -17800,7 +17802,7 @@ for (nt in c("iN", "iDA")) {
       border_color = NA, 
       annotation_row = row_annot, 
       annotation_colors = ann_colors, 
-      main = paste0("Fraction complexes disrupted by KO x annotation, at least 5% lost (", nt, ", q<0.05)"))
+      main = paste0("Fraction complexes disrupted by KO x annotation, at least 1% lost (", nt, ", q<0.05)"))
     dev.off()
     message("  Saved: heatmap_complex_KO_annotation_", nt, ".pdf")
   }
