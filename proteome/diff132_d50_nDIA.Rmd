@@ -13968,21 +13968,79 @@ adj_list <- baseline_ppi_v3 %>%
 
 message("Adjacency list: ", length(adj_list), " nodes")
 
-# --- Growth functions ---
-.grow_complex <- function(members, adj_list, min_edges = 2) {
+# =============================================================================
+# Compartment constraints for complex expansion
+# =============================================================================
+
+compartment_groups <- list(
+  SynapticGeneral = c("SynGO", "SynapseSVs", "Postsynaptic", "Presynaptic",
+                      "Svendocytosis", "Svexocytosis", "SVfusion", "vATPase"),
+  Nucleus         = c("Nucleus", "ER"),
+  Mito            = c("Mito", "MitoMatrix", "MitoMIM", "MitoMOM", "MitoIMS", "OXPHOS", "mtComplexI"),
+  Endosome        = c("Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome",
+                      "Lysosome", "Golgi", "vATPase"),
+  Autophagy       = c("Autophagy", "Lysosome", "Endo_iN_curated_Hundley", "vATPase")
+)
+
+# Endosome + Autophagy are compatible (endolysosomal pathway)
+compatible_multi_groups <- c("Endosome", "Autophagy")
+
+# Build tag -> groups lookup
+tag_to_groups <- list()
+for (.grp in names(compartment_groups))
+  for (.tg in compartment_groups[[.grp]]) tag_to_groups[[.tg]] <- unique(c(tag_to_groups[[.tg]], .grp))
+
+# Build protein -> allowed_groups from gene_to_org
+# Drop proteins spanning incompatible groups (e.g. Nucleus + SynGO)
+.present_cx_tags <- intersect(unique(unlist(compartment_groups)), colnames(gene_to_org))
+
+protein_allowed_df <- gene_to_org %>%
+  dplyr::select(Genes, dplyr::all_of(.present_cx_tags)) %>%
+  tidyr::pivot_longer(-Genes, names_to = "tag", values_to = "present") %>%
+  dplyr::filter(!is.na(present) & as.logical(present)) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(groups = list(unique(unlist(purrr::map(tag, ~tag_to_groups[[.x]])))), .groups = "drop") %>%
+  dplyr::rowwise() %>%
+  dplyr::filter(length(groups) == 1 | all(groups %in% compatible_multi_groups)) %>%
+  dplyr::mutate(allowed = list(if (all(groups %in% compatible_multi_groups)) compatible_multi_groups else groups[[1]])) %>%
+  dplyr::ungroup()
+
+# Named list: gene -> character vector of allowed groups
+protein_allowed <- setNames(protein_allowed_df$allowed, protein_allowed_df$Genes)
+
+message("Compartment-constrained proteins: ", length(protein_allowed), " / ", nrow(gene_to_org))
+
+# Determine allowed groups from seed members (majority vote; Endosome+Autophagy seeds
+# return the full compatible set)
+.get_seed_allowed <- function(seed_members) {
+  grps <- unlist(purrr::map(seed_members, ~protein_allowed[[.x]]))
+  if (length(grps) == 0) return(NULL)
+  if (all(grps %in% compatible_multi_groups)) return(compatible_multi_groups)
+  names(sort(table(grps), decreasing = TRUE))[1]
+}
+
+# --- Growth functions (compartment-constrained) ---
+# protein_allowed is resolved from enclosing environment
+.grow_complex <- function(members, adj_list, min_edges = 2, allowed_groups = NULL) {
   all_neighbors <- unlist(adj_list[members])
   if (is.null(all_neighbors) || length(all_neighbors) == 0) return(character(0))
   neighbor_counts <- table(all_neighbors)
   candidates <- names(neighbor_counts)[neighbor_counts >= min_edges]
   candidates <- setdiff(candidates, members)
+  if (!is.null(allowed_groups) && length(candidates) > 0) {
+    candidates <- candidates[vapply(candidates, function(cand) {
+      cg <- protein_allowed[[cand]]
+      !is.null(cg) && any(cg %in% allowed_groups)
+    }, logical(1))]
+  }
   return(candidates)
 }
 
-.grow_complex_iterative <- function(seed_members, adj_list, min_edges = 2, max_size = 100) {
+.grow_complex_iterative <- function(seed_members, adj_list, min_edges = 2, max_size = 100, allowed_groups = NULL) {
   current <- seed_members
   repeat {
     if (length(current) >= max_size) break
-    candidates <- .grow_complex(current, adj_list, min_edges)
+    candidates <- .grow_complex(current, adj_list, min_edges, allowed_groups)
     if (length(candidates) == 0) break
     current <- c(current, candidates)
   }
@@ -14013,13 +14071,15 @@ trimer_seeds <- trimer_evidence %>%
 grown_from_trimers <- trimer_seeds %>%
   dplyr::rowwise() %>%
   dplyr::mutate(
-    grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2)),
-    grown_size = length(grown_members),
-    complex_id = paste(sort(grown_members), collapse = "::")
+    seed_allowed  = list(.get_seed_allowed(seed_members)),
+    grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2, allowed_groups = seed_allowed)),
+    grown_size    = length(grown_members),
+    complex_id    = paste(sort(grown_members), collapse = "::")
   ) %>%
   dplyr::ungroup()
 
 message("  Trimers grown: ", nrow(grown_from_trimers))
+message("  Trimers with compartment constraint: ", sum(!sapply(grown_from_trimers$seed_allowed, is.null)), " / ", nrow(grown_from_trimers))
 message("  Unique complexes from trimers: ", length(unique(grown_from_trimers$complex_id)))
 
 # --- Grow from tetramers ---
@@ -14035,13 +14095,15 @@ if (nrow(tetramer_evidence) > 0) {
   grown_from_tetramers <- tetramer_seeds %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
-      grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2)),
-      grown_size = length(grown_members),
-      complex_id = paste(sort(grown_members), collapse = "::")
+      seed_allowed  = list(.get_seed_allowed(seed_members)),
+      grown_members = list(.grow_complex_iterative(seed_members, adj_list, min_edges = 2, allowed_groups = seed_allowed)),
+      grown_size    = length(grown_members),
+      complex_id    = paste(sort(grown_members), collapse = "::")
     ) %>%
     dplyr::ungroup()
 
   message("  Tetramers grown: ", nrow(grown_from_tetramers))
+  message("  Tetramers with compartment constraint: ", sum(!sapply(grown_from_tetramers$seed_allowed, is.null)), " / ", nrow(grown_from_tetramers))
   message("  Unique complexes from tetramers: ", length(unique(grown_from_tetramers$complex_id)))
 } else {
   grown_from_tetramers <- data.frame(
@@ -14376,6 +14438,7 @@ print(complex_evidence %>% dplyr::count(origin))
 ```
 
 
+
 ## Chunk 5: QC Plots
 ```{r complex_qc_plots, fig.width=10, fig.height=8}
 # =============================================================================
@@ -14383,7 +14446,53 @@ print(complex_evidence %>% dplyr::count(origin))
 # All plots export source data CSV for journal compliance
 # =============================================================================
 
-# --- Plot 1: Size distribution ---
+# --- Plot 0: Compartment group QC (verify constraints worked) ---
+# Derive compartment group per complex from members + protein_allowed
+complex_evidence <- complex_evidence %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    member_groups     = list(unique(unlist(purrr::map(members, ~protein_allowed[[.x]])))),
+    compartment_group = {
+      grps <- member_groups
+      if (is.null(grps) || length(grps) == 0)        "unannotated"
+      else if (all(grps %in% compatible_multi_groups)) "Endosome/Autophagy"
+      else if (length(grps) == 1)                     grps
+      else                                            paste(sort(grps), collapse = "+")
+    }
+  ) %>%
+  dplyr::ungroup()
+
+cx_group_counts <- complex_evidence %>%
+  dplyr::count(compartment_group, name = "n_complexes") %>%
+  dplyr::arrange(dplyr::desc(n_complexes))
+
+readr::write_csv(cx_group_counts, file.path(out_dir_complex, "qc", "sourcedata_compartment_groups.csv"))
+message("Compartment group distribution:")
+print(cx_group_counts)
+
+# Flag any cross-compartment complexes (should be zero if constraints worked)
+n_cross <- sum(!cx_group_counts$compartment_group %in%
+                 c(names(compartment_groups), "Endosome/Autophagy", "unannotated"))
+message("Cross-compartment complexes (expect 0): ", n_cross)
+
+p_cx_groups <- ggplot(cx_group_counts,
+                      aes(x = reorder(compartment_group, n_complexes), y = n_complexes,
+                          fill = compartment_group %in% c(names(compartment_groups), "Endosome/Autophagy", "unannotated"))) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_complexes), hjust = -0.2, size = 2) +
+  scale_fill_manual(values = c("TRUE" = "grey75", "FALSE" = "#E41A1C"),
+                    labels = c("TRUE" = "valid", "FALSE" = "cross-compartment (BAD)"),
+                    name = NULL) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  coord_flip() +
+  labs(title = "Complexes per compartment group (constraint QC)",
+       x = NULL, y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+
+ggsave(file.path(out_dir_complex, "qc", "barplot_compartment_groups.pdf"),p_cx_groups, width = 5, height = max(3, nrow(cx_group_counts) * 0.25), device = cairo_pdf)
+
+ # --- Plot 1: Size distribution ---
 readr::write_csv(size_dist, file.path(out_dir_complex, "qc", "sourcedata_size_distribution.csv"))
 
 p_size <- ggplot(size_dist, aes(x = factor(complex_size), y = n_complexes)) +
@@ -14443,9 +14552,9 @@ readr::write_csv(validation_by_source, file.path(out_dir_complex, "qc", "sourced
 p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y = n, fill = source)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = n), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "#A6D854",
-                               "ComplexPortal_strict" = "grey55", "ComplexPortal_relaxed" = "#7FC8F8",
-                               "PDB_exact" = "#8B0000", "PDB_homolog" = "#FF6B6B",
+  scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "grey40",
+                               "ComplexPortal_strict" = "grey70", "ComplexPortal_relaxed" = "grey70",
+                               "PDB_exact" = "grey90", "PDB_homolog" = "grey90",
                                "Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Complexes: validation by source (CORUM, CP, PDB)", x = NULL, y = "Number of complexes") +
   theme_bw(base_size = 6) +
@@ -15091,6 +15200,9 @@ if (exists("corum_coverage")) {
 }
 message("QC plots saved to: ", file.path(out_dir_topdown, "qc"))
 ```
+
+
+
 
 # Module 7: Complex Network Visualization
 Generates network plots for each complex with edge coloring by evidence tier
@@ -17700,11 +17812,13 @@ for (sig_tag in c("q", "p")) {
     ggplot2::scale_fill_manual(values = node_palette_bar) +
     ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = "Node state",
                   title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
-    ggplot2::theme_bw(base_size = 10) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(
+      panel.grid = element_blank(), 
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1))
 
   readr::write_csv(bar_data, file.path(out_dir_vuln, paste0("sourcedata/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, "_sourcedata.csv")))
-  pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 5, height = 4)
+  pdf(file.path(out_dir_vuln, paste0("plots/complex_networks_node_barplots/node_disruption_barplot_", sig_tag, ".pdf")), width = 6, height = 4)
   print(p_bar)
   dev.off()
   message("  Node barplot (", sig_tag, ") saved")
