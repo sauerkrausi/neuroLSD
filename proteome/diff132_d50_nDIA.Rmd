@@ -13141,9 +13141,9 @@ readr::write_csv(known_summary_sep, file.path(out_dir_trimer, "qc", "sourcedata_
 p_known_sep <- ggplot(known_summary_sep, aes(x = reorder(source, -n), y = n, fill = source)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "grey40",
-                               "ComplexPortal_strict" = "grey55", "ComplexPortal_relaxed" = "grey55",
-                               "PDB_exact_3" = "grey75","Novel" = "#E41A1C"), guide = "none") +
+  scale_fill_manual(values = c("CORUM_strict" = "#f0f0f1", "CORUM_relaxed" = "#f0f0f1",
+                               "ComplexPortal_strict" = "#cfd1d2", "ComplexPortal_relaxed" = "#cfd1d2",
+                               "PDB_exact_3" = "#babcbe","Novel" = "#E41A1C"), guide = "none") +
   labs(title = "Trimers: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of trimers") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
@@ -13270,7 +13270,7 @@ if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
 
     pheatmap::pheatmap(
       mat,
-      display_numbers = TRUE,
+      display_numbers = FALSE,
       number_format = "%d",
       color = colorRampPalette(c("white", "dodgerblue3"))(50),
       main = "Trimers: organelle x validation (counts)",
@@ -13690,9 +13690,9 @@ if (nrow(tetramers_df) > 0) {
   p_known_sep_tet <- ggplot(known_summary_sep_tet, aes(x = reorder(source, -n), y = n, fill = source)) +
     geom_col(color = "black", linewidth = 0.3) +
     geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
-    scale_fill_manual(values = c("CORUM_strict" = "grey40", "CORUM_relaxed" = "#A6D854",
-                                 "ComplexPortal_strict" = "grey55", "ComplexPortal_relaxed" = "#7FC8F8",
-                                 "PDB_exact_6" = "#984EA3", "Novel" = "#E41A1C"), guide = "none") +
+    scale_fill_manual(values = c("CORUM_strict" = "#f0f0f1", "CORUM_relaxed" = "#f0f0f1",
+                                 "ComplexPortal_strict" = "#cfd1d2", "ComplexPortal_relaxed" = "#cfd1d2",
+                                 "PDB_exact_6" = "#babcbe", "Novel" = "#E41A1C"), guide = "none") +
     labs(title = "Tetramers: validation by source (CORUM vs ComplexPortal)", x = NULL, y = "Number of tetramers") +
     theme_bw(base_size = 6) +
     theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
@@ -13834,7 +13834,7 @@ if (nrow(tetramers_df) > 0) {
 
       pheatmap::pheatmap(
         mat_tet,
-        display_numbers = TRUE,
+        display_numbers = FALSE,
         number_format = "%d",
         color = colorRampPalette(c("white", "dodgerblue3"))(50),
         main = "Tetramers: organelle x validation (counts)",
@@ -14585,7 +14585,7 @@ readr::write_csv(validation_by_source, file.path(out_dir_complex, "qc", "sourced
 p_validation_sep <- ggplot(validation_by_source, aes(x = reorder(source, -n), y = n, fill = source)) +
   geom_col(color = "black", linewidth = 0.3) +
   geom_text(aes(label = n), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("CORUM_strict" = "grey50", "CORUM_relaxed" = "grey50",
+  scale_fill_manual(values = c("CORUM_strict" = "#f0f0f1", "CORUM_relaxed" = "#f0f0f1",
                                "ComplexPortal_strict" = "grey60", "ComplexPortal_relaxed" = "grey60",
                                "PDB_exact" = "grey80", "PDB_homolog" = "grey80",
                                "Novel" = "#E41A1C"), guide = "none") +
@@ -14680,7 +14680,7 @@ if (exists("shared_long_baseline") && nrow(shared_long_baseline) > 0) {
 
     pheatmap::pheatmap(
       mat_complex,
-      display_numbers = TRUE,
+      display_numbers = FALSE,
       number_format = "%d",
       color = colorRampPalette(c("white", "dodgerblue3"))(50),
       main = "Complexes: organelle x validation (counts)",
@@ -15156,7 +15156,7 @@ pdb_validation_long <- pdb_validation_summary %>%
 p_pdb_summary <- ggplot(pdb_validation_long, aes(x = level, y = n, fill = type)) +
   geom_col(position = "dodge", color = "black", linewidth = 0.3) +
   geom_text(aes(label = scales::comma(n)), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
-  scale_fill_manual(values = c("PDB_exact" = "#E41A1C", "PDB_homolog" = "#FC8D62"), name = "PDB Type") +
+  scale_fill_manual(values = c("PDB_exact" = "#377EB8", "PDB_homolog" = "grey75"), name = "PDB Type") +
   labs(title = "PDB structural validation by level", x = NULL, y = "Count") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "top")
