@@ -34,9 +34,7 @@ Lipidomic profiling of HeLa and day‑21 iNeurons (Ctrl vs ASAH1‑/‑) across 
 ## 🧪 Proteomics
 Contains Rmd scripts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopaminergic-like iDA neurons at day 50 of in-vitro differentiation.
 
-- `diff118_iNiDA_d23.Rmd:` TMTpro-based proteomic analysis of day 23 iN and iDA cells across Control and ASAH1-/- conditions.
 - `diff132_d50_nDIA.Rmd:` nDIA proteomics of whole-cell iNeurons and iDA neurons at day 50, including organelle-level annotation and HeLa cross-comparison.
-- `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd:` TMTpro analysis of whole-cell, soma, and axonal fractions in iNeurons with axonal enrichment and RoR modeling.
 - `HeLa_Ctrl-ASAH1_LysoIP.Rmd:` Proteomic analysis of isolated lysosomes from HeLa cells comparing control and ASAH1-/- lines, with detailed lysosomal and autophagy annotation.
 
 
@@ -56,7 +54,14 @@ For more detailed package requirements, please check the manuscript.
 - **Calcium Imaging:**  
   Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files. 
   
- 
+## Old versions of preprints
+📖 Preprint version 1: [BioRxiv](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
+
+Also contains the following datasets:
+`diff118_iNiDA_d23.Rmd:` TMTpro-based proteomic analysis of day 23 iN and iDA cells across Control and ASAH1-/- conditions.
+`diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd:` TMTpro analysis of whole-cell, soma, and axonal fractions in iNeurons with axonal enrichment and RoR modeling.
+
+
 ## Acknowledgments & Funding
 
 We thank members of the Harper lab for feedback and support.
@@ -78,4 +83,4 @@ Are you interested to find out more about what we are doing?
 [Harper Lab](https://harper.hms.harvard.edu/everything-protein-and-organelle-quality-control)  
 [Gygi Lab](https://gygi.hms.harvard.edu/)  
 [Wilfling Lab](https://www.biophys.mpg.de/mechanisms-cellular-quality-control)  
-[ Farese and Walther Lab](https://www.fwlaboratory.org/)  
+[Farese and Walther Lab](https://www.fwlaboratory.org/)  
