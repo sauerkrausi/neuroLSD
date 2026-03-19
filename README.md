@@ -8,6 +8,8 @@ Lysosomal Storage Disorders (LSDs) comprise a broad group of diseases affecting 
 
 Our proteomic and functional analyses reveal lineage-specific alterations in organellar proteomes, uncovering diverse neuronal vulnerabilities. Notably, GBA1-/- and ASAH1-/- dopaminergic neurons show disruptions in synaptic and mitochondrial compartments, correlating with impaired neuronal firing and presynaptic protein localization.  
 
+Structural analysis of ASAH1-deficient endolysosomes by cryo-electron tomography reveals swollen organelles largely devoid of the dense internal membranes characteristic of wild-type cells, but enriched in intralumenal vesicle compartments.
+
 This LSD mutant toolkit and associated proteomic landscape provide a resource for decoding how lysosomal dysfunction impacts neuronal health and for exploring mechanistic links between lysosomal storage disorders and Parkinson’s Disease.
 
 📖 Current version of Preprint: [BioRxiv](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
