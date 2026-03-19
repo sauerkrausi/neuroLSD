@@ -23,7 +23,7 @@ Contains Rmd scripts for proteomics evaluation of stem-cell derived cortical-lik
 - Generates cluster heatmaps, GO term enrichments, and cross-cell-type correlation plots (HeLa vs neuron).
 
 Modules
-  - Module 0: Setup & Configuration & Experimental Background
+  - Module 0: Module 0: Setup & Configuration & Experimental Background
   - Module 1: Data Import, QC (Replicate-level)
   - Module 2: Summarized Data & Subcellular Analysis
   - Module 3: Neuro QC & Synaptic Markers
@@ -34,7 +34,7 @@ Modules
   - Module 8: Disease Class Analysis - Neuron
   - Module 9: Linear Regression & Modeling
   - Module 10: nDIA-nMOST Comparative Analysis
-  - Module 11: PPI Vulnerability Analysis - Neuronal nDIA
+  - Module 11: Master PPI Evidence & Analysis 
   - Module 12: PPI Vulnerability Analysis - HeLa nMOST
 
 
