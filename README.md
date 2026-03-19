@@ -10,7 +10,7 @@ Our proteomic and functional analyses reveal lineage-specific alterations in org
 
 This LSD mutant toolkit and associated proteomic landscape provide a resource for decoding how lysosomal dysfunction impacts neuronal health and for exploring mechanistic links between lysosomal storage disorders and Parkinson’s Disease.
 
-📖 Preprint: [BioRxiv](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
+📖 Current version of Preprint: [BioRxiv](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
 
 
 🚧 work in progress 🚧
@@ -57,7 +57,7 @@ For more detailed package requirements, please check the manuscript.
 ## Old versions of preprints
 📖 Preprint version 1: [BioRxiv](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
 
-Also contains the following datasets:
+Also contains the following datasets (removed from newer versions for clarity):
 `diff118_iNiDA_d23.Rmd:` TMTpro-based proteomic analysis of day 23 iN and iDA cells across Control and ASAH1-/- conditions.
 `diff136_iNd35_ctrl_asah1e1_axonalproteome.Rmd:` TMTpro analysis of whole-cell, soma, and axonal fractions in iNeurons with axonal enrichment and RoR modeling.
 
