@@ -23828,6 +23828,386 @@ message("  Novel: ", sum(!trimer_evidence_hela$in_known_complex_relaxed))
 ```
 
 
+# Module 4: Tetramer Detection and Validation (HeLa)
+Detects 4-cliques from gold-tier baseline, validates against CORUM/ComplexPortal
+
+## Chunk 1: Tetramer Detection
+```{r hela_m4_tetramer_detection}
+
+# --- Setup ---
+out_dir_tetramer_hela <- file.path(out_dir_hela_ppi, "tetramers")
+dir.create(file.path(out_dir_tetramer_hela, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_tetramer_hela, "qc"),     recursive = TRUE, showWarnings = FALSE)
+
+# --- Find 4-cliques ---
+message("Finding tetramers (4-cliques)...")
+
+cliques_4_hela <- igraph::cliques(g_hela, min = 4, max = 4)
+message("4-cliques found: ", length(cliques_4_hela))
+
+if (length(cliques_4_hela) > 0) {
+  tetramers_hela_df <- do.call(rbind, lapply(cliques_4_hela, function(cl) {
+    genes <- sort(igraph::V(g_hela)$name[cl])
+    data.frame(tetramer_id = paste(genes, collapse = "::"),
+               Gene1 = genes[1], Gene2 = genes[2], Gene3 = genes[3], Gene4 = genes[4],
+               stringsAsFactors = FALSE)
+  })) %>% dplyr::distinct(tetramer_id, .keep_all = TRUE)
+
+  message("Unique tetramers: ", nrow(tetramers_hela_df))
+} else {
+  message("No 4-cliques found. Creating empty tetramer table.")
+  tetramers_hela_df <- data.frame(
+    tetramer_id = character(), Gene1 = character(), Gene2 = character(),
+    Gene3 = character(), Gene4 = character(), stringsAsFactors = FALSE
+  )
+}
+
+# --- Get edge keys (6 per tetramer) ---
+if (nrow(tetramers_hela_df) > 0) {
+  tetramers_hela_df <- tetramers_hela_df %>%
+    dplyr::mutate(
+      edge1_key = .get_edge_key(Gene1, Gene2), edge2_key = .get_edge_key(Gene1, Gene3),
+      edge3_key = .get_edge_key(Gene1, Gene4), edge4_key = .get_edge_key(Gene2, Gene3),
+      edge5_key = .get_edge_key(Gene2, Gene4), edge6_key = .get_edge_key(Gene3, Gene4)
+    )
+
+  for (j in 1:6) {
+    edge_col <- paste0("edge", j, "_key")
+    suffix   <- paste0("_e", j)
+    tetramers_hela_df <- tetramers_hela_df %>%
+      dplyr::left_join(edge_lookup_hela %>% dplyr::rename_with(~paste0(.x, suffix), -edge_key),
+                       by = setNames("edge_key", edge_col))
+  }
+}
+```
+
+
+## Chunk 2: Tetramer Scoring and Validation
+```{r hela_m4_tetramer_scoring}
+
+if (nrow(tetramers_hela_df) > 0) {
+  message("Computing tetramer scores...")
+
+  tetramers_hela_df <- tetramers_hela_df %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      mean_AFMprob = safe_mean(c(AFMprob_e1, AFMprob_e2, AFMprob_e3, AFMprob_e4, AFMprob_e5, AFMprob_e6)),
+      min_AFMprob  = safe_min(c(AFMprob_e1, AFMprob_e2, AFMprob_e3, AFMprob_e4, AFMprob_e5, AFMprob_e6)),
+      mean_RFprob  = safe_mean(c(RFprob_e1, RFprob_e2, RFprob_e3, RFprob_e4, RFprob_e5, RFprob_e6)),
+      min_RFprob   = safe_min(c(RFprob_e1, RFprob_e2, RFprob_e3, RFprob_e4, RFprob_e5, RFprob_e6)),
+      mean_ipTM    = safe_mean(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3, ipTM_max_e4, ipTM_max_e5, ipTM_max_e6)),
+      min_ipTM     = safe_min(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3, ipTM_max_e4, ipTM_max_e5, ipTM_max_e6)),
+      mean_SPOC    = safe_mean(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3, SPOC_score_e4, SPOC_score_e5, SPOC_score_e6)),
+      min_SPOC     = safe_min(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3, SPOC_score_e4, SPOC_score_e5, SPOC_score_e6)),
+      support_total = sum(c(support_score_e1, support_score_e2, support_score_e3, support_score_e4, support_score_e5, support_score_e6), na.rm = TRUE),
+      support_mean  = support_total / 6,
+      n_edges_PDB           = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3, filter_PDB_e4, filter_PDB_e5, filter_PDB_e6) != "none", na.rm = TRUE),
+      n_edges_PDB_exact     = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3, filter_PDB_e4, filter_PDB_e5, filter_PDB_e6) == "exact", na.rm = TRUE),
+      n_edges_CORUM         = sum(c(filter_CORUM_e1, filter_CORUM_e2, filter_CORUM_e3, filter_CORUM_e4, filter_CORUM_e5, filter_CORUM_e6) == "present", na.rm = TRUE),
+      n_edges_ComplexPortal = sum(c(filter_ComplexPortal_e1, filter_ComplexPortal_e2, filter_ComplexPortal_e3, filter_ComplexPortal_e4, filter_ComplexPortal_e5, filter_ComplexPortal_e6) != "none", na.rm = TRUE),
+      n_edges_STRING        = sum(c(filter_STRING_e1, filter_STRING_e2, filter_STRING_e3, filter_STRING_e4, filter_STRING_e5, filter_STRING_e6) == "present", na.rm = TRUE),
+      n_edges_BIOGRID       = sum(c(filter_BIOGRID_e1, filter_BIOGRID_e2, filter_BIOGRID_e3, filter_BIOGRID_e4, filter_BIOGRID_e5, filter_BIOGRID_e6) == "present", na.rm = TRUE)
+    ) %>%
+    dplyr::ungroup()
+
+  # --- Validation flags ---
+  tetramers_hela_df <- tetramers_hela_df %>%
+    dplyr::mutate(
+      all_edges_PDB           = n_edges_PDB == 6,
+      all_edges_PDB_exact     = n_edges_PDB_exact == 6,
+      all_edges_CORUM         = n_edges_CORUM == 6,
+      all_edges_ComplexPortal = n_edges_ComplexPortal == 6,
+      all_edges_STRING        = n_edges_STRING == 6,
+      all_edges_BIOGRID       = n_edges_BIOGRID == 6,
+      majority_PDB            = n_edges_PDB >= 4,
+      majority_PDB_exact      = n_edges_PDB_exact >= 4,
+      majority_CORUM          = n_edges_CORUM >= 4,
+      majority_ComplexPortal  = n_edges_ComplexPortal >= 4,
+      validation_tier = dplyr::case_when(
+        all_edges_PDB_exact                         ~ "PDB_exact_6",
+        all_edges_CORUM | all_edges_ComplexPortal   ~ "known_complex_6",
+        majority_PDB_exact                          ~ "PDB_exact_4plus",
+        majority_CORUM | majority_ComplexPortal     ~ "known_complex_4plus",
+        n_edges_PDB >= 3 | n_edges_CORUM >= 3 | n_edges_ComplexPortal >= 3 ~ "partial_support_3plus",
+        n_edges_PDB >= 1 | n_edges_CORUM >= 1 | n_edges_ComplexPortal >= 1 ~ "partial_support",
+        TRUE ~ "novel"
+      )
+    )
+
+  # --- UniProt mapping ---
+  gene_to_prot_hela <- setNames(uniprot_lookup_hela$uniprot, uniprot_lookup_hela$gene)
+  tetramers_hela_df$Protein1 <- gene_to_prot_hela[tetramers_hela_df$Gene1]
+  tetramers_hela_df$Protein2 <- gene_to_prot_hela[tetramers_hela_df$Gene2]
+  tetramers_hela_df$Protein3 <- gene_to_prot_hela[tetramers_hela_df$Gene3]
+  tetramers_hela_df$Protein4 <- gene_to_prot_hela[tetramers_hela_df$Gene4]
+
+  n_with_proteins_tet <- sum(!is.na(tetramers_hela_df$Protein1) & !is.na(tetramers_hela_df$Protein2) &
+                              !is.na(tetramers_hela_df$Protein3) & !is.na(tetramers_hela_df$Protein4))
+  message("  Tetramers with all 4 proteins mapped: ", n_with_proteins_tet, " / ", nrow(tetramers_hela_df))
+
+  # --- ComplexPortal match ---
+  message("Checking ComplexPortal exact matches...")
+
+  .check_cp_match_4 <- function(p1, p2, p3, p4, complex_to_proteins) {
+    if (is.na(p1) || is.na(p2) || is.na(p3) || is.na(p4)) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+    proteins <- c(p1, p2, p3, p4)
+    for (i in seq_len(nrow(complex_to_proteins))) {
+      n_match <- sum(proteins %in% complex_to_proteins$proteins[[i]])
+      if (n_match == 4) return(list(strict = TRUE,  relaxed = TRUE,  complex_id = complex_to_proteins$complex_id[i]))
+      if (n_match >= 3) return(list(strict = FALSE, relaxed = TRUE,  complex_id = complex_to_proteins$complex_id[i]))
+    }
+    list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_)
+  }
+
+  if (exists("complex_to_proteins") && nrow(complex_to_proteins) > 0 && n_with_proteins_tet > 0) {
+    cp_matches_4_hela <- purrr::pmap(list(tetramers_hela_df$Protein1, tetramers_hela_df$Protein2,
+                                          tetramers_hela_df$Protein3, tetramers_hela_df$Protein4),
+                                     ~ .check_cp_match_4(..1, ..2, ..3, ..4, complex_to_proteins))
+    tetramers_hela_df$cp_strict_match  <- purrr::map_lgl(cp_matches_4_hela, "strict")
+    tetramers_hela_df$cp_relaxed_match <- purrr::map_lgl(cp_matches_4_hela, "relaxed")
+    tetramers_hela_df$cp_matched_id    <- purrr::map_chr(cp_matches_4_hela, "complex_id")
+  } else {
+    tetramers_hela_df$cp_strict_match  <- FALSE
+    tetramers_hela_df$cp_relaxed_match <- FALSE
+    tetramers_hela_df$cp_matched_id    <- NA_character_
+  }
+  message("  ComplexPortal strict (4/4): ", sum(tetramers_hela_df$cp_strict_match))
+  message("  ComplexPortal relaxed (3/4): ", sum(tetramers_hela_df$cp_relaxed_match))
+
+  # --- CORUM match ---
+  message("Checking CORUM exact matches...")
+
+  if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0 && n_with_proteins_tet > 0) {
+    .check_corum_match_4 <- function(p1, p2, p3, p4, corum_members) {
+      proteins <- c(p1, p2, p3, p4); proteins <- proteins[!is.na(proteins)]
+      if (length(proteins) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
+      for (i in seq_len(nrow(corum_members))) {
+        n_match <- sum(proteins %in% corum_members$proteins[[i]])
+        if (n_match == 4) return(list(strict = TRUE,  relaxed = TRUE,  complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+        if (n_match >= 3) return(list(strict = FALSE, relaxed = TRUE,  complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+      }
+      list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_)
+    }
+    corum_matches_4_hela <- purrr::pmap(list(tetramers_hela_df$Protein1, tetramers_hela_df$Protein2,
+                                             tetramers_hela_df$Protein3, tetramers_hela_df$Protein4),
+                                        ~ .check_corum_match_4(..1, ..2, ..3, ..4, corum_complex_members))
+    tetramers_hela_df$corum_strict_match  <- purrr::map_lgl(corum_matches_4_hela, "strict")
+    tetramers_hela_df$corum_relaxed_match <- purrr::map_lgl(corum_matches_4_hela, "relaxed")
+    tetramers_hela_df$corum_matched_id    <- purrr::map_int(corum_matches_4_hela, "complex_id")
+    tetramers_hela_df$corum_matched_name  <- purrr::map_chr(corum_matches_4_hela, "complex_name")
+    message("  CORUM strict (4/4): ", sum(tetramers_hela_df$corum_strict_match))
+    message("  CORUM relaxed (3/4): ", sum(tetramers_hela_df$corum_relaxed_match))
+  } else {
+    tetramers_hela_df$corum_strict_match  <- FALSE
+    tetramers_hela_df$corum_relaxed_match <- FALSE
+    tetramers_hela_df$corum_matched_id    <- NA_integer_
+    tetramers_hela_df$corum_matched_name  <- NA_character_
+  }
+
+  tetramers_hela_df <- tetramers_hela_df %>%
+    dplyr::mutate(
+      in_known_complex         = cp_strict_match | corum_strict_match | all_edges_PDB_exact,
+      in_known_complex_relaxed = cp_relaxed_match | corum_relaxed_match | majority_PDB
+    )
+  message("\nTetramers in known complex (strict): ", sum(tetramers_hela_df$in_known_complex))
+  message("Tetramers in known complex (relaxed): ", sum(tetramers_hela_df$in_known_complex_relaxed))
+}
+```
+
+
+## Chunk 3: Tetramer QC Plots
+```{r hela_m4_tetramer_qc}
+
+if (nrow(tetramers_hela_df) > 0) {
+
+  # --- Plot 1: Database support ---
+  db_support_tet_hela <- data.frame(
+    database    = c("PDB_any", "PDB_exact", "CORUM", "ComplexPortal", "STRING", "BIOGRID"),
+    all_6_edges = c(sum(tetramers_hela_df$all_edges_PDB), sum(tetramers_hela_df$all_edges_PDB_exact),
+                    sum(tetramers_hela_df$all_edges_CORUM), sum(tetramers_hela_df$all_edges_ComplexPortal),
+                    sum(tetramers_hela_df$all_edges_STRING), sum(tetramers_hela_df$all_edges_BIOGRID)),
+    majority_4plus = c(sum(tetramers_hela_df$majority_PDB), sum(tetramers_hela_df$majority_PDB_exact),
+                       sum(tetramers_hela_df$majority_CORUM), sum(tetramers_hela_df$majority_ComplexPortal),
+                       sum(tetramers_hela_df$n_edges_STRING >= 4), sum(tetramers_hela_df$n_edges_BIOGRID >= 4))
+  )
+  readr::write_csv(db_support_tet_hela, file.path(out_dir_tetramer_hela, "qc", "sourcedata_database_support.csv"))
+
+  p_db_tet_hela <- ggplot(db_support_tet_hela %>% tidyr::pivot_longer(-database, names_to = "coverage", values_to = "n_tetramers"),
+                           aes(x = database, y = n_tetramers, fill = coverage)) +
+    geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+    geom_text(aes(label = n_tetramers), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("all_6_edges" = "#E41A1C", "majority_4plus" = "#377EB8"), name = "Coverage") +
+    labs(title = "HeLa tetramer database support", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+  ggsave(file.path(out_dir_tetramer_hela, "qc", "barplot_database_support.pdf"), p_db_tet_hela, width = 4, height = 4, device = cairo_pdf)
+
+  # --- Plot 2: Validation tier ---
+  val_counts_tet_hela <- tetramers_hela_df %>%
+    dplyr::count(validation_tier) %>%
+    dplyr::mutate(validation_tier = factor(validation_tier,
+      levels = c("PDB_exact_6", "known_complex_6", "PDB_exact_4plus", "known_complex_4plus",
+                 "partial_support_3plus", "partial_support", "novel")))
+  readr::write_csv(val_counts_tet_hela, file.path(out_dir_tetramer_hela, "qc", "sourcedata_validation_tiers.csv"))
+
+  p_val_tet_hela <- ggplot(val_counts_tet_hela, aes(x = validation_tier, y = n, fill = validation_tier)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+    scale_fill_brewer(palette = "RdYlGn", direction = -1, guide = "none") +
+    labs(title = "HeLa tetramer validation tiers", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+  ggsave(file.path(out_dir_tetramer_hela, "qc", "barplot_validation_tiers.pdf"), p_val_tet_hela, width = 4, height = 4, device = cairo_pdf)
+
+  # --- Plot 3: Known complex by source ---
+  known_sep_tet_hela <- data.frame(
+    source = c("CORUM_strict", "CORUM_relaxed", "ComplexPortal_strict", "ComplexPortal_relaxed", "PDB_exact_6", "Novel"),
+    n = c(sum(tetramers_hela_df$corum_strict_match),
+          sum(tetramers_hela_df$corum_relaxed_match & !tetramers_hela_df$corum_strict_match),
+          sum(tetramers_hela_df$cp_strict_match),
+          sum(tetramers_hela_df$cp_relaxed_match & !tetramers_hela_df$cp_strict_match),
+          sum(tetramers_hela_df$all_edges_PDB_exact & !tetramers_hela_df$corum_strict_match & !tetramers_hela_df$cp_strict_match),
+          sum(!tetramers_hela_df$in_known_complex_relaxed))
+  )
+  readr::write_csv(known_sep_tet_hela, file.path(out_dir_tetramer_hela, "qc", "sourcedata_known_by_source.csv"))
+
+  p_known_sep_tet_hela <- ggplot(known_sep_tet_hela, aes(x = reorder(source, -n), y = n, fill = source)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("CORUM_strict" = "#f0f0f1", "CORUM_relaxed" = "#f0f0f1",
+                                 "ComplexPortal_strict" = "#cfd1d2", "ComplexPortal_relaxed" = "#cfd1d2",
+                                 "PDB_exact_6" = "#babcbe", "Novel" = "#E41A1C"), guide = "none") +
+    labs(title = "HeLa tetramers: validation by source", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+  ggsave(file.path(out_dir_tetramer_hela, "qc", "barplot_known_by_source.pdf"), p_known_sep_tet_hela, width = 5, height = 4, device = cairo_pdf)
+
+  # --- Plot 4: Known vs novel combined ---
+  known_tet_hela <- data.frame(
+    category = c("Known (strict)", "Known (relaxed only)", "Novel"),
+    n = c(sum(tetramers_hela_df$in_known_complex),
+          sum(tetramers_hela_df$in_known_complex_relaxed & !tetramers_hela_df$in_known_complex),
+          sum(!tetramers_hela_df$in_known_complex_relaxed))
+  ) %>% dplyr::mutate(pct = round(100 * n / sum(n), 1))
+  readr::write_csv(known_tet_hela, file.path(out_dir_tetramer_hela, "qc", "sourcedata_known_vs_novel.csv"))
+
+  p_known_tet_hela <- ggplot(known_tet_hela, aes(x = category, y = n, fill = category)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "grey75", "Novel" = "#E41A1C"), guide = "none") +
+    labs(title = "HeLa tetramers: known vs novel", x = NULL, y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  ggsave(file.path(out_dir_tetramer_hela, "qc", "barplot_known_vs_novel.pdf"), p_known_tet_hela, width = 2, height = 4, device = cairo_pdf)
+
+  # --- Plot 5: Support score distribution ---
+  readr::write_csv(tetramers_hela_df %>% dplyr::select(tetramer_id, support_mean),
+                   file.path(out_dir_tetramer_hela, "qc", "sourcedata_support_score.csv"))
+
+  p_support_tet_hela <- ggplot(tetramers_hela_df, aes(x = support_mean)) +
+    geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
+    labs(title = "HeLa tetramer mean support score", x = "Mean support score (6 edges)", y = "Number of tetramers") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  ggsave(file.path(out_dir_tetramer_hela, "qc", "histogram_support_score.pdf"), p_support_tet_hela, width = 4, height = 3, device = cairo_pdf)
+
+  # --- Plot 6: Scores by validation status ---
+  scores_tet_hela <- tetramers_hela_df %>%
+    dplyr::mutate(status = ifelse(in_known_complex, "Known", "Novel")) %>%
+    dplyr::select(tetramer_id, status, mean_AFMprob, mean_ipTM, support_mean)
+  readr::write_csv(scores_tet_hela, file.path(out_dir_tetramer_hela, "qc", "sourcedata_scores_by_known.csv"))
+
+  p_scores_tet_hela <- ggplot(scores_tet_hela %>% tidyr::pivot_longer(c(mean_AFMprob, mean_ipTM, support_mean), names_to = "metric", values_to = "value"),
+                               aes(x = status, y = value, fill = status)) +
+    geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+    facet_wrap(~metric, scales = "free_y") +
+    scale_fill_manual(values = c("Known" = "grey40", "Novel" = "#E41A1C"), guide = "none") +
+    labs(title = "HeLa tetramer scores by validation status", x = NULL, y = "Score") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          strip.background = element_rect(fill = "white", color = "black"))
+  ggsave(file.path(out_dir_tetramer_hela, "qc", "boxplot_scores_by_known.pdf"), p_scores_tet_hela, width = 4, height = 3.5, device = cairo_pdf)
+
+  # --- Plot 7: Organelle x validation heatmap ---
+  if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
+    organelle_tags_tet <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+    gene_to_org_tet    <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags_tet))
+
+    .get_majority_organelle_4 <- function(genes, gene_to_org, org_tags) {
+      all_orgs <- unlist(lapply(genes, function(g) {
+        row <- gene_to_org %>% dplyr::filter(Genes == g)
+        if (nrow(row) == 0) return(character(0))
+        org_tags[as.logical(row[1, org_tags])]
+      }))
+      if (length(all_orgs) == 0) return(NA_character_)
+      names(sort(table(all_orgs), decreasing = TRUE))[1]
+    }
+
+    tetramers_hela_df <- tetramers_hela_df %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(majority_organelle = .get_majority_organelle_4(c(Gene1, Gene2, Gene3, Gene4), gene_to_org_tet, organelle_tags_tet)) %>%
+      dplyr::ungroup()
+
+    org_val_tet_hela <- tetramers_hela_df %>%
+      dplyr::filter(!is.na(majority_organelle)) %>%
+      dplyr::group_by(majority_organelle) %>%
+      dplyr::summarise(n_total = dplyr::n(), PDB_exact = sum(all_edges_PDB_exact), PDB_any = sum(all_edges_PDB),
+                       CORUM = sum(all_edges_CORUM), ComplexPortal = sum(all_edges_ComplexPortal), .groups = "drop") %>%
+      dplyr::filter(n_total >= 3)
+
+    readr::write_csv(org_val_tet_hela, file.path(out_dir_tetramer_hela, "qc", "sourcedata_heatmap_organelle_validation.csv"))
+
+    if (nrow(org_val_tet_hela) > 1) {
+      mat_t <- org_val_tet_hela %>%
+        dplyr::select(majority_organelle, PDB_exact, CORUM, ComplexPortal) %>%
+        tibble::column_to_rownames("majority_organelle") %>% as.matrix()
+      pheatmap::pheatmap(mat_t, display_numbers = FALSE, color = colorRampPalette(c("white", "dodgerblue3"))(50),
+        main = "HeLa tetramers: organelle x validation (counts)", fontsize = 6, border_color = NA,
+        cellheight = 12, cellwidth = 12, cluster_rows = TRUE, cluster_cols = FALSE,
+        filename = file.path(out_dir_tetramer_hela, "qc", "heatmap_organelle_validation.pdf"),
+        width = 4, height = max(4, nrow(mat_t) * 0.25))
+    }
+  }
+
+  # --- Save tables ---
+  tetramer_stats_hela <- data.frame(
+    metric = c("total_tetramers", "PDB_exact_all6", "CORUM_all6", "ComplexPortal_all6",
+               "CORUM_strict", "ComplexPortal_strict", "in_known_complex", "novel",
+               "median_support_mean", "median_mean_AFMprob"),
+    value  = c(nrow(tetramers_hela_df), sum(tetramers_hela_df$all_edges_PDB_exact), sum(tetramers_hela_df$all_edges_CORUM),
+               sum(tetramers_hela_df$all_edges_ComplexPortal), sum(tetramers_hela_df$corum_strict_match),
+               sum(tetramers_hela_df$cp_strict_match), sum(tetramers_hela_df$in_known_complex),
+               sum(!tetramers_hela_df$in_known_complex_relaxed),
+               round(median(tetramers_hela_df$support_mean, na.rm = TRUE), 2),
+               round(median(tetramers_hela_df$mean_AFMprob, na.rm = TRUE), 3))
+  )
+  readr::write_csv(tetramer_stats_hela, file.path(out_dir_tetramer_hela, "tables", "tetramer_stats.csv"))
+
+  tetramer_evidence_hela <- tetramers_hela_df %>%
+    dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4, Protein1, Protein2, Protein3, Protein4,
+                  mean_AFMprob, min_AFMprob, mean_RFprob, min_RFprob, mean_ipTM, min_ipTM, mean_SPOC, min_SPOC,
+                  support_total, support_mean,
+                  n_edges_PDB, n_edges_PDB_exact, n_edges_CORUM, n_edges_ComplexPortal, n_edges_STRING, n_edges_BIOGRID,
+                  all_edges_PDB_exact, all_edges_CORUM, all_edges_ComplexPortal,
+                  validation_tier,
+                  cp_strict_match, cp_relaxed_match, cp_matched_id,
+                  corum_strict_match, corum_relaxed_match, corum_matched_id, corum_matched_name,
+                  in_known_complex, in_known_complex_relaxed)
+  readr::write_csv(tetramer_evidence_hela, file.path(out_dir_tetramer_hela, "tables", "tetramer_evidence.csv"))
+
+  message("\nModule 4 complete. ", nrow(tetramer_evidence_hela), " tetramers saved")
+  message("  Known complex (strict): ", sum(tetramer_evidence_hela$in_known_complex))
+  message("  Novel: ", sum(!tetramer_evidence_hela$in_known_complex_relaxed))
+} else {
+  tetramer_evidence_hela <- data.frame()
+  message("No tetramers detected. tetramer_evidence_hela is empty.")
+}
+```
+
+
 
 
 # =================================================
