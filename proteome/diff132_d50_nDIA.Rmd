@@ -24919,6 +24919,275 @@ message("  Known (strict)   : ", sum(complex_evidence_hela$in_known_complex))
 message("  Novel            : ", sum(!complex_evidence_hela$in_known_complex_relaxed))
 ```
 
+
+# Module 6: Complex Network Visualization (HeLa)
+Generates network plots for each HeLa baseline complex
+Edge coloring by evidence tier, edge width by support score
+Exports source CSV per complex (summary + proteins + edges)
+
+## Chunk 1: Setup and Edge Palette
+```{r m12_m6_c1_network_setup}
+# =============================================================================
+# HeLa Complex Networks: Setup
+# =============================================================================
+
+library(igraph)
+
+out_dir_cx_nets_hela     <- file.path(out_dir_hela_ppi, "complexes", "network_plots")
+out_dir_cx_nets_csv_hela <- file.path(out_dir_hela_ppi, "complexes", "network_csv")
+dir.create(out_dir_cx_nets_hela,     recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir_cx_nets_csv_hela, recursive = TRUE, showWarnings = FALSE)
+
+message("=== HeLa Complex Network Visualization ===")
+
+# --- Evidence tier color palette ---
+evidence_palette_hela <- c(
+  "PDB_exact"     = "#8B0000",
+  "PDB_homolog"   = "#FF6B6B",
+  "CORUM"         = "#228B22",
+  "ComplexPortal" = "#4169E1",
+  "STRING"        = "#FFD700",
+  "BIOGRID"       = "#FF8C00",
+  "multi_db"      = "#800080",
+  "baseline"      = "#A9A9A9"
+)
+
+# --- Derive validation_status if not present ---
+complex_evidence_hela <- complex_evidence_hela %>%
+  dplyr::mutate(validation_status = dplyr::case_when(
+    in_known_complex          ~ "strict_match",
+    in_known_complex_relaxed  ~ "relaxed_match",
+    TRUE                      ~ "novel"
+  ))
+
+# --- Filter to plottable complexes (size <= 50) ---
+complexes_to_plot_hela <- complex_evidence_hela %>%
+  dplyr::filter(complex_size <= 50) %>%
+  dplyr::arrange(complex_idx)
+
+message("Complexes to plot (size <= 50): ", nrow(complexes_to_plot_hela), " / ", nrow(complex_evidence_hela))
+
+# --- Edge lookup from baseline ---
+edge_data_hela <- baseline_ppi_hela %>%
+  dplyr::mutate(edge_key = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::select(edge_key, Gene1, Gene2, Protein1, Protein2,
+                AFMprob, RFprob, SPOC_score, ipTM_max, support_score,
+                filter_PDB, filter_CORUM, filter_ComplexPortal, filter_STRING, filter_BIOGRID,
+                in_both_predictions)
+
+# --- Classify edge evidence tier ---
+edge_data_hela <- edge_data_hela %>%
+  dplyr::mutate(
+    n_databases = (filter_PDB != "none") + (filter_CORUM == "present") +
+                  (filter_ComplexPortal != "none") + (filter_STRING == "present") +
+                  (filter_BIOGRID == "present"),
+    evidence_tier = dplyr::case_when(
+      filter_PDB == "exact"         ~ "PDB_exact",
+      n_databases >= 3              ~ "multi_db",
+      filter_PDB == "homolog"       ~ "PDB_homolog",
+      filter_CORUM == "present"     ~ "CORUM",
+      filter_ComplexPortal != "none" ~ "ComplexPortal",
+      filter_STRING == "present"    ~ "STRING",
+      filter_BIOGRID == "present"   ~ "BIOGRID",
+      TRUE                          ~ "baseline"
+    ),
+    edge_color = evidence_palette_hela[evidence_tier]
+  )
+```
+
+
+## Chunk 2: Generate Network Plots
+```{r m12_m6_c2_network_plots, fig.width=8, fig.height=8}
+# =============================================================================
+# HeLa Complex Networks: Generate Plots
+# =============================================================================
+
+message("Generating HeLa complex network plots...")
+
+plot_count_hela <- 0
+skipped_hela    <- 0
+
+for (i in seq_len(nrow(complexes_to_plot_hela))) {
+  cx      <- complexes_to_plot_hela[i, ]
+  members <- cx$members[[1]]
+
+  edges <- edge_data_hela %>%
+    dplyr::filter(Gene1 %in% members & Gene2 %in% members)
+
+  if (nrow(edges) < 2) { skipped_hela <- skipped_hela + 1; next }
+
+  # --- Source CSV ---
+  protein_info_hela <- data.frame(gene = members, stringsAsFactors = FALSE) %>%
+    dplyr::left_join(
+      edge_data_hela %>% dplyr::select(Gene1, Protein1) %>% dplyr::distinct() %>%
+        dplyr::rename(gene = Gene1, uniprot = Protein1),
+      by = "gene"
+    )
+
+  edge_info_hela <- edges %>%
+    dplyr::select(Gene1, Gene2, Protein1, Protein2,
+                  AFMprob, RFprob, SPOC_score, ipTM_max, support_score,
+                  filter_PDB, filter_CORUM, filter_ComplexPortal, filter_STRING, filter_BIOGRID,
+                  evidence_tier, n_databases)
+
+  complex_summary_hela <- data.frame(
+    complex_idx        = cx$complex_idx,
+    complex_size       = cx$complex_size,
+    n_edges            = nrow(edges),
+    mean_support       = round(mean(edges$support_score, na.rm = TRUE), 2),
+    mean_AFMprob       = round(mean(edges$AFMprob, na.rm = TRUE), 3),
+    pct_PDB            = round(100 * sum(edges$filter_PDB != "none") / nrow(edges), 1),
+    pct_CORUM          = round(100 * sum(edges$filter_CORUM == "present") / nrow(edges), 1),
+    pct_ComplexPortal  = round(100 * sum(edges$filter_ComplexPortal != "none") / nrow(edges), 1),
+    validation_status  = cx$validation_status,
+    corum_matched_name = ifelse(is.na(cx$corum_matched_name), "", cx$corum_matched_name),
+    cp_matched_id      = ifelse(is.na(cx$cp_matched_id), "", cx$cp_matched_id)
+  )
+
+  csv_path_hela <- file.path(out_dir_cx_nets_csv_hela,
+                              paste0(sprintf("%03d", cx$complex_idx), "_complex_data.csv"))
+
+  con <- file(csv_path_hela, "w"); writeLines("## COMPLEX_SUMMARY", con); close(con)
+  readr::write_csv(complex_summary_hela, csv_path_hela, append = TRUE)
+  con <- file(csv_path_hela, "a"); writeLines("\n## PROTEINS", con); close(con)
+  readr::write_csv(protein_info_hela, csv_path_hela, append = TRUE)
+  con <- file(csv_path_hela, "a"); writeLines("\n## EDGES", con); close(con)
+  readr::write_csv(edge_info_hela, csv_path_hela, append = TRUE)
+
+  # --- Build igraph ---
+  g_cx <- igraph::graph_from_data_frame(
+    edges %>% dplyr::select(Gene1, Gene2),
+    directed = FALSE,
+    vertices = data.frame(name = members)
+  )
+
+  layout_cx <- if (cx$complex_size <= 10) igraph::layout_in_circle(g_cx) else
+               if (cx$complex_size <= 20) igraph::layout_with_kk(g_cx) else
+               igraph::layout_with_fr(g_cx)
+
+  # --- Edge attributes ---
+  edge_list_cx  <- igraph::as_edgelist(g_cx)
+  edge_keys_cx  <- apply(edge_list_cx, 1, function(e) .make_undirected_key(e[1], e[2]))
+  edge_match_cx <- match(edge_keys_cx, edges$edge_key)
+
+  igraph::E(g_cx)$color    <- edges$edge_color[edge_match_cx]
+  igraph::E(g_cx)$width    <- scales::rescale(edges$support_score[edge_match_cx], to = c(0.8, 4), from = c(0, 9))
+  igraph::E(g_cx)$evidence <- edges$evidence_tier[edge_match_cx]
+
+  # --- Title ---
+  validation_label_cx <- dplyr::case_when(
+    cx$validation_status == "strict_match"  ~ "KNOWN (strict)",
+    cx$validation_status == "relaxed_match" ~ "KNOWN (relaxed)",
+    TRUE ~ "NOVEL"
+  )
+
+  matched_name_cx <- ""
+  if (!is.na(cx$corum_matched_name) && cx$corum_matched_name != "") {
+    matched_name_cx <- paste0("\n", substr(cx$corum_matched_name, 1, 50))
+  } else if (!is.na(cx$cp_matched_id) && cx$cp_matched_id != "") {
+    matched_name_cx <- paste0("\nCP: ", cx$cp_matched_id)
+  }
+
+  mean_support_cx <- round(mean(edges$support_score, na.rm = TRUE), 2)
+  mean_afm_cx     <- round(mean(edges$AFMprob, na.rm = TRUE), 3)
+
+  plot_title_cx <- paste0(
+    "Complex ", cx$complex_idx, " | Size: ", cx$complex_size, " | Edges: ", nrow(edges),
+    "\n", validation_label_cx, " | Mean Support: ", mean_support_cx, " | Mean AFMprob: ", mean_afm_cx,
+    matched_name_cx
+  )
+
+  # --- PDF ---
+  pdf_path_cx <- file.path(out_dir_cx_nets_hela,
+                            paste0(sprintf("%03d", cx$complex_idx), "_network.pdf"))
+  pdf(pdf_path_cx, width = 8, height = 8)
+  par(mar = c(1, 1, 4, 1))
+
+  plot(g_cx,
+       layout             = layout_cx,
+       vertex.size        = ifelse(cx$complex_size > 30, 6, ifelse(cx$complex_size > 15, 8, 10)),
+       vertex.label.cex   = ifelse(cx$complex_size > 30, 0.4, ifelse(cx$complex_size > 15, 0.5, 0.6)),
+       vertex.color       = "grey90",
+       vertex.frame.color = "grey50",
+       edge.color         = igraph::E(g_cx)$color,
+       edge.width         = igraph::E(g_cx)$width,
+       main               = plot_title_cx)
+
+  evidence_present_cx <- unique(edges$evidence_tier)
+  legend("bottomleft",
+         legend = evidence_present_cx,
+         col    = evidence_palette_hela[evidence_present_cx],
+         lwd = 3, bty = "n", cex = 0.6, title = "Edge evidence")
+
+  legend("bottomright",
+         legend = c("Low support", "High support"),
+         lwd = c(1, 4), col = "gray50", bty = "n", cex = 0.6, title = "Edge width")
+
+  dev.off()
+
+  plot_count_hela <- plot_count_hela + 1
+  if (plot_count_hela %% 50 == 0) message("  Generated ", plot_count_hela, " plots...")
+}
+
+message("\nHeLa network plots complete:")
+message("  Generated : ", plot_count_hela)
+message("  Skipped   : ", skipped_hela, " (< 2 edges)")
+message("  Output    : ", out_dir_cx_nets_hela)
+message("  CSV data  : ", out_dir_cx_nets_csv_hela)
+```
+
+
+## Chunk 3: Summary Statistics
+```{r m12_m6_c3_network_summary}
+# =============================================================================
+# HeLa Complex Networks: Summary
+# =============================================================================
+
+if (nrow(complexes_to_plot_hela) > 0) {
+
+  all_cx_edges_hela <- lapply(seq_len(nrow(complexes_to_plot_hela)), function(i) {
+    members_i <- complexes_to_plot_hela$members[[i]]
+    edge_data_hela %>%
+      dplyr::filter(Gene1 %in% members_i & Gene2 %in% members_i) %>%
+      dplyr::mutate(complex_idx = complexes_to_plot_hela$complex_idx[i])
+  }) %>% dplyr::bind_rows()
+
+  evidence_summary_hela <- all_cx_edges_hela %>%
+    dplyr::count(evidence_tier, name = "n_edges") %>%
+    dplyr::mutate(pct = round(100 * n_edges / sum(n_edges), 1)) %>%
+    dplyr::arrange(dplyr::desc(n_edges))
+
+  readr::write_csv(evidence_summary_hela,
+                   file.path(out_dir_cx_nets_hela, "evidence_tier_summary.csv"))
+
+  message("\nEvidence tier distribution (edges in HeLa complexes):")
+  print(evidence_summary_hela)
+
+  p_ev_hela <- ggplot(evidence_summary_hela,
+                      aes(x = reorder(evidence_tier, -n_edges), y = n_edges, fill = evidence_tier)) +
+    geom_col(color = "black", linewidth = 0.3) +
+    geom_text(aes(label = paste0(n_edges, " (", pct, "%)")), vjust = -0.3, size = 2) +
+    scale_fill_manual(values = evidence_palette_hela, guide = "none") +
+    labs(title = "HeLa complexes: edge evidence tier distribution", x = NULL, y = "Number of edges") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+
+  ggsave(file.path(out_dir_cx_nets_hela, "barplot_evidence_tiers.pdf"),
+         p_ev_hela, width = 5, height = 4, device = cairo_pdf)
+
+  support_by_status_hela <- complexes_to_plot_hela %>%
+    dplyr::select(complex_idx, validation_status, complex_support_mean)
+
+  readr::write_csv(support_by_status_hela,
+                   file.path(out_dir_cx_nets_hela, "support_by_validation.csv"))
+}
+
+message("\nModule 6 complete.")
+message("Network plots saved to: ", out_dir_cx_nets_hela)
+```
+
+
 # =================================================
 # old Module 12: PPI Vulnerability Analysis - HeLa nMOST
 # =================================================
