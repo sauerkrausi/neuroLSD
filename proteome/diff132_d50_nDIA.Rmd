@@ -22816,8 +22816,290 @@ message("5. Or paste commands from script into ChimeraX command line")
 
 
 
+
 # =================================================
 # Module 12: PPI Vulnerability Analysis - HeLa nMOST
+# =================================================
+
+PPI vulnerability pipeline in HeLa whole-cell proteomic data
+DOI: 10.1126/sciadv.adu5787
+
+Goal: Build a PPI vulnerability landscape for HeLa cells across LSD KOs.
+Integrates batch-normalized whole-cell proteomics with predicted and
+experimentally validated interaction data to quantify network destabilization
+and organelle-specific vulnerabilities.
+
+Data Sources
+1. nMOST whole-cell proteomics (HeLa, 39 LSD KOs + Control)
+2. PPI databases: Predictome80, Predictomes16k, IntAct
+3. Complex databases: CORUM, ComplexPortal
+4. MiSeq genotyping: KO validation and allele status
+
+
+
+
+# Module 0: HeLa Data Loading, Preprocessing and QC
+Loads raw LFQ quantifications, applies batch-matched log2FC normalization,
+and filters KOs to those with confirmed target protein knockdown (log2FC < -2).
+Output: hela_log2fc_wide_qc -- proteins x passing KOs, ready for PPI pipeline.
+
+## Chunk 0: Setup
+```{r hela_m0_setup}
+# =============================================================================
+# Setup: Output Directories, Parameters, Input Paths
+# =============================================================================
+
+# --- Output directories ---
+out_dir_hela         <- file.path(out_dir_PPI, "HeLa_nMOST")
+out_dir_hela_preproc <- file.path(out_dir_hela, "preprocessing")
+dir.create(file.path(out_dir_hela_preproc, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_preproc, "qc"),    recursive = TRUE, showWarnings = FALSE)
+
+# --- Input paths ---
+path_hela_quant <- "/path/to/nmost_quant_protein_cell.csv"
+path_hela_pheno <- "/path/to/nmost_pheno_protein_cell.csv"
+path_hela_miseq <- "/path/to/nmost_MiSeq.csv"
+
+# --- Parameters ---
+ko_knockdown_thresh  <- -2   # log2FC threshold: target protein must be below this
+min_valid_controls   <- 2    # min valid control values per batch to compute batch mean
+
+message("Module 0 setup complete")
+```
+
+## Chunk 1: Load Data
+```{r hela_m0_load}
+# =============================================================================
+# Load Quantification, Phenotype, and MiSeq Data
+# =============================================================================
+
+message("Loading raw LFQ data...")
+hela_quant_raw <- data.table::fread(path_hela_quant, data.table = FALSE)
+message("  Proteins: ", nrow(hela_quant_raw), " | Columns: ", ncol(hela_quant_raw))
+
+message("Loading phenotype data...")
+hela_pheno_raw <- read.csv(path_hela_pheno)
+message("  Samples: ", nrow(hela_pheno_raw))
+
+message("Loading MiSeq KO validation...")
+hela_miseq <- read.csv(path_hela_miseq, fileEncoding = "UTF-8-BOM")
+message("  MiSeq-validated KOs: ", nrow(hela_miseq))
+message("  KO types: ", paste(sort(unique(hela_miseq$Knockout.type)), collapse = ", "))
+```
+
+## Chunk 2: Sample Filtering and Column Matching
+```{r hela_m0_filter}
+# =============================================================================
+# Filter Samples: Exclude QC Runs, Restrict to MiSeq-Validated KOs + Controls
+# =============================================================================
+
+# --- Clean gene names in quant: first gene before semicolon ---
+hela_quant_clean <- hela_quant_raw %>%
+  dplyr::mutate(Genes = sapply(strsplit(Gene.names, ";"), `[`, 1)) %>%
+  dplyr::filter(!is.na(Genes), Genes != "")
+
+message("Proteins after gene name cleaning: ", nrow(hela_quant_clean))
+
+# --- MiSeq-validated gene names ---
+miseq_genes <- hela_miseq$Gene
+message("MiSeq-validated KO genes (n=", length(miseq_genes), "): ", paste(sort(miseq_genes), collapse = ", "))
+
+# --- Filter pheno: remove QC runs, keep controls and MiSeq-validated KOs only ---
+# genotype format: "ASAH1 KO", "HeLa Control"
+hela_pheno_filtered <- hela_pheno_raw %>%
+  dplyr::filter(!InstQC, !ExtrQC) %>%
+  dplyr::mutate(
+    is_control = genotype == "HeLa Control",
+    ko_gene    = dplyr::if_else(is_control, NA_character_, gsub(" KO$", "", genotype))
+  ) %>%
+  dplyr::filter(is_control | ko_gene %in% miseq_genes)
+
+message("Samples after filtering:")
+message("  Control samples : ", sum(hela_pheno_filtered$is_control))
+message("  KO samples      : ", sum(!hela_pheno_filtered$is_control))
+message("  KO genotypes    : ", length(unique(na.omit(hela_pheno_filtered$ko_gene))))
+
+# --- Match sample IDs to quant columns ---
+# Quant column format: "LFQ.intensity.1_WC0004" -> sample ID "WC0004"
+quant_sample_cols <- grep("^LFQ\\.intensity\\.1_", colnames(hela_quant_clean), value = TRUE)
+quant_sample_ids  <- sub("^LFQ\\.intensity\\.1_", "", quant_sample_cols)
+
+valid_sample_ids  <- hela_pheno_filtered$sample
+valid_quant_cols  <- paste0("LFQ.intensity.1_", valid_sample_ids[valid_sample_ids %in% quant_sample_ids])
+
+missing_in_quant  <- valid_sample_ids[!valid_sample_ids %in% quant_sample_ids]
+if (length(missing_in_quant) > 0) message("WARNING: samples in pheno not in quant: ", paste(missing_in_quant, collapse = ", "))
+
+hela_quant_filtered <- hela_quant_clean %>%
+  dplyr::select(Genes, all_of(valid_quant_cols))
+
+message("Proteins x samples in filtered quant: ", nrow(hela_quant_filtered), " x ", length(valid_quant_cols))
+```
+
+## Chunk 3: Batch-Matched log2FC Computation
+```{r hela_m0_log2fc}
+# =============================================================================
+# log2 Transform and Batch-Matched log2FC Normalization
+# =============================================================================
+
+# --- Pivot to long, join pheno ---
+hela_long <- hela_quant_filtered %>%
+  tidyr::pivot_longer(cols = all_of(valid_quant_cols), names_to = "col_id", values_to = "intensity") %>%
+  dplyr::mutate(sample = sub("^LFQ\\.intensity\\.1_", "", col_id)) %>%
+  dplyr::left_join(
+    hela_pheno_filtered %>% dplyr::select(sample, batch, genotype, is_control, ko_gene),
+    by = "sample"
+  ) %>%
+  dplyr::mutate(log2_intensity = dplyr::if_else(intensity > 0, log2(intensity), NA_real_))
+
+# --- Batch control means per protein ---
+hela_ctrl_means <- hela_long %>%
+  dplyr::filter(is_control) %>%
+  dplyr::group_by(Genes, batch) %>%
+  dplyr::summarise(
+    n_ctrl_valid   = sum(!is.na(log2_intensity)),
+    ctrl_mean_log2 = dplyr::if_else(
+      sum(!is.na(log2_intensity)) >= min_valid_controls,
+      mean(log2_intensity, na.rm = TRUE),
+      NA_real_
+    ),
+    ctrl_sd_log2   = sd(log2_intensity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# --- log2FC: KO sample - batch control mean ---
+hela_log2fc_long <- hela_long %>%
+  dplyr::filter(!is_control) %>%
+  dplyr::left_join(
+    hela_ctrl_means %>% dplyr::select(Genes, batch, ctrl_mean_log2),
+    by = c("Genes", "batch")
+  ) %>%
+  dplyr::mutate(log2FC = log2_intensity - ctrl_mean_log2)
+
+# --- Summarise: mean log2FC per protein per KO ---
+hela_log2fc_summary <- hela_log2fc_long %>%
+  dplyr::group_by(Genes, ko_gene) %>%
+  dplyr::summarise(
+    n_replicates = sum(!is.na(log2FC)),
+    mean_log2FC  = mean(log2FC, na.rm = TRUE),
+    sd_log2FC    = sd(log2FC, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# --- Wide format: proteins x KOs ---
+hela_log2fc_wide <- hela_log2fc_summary %>%
+  dplyr::select(Genes, ko_gene, mean_log2FC) %>%
+  tidyr::pivot_wider(names_from = ko_gene, values_from = mean_log2FC)
+
+message("log2FC matrix: ", nrow(hela_log2fc_wide), " proteins x ", ncol(hela_log2fc_wide) - 1, " KOs")
+
+readr::write_csv(hela_log2fc_wide,    file.path(out_dir_hela_preproc, "tables", "hela_log2fc_wide.csv"))
+readr::write_csv(hela_log2fc_summary, file.path(out_dir_hela_preproc, "tables", "hela_log2fc_long.csv"))
+message("Chunk 3 complete: log2FC matrix saved")
+```
+
+## Chunk 4: KO Target Protein QC Filter
+```{r hela_m0_ko_qc}
+# =============================================================================
+# KO QC: Exclude KOs Where Target Protein Is Not Depleted (mean log2FC >= -2)
+# Note: includes all allele types (homo, hetero, in-frame deletions) --
+# quantitative filter handles incomplete knockouts due to HeLa polyploidy
+# =============================================================================
+
+ko_genes_all <- unique(na.omit(hela_pheno_filtered$ko_gene))
+
+# --- For each KO, extract target protein mean log2FC ---
+# Note: "GBA" in pheno may appear as "GBA1" in proteomics -- flagged if not detected
+ko_target_qc <- purrr::map_dfr(ko_genes_all, function(ko) {
+  target_rows <- hela_log2fc_summary %>% dplyr::filter(ko_gene == ko, Genes == ko)
+  target_fc   <- target_rows$mean_log2FC
+
+  dplyr::tibble(
+    ko_gene         = ko,
+    target_log2FC   = dplyr::if_else(length(target_fc) > 0 && !is.na(target_fc[1]), target_fc[1], NA_real_),
+    target_detected = length(target_fc) > 0 && !is.na(target_fc[1]),
+    passes_qc       = length(target_fc) > 0 && !is.na(target_fc[1]) && target_fc[1] < ko_knockdown_thresh,
+    allele_status   = hela_miseq$Knockout.type[match(ko, hela_miseq$Gene)]
+  )
+})
+
+message("KO target protein QC (threshold: log2FC < ", ko_knockdown_thresh, "):")
+message("  KOs tested           : ", nrow(ko_target_qc))
+message("  Target not detected  : ", sum(!ko_target_qc$target_detected))
+message("  Fails knockdown QC   : ", sum(ko_target_qc$target_detected & !ko_target_qc$passes_qc))
+message("  Pass QC              : ", sum(ko_target_qc$passes_qc))
+
+ko_fail <- ko_target_qc %>% dplyr::filter(!passes_qc)
+if (nrow(ko_fail) > 0) { message("Failing / undetected KOs:"); print(ko_fail) }
+
+ko_genes_pass <- ko_target_qc %>% dplyr::filter(passes_qc) %>% dplyr::pull(ko_gene)
+
+# --- Filter log2FC matrices to passing KOs ---
+hela_log2fc_wide_qc    <- hela_log2fc_wide %>% dplyr::select(Genes, all_of(ko_genes_pass))
+hela_log2fc_summary_qc <- hela_log2fc_summary %>% dplyr::filter(ko_gene %in% ko_genes_pass)
+
+readr::write_csv(ko_target_qc,          file.path(out_dir_hela_preproc, "tables", "ko_target_qc.csv"))
+readr::write_csv(hela_log2fc_wide_qc,   file.path(out_dir_hela_preproc, "tables", "hela_log2fc_wide_qc.csv"))
+message("Chunk 4 complete: ", length(ko_genes_pass), " KOs retained after QC")
+```
+
+## Chunk 5: QC Plots
+```{r hela_m0_qc_plots}
+# =============================================================================
+# QC Plots: Control Variability, KO Target Knockdown, Replicate Counts
+# =============================================================================
+
+# --- Plot 1: Control log2 intensity SD per batch ---
+p_ctrl_cv <- hela_ctrl_means %>%
+  dplyr::filter(!is.na(ctrl_sd_log2)) %>%
+  ggplot(aes(x = ctrl_sd_log2, fill = factor(batch))) +
+  geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.7, position = "identity") +
+  facet_wrap(~batch, ncol = 1) +
+  labs(title = "Control log2 intensity SD per batch", x = "SD across control replicates", y = "Proteins", fill = "Batch") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_hela_preproc, "qc", "ctrl_variability_by_batch.pdf"), p_ctrl_cv, width = 4, height = 5, device = cairo_pdf)
+
+# --- Plot 2: KO target protein knockdown bar chart ---
+p_ko_qc <- ko_target_qc %>%
+  dplyr::mutate(ko_gene = reorder(ko_gene, dplyr::coalesce(target_log2FC, 0))) %>%
+  ggplot(aes(x = ko_gene, y = target_log2FC, fill = passes_qc)) +
+  geom_col(color = "black", linewidth = 0.2) +
+  geom_hline(yintercept = ko_knockdown_thresh, linetype = "dashed", color = "red") +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "tomato"), labels = c("Fail", "Pass")) +
+  labs(title = "KO target protein knockdown", subtitle = paste("Threshold: log2FC <", ko_knockdown_thresh),
+       x = NULL, y = "Mean log2FC (KO vs batch-matched Control)", fill = "QC") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_hela_preproc, "qc", "ko_target_knockdown.pdf"), p_ko_qc, width = 8, height = 4, device = cairo_pdf)
+
+# --- Plot 3: Valid replicate counts per passing KO ---
+p_reps <- hela_log2fc_summary_qc %>%
+  dplyr::group_by(ko_gene) %>%
+  dplyr::summarise(mean_n_reps = mean(n_replicates, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(ko_gene = reorder(ko_gene, mean_n_reps)) %>%
+  ggplot(aes(x = ko_gene, y = mean_n_reps)) +
+  geom_col(fill = "steelblue", color = "black", linewidth = 0.2) +
+  labs(title = "Mean valid replicates per KO (passing QC)", x = NULL, y = "Mean n replicates") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(out_dir_hela_preproc, "qc", "ko_replicate_counts.pdf"), p_reps, width = 8, height = 4, device = cairo_pdf)
+
+message("Module 0 complete")
+message("  KOs passing QC       : ", length(ko_genes_pass))
+message("  Proteins in matrix   : ", nrow(hela_log2fc_wide_qc))
+message("  Output               : hela_log2fc_wide_qc ready for Module 1")
+```
+
+
+
+# =================================================
+# old Module 12: PPI Vulnerability Analysis - HeLa nMOST
 # =================================================
 
 # PPI vulnerability pipeline in HeLa Whole cell proteomic data
@@ -22855,7 +23137,7 @@ control_outlier_thresh <- 0.4
 
 
 # Load HeLa control data
-HeLaWCControl_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_WCCcontrol.csv")
+HeLaWCControl_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_nMOSTWCprot.csv")
 
 
 # ---------------------------------------------------
