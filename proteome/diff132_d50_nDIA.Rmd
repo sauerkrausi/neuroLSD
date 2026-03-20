@@ -23419,6 +23419,415 @@ message("  Output: baseline_ppi_hela ready for Module 3")
 
 
 
+# Module 3: Trimer Detection and Validation (HeLa)
+Detects triangles from gold-tier baseline, validates against CORUM/ComplexPortal
+
+## Chunk 1: Trimer Detection
+```{r hela_m3_trimer_detection}
+
+# --- Setup ---
+out_dir_trimer_hela <- file.path(out_dir_hela_ppi, "trimers")
+dir.create(file.path(out_dir_trimer_hela, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_trimer_hela, "qc"),     recursive = TRUE, showWarnings = FALSE)
+
+library(igraph)
+
+# --- Build graph from baseline ---
+message("Building graph from HeLa baseline (gold-tier)...")
+
+g_hela <- igraph::graph_from_data_frame(baseline_ppi_hela %>% dplyr::select(Gene1, Gene2), directed = FALSE)
+g_hela <- igraph::simplify(g_hela)
+
+message("Graph: ", igraph::vcount(g_hela), " nodes, ", igraph::ecount(g_hela), " edges")
+
+# --- Find all triangles ---
+message("Finding triangles...")
+
+triangles_raw_hela <- igraph::triangles(g_hela)
+n_triangles_hela   <- length(triangles_raw_hela) / 3
+
+message("Triangles found: ", n_triangles_hela)
+
+if (n_triangles_hela > 0) {
+  triangle_matrix_hela        <- matrix(igraph::V(g_hela)$name[triangles_raw_hela], ncol = 3, byrow = TRUE)
+  triangle_matrix_sorted_hela <- t(apply(triangle_matrix_hela, 1, sort))
+
+  trimers_hela_df <- data.frame(
+    Gene1 = triangle_matrix_sorted_hela[, 1],
+    Gene2 = triangle_matrix_sorted_hela[, 2],
+    Gene3 = triangle_matrix_sorted_hela[, 3],
+    stringsAsFactors = FALSE
+  ) %>%
+    dplyr::mutate(trimer_id = paste(Gene1, Gene2, Gene3, sep = "::")) %>%
+    dplyr::distinct(trimer_id, .keep_all = TRUE)
+
+  message("Unique trimers: ", nrow(trimers_hela_df))
+} else {
+  stop("No triangles found. Check graph connectivity.")
+}
+
+# --- Edge key helper ---
+.get_edge_key <- function(a, b) ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+
+trimers_hela_df <- trimers_hela_df %>%
+  dplyr::mutate(
+    edge1_key = .get_edge_key(Gene1, Gene2),
+    edge2_key = .get_edge_key(Gene1, Gene3),
+    edge3_key = .get_edge_key(Gene2, Gene3)
+  )
+
+# --- Edge lookup ---
+edge_lookup_hela <- baseline_ppi_hela %>%
+  dplyr::mutate(edge_key = .get_edge_key(Gene1, Gene2)) %>%
+  dplyr::select(edge_key, Protein1, Protein2, RFprob, AFMprob, SPOC_score, ipTM_max,
+                support_score, filter_PDB, filter_CORUM, filter_ComplexPortal, filter_STRING, filter_BIOGRID,
+                corum_complex_ids, corum_complex_names, cp_complex_ids)
+
+# --- Join edge data ---
+trimers_hela_df <- trimers_hela_df %>%
+  dplyr::left_join(edge_lookup_hela %>% dplyr::rename_with(~paste0(.x, "_e1"), -edge_key), by = c("edge1_key" = "edge_key")) %>%
+  dplyr::left_join(edge_lookup_hela %>% dplyr::rename_with(~paste0(.x, "_e2"), -edge_key), by = c("edge2_key" = "edge_key")) %>%
+  dplyr::left_join(edge_lookup_hela %>% dplyr::rename_with(~paste0(.x, "_e3"), -edge_key), by = c("edge3_key" = "edge_key"))
+```
+
+
+## Chunk 2: Trimer Scoring and Validation
+```{r hela_m3_trimer_scoring}
+
+safe_mean <- function(x) { x <- x[!is.na(x) & !is.infinite(x)]; if (length(x) == 0) NA_real_ else mean(x) }
+safe_min  <- function(x) { x <- x[!is.na(x) & !is.infinite(x)]; if (length(x) == 0) NA_real_ else min(x) }
+
+message("Computing trimer scores...")
+
+trimers_hela_df <- trimers_hela_df %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    mean_AFMprob = safe_mean(c(AFMprob_e1, AFMprob_e2, AFMprob_e3)),
+    min_AFMprob  = safe_min(c(AFMprob_e1, AFMprob_e2, AFMprob_e3)),
+    mean_RFprob  = safe_mean(c(RFprob_e1, RFprob_e2, RFprob_e3)),
+    min_RFprob   = safe_min(c(RFprob_e1, RFprob_e2, RFprob_e3)),
+    mean_ipTM    = safe_mean(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3)),
+    min_ipTM     = safe_min(c(ipTM_max_e1, ipTM_max_e2, ipTM_max_e3)),
+    mean_SPOC    = safe_mean(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3)),
+    min_SPOC     = safe_min(c(SPOC_score_e1, SPOC_score_e2, SPOC_score_e3)),
+    support_total = sum(c(support_score_e1, support_score_e2, support_score_e3), na.rm = TRUE),
+    support_mean  = support_total / 3,
+    n_edges_PDB          = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3) != "none", na.rm = TRUE),
+    n_edges_PDB_exact    = sum(c(filter_PDB_e1, filter_PDB_e2, filter_PDB_e3) == "exact", na.rm = TRUE),
+    n_edges_CORUM        = sum(c(filter_CORUM_e1, filter_CORUM_e2, filter_CORUM_e3) == "present", na.rm = TRUE),
+    n_edges_ComplexPortal = sum(c(filter_ComplexPortal_e1, filter_ComplexPortal_e2, filter_ComplexPortal_e3) != "none", na.rm = TRUE),
+    n_edges_STRING       = sum(c(filter_STRING_e1, filter_STRING_e2, filter_STRING_e3) == "present", na.rm = TRUE),
+    n_edges_BIOGRID      = sum(c(filter_BIOGRID_e1, filter_BIOGRID_e2, filter_BIOGRID_e3) == "present", na.rm = TRUE)
+  ) %>%
+  dplyr::ungroup()
+
+# --- Validation flags ---
+trimers_hela_df <- trimers_hela_df %>%
+  dplyr::mutate(
+    all_edges_PDB           = n_edges_PDB == 3,
+    all_edges_PDB_exact     = n_edges_PDB_exact == 3,
+    all_edges_CORUM         = n_edges_CORUM == 3,
+    all_edges_ComplexPortal = n_edges_ComplexPortal == 3,
+    all_edges_STRING        = n_edges_STRING == 3,
+    all_edges_BIOGRID       = n_edges_BIOGRID == 3,
+    partial_PDB             = n_edges_PDB >= 2,
+    partial_CORUM           = n_edges_CORUM >= 2,
+    partial_ComplexPortal   = n_edges_ComplexPortal >= 2,
+    validation_tier = dplyr::case_when(
+      all_edges_PDB_exact                          ~ "PDB_exact_3",
+      all_edges_CORUM | all_edges_ComplexPortal    ~ "known_complex_3",
+      n_edges_PDB_exact >= 2                       ~ "PDB_exact_2",
+      partial_CORUM | partial_ComplexPortal        ~ "known_complex_2",
+      n_edges_PDB >= 2                             ~ "PDB_any_2",
+      n_edges_PDB >= 1 | n_edges_CORUM >= 1 | n_edges_ComplexPortal >= 1 ~ "partial_support",
+      TRUE                                         ~ "novel"
+    )
+  )
+
+# --- UniProt lookup ---
+uniprot_lookup_hela <- baseline_ppi_hela %>%
+  dplyr::select(Gene1, Protein1) %>% dplyr::rename(gene = Gene1, uniprot = Protein1) %>%
+  dplyr::bind_rows(baseline_ppi_hela %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(gene = Gene2, uniprot = Protein2)) %>%
+  dplyr::distinct(gene, .keep_all = TRUE)
+
+trimers_hela_df <- trimers_hela_df %>%
+  dplyr::left_join(uniprot_lookup_hela %>% dplyr::rename(Protein1 = uniprot), by = c("Gene1" = "gene")) %>%
+  dplyr::left_join(uniprot_lookup_hela %>% dplyr::rename(Protein2 = uniprot), by = c("Gene2" = "gene")) %>%
+  dplyr::left_join(uniprot_lookup_hela %>% dplyr::rename(Protein3 = uniprot), by = c("Gene3" = "gene"))
+
+# --- ComplexPortal exact match ---
+message("Checking ComplexPortal exact matches...")
+
+.check_cp_match <- function(p1, p2, p3, complex_to_proteins) {
+  if (is.na(p1) || is.na(p2) || is.na(p3)) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_))
+  proteins <- c(p1, p2, p3)
+  for (i in seq_len(nrow(complex_to_proteins))) {
+    n_match <- sum(proteins %in% complex_to_proteins$proteins[[i]])
+    if (n_match == 3) return(list(strict = TRUE,  relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+    if (n_match >= 2) return(list(strict = FALSE, relaxed = TRUE, complex_id = complex_to_proteins$complex_id[i]))
+  }
+  list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_)
+}
+
+cp_matches_hela <- purrr::pmap(list(trimers_hela_df$Protein1, trimers_hela_df$Protein2, trimers_hela_df$Protein3),
+                               ~ .check_cp_match(..1, ..2, ..3, complex_to_proteins))
+
+trimers_hela_df$cp_strict_match  <- purrr::map_lgl(cp_matches_hela, "strict")
+trimers_hela_df$cp_relaxed_match <- purrr::map_lgl(cp_matches_hela, "relaxed")
+trimers_hela_df$cp_matched_id    <- purrr::map_chr(cp_matches_hela, "complex_id")
+
+message("  ComplexPortal strict (3/3): ", sum(trimers_hela_df$cp_strict_match))
+message("  ComplexPortal relaxed (2/3): ", sum(trimers_hela_df$cp_relaxed_match))
+
+# --- CORUM exact match ---
+message("Checking CORUM exact matches...")
+
+if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  .check_corum_match <- function(p1, p2, p3, corum_members) {
+    proteins <- c(p1, p2, p3); proteins <- proteins[!is.na(proteins)]
+    if (length(proteins) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_))
+    for (i in seq_len(nrow(corum_members))) {
+      n_match <- sum(proteins %in% corum_members$proteins[[i]])
+      if (n_match == 3) return(list(strict = TRUE,  relaxed = TRUE,  complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+      if (n_match >= 2) return(list(strict = FALSE, relaxed = TRUE,  complex_id = corum_members$complex_id[i], complex_name = corum_members$complex_name[i]))
+    }
+    list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_)
+  }
+
+  corum_matches_hela <- purrr::pmap(list(trimers_hela_df$Protein1, trimers_hela_df$Protein2, trimers_hela_df$Protein3),
+                                    ~ .check_corum_match(..1, ..2, ..3, corum_complex_members))
+
+  trimers_hela_df$corum_strict_match  <- purrr::map_lgl(corum_matches_hela, "strict")
+  trimers_hela_df$corum_relaxed_match <- purrr::map_lgl(corum_matches_hela, "relaxed")
+  trimers_hela_df$corum_matched_id    <- purrr::map_int(corum_matches_hela, "complex_id")
+  trimers_hela_df$corum_matched_name  <- purrr::map_chr(corum_matches_hela, "complex_name")
+
+  message("  CORUM strict (3/3): ", sum(trimers_hela_df$corum_strict_match))
+  message("  CORUM relaxed (2/3): ", sum(trimers_hela_df$corum_relaxed_match))
+} else {
+  trimers_hela_df$corum_strict_match  <- FALSE
+  trimers_hela_df$corum_relaxed_match <- FALSE
+  trimers_hela_df$corum_matched_id    <- NA_integer_
+  trimers_hela_df$corum_matched_name  <- NA_character_
+}
+
+# --- Known complex flags ---
+trimers_hela_df <- trimers_hela_df %>%
+  dplyr::mutate(
+    in_known_complex         = cp_strict_match | corum_strict_match | all_edges_PDB_exact,
+    in_known_complex_relaxed = cp_relaxed_match | corum_relaxed_match | all_edges_PDB
+  )
+
+message("\nTrimers in known complex (strict): ", sum(trimers_hela_df$in_known_complex))
+message("Trimers in known complex (relaxed): ", sum(trimers_hela_df$in_known_complex_relaxed))
+```
+
+
+## Chunk 3: Trimer QC Plots
+```{r hela_m3_trimer_qc}
+
+# --- Plot 1: Database support ---
+db_support_trimers_hela <- data.frame(
+  database  = c("PDB_any", "PDB_exact", "CORUM", "ComplexPortal", "STRING", "BIOGRID"),
+  all_3_edges = c(sum(trimers_hela_df$all_edges_PDB), sum(trimers_hela_df$all_edges_PDB_exact),
+                  sum(trimers_hela_df$all_edges_CORUM), sum(trimers_hela_df$all_edges_ComplexPortal),
+                  sum(trimers_hela_df$all_edges_STRING), sum(trimers_hela_df$all_edges_BIOGRID)),
+  at_least_2  = c(sum(trimers_hela_df$partial_PDB), sum(trimers_hela_df$n_edges_PDB_exact >= 2),
+                  sum(trimers_hela_df$partial_CORUM), sum(trimers_hela_df$partial_ComplexPortal),
+                  sum(trimers_hela_df$n_edges_STRING >= 2), sum(trimers_hela_df$n_edges_BIOGRID >= 2))
+)
+readr::write_csv(db_support_trimers_hela, file.path(out_dir_trimer_hela, "qc", "sourcedata_database_support.csv"))
+
+p_db_trimers_hela <- ggplot(db_support_trimers_hela %>% tidyr::pivot_longer(-database, names_to = "coverage", values_to = "n_trimers"),
+                             aes(x = database, y = n_trimers, fill = coverage)) +
+  geom_col(position = "dodge", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_trimers), position = position_dodge(width = 0.9), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("all_3_edges" = "grey55", "at_least_2" = "#377EB8"), name = "Coverage") +
+  labs(title = "HeLa trimer database support", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+ggsave(file.path(out_dir_trimer_hela, "qc", "barplot_database_support.pdf"), p_db_trimers_hela, width = 3.5, height = 4, device = cairo_pdf)
+
+# --- Plot 2: Validation tier ---
+validation_counts_hela <- trimers_hela_df %>%
+  dplyr::count(validation_tier) %>%
+  dplyr::mutate(validation_tier = factor(validation_tier,
+    levels = c("PDB_exact_3", "known_complex_3", "PDB_exact_2", "known_complex_2", "PDB_any_2", "partial_support", "novel")))
+readr::write_csv(validation_counts_hela, file.path(out_dir_trimer_hela, "qc", "sourcedata_validation_tiers.csv"))
+
+p_validation_hela <- ggplot(validation_counts_hela, aes(x = validation_tier, y = n, fill = validation_tier)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "RdYlGn", direction = -1, guide = "none") +
+  labs(title = "HeLa trimer validation tiers", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(file.path(out_dir_trimer_hela, "qc", "barplot_validation_tiers.pdf"), p_validation_hela, width = 4, height = 4, device = cairo_pdf)
+
+# --- Plot 3: Known vs novel (CORUM vs ComplexPortal separate) ---
+known_summary_sep_hela <- data.frame(
+  source = c("CORUM_strict", "CORUM_relaxed", "ComplexPortal_strict", "ComplexPortal_relaxed", "PDB_exact_3", "Novel"),
+  n = c(sum(trimers_hela_df$corum_strict_match),
+        sum(trimers_hela_df$corum_relaxed_match & !trimers_hela_df$corum_strict_match),
+        sum(trimers_hela_df$cp_strict_match),
+        sum(trimers_hela_df$cp_relaxed_match & !trimers_hela_df$cp_strict_match),
+        sum(trimers_hela_df$all_edges_PDB_exact & !trimers_hela_df$corum_strict_match & !trimers_hela_df$cp_strict_match),
+        sum(!trimers_hela_df$in_known_complex_relaxed))
+)
+readr::write_csv(known_summary_sep_hela, file.path(out_dir_trimer_hela, "qc", "sourcedata_known_by_source.csv"))
+
+p_known_sep_hela <- ggplot(known_summary_sep_hela, aes(x = reorder(source, -n), y = n, fill = source)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n)), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("CORUM_strict" = "#f0f0f1", "CORUM_relaxed" = "#f0f0f1",
+                               "ComplexPortal_strict" = "#cfd1d2", "ComplexPortal_relaxed" = "#cfd1d2",
+                               "PDB_exact_3" = "#babcbe", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "HeLa trimers: validation by source", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(file.path(out_dir_trimer_hela, "qc", "barplot_known_by_source.pdf"), p_known_sep_hela, width = 4, height = 4, device = cairo_pdf)
+
+# --- Plot 4: Known vs novel combined ---
+known_summary_hela <- data.frame(
+  category = c("Known (strict)", "Known (relaxed only)", "Novel"),
+  n = c(sum(trimers_hela_df$in_known_complex),
+        sum(trimers_hela_df$in_known_complex_relaxed & !trimers_hela_df$in_known_complex),
+        sum(!trimers_hela_df$in_known_complex_relaxed))
+) %>% dplyr::mutate(pct = round(100 * n / sum(n), 1))
+readr::write_csv(known_summary_hela, file.path(out_dir_trimer_hela, "qc", "sourcedata_known_vs_novel.csv"))
+
+p_known_hela <- ggplot(known_summary_hela, aes(x = category, y = n, fill = category)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "grey75", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "HeLa trimers: known vs novel", x = NULL, y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_trimer_hela, "qc", "barplot_known_vs_novel.pdf"), p_known_hela, width = 2, height = 4, device = cairo_pdf)
+
+# --- Plot 5: Support score distribution ---
+readr::write_csv(trimers_hela_df %>% dplyr::select(trimer_id, support_mean),
+                 file.path(out_dir_trimer_hela, "qc", "sourcedata_support_score.csv"))
+
+p_support_trimer_hela <- ggplot(trimers_hela_df, aes(x = support_mean)) +
+  geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", linewidth = 0.3) +
+  labs(title = "HeLa trimer mean support score", x = "Mean support score (3 edges)", y = "Number of trimers") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_trimer_hela, "qc", "histogram_support_score.pdf"), p_support_trimer_hela, width = 4, height = 3, device = cairo_pdf)
+
+# --- Plot 6: Scores by validation status ---
+scores_by_known_hela <- trimers_hela_df %>%
+  dplyr::mutate(status = ifelse(in_known_complex, "Known", "Novel")) %>%
+  dplyr::select(trimer_id, status, mean_AFMprob, mean_ipTM, support_mean)
+readr::write_csv(scores_by_known_hela, file.path(out_dir_trimer_hela, "qc", "sourcedata_scores_by_known.csv"))
+
+p_scores_known_hela <- ggplot(scores_by_known_hela %>% tidyr::pivot_longer(c(mean_AFMprob, mean_ipTM, support_mean), names_to = "metric", values_to = "value"),
+                               aes(x = status, y = value, fill = status)) +
+  geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+  facet_wrap(~metric, scales = "free_y") +
+  scale_fill_manual(values = c("Known" = "grey40", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "HeLa trimer scores by validation status", x = NULL, y = "Score") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        strip.background = element_rect(fill = "white", color = "black"))
+ggsave(file.path(out_dir_trimer_hela, "qc", "boxplot_scores_by_known.pdf"), p_scores_known_hela, width = 4, height = 3.5, device = cairo_pdf)
+
+# --- Plot 7: Organelle x validation heatmap ---
+message("Organelle x validation heatmap...")
+
+if (exists("binary_matrix") && nrow(binary_matrix) > 0) {
+  organelle_tags_trim <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+  gene_to_org_trim    <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags_trim))
+
+  .get_majority_organelle <- function(genes, gene_to_org, org_tags) {
+    all_orgs <- unlist(lapply(genes, function(g) {
+      row <- gene_to_org %>% dplyr::filter(Genes == g)
+      if (nrow(row) == 0) return(character(0))
+      org_tags[as.logical(row[1, org_tags])]
+    }))
+    if (length(all_orgs) == 0) return(NA_character_)
+    names(sort(table(all_orgs), decreasing = TRUE))[1]
+  }
+
+  trimers_hela_df <- trimers_hela_df %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(majority_organelle = .get_majority_organelle(c(Gene1, Gene2, Gene3), gene_to_org_trim, organelle_tags_trim)) %>%
+    dplyr::ungroup()
+
+  trimers_hela_df$shared_organelle <- trimers_hela_df$majority_organelle
+  message("  Trimers with organelle annotation: ", sum(!is.na(trimers_hela_df$majority_organelle)), " / ", nrow(trimers_hela_df))
+
+  org_val_mat_hela <- trimers_hela_df %>%
+    dplyr::filter(!is.na(majority_organelle)) %>%
+    dplyr::group_by(majority_organelle) %>%
+    dplyr::summarise(n_total = dplyr::n(), PDB_exact = sum(all_edges_PDB_exact), PDB_any = sum(all_edges_PDB),
+                     CORUM = sum(all_edges_CORUM), ComplexPortal = sum(all_edges_ComplexPortal),
+                     STRING = sum(all_edges_STRING), BIOGRID = sum(all_edges_BIOGRID), .groups = "drop") %>%
+    dplyr::filter(n_total >= 5)
+
+  readr::write_csv(org_val_mat_hela, file.path(out_dir_trimer_hela, "qc", "sourcedata_heatmap_organelle_validation.csv"))
+
+  if (nrow(org_val_mat_hela) > 1) {
+    mat_h <- org_val_mat_hela %>%
+      dplyr::select(majority_organelle, PDB_exact, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+      tibble::column_to_rownames("majority_organelle") %>% as.matrix()
+
+    pheatmap::pheatmap(mat_h, display_numbers = FALSE, color = colorRampPalette(c("white", "dodgerblue3"))(50),
+      main = "HeLa trimers: organelle x validation (counts)", fontsize = 6, border_color = NA,
+      cellheight = 12, cellwidth = 12, cluster_rows = TRUE, cluster_cols = FALSE,
+      filename = file.path(out_dir_trimer_hela, "qc", "heatmap_organelle_validation.pdf"),
+      width = 5, height = max(4, nrow(mat_h) * 0.25))
+
+    mat_pct_h <- sweep(mat_h, 1, org_val_mat_hela$n_total, "/") * 100
+    pheatmap::pheatmap(mat_pct_h, display_numbers = TRUE, number_format = "%.0f",
+      color = colorRampPalette(c("white", "darkgreen"))(50),
+      main = "HeLa trimers: organelle x validation (% of trimers)", fontsize = 6, fontsize_number = 5,
+      border_color = NA, cellheight = 12, cellwidth = 12, cluster_rows = TRUE, cluster_cols = FALSE,
+      filename = file.path(out_dir_trimer_hela, "qc", "heatmap_organelle_validation_pct.pdf"),
+      width = 5, height = max(4, nrow(mat_pct_h) * 0.25))
+  }
+} else {
+  trimers_hela_df$shared_organelle  <- NA_character_
+  trimers_hela_df$majority_organelle <- NA_character_
+}
+
+# --- Save tables ---
+trimer_stats_hela <- data.frame(
+  metric = c("total_trimers", "PDB_exact_all3", "CORUM_all3", "ComplexPortal_all3",
+             "CORUM_strict", "ComplexPortal_strict", "in_known_complex", "novel",
+             "median_support_mean", "median_mean_AFMprob"),
+  value  = c(nrow(trimers_hela_df), sum(trimers_hela_df$all_edges_PDB_exact), sum(trimers_hela_df$all_edges_CORUM),
+             sum(trimers_hela_df$all_edges_ComplexPortal), sum(trimers_hela_df$corum_strict_match),
+             sum(trimers_hela_df$cp_strict_match), sum(trimers_hela_df$in_known_complex),
+             sum(!trimers_hela_df$in_known_complex_relaxed),
+             round(median(trimers_hela_df$support_mean, na.rm = TRUE), 2),
+             round(median(trimers_hela_df$mean_AFMprob, na.rm = TRUE), 3))
+)
+readr::write_csv(trimer_stats_hela, file.path(out_dir_trimer_hela, "tables", "trimer_stats.csv"))
+
+trimer_evidence_hela <- trimers_hela_df %>%
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3, Protein1, Protein2, Protein3,
+                edge1_key, edge2_key, edge3_key,
+                mean_AFMprob, min_AFMprob, mean_RFprob, min_RFprob, mean_ipTM, min_ipTM, mean_SPOC, min_SPOC,
+                support_total, support_mean,
+                n_edges_PDB, n_edges_PDB_exact, n_edges_CORUM, n_edges_ComplexPortal, n_edges_STRING, n_edges_BIOGRID,
+                all_edges_PDB_exact, all_edges_CORUM, all_edges_ComplexPortal,
+                validation_tier, shared_organelle,
+                cp_strict_match, cp_relaxed_match, cp_matched_id,
+                corum_strict_match, corum_relaxed_match, corum_matched_id, corum_matched_name,
+                in_known_complex, in_known_complex_relaxed)
+readr::write_csv(trimer_evidence_hela, file.path(out_dir_trimer_hela, "tables", "trimer_evidence.csv"))
+
+message("\nModule 3 complete. ", nrow(trimer_evidence_hela), " trimers saved")
+message("  Known complex (strict): ", sum(trimer_evidence_hela$in_known_complex))
+message("  Novel: ", sum(!trimer_evidence_hela$in_known_complex_relaxed))
+```
+
+
 
 
 # =================================================
