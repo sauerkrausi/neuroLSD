@@ -23132,28 +23132,26 @@ p_ko_qc <- ko_heatmap_data %>%
 ggsave(file.path(out_dir_hela_preproc, "qc", "ko_target_knockdown.pdf"), p_ko_qc, width = 8, height = 3, device = cairo_pdf)
 
 
+
+
 # --- Plot 3a: Within-batch control replicate correlation heatmap ---
 ctrl_wide_by_batch <- hela_long %>%
   dplyr::filter(is_control, !is.na(log2_intensity)) %>%
   dplyr::select(Genes, sample, batch, log2_intensity) %>%
-  tidyr::pivot_wider(names_from = sample, values_from = log2_intensity)
+  tidyr::pivot_wider(names_from = sample, values_from = log2_intensity, values_fn = mean)
 
 # Compute per-batch correlation matrices and flatten to long for ggplot
 ctrl_cor_long <- ctrl_wide_by_batch %>%
   dplyr::group_by(batch) %>%
   dplyr::group_modify(~ {
-    mat <- .x %>% dplyr::select(where(~ sum(!is.na(.)) > 10))
+    mat <- .x %>% dplyr::select(where(is.numeric)) %>% dplyr::select(where(~ sum(!is.na(.)) > 10))
     if (ncol(mat) < 2) return(dplyr::tibble())
     cor_mat <- cor(mat, use = "pairwise.complete.obs")
     as.data.frame(cor_mat) %>%
       tibble::rownames_to_column("sample_x") %>%
       tidyr::pivot_longer(-sample_x, names_to = "sample_y", values_to = "correlation")
   }) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(
-    sample_x = sub("LFQ\\.intensity\\.1_", "", sample_x),
-    sample_y = sub("LFQ\\.intensity\\.1_", "", sample_y)
-  )
+  dplyr::ungroup()
 
 readr::write_csv(ctrl_cor_long, file.path(out_dir_hela_preproc, "qc", "sourcedata_ctrl_replicate_correlation.csv"))
 
@@ -24695,6 +24693,8 @@ message("  - tables/multimer/: Trimer and complex analysis results")
 
 
 
+
+#OLD
 # PPI vulnerability matches between HeLa <=> Neuron
 ```{r}
 # =========================================================================
