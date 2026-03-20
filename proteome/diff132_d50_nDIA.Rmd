@@ -24208,6 +24208,460 @@ if (nrow(tetramers_hela_df) > 0) {
 ```
 
 
+# Module 5: Complex Growing from Trimers and Tetramers (HeLa)
+Grows complexes iteratively: seed -> add neighbors connected to >=2 members
+Merges overlapping complexes at 80% threshold, validates against CORUM/ComplexPortal
+
+
+## Chunk 1: Build Adjacency and Growth Functions
+```{r hela_m5_complex_setup}
+
+out_dir_complex_hela <- file.path(out_dir_hela_ppi, "complexes")
+dir.create(file.path(out_dir_complex_hela, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_complex_hela, "qc"),     recursive = TRUE, showWarnings = FALSE)
+
+message("=== Complex Growing from HeLa Trimers/Tetramers ===")
+
+# --- Adjacency list from baseline ---
+adj_list_hela <- baseline_ppi_hela %>%
+  dplyr::select(Gene1, Gene2) %>%
+  {
+    edges <- rbind(data.frame(from = .$Gene1, to = .$Gene2, stringsAsFactors = FALSE),
+                   data.frame(from = .$Gene2, to = .$Gene1, stringsAsFactors = FALSE))
+    split(edges$to, edges$from)
+  }
+
+message("Adjacency list: ", length(adj_list_hela), " nodes")
+
+# --- Compartment groups (HeLa -- no SynapticGeneral) ---
+compartment_groups_hela <- list(
+  Nucleus   = c("Nucleus"),
+  ER        = c("ER"),
+  Golgi     = c("Golgi", "ER", "EarlyEndosome"),
+  Mito      = c("Mito", "MitoMatrix", "MitoMIM", "MitoMOM", "MitoIMS", "OXPHOS", "mtComplexI"),
+  Endosome  = c("Endo_iN_curated_Hundley", "EarlyEndosome", "RecyclingEndosome", "Lysosome", "vATPase"),
+  Autophagy = c("Autophagy", "Lysosome", "Endo_iN_curated_Hundley", "vATPase")
+)
+
+compatible_multi_groups_hela <- c("ER", "Golgi", "Lysosome", "Endosome", "Autophagy")
+
+tag_to_groups_hela <- list()
+for (.grp in names(compartment_groups_hela))
+  for (.tg in compartment_groups_hela[[.grp]])
+    tag_to_groups_hela[[.tg]] <- unique(c(tag_to_groups_hela[[.tg]], .grp))
+
+# --- Build gene_to_org from binary_matrix ---
+organelle_tags_cx <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+gene_to_org_cx    <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags_cx))
+
+.present_cx_tags <- intersect(unique(unlist(compartment_groups_hela)), colnames(gene_to_org_cx))
+
+protein_allowed_hela_df <- gene_to_org_cx %>%
+  dplyr::select(Genes, dplyr::all_of(.present_cx_tags)) %>%
+  tidyr::pivot_longer(-Genes, names_to = "tag", values_to = "present") %>%
+  dplyr::filter(!is.na(present) & as.logical(present)) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(groups = list(unique(unlist(purrr::map(tag, ~tag_to_groups_hela[[.x]])))), .groups = "drop") %>%
+  dplyr::rowwise() %>%
+  dplyr::filter(length(groups) == 1 | all(groups %in% compatible_multi_groups_hela)) %>%
+  dplyr::mutate(allowed = list(if (all(groups %in% compatible_multi_groups_hela)) unlist(groups) else groups[[1]])) %>%
+  dplyr::ungroup()
+
+protein_allowed_hela <- setNames(protein_allowed_hela_df$allowed, protein_allowed_hela_df$Genes)
+message("Compartment-constrained proteins: ", length(protein_allowed_hela))
+
+# --- Growth functions ---
+.get_seed_allowed_hela <- function(seed_members) {
+  all_grps <- unlist(purrr::map(seed_members, ~protein_allowed_hela[[.x]]))
+  if (length(all_grps) == 0) return(NULL)
+  unique_grps <- unique(all_grps)
+  if (all(unique_grps %in% compatible_multi_groups_hela)) return(unique_grps)
+  names(sort(table(all_grps), decreasing = TRUE))[1]
+}
+
+.grow_complex_hela <- function(members, adj_list, min_edges = 2, allowed_groups = NULL) {
+  all_neighbors <- unlist(adj_list[members])
+  if (is.null(all_neighbors) || length(all_neighbors) == 0) return(character(0))
+  neighbor_counts <- table(all_neighbors)
+  candidates <- names(neighbor_counts)[neighbor_counts >= min_edges]
+  candidates <- setdiff(candidates, members)
+  if (!is.null(allowed_groups) && length(candidates) > 0) {
+    candidates <- candidates[vapply(candidates, function(cand) {
+      cg <- protein_allowed_hela[[cand]]
+      !is.null(cg) && any(cg %in% allowed_groups)
+    }, logical(1))]
+  }
+  return(candidates)
+}
+
+.grow_complex_iterative_hela <- function(seed_members, adj_list, min_edges = 2, max_size = 100, allowed_groups = NULL) {
+  current <- seed_members
+  repeat {
+    if (length(current) >= max_size) break
+    candidates <- .grow_complex_hela(current, adj_list, min_edges, allowed_groups)
+    if (length(candidates) == 0) break
+    current <- c(current, candidates)
+  }
+  return(sort(current))
+}
+
+.overlap_fraction <- function(a, b) length(intersect(a, b)) / min(length(a), length(b))
+```
+
+
+## Chunk 2: Grow Complexes from Seeds
+```{r hela_m5_complex_growing}
+
+# --- Grow from trimers ---
+message("Growing complexes from trimers...")
+
+trimer_seeds_hela <- trimer_evidence_hela %>%
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(seed_members = list(c(Gene1, Gene2, Gene3))) %>%
+  dplyr::ungroup()
+
+grown_from_trimers_hela <- trimer_seeds_hela %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    seed_allowed  = list(.get_seed_allowed_hela(seed_members)),
+    grown_members = list(.grow_complex_iterative_hela(seed_members, adj_list_hela, min_edges = 2, allowed_groups = seed_allowed)),
+    grown_size    = length(grown_members),
+    complex_id    = paste(sort(grown_members), collapse = "::")
+  ) %>%
+  dplyr::ungroup()
+
+message("  Trimers grown: ", nrow(grown_from_trimers_hela))
+message("  Unique complexes from trimers: ", length(unique(grown_from_trimers_hela$complex_id)))
+
+# --- Grow from tetramers ---
+message("Growing complexes from tetramers...")
+
+if (nrow(tetramer_evidence_hela) > 0) {
+  tetramer_seeds_hela <- tetramer_evidence_hela %>%
+    dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(seed_members = list(c(Gene1, Gene2, Gene3, Gene4))) %>%
+    dplyr::ungroup()
+
+  grown_from_tetramers_hela <- tetramer_seeds_hela %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      seed_allowed  = list(.get_seed_allowed_hela(seed_members)),
+      grown_members = list(.grow_complex_iterative_hela(seed_members, adj_list_hela, min_edges = 2, allowed_groups = seed_allowed)),
+      grown_size    = length(grown_members),
+      complex_id    = paste(sort(grown_members), collapse = "::")
+    ) %>%
+    dplyr::ungroup()
+
+  message("  Tetramers grown: ", nrow(grown_from_tetramers_hela))
+  message("  Unique complexes from tetramers: ", length(unique(grown_from_tetramers_hela$complex_id)))
+} else {
+  grown_from_tetramers_hela <- data.frame(
+    tetramer_id = character(), grown_members = I(list()), grown_size = integer(),
+    complex_id = character(), stringsAsFactors = FALSE
+  )
+}
+
+# --- Internal QC: trimer+1 vs tetramer ---
+trimer_plus_one_hela <- grown_from_trimers_hela %>% dplyr::filter(grown_size == 4)
+message("Trimers that grew to size 4: ", nrow(trimer_plus_one_hela))
+
+if (nrow(tetramer_evidence_hela) > 0 && nrow(trimer_plus_one_hela) > 0) {
+  tet_ids_hela <- tetramer_evidence_hela %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(complex_id = paste(sort(c(Gene1, Gene2, Gene3, Gene4)), collapse = "::")) %>%
+    dplyr::pull(complex_id)
+  overlap_hela <- sum(trimer_plus_one_hela$complex_id %in% tet_ids_hela)
+  message("  Trimer+1 matching de novo tetramers: ", overlap_hela, " / ", nrow(trimer_plus_one_hela))
+  message("  Match rate: ", round(100 * overlap_hela / nrow(trimer_plus_one_hela), 1), "%")
+}
+
+# --- Combine ---
+all_grown_hela <- dplyr::bind_rows(
+  grown_from_trimers_hela %>% dplyr::select(complex_id, grown_members, grown_size) %>% dplyr::mutate(seed_type = "trimer"),
+  grown_from_tetramers_hela %>% dplyr::select(complex_id, grown_members, grown_size) %>% dplyr::mutate(seed_type = "tetramer")
+)
+
+complex_seed_counts_hela <- all_grown_hela %>%
+  dplyr::group_by(complex_id) %>%
+  dplyr::summarise(n_trimer_seeds = sum(seed_type == "trimer"), n_tetramer_seeds = sum(seed_type == "tetramer"),
+                   n_total_seeds = dplyr::n(), .groups = "drop")
+
+unique_complexes_hela <- all_grown_hela %>%
+  dplyr::distinct(complex_id, .keep_all = TRUE) %>%
+  dplyr::left_join(complex_seed_counts_hela, by = "complex_id")
+
+message("Unique complexes (before merging): ", nrow(unique_complexes_hela))
+```
+
+
+## Chunk 3: Merge Overlapping Complexes
+```{r hela_m5_complex_merging}
+
+message("Merging overlapping complexes (80% threshold)...")
+
+unique_complexes_hela <- unique_complexes_hela %>% dplyr::arrange(dplyr::desc(grown_size))
+
+merged_complexes_hela <- list()
+used <- rep(FALSE, nrow(unique_complexes_hela))
+
+for (i in seq_len(nrow(unique_complexes_hela))) {
+  if (used[i]) next
+  current      <- unique_complexes_hela$grown_members[[i]]
+  current_seeds <- c(unique_complexes_hela$n_trimer_seeds[i], unique_complexes_hela$n_tetramer_seeds[i])
+
+  for (j in seq_len(nrow(unique_complexes_hela))) {
+    if (i == j || used[j]) next
+    other   <- unique_complexes_hela$grown_members[[j]]
+    overlap <- .overlap_fraction(current, other)
+    if (overlap >= 0.8) {
+      current       <- union(current, other)
+      current_seeds <- current_seeds + c(unique_complexes_hela$n_trimer_seeds[j], unique_complexes_hela$n_tetramer_seeds[j])
+      used[j] <- TRUE
+    }
+  }
+
+  merged_complexes_hela[[length(merged_complexes_hela) + 1]] <- list(
+    members = sort(current), size = length(current),
+    n_trimer_seeds = current_seeds[1], n_tetramer_seeds = current_seeds[2]
+  )
+  used[i] <- TRUE
+}
+
+message("Complexes after merging: ", length(merged_complexes_hela))
+
+complex_evidence_hela <- dplyr::bind_rows(lapply(seq_along(merged_complexes_hela), function(i) {
+  data.frame(complex_id = paste(merged_complexes_hela[[i]]$members, collapse = "::"),
+             complex_size = merged_complexes_hela[[i]]$size,
+             n_trimer_seeds = merged_complexes_hela[[i]]$n_trimer_seeds,
+             n_tetramer_seeds = merged_complexes_hela[[i]]$n_tetramer_seeds,
+             members = I(list(merged_complexes_hela[[i]]$members)), stringsAsFactors = FALSE)
+})) %>%
+  dplyr::mutate(complex_idx = dplyr::row_number()) %>%
+  dplyr::select(complex_idx, complex_id, complex_size, n_trimer_seeds, n_tetramer_seeds, members)
+
+message("Final complex count: ", nrow(complex_evidence_hela))
+print(complex_evidence_hela %>% dplyr::count(complex_size, name = "n_complexes") %>% dplyr::arrange(complex_size))
+```
+
+
+## Chunk 4: Support Scores and Validation
+```{r hela_m5_complex_scoring}
+
+message("Computing support scores for complexes...")
+
+.make_undirected_key <- function(a, b) ifelse(a <= b, paste(a, b, sep = "::"), paste(b, a, sep = "::"))
+
+support_lookup_hela <- baseline_ppi_hela %>%
+  dplyr::mutate(edge_key = .make_undirected_key(Gene1, Gene2)) %>%
+  dplyr::select(edge_key, support_score, filter_BIOGRID, filter_STRING, filter_PDB,
+                filter_ComplexPortal, filter_CORUM, corum_complex_ids, corum_complex_names)
+
+.compute_complex_support_hela <- function(members, support_lookup) {
+  if (length(members) < 2) return(list(n_edges = 0, support_total = 0, support_mean = NA_real_,
+                                        n_with_PDB_exact = 0, n_with_PDB_homolog = 0))
+  pairs     <- t(combn(sort(unique(members)), 2))
+  edge_keys <- apply(pairs, 1, function(p) .make_undirected_key(p[1], p[2]))
+  matched   <- support_lookup %>% dplyr::filter(edge_key %in% edge_keys)
+  list(
+    n_edges            = nrow(matched),
+    n_edges_possible   = length(edge_keys),
+    support_total      = sum(matched$support_score, na.rm = TRUE),
+    support_mean       = if (nrow(matched) > 0) round(mean(matched$support_score, na.rm = TRUE), 2) else NA_real_,
+    n_in_CORUM         = sum(matched$filter_CORUM == "present", na.rm = TRUE),
+    n_with_PDB         = sum(matched$filter_PDB != "none", na.rm = TRUE),
+    n_with_PDB_exact   = sum(matched$filter_PDB == "exact", na.rm = TRUE),
+    n_with_PDB_homolog = sum(matched$filter_PDB == "homolog", na.rm = TRUE),
+    n_in_ComplexPortal = sum(matched$filter_ComplexPortal != "none", na.rm = TRUE)
+  )
+}
+
+complex_evidence_hela <- complex_evidence_hela %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    support_info             = list(.compute_complex_support_hela(members, support_lookup_hela)),
+    n_edges_in_baseline      = support_info$n_edges,
+    n_edges_possible         = support_info$n_edges_possible,
+    edge_coverage            = round(n_edges_in_baseline / n_edges_possible, 2),
+    complex_support_total    = support_info$support_total,
+    complex_support_mean     = support_info$support_mean,
+    n_edges_in_CORUM         = support_info$n_in_CORUM,
+    n_edges_with_PDB         = support_info$n_with_PDB,
+    n_edges_with_PDB_exact   = support_info$n_with_PDB_exact,
+    n_edges_with_PDB_homolog = support_info$n_with_PDB_homolog,
+    n_edges_in_ComplexPortal = support_info$n_in_ComplexPortal,
+    pct_edges_CORUM          = round(100 * n_edges_in_CORUM / n_edges_in_baseline, 1),
+    pct_edges_PDB            = round(100 * n_edges_with_PDB / n_edges_in_baseline, 1),
+    pct_edges_PDB_exact      = round(100 * n_edges_with_PDB_exact / n_edges_in_baseline, 1),
+    has_PDB_exact_majority   = (n_edges_with_PDB_exact / n_edges_in_baseline) >= 0.5,
+    has_PDB_any_majority     = (n_edges_with_PDB / n_edges_in_baseline) >= 0.5
+  ) %>%
+  dplyr::select(-support_info) %>%
+  dplyr::ungroup()
+
+# --- ComplexPortal validation ---
+message("Validating complexes against ComplexPortal...")
+
+if (exists("complex_to_proteins") && exists("uniprot_lookup_hela")) {
+  .check_complex_match_hela <- function(members, complex_to_proteins, uniprot_lookup) {
+    uniprots <- uniprot_lookup$uniprot[match(members, uniprot_lookup$gene)]
+    uniprots <- uniprots[!is.na(uniprots)]
+    if (length(uniprots) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_character_, pct_overlap = 0))
+    best_strict <- FALSE; best_relaxed <- FALSE; best_id <- NA_character_; best_pct <- 0
+    for (i in seq_len(nrow(complex_to_proteins))) {
+      cp_prots  <- complex_to_proteins$proteins[[i]]
+      n_overlap <- sum(uniprots %in% cp_prots)
+      pct       <- n_overlap / length(uniprots)
+      if (n_overlap == length(uniprots) && !best_strict) { best_strict <- TRUE; best_id <- complex_to_proteins$complex_id[i]; best_pct <- pct }
+      if (pct >= 0.5 && !best_relaxed) { best_relaxed <- TRUE; if (is.na(best_id)) best_id <- complex_to_proteins$complex_id[i]; best_pct <- max(best_pct, pct) }
+    }
+    list(strict = best_strict, relaxed = best_relaxed, complex_id = best_id, pct_overlap = round(best_pct, 2))
+  }
+
+  cp_complex_matches_hela <- purrr::map(complex_evidence_hela$members,
+                                         ~.check_complex_match_hela(.x, complex_to_proteins, uniprot_lookup_hela))
+  complex_evidence_hela$cp_strict_match  <- purrr::map_lgl(cp_complex_matches_hela, "strict")
+  complex_evidence_hela$cp_relaxed_match <- purrr::map_lgl(cp_complex_matches_hela, "relaxed")
+  complex_evidence_hela$cp_matched_id    <- purrr::map_chr(cp_complex_matches_hela, "complex_id")
+  complex_evidence_hela$cp_pct_overlap   <- purrr::map_dbl(cp_complex_matches_hela, "pct_overlap")
+  message("  CP strict: ", sum(complex_evidence_hela$cp_strict_match))
+  message("  CP relaxed (>=50%): ", sum(complex_evidence_hela$cp_relaxed_match))
+} else {
+  complex_evidence_hela$cp_strict_match  <- FALSE
+  complex_evidence_hela$cp_relaxed_match <- FALSE
+  complex_evidence_hela$cp_matched_id    <- NA_character_
+  complex_evidence_hela$cp_pct_overlap   <- NA_real_
+}
+
+# --- CORUM validation ---
+message("Validating complexes against CORUM...")
+
+if (!is.null(corum_complex_members) && nrow(corum_complex_members) > 0) {
+  .check_corum_complex_match_hela <- function(members, corum_members) {
+    members_clean <- members[!is.na(members)]
+    if (length(members_clean) == 0) return(list(strict = FALSE, relaxed = FALSE, complex_id = NA_integer_, complex_name = NA_character_, pct_overlap = 0))
+    best_strict <- FALSE; best_relaxed <- FALSE; best_id <- NA_integer_; best_name <- NA_character_; best_pct <- 0
+    for (i in seq_len(nrow(corum_members))) {
+      n_overlap <- sum(members_clean %in% corum_members$proteins[[i]])
+      pct       <- n_overlap / length(members_clean)
+      if (n_overlap == length(members_clean) && !best_strict) { best_strict <- TRUE; best_id <- corum_members$complex_id[i]; best_name <- corum_members$complex_name[i]; best_pct <- pct }
+      if (pct >= 0.5 && !best_relaxed) { best_relaxed <- TRUE; if (is.na(best_id)) { best_id <- corum_members$complex_id[i]; best_name <- corum_members$complex_name[i] }; best_pct <- max(best_pct, pct) }
+    }
+    list(strict = best_strict, relaxed = best_relaxed, complex_id = best_id, complex_name = best_name, pct_overlap = round(best_pct, 2))
+  }
+
+  corum_complex_matches_hela <- purrr::map(complex_evidence_hela$members,
+                                            ~.check_corum_complex_match_hela(.x, corum_complex_members))
+  complex_evidence_hela$corum_strict_match  <- purrr::map_lgl(corum_complex_matches_hela, "strict")
+  complex_evidence_hela$corum_relaxed_match <- purrr::map_lgl(corum_complex_matches_hela, "relaxed")
+  complex_evidence_hela$corum_matched_id    <- purrr::map_int(corum_complex_matches_hela, "complex_id")
+  complex_evidence_hela$corum_matched_name  <- purrr::map_chr(corum_complex_matches_hela, "complex_name")
+  complex_evidence_hela$corum_pct_overlap   <- purrr::map_dbl(corum_complex_matches_hela, "pct_overlap")
+  message("  CORUM strict: ", sum(complex_evidence_hela$corum_strict_match))
+  message("  CORUM relaxed (>=50%): ", sum(complex_evidence_hela$corum_relaxed_match))
+} else {
+  complex_evidence_hela$corum_strict_match  <- FALSE
+  complex_evidence_hela$corum_relaxed_match <- FALSE
+  complex_evidence_hela$corum_matched_id    <- NA_integer_
+  complex_evidence_hela$corum_matched_name  <- NA_character_
+  complex_evidence_hela$corum_pct_overlap   <- NA_real_
+}
+
+complex_evidence_hela <- complex_evidence_hela %>%
+  dplyr::mutate(
+    in_known_complex         = cp_strict_match | corum_strict_match | has_PDB_exact_majority,
+    in_known_complex_relaxed = cp_relaxed_match | corum_relaxed_match | has_PDB_any_majority
+  )
+
+message("\nComplexes in known complex (strict): ", sum(complex_evidence_hela$in_known_complex))
+message("Complexes in known complex (relaxed): ", sum(complex_evidence_hela$in_known_complex_relaxed))
+```
+
+
+## Chunk 5: QC Plots and Save
+```{r hela_m5_complex_qc}
+
+# --- Plot 1: Complex size distribution ---
+size_dist_hela <- complex_evidence_hela %>%
+  dplyr::count(complex_size, name = "n_complexes") %>%
+  dplyr::arrange(complex_size)
+readr::write_csv(size_dist_hela, file.path(out_dir_complex_hela, "qc", "sourcedata_size_distribution.csv"))
+
+p_size_hela <- ggplot(size_dist_hela, aes(x = factor(complex_size), y = n_complexes)) +
+  geom_col(fill = "steelblue", color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_complexes), vjust = -0.3, size = 2) +
+  labs(title = "HeLa complex size distribution", x = "Complex size (proteins)", y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_complex_hela, "qc", "barplot_size_distribution.pdf"), p_size_hela, width = 5, height = 3, device = cairo_pdf)
+
+# --- Plot 2: Known vs novel ---
+known_cx_hela <- data.frame(
+  category = c("Known (strict)", "Known (relaxed only)", "Novel"),
+  n = c(sum(complex_evidence_hela$in_known_complex),
+        sum(complex_evidence_hela$in_known_complex_relaxed & !complex_evidence_hela$in_known_complex),
+        sum(!complex_evidence_hela$in_known_complex_relaxed))
+) %>% dplyr::mutate(pct = round(100 * n / sum(n), 1))
+readr::write_csv(known_cx_hela, file.path(out_dir_complex_hela, "qc", "sourcedata_known_vs_novel.csv"))
+
+p_known_cx_hela <- ggplot(known_cx_hela, aes(x = category, y = n, fill = category)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = paste0(scales::comma(n), " (", pct, "%)")), vjust = -0.3, size = 2) +
+  scale_fill_manual(values = c("Known (strict)" = "grey40", "Known (relaxed only)" = "grey75", "Novel" = "#E41A1C"), guide = "none") +
+  labs(title = "HeLa complexes: known vs novel", x = NULL, y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_complex_hela, "qc", "barplot_known_vs_novel.pdf"), p_known_cx_hela, width = 2.5, height = 4, device = cairo_pdf)
+
+# --- Plot 3: Edge coverage distribution ---
+readr::write_csv(complex_evidence_hela %>% dplyr::select(complex_idx, complex_size, edge_coverage),
+                 file.path(out_dir_complex_hela, "qc", "sourcedata_edge_coverage.csv"))
+
+p_edge_cov_hela <- ggplot(complex_evidence_hela, aes(x = edge_coverage)) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "black", linewidth = 0.3) +
+  labs(title = "HeLa complex edge coverage", x = "Fraction of edges in baseline", y = "Number of complexes") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_complex_hela, "qc", "histogram_edge_coverage.pdf"), p_edge_cov_hela, width = 4, height = 3, device = cairo_pdf)
+
+# --- Plot 4: Support score by complex size ---
+readr::write_csv(complex_evidence_hela %>% dplyr::select(complex_idx, complex_size, complex_support_mean),
+                 file.path(out_dir_complex_hela, "qc", "sourcedata_support_by_size.csv"))
+
+p_supp_size_hela <- ggplot(complex_evidence_hela, aes(x = factor(complex_size), y = complex_support_mean)) +
+  geom_boxplot(fill = "steelblue", outlier.size = 0.3, outlier.alpha = 0.3) +
+  labs(title = "HeLa complex support score by size", x = "Complex size", y = "Mean support score") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_complex_hela, "qc", "boxplot_support_by_size.pdf"), p_supp_size_hela, width = 5, height = 3, device = cairo_pdf)
+
+# --- Save tables ---
+complex_out_hela <- complex_evidence_hela %>%
+  dplyr::mutate(members_str = purrr::map_chr(members, ~paste(.x, collapse = ";"))) %>%
+  dplyr::select(-members)
+
+readr::write_csv(complex_out_hela, file.path(out_dir_complex_hela, "tables", "complex_evidence.csv"))
+
+complex_stats_hela <- data.frame(
+  metric = c("total_complexes", "median_size", "max_size", "known_strict", "known_relaxed", "novel",
+             "mean_edge_coverage", "mean_support_mean"),
+  value  = c(nrow(complex_evidence_hela), median(complex_evidence_hela$complex_size), max(complex_evidence_hela$complex_size),
+             sum(complex_evidence_hela$in_known_complex), sum(complex_evidence_hela$in_known_complex_relaxed),
+             sum(!complex_evidence_hela$in_known_complex_relaxed),
+             round(mean(complex_evidence_hela$edge_coverage, na.rm = TRUE), 2),
+             round(mean(complex_evidence_hela$complex_support_mean, na.rm = TRUE), 2))
+)
+readr::write_csv(complex_stats_hela, file.path(out_dir_complex_hela, "tables", "complex_stats.csv"))
+
+message("\nModule 5 complete")
+message("  Total complexes  : ", nrow(complex_evidence_hela))
+message("  Median size      : ", median(complex_evidence_hela$complex_size))
+message("  Known (strict)   : ", sum(complex_evidence_hela$in_known_complex))
+message("  Novel            : ", sum(!complex_evidence_hela$in_known_complex_relaxed))
+```
+
+
 
 
 # =================================================
