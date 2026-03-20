@@ -23096,7 +23096,10 @@ p_ctrl_cv <- sd_sourcedata %>%
   #facet_wrap(~batch, ncol = 1) +
   labs(title = "Control log2 intensity SD per batch", x = "SD across control replicates", y = "Proteins", fill = "Batch") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA), 
+    legend.position = "right")
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "ctrl_variability_by_batch.pdf"), p_ctrl_cv, width = 4, height = 5, device = cairo_pdf)
 
@@ -23128,8 +23131,11 @@ p_ko_qc <- ko_heatmap_data %>%
   labs(title = "KO target protein QC", x = NULL, y = NULL, fill = "QC reason") +
   coord_fixed() +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
-        axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+    legend.position = "bottom")
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "ko_target_knockdown.pdf"), p_ko_qc, width = 8, height = 3, device = cairo_pdf)
 
@@ -23171,7 +23177,10 @@ p_rep_cor_hist <- ggplot(rep_corr_long, aes(x = correlation, fill = factor(batch
   #facet_wrap(~batch, ncol = 1) +
   labs(title = "Pairwise replicate correlation per batch", x = "Pearson r", y = "Count", fill = "Batch") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA), 
+    legend.position = "right")
 
 p_rep_cor_dens <- ggplot(rep_corr_long, aes(x = correlation, fill = factor(batch), color = factor(batch))) +
   geom_density(alpha = 0.5, linewidth = 0.3) +
@@ -23180,7 +23189,10 @@ p_rep_cor_dens <- ggplot(rep_corr_long, aes(x = correlation, fill = factor(batch
   scale_color_manual(values = batch_colors) +
   labs(title = "Pairwise replicate correlation distribution", x = "Pearson r", y = "Density", fill = "Batch", color = "Batch") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", fill = NA), 
+    legend.position = "right")
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "replicate_correlation_histogram.pdf"), p_rep_cor_hist, width = 4.5, height = 4, device = cairo_pdf)
 ggsave(file.path(out_dir_hela_preproc, "qc", "replicate_correlation_density.pdf"),   p_rep_cor_dens, width = 4.5, height = 4, device = cairo_pdf)
