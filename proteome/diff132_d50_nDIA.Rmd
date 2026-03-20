@@ -23322,9 +23322,16 @@ dir.create(file.path(out_dir_hela_base, "tables"), recursive = TRUE, showWarning
 
 # --- Plot 1: Database support barplot ---
 filter_counts_hela <- baseline_ppi_hela %>%
-  dplyr::summarise(ComplexPortal_strict = sum(filter_ComplexPortal == "strict", na.rm = TRUE),
-                   CORUM               = sum(filter_CORUM == "present", na.rm = TRUE),
-                   Convergent          = sum(in_both_predictions, na.rm = TRUE)) %>%
+  dplyr::summarise(
+    PDB_exact            = sum(filter_PDB == "exact", na.rm = TRUE),
+    PDB_homolog          = sum(filter_PDB == "homolog", na.rm = TRUE),
+    ComplexPortal_strict = sum(filter_ComplexPortal == "strict", na.rm = TRUE),
+    ComplexPortal_relaxed = sum(filter_ComplexPortal == "relaxed", na.rm = TRUE),
+    CORUM                = sum(filter_CORUM == "present", na.rm = TRUE),
+    STRING               = sum(filter_STRING == "present", na.rm = TRUE),
+    BIOGRID              = sum(filter_BIOGRID == "present", na.rm = TRUE),
+    Convergent           = sum(in_both_predictions, na.rm = TRUE)
+  ) %>%
   tidyr::pivot_longer(everything(), names_to = "database", values_to = "n_edges")
 
 readr::write_csv(filter_counts_hela, file.path(out_dir_hela_base, "qc", "sourcedata_database_support.csv"))
@@ -23410,11 +23417,205 @@ readr::write_csv(baseline_summary_hela, file.path(out_dir_hela_base, "tables", "
 readr::write_csv(baseline_ppi_hela,     file.path(out_dir_hela_base, "tables", "baseline_ppi_hela.csv"))
 readr::write_csv(shared_long_hela,      file.path(out_dir_hela_base, "tables", "shared_organelle_edges.csv"))
 
-message("Module 2 complete")
+message("Module 2 QC plots complete")
 message("  Control proteome (union)  : ", length(hela_ctrl_genes))
 message("  Baseline edges            : ", nrow(baseline_ppi_hela))
 message("  Unique proteins           : ", length(baseline_proteins_hela))
-message("  Output: baseline_ppi_hela ready for Module 3")
+
+
+
+# --- Score analysis by organelle ---
+score_cols_hela    <- c("RFprob", "AFMprob", "SPOC_score", "ipTM_max")
+existing_scores    <- intersect(score_cols_hela, colnames(baseline_ppi_hela))
+message("Score columns available: ", paste(existing_scores, collapse = ", "))
+
+organelle_colors_hela <- c(
+  "Mito" = "#E41A1C", "MitoIMS" = "#FC8D62", "MitoMatrix" = "#8DA0CB",
+  "MitoMIM" = "#E78AC3", "MitoMOM" = "#A6D854", "OXPHOS" = "#FFD92F",
+  "mtComplexI" = "#E5C494", "mtCI_AF" = "#B3B3B3",
+  "ER" = "#377EB8", "Golgi" = "#4DAF4A", "Lysosome" = "#984EA3",
+  "EndoLyso" = "#FF7F00", "EarlyEndosome" = "#FFFF33", "RecyclingEndosome" = "#A65628",
+  "Autophagy" = "#F781BF", "Autophagy_det" = "#999999",
+  "Nucleus" = "#B3B3B3", "Cytoplasm" = "#1B9E77", "vATPase" = "#66C2A5"
+)
+
+if (length(existing_scores) > 0 && nrow(shared_long_hela) > 0) {
+
+  min_edges_for_plot <- 50
+  tags_to_keep_hela <- shared_long_hela %>%
+    dplyr::count(tag) %>%
+    dplyr::filter(n >= min_edges_for_plot) %>%
+    dplyr::pull(tag)
+
+  message("Organelles with >= ", min_edges_for_plot, " edges: ", length(tags_to_keep_hela))
+
+  scores_org_hela <- baseline_ppi_hela %>%
+    dplyr::select(key, dplyr::all_of(existing_scores)) %>%
+    dplyr::left_join(shared_long_hela, by = "key") %>%
+    dplyr::filter(!is.na(tag), tag %in% tags_to_keep_hela)
+
+  org_colors_filtered <- organelle_colors_hela[names(organelle_colors_hela) %in% tags_to_keep_hela]
+
+  # --- Organelle score summary ---
+  organelle_score_summary_hela <- scores_org_hela %>%
+    dplyr::group_by(tag) %>%
+    dplyr::summarise(
+      n_edges    = dplyr::n(),
+      mean_RFprob  = if ("RFprob"      %in% existing_scores) mean(RFprob,      na.rm = TRUE) else NA_real_,
+      mean_AFMprob = if ("AFMprob"     %in% existing_scores) mean(AFMprob,     na.rm = TRUE) else NA_real_,
+      mean_SPOC    = if ("SPOC_score"  %in% existing_scores) mean(SPOC_score,  na.rm = TRUE) else NA_real_,
+      mean_ipTM    = if ("ipTM_max"    %in% existing_scores) mean(ipTM_max,    na.rm = TRUE) else NA_real_,
+      .groups = "drop"
+    )
+  readr::write_csv(organelle_score_summary_hela, file.path(out_dir_hela_base, "tables", "organelle_score_summary.csv"))
+
+  # --- Bubble plot: RFprob vs AFMprob ---
+  if (all(c("RFprob", "AFMprob") %in% existing_scores)) {
+    p_bubble_rf_afm_hela <- ggplot(organelle_score_summary_hela, aes(x = mean_AFMprob, y = mean_RFprob, size = n_edges, fill = tag)) +
+      geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+      scale_fill_manual(values = org_colors_filtered, guide = "none") +
+      scale_size_continuous(range = c(3, 12), name = "Edges") +
+      labs(title = "HeLa baseline: mean RFprob vs AFMprob by organelle", x = "Mean AFMprob", y = "Mean RFprob") +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            legend.position = "right", legend.key.size = unit(0.3, "cm"))
+    ggsave(file.path(out_dir_hela_base, "qc", "bubble_RFprob_vs_AFMprob_by_organelle.pdf"),
+           p_bubble_rf_afm_hela, width = 6, height = 5, device = cairo_pdf)
+  }
+
+  # --- Bubble plot: SPOC vs ipTM ---
+  if (all(c("SPOC_score", "ipTM_max") %in% existing_scores)) {
+    p_bubble_spoc_iptm_hela <- ggplot(organelle_score_summary_hela, aes(x = mean_ipTM, y = mean_SPOC, size = n_edges, fill = tag)) +
+      geom_point(shape = 21, color = "black", alpha = 0.8, stroke = 0.3) +
+      ggrepel::geom_text_repel(aes(label = tag), size = 2, max.overlaps = 20, seed = 42) +
+      scale_fill_manual(values = org_colors_filtered, guide = "none") +
+      scale_size_continuous(range = c(3, 12), name = "Edges") +
+      labs(title = "HeLa baseline: mean SPOC vs ipTM by organelle", x = "Mean ipTM_max", y = "Mean SPOC_score") +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            legend.position = "right", legend.key.size = unit(0.3, "cm"))
+    ggsave(file.path(out_dir_hela_base, "qc", "bubble_SPOC_vs_ipTM_by_organelle.pdf"),
+           p_bubble_spoc_iptm_hela, width = 6, height = 5, device = cairo_pdf)
+  }
+
+  # --- Density and boxplots per score ---
+  for (sc in existing_scores) {
+    df_sc <- scores_org_hela %>% dplyr::filter(!is.na(!!rlang::sym(sc)))
+    if (nrow(df_sc) == 0) next
+
+    readr::write_csv(df_sc %>% dplyr::select(key, tag, !!rlang::sym(sc)),
+                     file.path(out_dir_hela_base, "qc", paste0("sourcedata_density_", sc, ".csv")))
+
+    p_dens <- ggplot(df_sc, aes(x = !!rlang::sym(sc), fill = tag)) +
+      geom_density(alpha = 0.5) +
+      scale_fill_manual(values = org_colors_filtered, name = "Organelle") +
+      labs(title = paste("HeLa baseline:", sc, "by organelle"), x = sc, y = "Density") +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            legend.key.size = unit(0.25, "cm"))
+    ggsave(file.path(out_dir_hela_base, "qc", paste0("density_", sc, "_by_organelle.pdf")),
+           p_dens, width = 5, height = 4, device = cairo_pdf)
+
+    bp_summary <- df_sc %>%
+      dplyr::group_by(tag) %>%
+      dplyr::summarise(n = dplyr::n(), median = median(!!rlang::sym(sc), na.rm = TRUE),
+                       q1 = quantile(!!rlang::sym(sc), 0.25, na.rm = TRUE),
+                       q3 = quantile(!!rlang::sym(sc), 0.75, na.rm = TRUE), .groups = "drop")
+    readr::write_csv(bp_summary, file.path(out_dir_hela_base, "qc", paste0("sourcedata_boxplot_", sc, ".csv")))
+
+    tag_order_sc <- bp_summary %>% dplyr::arrange(dplyr::desc(median)) %>% dplyr::pull(tag)
+    df_sc$tag <- factor(df_sc$tag, levels = tag_order_sc)
+
+    p_box <- ggplot(df_sc, aes(x = tag, y = !!rlang::sym(sc), fill = tag)) +
+      geom_boxplot(outlier.size = 0.3, outlier.alpha = 0.3) +
+      scale_fill_manual(values = org_colors_filtered, guide = "none") +
+      labs(title = paste("HeLa baseline:", sc, "by organelle"), x = NULL, y = sc) +
+      theme_bw(base_size = 6) +
+      theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+            axis.text.x = element_text(angle = 45, hjust = 1))
+    ggsave(file.path(out_dir_hela_base, "qc", paste0("boxplot_", sc, "_by_organelle.pdf")),
+           p_box, width = 6, height = 4, device = cairo_pdf)
+  }
+  message("Score analysis by organelle complete")
+} else {
+  message("Skipping score analysis: no score columns or organelle annotations available")
+}
+
+message("Score analysis by organelle complete")
+
+
+# --- Heatmap: organelle x database validation ---
+if (nrow(shared_long_hela) > 0) {
+  edge_db_flags_hela <- baseline_ppi_hela %>%
+    dplyr::select(key, filter_PDB, filter_CORUM, filter_ComplexPortal, filter_STRING, filter_BIOGRID) %>%
+    dplyr::mutate(has_PDB = filter_PDB != "none", has_CORUM = filter_CORUM == "present",
+                  has_ComplexPortal = filter_ComplexPortal != "none",
+                  has_STRING = filter_STRING == "present", has_BIOGRID = filter_BIOGRID == "present")
+
+  org_db_combined_hela <- shared_long_hela %>% dplyr::left_join(edge_db_flags_hela, by = "key")
+
+  org_db_matrix_hela <- org_db_combined_hela %>%
+    dplyr::group_by(tag) %>%
+    dplyr::summarise(n_total = dplyr::n(), PDB = sum(has_PDB), CORUM = sum(has_CORUM),
+                     ComplexPortal = sum(has_ComplexPortal), STRING = sum(has_STRING),
+                     BIOGRID = sum(has_BIOGRID), .groups = "drop") %>%
+    dplyr::filter(n_total >= 30)
+
+  readr::write_csv(org_db_matrix_hela, file.path(out_dir_hela_base, "tables", "sourcedata_heatmap_organelle_database.csv"))
+
+  if (nrow(org_db_matrix_hela) > 1) {
+    mat_db <- org_db_matrix_hela %>%
+      dplyr::select(tag, PDB, CORUM, ComplexPortal, STRING, BIOGRID) %>%
+      tibble::column_to_rownames("tag") %>% as.matrix()
+
+    pheatmap::pheatmap(mat_db, display_numbers = TRUE, number_format = "%d",
+      color = colorRampPalette(c("white", "steelblue"))(50),
+      main = "HeLa baseline: organelle x database validation (counts)", fontsize = 6, fontsize_number = 5,
+      border_color = NA, cellheight = 12, cellwidth = 12, cluster_rows = TRUE, cluster_cols = FALSE,
+      filename = file.path(out_dir_hela_base, "qc", "heatmap_organelle_database_counts.pdf"),
+      width = 5, height = max(4, nrow(mat_db) * 0.25))
+
+    mat_db_pct <- sweep(mat_db, 1, org_db_matrix_hela$n_total, "/") * 100
+    pheatmap::pheatmap(mat_db_pct, display_numbers = TRUE, number_format = "%.0f",
+      color = colorRampPalette(c("white", "darkgreen"))(50),
+      main = "HeLa baseline: organelle x database validation (% of edges)", fontsize = 6, fontsize_number = 5,
+      border_color = NA, cellheight = 12, cellwidth = 12, cluster_rows = TRUE, cluster_cols = FALSE,
+      filename = file.path(out_dir_hela_base, "qc", "heatmap_organelle_database_pct.pdf"),
+      width = 5, height = max(4, nrow(mat_db_pct) * 0.25))
+
+    message("Heatmaps saved: organelle x database validation")
+  }
+
+  # --- Heatmap: support score distribution by organelle ---
+  support_org_mat_hela <- shared_long_hela %>%
+    dplyr::left_join(baseline_ppi_hela %>% dplyr::select(key, support_score), by = "key") %>%
+    dplyr::filter(!is.na(support_score)) %>%
+    dplyr::group_by(tag, support_score) %>%
+    dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+    dplyr::group_by(tag) %>%
+    dplyr::mutate(frac = n / sum(n)) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(tag, support_score, frac) %>%
+    tidyr::pivot_wider(names_from = support_score, values_from = frac, values_fill = 0) %>%
+    as.data.frame()
+
+  hm_mat_supp_hela <- as.matrix(support_org_mat_hela[, -1])
+  rownames(hm_mat_supp_hela) <- support_org_mat_hela$tag
+  hm_mat_supp_hela <- hm_mat_supp_hela[, order(as.integer(colnames(hm_mat_supp_hela))), drop = FALSE]
+
+  if (nrow(hm_mat_supp_hela) >= 2) {
+    pheatmap::pheatmap(hm_mat_supp_hela, color = colorRampPalette(c("white", "#2166AC"))(100),
+      cluster_rows = TRUE, cluster_cols = FALSE, clustering_method = "ward.D2",
+      display_numbers = FALSE, fontsize = 8, border_color = NA, cellwidth = 12, cellheight = 12,
+      main = "HeLa baseline: support score distribution by organelle (fraction of edges)",
+      filename = file.path(out_dir_hela_base, "qc", "heatmap_support_score_by_organelle.pdf"),
+      width = 5, height = max(4, nrow(hm_mat_supp_hela) * 0.3))
+    message("Heatmap saved: support score by organelle")
+  }
+}
+
+message("Module 2 complete. Output: baseline_ppi_hela ready for Module 3")
 ```
 
 
@@ -24654,15 +24855,69 @@ complex_stats_hela <- data.frame(
 )
 readr::write_csv(complex_stats_hela, file.path(out_dir_complex_hela, "tables", "complex_stats.csv"))
 
+# --- Organelle x validation heatmap ---
+organelle_tags_cx2 <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+gene_to_org_cx2    <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags_cx2))
+
+.get_majority_org_cx <- function(members, gene_to_org, org_tags) {
+  all_orgs <- unlist(lapply(members, function(g) {
+    row <- gene_to_org %>% dplyr::filter(Genes == g)
+    if (nrow(row) == 0) return(character(0))
+    org_tags[as.logical(row[1, org_tags])]
+  }))
+  if (length(all_orgs) == 0) return(NA_character_)
+  names(sort(table(all_orgs), decreasing = TRUE))[1]
+}
+
+complex_evidence_hela <- complex_evidence_hela %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(majority_organelle = .get_majority_org_cx(members, gene_to_org_cx2, organelle_tags_cx2)) %>%
+  dplyr::ungroup()
+
+message("Complexes with organelle annotation: ", sum(!is.na(complex_evidence_hela$majority_organelle)))
+
+org_val_cx_hela <- complex_evidence_hela %>%
+  dplyr::filter(!is.na(majority_organelle)) %>%
+  dplyr::group_by(majority_organelle) %>%
+  dplyr::summarise(n_total       = dplyr::n(),
+                   CORUM_strict  = sum(corum_strict_match),
+                   CP_strict     = sum(cp_strict_match),
+                   known_relaxed = sum(in_known_complex_relaxed & !in_known_complex),
+                   novel         = sum(!in_known_complex_relaxed),
+                   .groups = "drop") %>%
+  dplyr::filter(n_total >= 3)
+
+readr::write_csv(org_val_cx_hela, file.path(out_dir_complex_hela, "qc", "sourcedata_heatmap_organelle_validation.csv"))
+
+if (nrow(org_val_cx_hela) > 1) {
+  mat_cx <- org_val_cx_hela %>%
+    dplyr::select(majority_organelle, CORUM_strict, CP_strict, known_relaxed, novel) %>%
+    tibble::column_to_rownames("majority_organelle") %>% as.matrix()
+
+  pheatmap::pheatmap(mat_cx, display_numbers = TRUE, number_format = "%d",
+    color = colorRampPalette(c("white", "dodgerblue3"))(50),
+    main = "HeLa complexes: organelle x validation (counts)", fontsize = 6, fontsize_number = 5,
+    border_color = NA, cellheight = 12, cellwidth = 12, cluster_rows = TRUE, cluster_cols = FALSE,
+    filename = file.path(out_dir_complex_hela, "qc", "heatmap_organelle_validation.pdf"),
+    width = 4, height = max(4, nrow(mat_cx) * 0.25))
+
+  mat_cx_pct <- sweep(mat_cx, 1, org_val_cx_hela$n_total, "/") * 100
+  pheatmap::pheatmap(mat_cx_pct, display_numbers = TRUE, number_format = "%.0f",
+    color = colorRampPalette(c("white", "darkgreen"))(50),
+    main = "HeLa complexes: organelle x validation (% of complexes)", fontsize = 6, fontsize_number = 5,
+    border_color = NA, cellheight = 12, cellwidth = 12, cluster_rows = TRUE, cluster_cols = FALSE,
+    filename = file.path(out_dir_complex_hela, "qc", "heatmap_organelle_validation_pct.pdf"),
+    width = 4, height = max(4, nrow(mat_cx_pct) * 0.25))
+
+  message("Heatmaps saved: organelle x validation")
+}
+
 message("\nModule 5 complete")
 message("  Total complexes  : ", nrow(complex_evidence_hela))
 message("  Median size      : ", median(complex_evidence_hela$complex_size))
 message("  Known (strict)   : ", sum(complex_evidence_hela$in_known_complex))
 message("  Novel            : ", sum(!complex_evidence_hela$in_known_complex_relaxed))
 ```
-
-
-
 
 # =================================================
 # old Module 12: PPI Vulnerability Analysis - HeLa nMOST
