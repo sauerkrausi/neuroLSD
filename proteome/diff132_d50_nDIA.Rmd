@@ -23090,10 +23090,14 @@ message("Chunk 4 complete: ", length(ko_genes_pass), " KOs retained after QC")
 sd_sourcedata <- hela_ctrl_means %>% dplyr::filter(!is.na(ctrl_sd_log2))
 readr::write_csv(sd_sourcedata, file.path(out_dir_hela_preproc, "qc", "sourcedata_ctrl_variability_by_batch.csv"))
 
+batchcolorhela <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(15)
+
 p_ctrl_cv <- sd_sourcedata %>%
   ggplot(aes(x = ctrl_sd_log2, fill = factor(batch))) +
-  geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.7, position = "identity") +
+  #geom_density(alpha = 0.5, linewidth = 0.1) +
+  geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.5, position = "identity") +
   #facet_wrap(~batch, ncol = 1) +
+  scale_fill_manual(values = batchcolorhela) +
   labs(title = "Control log2 intensity SD per batch", x = "SD across control replicates", y = "Proteins", fill = "Batch") +
   theme_bw(base_size = 6) +
   theme(
@@ -23101,7 +23105,7 @@ p_ctrl_cv <- sd_sourcedata %>%
     panel.border = element_rect(color = "black", fill = NA), 
     legend.position = "right")
 
-ggsave(file.path(out_dir_hela_preproc, "qc", "ctrl_variability_by_batch.pdf"), p_ctrl_cv, width = 4, height = 5, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "ctrl_variability_by_batch.pdf"), p_ctrl_cv, width = 4, height = 4, device = cairo_pdf)
 
 # --- Plot 2: KO QC heatmap (4 rows x n KOs, colored by QC reason) ---
 readr::write_csv(ko_target_qc, file.path(out_dir_hela_preproc, "qc", "sourcedata_ko_target_knockdown.csv"))
