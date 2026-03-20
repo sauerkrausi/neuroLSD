@@ -22930,20 +22930,22 @@ message("  KO samples      : ", sum(!hela_pheno_filtered$is_control))
 message("  KO genotypes    : ", length(unique(na.omit(hela_pheno_filtered$ko_gene))))
 
 # --- Match sample IDs to quant columns ---
-# Quant column format: "LFQ.intensity.1_WC0004" -> sample ID "WC0004"
-quant_sample_cols <- grep("^LFQ\\.intensity\\.1_", colnames(hela_quant_clean), value = TRUE)
-quant_sample_ids  <- sub("^LFQ\\.intensity\\.1_", "", quant_sample_cols)
+# Take all WC#### columns from quant; pheno join downstream handles filtering
+# ExtrQC / InstQC columns are excluded by the WC prefix filter
+quant_sample_cols <- grep("^LFQ\\.intensity\\.\\d+_", colnames(hela_quant_clean), value = TRUE)
+quant_sample_ids  <- sub("^LFQ\\.intensity\\.\\d+_", "", quant_sample_cols)
 
-valid_sample_ids  <- hela_pheno_filtered$sample
-valid_quant_cols  <- paste0("LFQ.intensity.1_", valid_sample_ids[valid_sample_ids %in% quant_sample_ids])
+valid_quant_cols <- quant_sample_cols[grepl("^WC", quant_sample_ids)]
+valid_sample_ids <- sub("^LFQ\\.intensity\\.\\d+_", "", valid_quant_cols)
 
-missing_in_quant  <- valid_sample_ids[!valid_sample_ids %in% quant_sample_ids]
-if (length(missing_in_quant) > 0) message("WARNING: samples in pheno not in quant: ", paste(missing_in_quant, collapse = ", "))
+missing_in_quant <- hela_pheno_filtered$sample[!hela_pheno_filtered$sample %in% valid_sample_ids]
+if (length(missing_in_quant) > 0) message("WARNING: ", length(missing_in_quant), " pheno samples not in quant: ", paste(missing_in_quant, collapse = ", "))
 
 hela_quant_filtered <- hela_quant_clean %>%
   dplyr::select(Genes, all_of(valid_quant_cols))
 
-message("Proteins x samples in filtered quant: ", nrow(hela_quant_filtered), " x ", length(valid_quant_cols))
+message("WC samples in quant  : ", length(valid_quant_cols))
+message("Proteins in quant    : ", nrow(hela_quant_filtered))
 ```
 
 ## Chunk 3: Batch-Matched log2FC Computation
@@ -22955,7 +22957,7 @@ message("Proteins x samples in filtered quant: ", nrow(hela_quant_filtered), " x
 # --- Pivot to long, join pheno ---
 hela_long <- hela_quant_filtered %>%
   tidyr::pivot_longer(cols = all_of(valid_quant_cols), names_to = "col_id", values_to = "intensity") %>%
-  dplyr::mutate(sample = sub("^LFQ\\.intensity\\.1_", "", col_id)) %>%
+  dplyr::mutate(sample = sub("^LFQ\\.intensity\\.\\d+_", "", col_id)) %>%
   dplyr::left_join(
     hela_pheno_filtered %>% dplyr::select(sample, batch, genotype, is_control, ko_gene),
     by = "sample"
@@ -23091,11 +23093,10 @@ readr::write_csv(sd_sourcedata, file.path(out_dir_hela_preproc, "qc", "sourcedat
 p_ctrl_cv <- sd_sourcedata %>%
   ggplot(aes(x = ctrl_sd_log2, fill = factor(batch))) +
   geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.7, position = "identity") +
-  facet_wrap(~batch, ncol = 1) +
+  #facet_wrap(~batch, ncol = 1) +
   labs(title = "Control log2 intensity SD per batch", x = "SD across control replicates", y = "Proteins", fill = "Batch") +
-  coord_fixed() +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "ctrl_variability_by_batch.pdf"), p_ctrl_cv, width = 4, height = 5, device = cairo_pdf)
 
@@ -23125,6 +23126,7 @@ p_ko_qc <- ko_heatmap_data %>%
   geom_tile(color = "white", linewidth = 0.3) +
   scale_fill_manual(values = qc_colors, na.value = "grey95", na.translate = FALSE) +
   labs(title = "KO target protein QC", x = NULL, y = NULL, fill = "QC reason") +
+  coord_fixed() +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
         axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
@@ -23166,10 +23168,10 @@ p_rep_cor_hist <- ggplot(rep_corr_long, aes(x = correlation, fill = factor(batch
   geom_histogram(bins = 30, color = "white", linewidth = 0.2, position = "identity", alpha = 0.8) +
   geom_vline(xintercept = 0.95, linetype = "dashed", color = "red") +
   scale_fill_manual(values = batch_colors) +
-  facet_wrap(~batch, ncol = 1) +
+  #facet_wrap(~batch, ncol = 1) +
   labs(title = "Pairwise replicate correlation per batch", x = "Pearson r", y = "Count", fill = "Batch") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
 
 p_rep_cor_dens <- ggplot(rep_corr_long, aes(x = correlation, fill = factor(batch), color = factor(batch))) +
   geom_density(alpha = 0.5, linewidth = 0.3) +
@@ -23178,10 +23180,10 @@ p_rep_cor_dens <- ggplot(rep_corr_long, aes(x = correlation, fill = factor(batch
   scale_color_manual(values = batch_colors) +
   labs(title = "Pairwise replicate correlation distribution", x = "Pearson r", y = "Density", fill = "Batch", color = "Batch") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "bottom")
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
 
-ggsave(file.path(out_dir_hela_preproc, "qc", "replicate_correlation_histogram.pdf"), p_rep_cor_hist, width = 4, height = 6, device = cairo_pdf)
-ggsave(file.path(out_dir_hela_preproc, "qc", "replicate_correlation_density.pdf"),   p_rep_cor_dens, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "replicate_correlation_histogram.pdf"), p_rep_cor_hist, width = 4.5, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "replicate_correlation_density.pdf"),   p_rep_cor_dens, width = 4.5, height = 4, device = cairo_pdf)
 
 # --- Plot 3b: log2 intensity density per sample, grey-to-steelblue by batch ---
 density_sourcedata <- hela_long %>%
@@ -23192,11 +23194,11 @@ readr::write_csv(density_sourcedata, file.path(out_dir_hela_preproc, "qc", "sour
 p_density <- density_sourcedata %>%
   ggplot(aes(x = log2_intensity, group = sample, color = factor(batch))) +
   geom_density(linewidth = 0.3, alpha = 0.6) +
-  facet_wrap(~batch, ncol = 1) +
+  #facet_wrap(~batch, ncol = 1) +
   scale_color_manual(values = batch_colors) +
   labs(title = "log2 intensity distribution per sample by batch", x = "log2 intensity", y = "Density", color = "Batch") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "right")
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "intensity_density_by_batch.pdf"), p_density, width = 4, height = 6, device = cairo_pdf)
 
