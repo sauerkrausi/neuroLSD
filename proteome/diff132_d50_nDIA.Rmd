@@ -22849,19 +22849,29 @@ Output: hela_log2fc_wide_qc -- proteins x passing KOs, ready for PPI pipeline.
 # Setup: Output Directories, Parameters, Input Paths
 # =============================================================================
 
-# --- Output directories ---
-out_dir_hela         <- file.path(out_dir_PPI, "HeLa_nMOST")
-out_dir_hela_preproc <- file.path(out_dir_hela, "preprocessing")
+# --- Step 0: create outdirs and setup of environment 
+# Setup output directories
+out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/PPIHela"
+dir.create(out_dir_hela_ppi, recursive = TRUE, showWarnings = FALSE)
+
+dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "plots/qc"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "tables"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_ppi, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
+
+out_dir_hela_preproc <- file.path(out_dir_hela_ppi, "preprocessing")
 dir.create(file.path(out_dir_hela_preproc, "tables"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_preproc, "qc"),    recursive = TRUE, showWarnings = FALSE)
 
 # --- Input paths ---
-path_hela_quant <- "/path/to/nmost_quant_protein_cell.csv"
-path_hela_pheno <- "/path/to/nmost_pheno_protein_cell.csv"
-path_hela_miseq <- "/path/to/nmost_MiSeq.csv"
+path_hela_quant <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/helanmost/nmost_quant_protein_cell.csv"
+path_hela_pheno <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/helanmost/nmost_pheno_protein_cell.csv"
+path_hela_miseq <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/helanmost/nmost_MiSeq.csv"
 
 # --- Parameters ---
-ko_knockdown_thresh  <- -2   # log2FC threshold: target protein must be below this
+ko_knockdown_thresh  <- -1   # log2FC threshold: target protein must be below this
 min_valid_controls   <- 2    # min valid control values per batch to compute batch mean
 
 message("Module 0 setup complete")
@@ -23000,58 +23010,85 @@ message("Chunk 3 complete: log2FC matrix saved")
 
 ## Chunk 4: KO Target Protein QC Filter
 ```{r hela_m0_ko_qc}
-# =============================================================================
-# KO QC: Exclude KOs Where Target Protein Is Not Depleted (mean log2FC >= -2)
-# Note: includes all allele types (homo, hetero, in-frame deletions) --
-# quantitative filter handles incomplete knockouts due to HeLa polyploidy
-# =============================================================================
+# Module 0 - KO QC
+# Passes if: (a) mean log2FC < -2, OR (b) protein undetected in KO but present
+# in controls (depleted below detection). Fails if log2FC >= -2 or undetected
+# in both KO and control. Handles HeLa polyploidy: allele status not used for
+# filtering -- quantitative depletion is the sole criterion.
 
 ko_genes_all <- unique(na.omit(hela_pheno_filtered$ko_gene))
 
-# --- For each KO, extract target protein mean log2FC ---
-# Note: "GBA" in pheno may appear as "GBA1" in proteomics -- flagged if not detected
+# --- Control detection: is the target protein reliably detected in controls? ---
+# A protein is ctrl-detected if it has a valid ctrl_mean_log2 in at least one batch
+ctrl_detected_genes <- hela_ctrl_means %>%
+  dplyr::filter(!is.na(ctrl_mean_log2)) %>%
+  dplyr::pull(Genes) %>%
+  unique()
+
+# --- For each KO, assess target protein depletion ---
 ko_target_qc <- purrr::map_dfr(ko_genes_all, function(ko) {
-  target_rows <- hela_log2fc_summary %>% dplyr::filter(ko_gene == ko, Genes == ko)
-  target_fc   <- target_rows$mean_log2FC
+  target_rows  <- hela_log2fc_summary %>% dplyr::filter(ko_gene == ko, Genes == ko)
+  target_fc    <- target_rows$mean_log2FC
+  has_log2fc   <- length(target_fc) > 0 && !is.na(target_fc[1]) && is.finite(target_fc[1])
+  in_ctrl      <- ko %in% ctrl_detected_genes
+
+  qc_reason <- dplyr::case_when(
+    has_log2fc && target_fc[1] < ko_knockdown_thresh ~ "passed_log2fc",
+    !has_log2fc && in_ctrl                           ~ "passed_depleted_below_detection",
+    has_log2fc && target_fc[1] >= ko_knockdown_thresh ~ "failed_threshold",
+    !has_log2fc && !in_ctrl                          ~ "failed_not_detected",
+    TRUE                                             ~ "failed_not_detected"
+  )
 
   dplyr::tibble(
-    ko_gene         = ko,
-    target_log2FC   = dplyr::if_else(length(target_fc) > 0 && !is.na(target_fc[1]), target_fc[1], NA_real_),
-    target_detected = length(target_fc) > 0 && !is.na(target_fc[1]),
-    passes_qc       = length(target_fc) > 0 && !is.na(target_fc[1]) && target_fc[1] < ko_knockdown_thresh,
-    allele_status   = hela_miseq$Knockout.type[match(ko, hela_miseq$Gene)]
+    ko_gene          = ko,
+    target_log2FC    = dplyr::if_else(has_log2fc, target_fc[1], NA_real_),
+    ctrl_detected    = in_ctrl,
+    passes_qc        = qc_reason %in% c("passed_log2fc", "passed_depleted_below_detection"),
+    qc_reason        = qc_reason,
+    allele_status    = hela_miseq$Knockout.type[match(ko, hela_miseq$Gene)]
   )
 })
 
 message("KO target protein QC (threshold: log2FC < ", ko_knockdown_thresh, "):")
-message("  KOs tested           : ", nrow(ko_target_qc))
-message("  Target not detected  : ", sum(!ko_target_qc$target_detected))
-message("  Fails knockdown QC   : ", sum(ko_target_qc$target_detected & !ko_target_qc$passes_qc))
-message("  Pass QC              : ", sum(ko_target_qc$passes_qc))
+message("  KOs tested                       : ", nrow(ko_target_qc))
+message("  Passed (log2FC < -2)             : ", sum(ko_target_qc$qc_reason == "passed_log2fc"))
+message("  Passed (depleted below detection): ", sum(ko_target_qc$qc_reason == "passed_depleted_below_detection"))
+message("  Failed (threshold not met)       : ", sum(ko_target_qc$qc_reason == "failed_threshold"))
+message("  Failed (not detected anywhere)   : ", sum(ko_target_qc$qc_reason == "failed_not_detected"))
 
 ko_fail <- ko_target_qc %>% dplyr::filter(!passes_qc)
-if (nrow(ko_fail) > 0) { message("Failing / undetected KOs:"); print(ko_fail) }
+if (nrow(ko_fail) > 0) { message("Failing KOs:"); print(ko_fail) }
 
 ko_genes_pass <- ko_target_qc %>% dplyr::filter(passes_qc) %>% dplyr::pull(ko_gene)
 
-# --- Filter log2FC matrices to passing KOs ---
-hela_log2fc_wide_qc    <- hela_log2fc_wide %>% dplyr::select(Genes, all_of(ko_genes_pass))
-hela_log2fc_summary_qc <- hela_log2fc_summary %>% dplyr::filter(ko_gene %in% ko_genes_pass)
+# --- Check for KOs that passed QC but have no column in wide matrix ---
+# Happens when KO samples were absent from quant file (missing_in_quant)
+ko_cols_available <- intersect(ko_genes_pass, colnames(hela_log2fc_wide))
+ko_cols_missing   <- setdiff(ko_genes_pass, colnames(hela_log2fc_wide))
+if (length(ko_cols_missing) > 0) {
+  message("WARNING: ", length(ko_cols_missing), " KOs passed QC but have no quant data -- excluded:")
+  message("  ", paste(ko_cols_missing, collapse = ", "))
+}
 
-readr::write_csv(ko_target_qc,          file.path(out_dir_hela_preproc, "tables", "ko_target_qc.csv"))
-readr::write_csv(hela_log2fc_wide_qc,   file.path(out_dir_hela_preproc, "tables", "hela_log2fc_wide_qc.csv"))
+# --- Filter log2FC matrices to passing KOs with available data ---
+hela_log2fc_wide_qc    <- hela_log2fc_wide %>% dplyr::select(Genes, any_of(ko_genes_pass))
+hela_log2fc_summary_qc <- hela_log2fc_summary %>% dplyr::filter(ko_gene %in% ko_cols_available)
+
+readr::write_csv(ko_target_qc,        file.path(out_dir_hela_preproc, "tables", "ko_target_qc.csv"))
+readr::write_csv(hela_log2fc_wide_qc, file.path(out_dir_hela_preproc, "tables", "hela_log2fc_wide_qc.csv"))
 message("Chunk 4 complete: ", length(ko_genes_pass), " KOs retained after QC")
 ```
 
 ## Chunk 5: QC Plots
 ```{r hela_m0_qc_plots}
-# =============================================================================
-# QC Plots: Control Variability, KO Target Knockdown, Replicate Counts
-# =============================================================================
+# Module 0 - QC plots: control variability, KO knockdown, replicate counts
 
 # --- Plot 1: Control log2 intensity SD per batch ---
-p_ctrl_cv <- hela_ctrl_means %>%
-  dplyr::filter(!is.na(ctrl_sd_log2)) %>%
+sd_sourcedata <- hela_ctrl_means %>% dplyr::filter(!is.na(ctrl_sd_log2))
+readr::write_csv(sd_sourcedata, file.path(out_dir_hela_preproc, "qc", "sourcedata_ctrl_variability_by_batch.csv"))
+
+p_ctrl_cv <- sd_sourcedata %>%
   ggplot(aes(x = ctrl_sd_log2, fill = factor(batch))) +
   geom_histogram(bins = 40, color = "black", linewidth = 0.2, alpha = 0.7, position = "identity") +
   facet_wrap(~batch, ncol = 1) +
@@ -23061,40 +23098,101 @@ p_ctrl_cv <- hela_ctrl_means %>%
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "ctrl_variability_by_batch.pdf"), p_ctrl_cv, width = 4, height = 5, device = cairo_pdf)
 
-# --- Plot 2: KO target protein knockdown bar chart ---
-p_ko_qc <- ko_target_qc %>%
-  dplyr::mutate(ko_gene = reorder(ko_gene, dplyr::coalesce(target_log2FC, 0))) %>%
-  ggplot(aes(x = ko_gene, y = target_log2FC, fill = passes_qc)) +
-  geom_col(color = "black", linewidth = 0.2) +
-  geom_hline(yintercept = ko_knockdown_thresh, linetype = "dashed", color = "red") +
-  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "tomato"), labels = c("Fail", "Pass")) +
-  labs(title = "KO target protein knockdown", subtitle = paste("Threshold: log2FC <", ko_knockdown_thresh),
-       x = NULL, y = "Mean log2FC (KO vs batch-matched Control)", fill = "QC") +
+# --- Plot 2: KO QC heatmap (4 rows x n KOs, colored by QC reason) ---
+readr::write_csv(ko_target_qc, file.path(out_dir_hela_preproc, "qc", "sourcedata_ko_target_knockdown.csv"))
+
+qc_levels <- c("passed_log2fc", "passed_depleted_below_detection", "failed_threshold", "failed_not_detected")
+qc_colors <- c("passed_log2fc" = "steelblue", "passed_depleted_below_detection" = "lightblue",
+                "failed_threshold" = "tomato", "failed_not_detected" = "grey70")
+
+# Sort KOs: passing first, then failing; alphabetical within group
+ko_order <- ko_target_qc %>%
+  dplyr::arrange(passes_qc == FALSE, ko_gene) %>%
+  dplyr::pull(ko_gene)
+
+# Full grid: all KOs x all QC reasons; color only matching cell
+ko_heatmap_data <- tidyr::expand_grid(ko_gene = ko_order, qc_reason_row = qc_levels) %>%
+  dplyr::left_join(ko_target_qc %>% dplyr::select(ko_gene, qc_reason), by = "ko_gene") %>%
+  dplyr::mutate(
+    fill_val = dplyr::if_else(qc_reason_row == qc_reason, qc_reason_row, NA_character_),
+    ko_gene  = factor(ko_gene, levels = ko_order),
+    qc_reason_row = factor(qc_reason_row, levels = rev(qc_levels))
+  )
+
+p_ko_qc <- ko_heatmap_data %>%
+  ggplot(aes(x = ko_gene, y = qc_reason_row, fill = fill_val)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  scale_fill_manual(values = qc_colors, na.value = "grey95", na.translate = FALSE) +
+  labs(title = "KO target protein QC", x = NULL, y = NULL, fill = "QC reason") +
+    coord_fixed() +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
-        axis.text.x = element_text(angle = 45, hjust = 1))
+        axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
 
-ggsave(file.path(out_dir_hela_preproc, "qc", "ko_target_knockdown.pdf"), p_ko_qc, width = 8, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "ko_target_knockdown.pdf"), p_ko_qc, width = 8, height = 3, device = cairo_pdf)
 
-# --- Plot 3: Valid replicate counts per passing KO ---
-p_reps <- hela_log2fc_summary_qc %>%
-  dplyr::group_by(ko_gene) %>%
-  dplyr::summarise(mean_n_reps = mean(n_replicates, na.rm = TRUE), .groups = "drop") %>%
-  dplyr::mutate(ko_gene = reorder(ko_gene, mean_n_reps)) %>%
-  ggplot(aes(x = ko_gene, y = mean_n_reps)) +
-  geom_col(fill = "steelblue", color = "black", linewidth = 0.2) +
-  labs(title = "Mean valid replicates per KO (passing QC)", x = NULL, y = "Mean n replicates") +
+
+# --- Plot 3a: Within-batch control replicate correlation heatmap ---
+ctrl_wide_by_batch <- hela_long %>%
+  dplyr::filter(is_control, !is.na(log2_intensity)) %>%
+  dplyr::select(Genes, sample, batch, log2_intensity) %>%
+  tidyr::pivot_wider(names_from = sample, values_from = log2_intensity)
+
+# Compute per-batch correlation matrices and flatten to long for ggplot
+ctrl_cor_long <- ctrl_wide_by_batch %>%
+  dplyr::group_by(batch) %>%
+  dplyr::group_modify(~ {
+    mat <- .x %>% dplyr::select(where(~ sum(!is.na(.)) > 10))
+    if (ncol(mat) < 2) return(dplyr::tibble())
+    cor_mat <- cor(mat, use = "pairwise.complete.obs")
+    as.data.frame(cor_mat) %>%
+      tibble::rownames_to_column("sample_x") %>%
+      tidyr::pivot_longer(-sample_x, names_to = "sample_y", values_to = "correlation")
+  }) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(
+    sample_x = sub("LFQ\\.intensity\\.1_", "", sample_x),
+    sample_y = sub("LFQ\\.intensity\\.1_", "", sample_y)
+  )
+
+readr::write_csv(ctrl_cor_long, file.path(out_dir_hela_preproc, "qc", "sourcedata_ctrl_replicate_correlation.csv"))
+
+p_ctrl_cor <- ctrl_cor_long %>%
+  ggplot(aes(x = sample_x, y = sample_y, fill = correlation)) +
+  geom_tile(color = "white", linewidth = 0.2) +
+  geom_text(aes(label = sprintf("%.2f", correlation)), size = 1.5) +
+  facet_wrap(~batch, scales = "free", ncol = 3) +
+  scale_fill_gradient2(low = "tomato", mid = "white", high = "steelblue", midpoint = 0.9, limits = c(0.8, 1)) +
+  labs(title = "Control replicate correlation by batch", x = NULL, y = NULL, fill = "Pearson r") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
-        axis.text.x = element_text(angle = 45, hjust = 1))
+        axis.text.x = element_text(angle = 45, hjust = 1), strip.background = element_blank())
 
-ggsave(file.path(out_dir_hela_preproc, "qc", "ko_replicate_counts.pdf"), p_reps, width = 8, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "ctrl_replicate_correlation.pdf"), p_ctrl_cor, width = 10, height = 4, device = cairo_pdf)
+
+# --- Plot 3b: log2 intensity density per sample, colored by batch ---
+density_sourcedata <- hela_long %>%
+  dplyr::filter(!is.na(log2_intensity)) %>%
+  dplyr::select(sample, batch, genotype, is_control, log2_intensity)
+readr::write_csv(density_sourcedata, file.path(out_dir_hela_preproc, "qc", "sourcedata_intensity_density.csv"))
+
+p_density <- density_sourcedata %>%
+  ggplot(aes(x = log2_intensity, group = sample, color = factor(batch))) +
+  geom_density(linewidth = 0.3, alpha = 0.6) +
+  facet_wrap(~batch, ncol = 1) +
+  labs(title = "log2 intensity distribution per sample by batch", x = "log2 intensity", y = "Density", color = "Batch") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA), legend.position = "none")
+
+ggsave(file.path(out_dir_hela_preproc, "qc", "intensity_density_by_batch.pdf"), p_density, width = 4, height = 6, device = cairo_pdf)
 
 message("Module 0 complete")
-message("  KOs passing QC       : ", length(ko_genes_pass))
-message("  Proteins in matrix   : ", nrow(hela_log2fc_wide_qc))
-message("  Output               : hela_log2fc_wide_qc ready for Module 1")
+message("  KOs passing QC     : ", length(ko_genes_pass))
+message("  Proteins in matrix : ", nrow(hela_log2fc_wide_qc))
+message("  Output             : hela_log2fc_wide_qc ready for Module 1")
 ```
+
+
 
 
 
