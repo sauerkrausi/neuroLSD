@@ -45,10 +45,10 @@ A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome
 
 
 ## Requirements
-- **R ≥ 4.3.0** with: `tidyverse`, `ComplexHeatmap`, `circlize`, `pheatmap`, `ggpubr`, `cowplot`  
-- **Python ≥ 3.10** with: `cellpose`, `torch`, `numpy`, `pandas`, `scikit-image`  
+- **R 4.5.2** (RStudio Version 2026.01.1+403) with: `bigstatsr`, `broom`, `Cairo`, `CalNetExploreR`, `car`, `circlize`, `ComplexHeatmap`, `ComplexUpset`, `corrplot`, `cowplot`, `data.table`, `devtools`, `dplyr`, `factoextra`, `fmsb`, `forcats`, `furrr`, `ggbiplot`, `ggdendro`, `ggdist`, `gghalves`, `gghighlight`, `ggplot2`, `ggpp`, `ggpmisc`, `ggpubr`, `ggraph`, `ggrepel`, `ggsci`, `ggsignif`, `ggVennDiagram`, `grid`, `gridExtra`, `igraph`, `irlba`, `janitor`, `limma`, `lintr`, `lubridate`, `magick`, `msstats`, `NatParksPalettes`, `org.Hs.eg.db`, `patchwork`, `pheatmap`, `plotly`, `plyr`, `png`, `purrr`, `qs`, `RColorBrewer`, `readr`, `reshape2`, `rlang`, `rstatix`, `scales`, `signal`, `stringr`, `superheat`, `Ternary`, `tibble`, `tidyplots`, `tidyr`, `tidyverse`, `timecourse`, `topGO`, `umap`, `UpSetR`, `uwot`, `viridis`, `zoo`
+- **Python ≥ 3.10** with: `cellpose`, `matplotlib`, `nd2`, `numpy`, `pandas`, `pathlib`, `re`, `scipy`, `skimage`, `tifffile`, `torch`, `tqdm`, `typing`
 
-For more detailed package requirements, please check the manuscript. 
+For more detailed package requirements, please check the manuscript.
 
 ## Usage
 - **Proteomics:**  
