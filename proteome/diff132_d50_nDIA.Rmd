@@ -13360,10 +13360,10 @@ message("QC plots saved to: ", file.path(out_dir_trimer, "qc"))
 Detects 4-cliques from gold-tier baseline, validates against PDB/CORUM/ComplexPortal
 Requires: baseline_ppi_v3 from Module 2, g (graph), corum_complex_members, complexportal
 
-## Chunk 1: Tetramer Detection (Gold-Only)
+## Chunk 1: Tetramer Detection (Tier 1)
 ```{r tetramer_detection}
 # =============================================================================
-# Tetramers: Detection from Gold-Tier Baseline (4-cliques)
+# Tetramers: Detection from Tier-1 Baseline (4-cliques)
 # =============================================================================
 
 # --- Setup ---
@@ -22854,13 +22854,6 @@ Output: hela_log2fc_wide_qc -- proteins x passing KOs, ready for PPI pipeline.
 out_dir_hela_ppi <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/PPIHela"
 dir.create(out_dir_hela_ppi, recursive = TRUE, showWarnings = FALSE)
 
-dir.create(file.path(out_dir_hela_ppi, "plots/global"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_hela_ppi, "plots/by_ko"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_hela_ppi, "plots/multimer"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_hela_ppi, "plots/qc"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_hela_ppi, "tables"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_hela_ppi, "tables/multimer"), recursive = TRUE, showWarnings = FALSE)
-
 out_dir_hela_preproc <- file.path(out_dir_hela_ppi, "preprocessing")
 dir.create(file.path(out_dir_hela_preproc, "tables"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_preproc, "qc"),    recursive = TRUE, showWarnings = FALSE)
@@ -23323,7 +23316,7 @@ print(head(organelle_edge_counts_hela, 15))
 ```{r hela_m2_qc}
 
 # --- Output directories ---
-out_dir_hela_base <- file.path(out_dir_hela, "baseline")
+out_dir_hela_base <- file.path(out_dir_hela_ppi, "baseline")
 dir.create(file.path(out_dir_hela_base, "qc"),     recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_dir_hela_base, "tables"), recursive = TRUE, showWarnings = FALSE)
 
@@ -23331,7 +23324,7 @@ dir.create(file.path(out_dir_hela_base, "tables"), recursive = TRUE, showWarning
 filter_counts_hela <- baseline_ppi_hela %>%
   dplyr::summarise(ComplexPortal_strict = sum(filter_ComplexPortal == "strict", na.rm = TRUE),
                    CORUM               = sum(filter_CORUM == "present", na.rm = TRUE),
-                   Convergent          = sum(in_both, na.rm = TRUE)) %>%
+                   Convergent          = sum(in_both_predictions, na.rm = TRUE)) %>%
   tidyr::pivot_longer(everything(), names_to = "database", values_to = "n_edges")
 
 readr::write_csv(filter_counts_hela, file.path(out_dir_hela_base, "qc", "sourcedata_database_support.csv"))
@@ -23409,7 +23402,7 @@ baseline_summary_hela <- data.frame(
              round(100 * length(baseline_proteins_hela) / length(hela_ctrl_genes), 1),
              sum(baseline_ppi_hela$filter_CORUM == "present", na.rm = TRUE),
              sum(baseline_ppi_hela$filter_ComplexPortal == "strict", na.rm = TRUE),
-             sum(baseline_ppi_hela$in_both, na.rm = TRUE),
+             sum(baseline_ppi_hela$in_both_predictions, na.rm = TRUE),
              median(degree_hela$degree), max(degree_hela$degree))
 )
 
@@ -23423,6 +23416,7 @@ message("  Baseline edges            : ", nrow(baseline_ppi_hela))
 message("  Unique proteins           : ", length(baseline_proteins_hela))
 message("  Output: baseline_ppi_hela ready for Module 3")
 ```
+
 
 
 
