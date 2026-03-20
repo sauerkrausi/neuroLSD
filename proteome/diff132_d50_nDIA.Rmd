@@ -23226,6 +23226,207 @@ message("  Output             : hela_log2fc_wide_qc ready for Module 1")
 
 
 
+# Module 2: Baseline PPI Network
+## Chunk 1: Tier1 filtering to HeLa Control proteome
+Union of proteins detected in any Control sample across all 15 batches
+Requires: master_ppi_v3 (from Module 11), hela_long (from Module 0)
+
+```{r hela_m2_baseline_filter}
+
+# --- HeLa control proteome: union across all batches ---
+hela_ctrl_genes <- hela_long %>%
+  dplyr::filter(genotype == "HeLa Control", !is.na(log2_intensity)) %>%
+  dplyr::pull(Genes) %>% unique()
+
+message("HeLa control proteome (union, all batches): ", length(hela_ctrl_genes), " proteins")
+
+# --- Tier1 filter on master_ppi_v3 ---
+master_ppi_tier_hela <- master_ppi_v3 %>% dplyr::filter(confidence_tier == "Tier1")
+message("Tier1 edges total: ", nrow(master_ppi_tier_hela))
+
+# --- Proteome overlap stats ---
+n_pre      <- nrow(master_ppi_tier_hela)
+n_gene1_in <- sum(master_ppi_tier_hela$Gene1 %in% hela_ctrl_genes)
+n_gene2_in <- sum(master_ppi_tier_hela$Gene2 %in% hela_ctrl_genes)
+n_both_in  <- sum(master_ppi_tier_hela$Gene1 %in% hela_ctrl_genes & master_ppi_tier_hela$Gene2 %in% hela_ctrl_genes)
+
+message("Proteome overlap (Tier1):")
+message("  Gene1 in HeLa ctrl proteome: ", n_gene1_in, " (", round(100 * n_gene1_in / n_pre, 1), "%)")
+message("  Gene2 in HeLa ctrl proteome: ", n_gene2_in, " (", round(100 * n_gene2_in / n_pre, 1), "%)")
+message("  Both in HeLa ctrl proteome : ", n_both_in,  " (", round(100 * n_both_in  / n_pre, 1), "%)")
+
+# --- Restrict to HeLa control proteome ---
+baseline_ppi_hela <- master_ppi_tier_hela %>%
+  dplyr::filter(Gene1 %in% hela_ctrl_genes & Gene2 %in% hela_ctrl_genes)
+
+baseline_proteins_hela <- unique(c(baseline_ppi_hela$Gene1, baseline_ppi_hela$Gene2))
+
+message("Baseline edges (Tier1 x HeLa ctrl proteome): ", nrow(baseline_ppi_hela))
+message("Unique proteins in baseline                 : ", length(baseline_proteins_hela))
+message("Proteome coverage                           : ",
+        round(100 * length(baseline_proteins_hela) / length(hela_ctrl_genes), 1), "%")
+```
+
+## Chunk 2: Organelle annotations
+Adds subcellular localization tags to baseline_ppi_hela (Gene1 and Gene2)
+Computes shared-organelle edges
+```{r hela_m2_organelle}
+# --- Organelle annotations from binary_matrix ---
+organelle_tags <- setdiff(colnames(binary_matrix), c("Genes", "NeuroDev"))
+gene_to_org    <- binary_matrix %>% dplyr::select(Genes, dplyr::all_of(organelle_tags))
+
+message("Subcellular annotation tags: ", length(organelle_tags))
+
+# --- Annotate Gene1 and Gene2 ---
+baseline_ppi_hela <- baseline_ppi_hela %>%
+  dplyr::left_join(gene_to_org, by = c("Gene1" = "Genes")) %>%
+  dplyr::rename_with(~paste0(.x, "_prot1"), dplyr::all_of(organelle_tags)) %>%
+  dplyr::left_join(gene_to_org, by = c("Gene2" = "Genes")) %>%
+  dplyr::rename_with(~paste0(.x, "_prot2"), dplyr::all_of(organelle_tags))
+
+n_gene1_annotated <- sum(!is.na(baseline_ppi_hela[[paste0(organelle_tags[1], "_prot1")]]))
+n_gene2_annotated <- sum(!is.na(baseline_ppi_hela[[paste0(organelle_tags[1], "_prot2")]]))
+message("  Gene1 with annotations: ", n_gene1_annotated, " / ", nrow(baseline_ppi_hela))
+message("  Gene2 with annotations: ", n_gene2_annotated, " / ", nrow(baseline_ppi_hela))
+
+# --- Shared organelle edges ---
+org1_cols <- paste0(organelle_tags, "_prot1")
+org2_cols <- paste0(organelle_tags, "_prot2")
+existing_org1_cols <- intersect(org1_cols, colnames(baseline_ppi_hela))
+existing_org2_cols <- intersect(org2_cols, colnames(baseline_ppi_hela))
+
+shared_long_hela <- {
+  m1 <- baseline_ppi_hela[, existing_org1_cols, drop = FALSE] %>%
+    lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% as.data.frame()
+  m2 <- baseline_ppi_hela[, existing_org2_cols, drop = FALSE] %>%
+    lapply(function(x) ifelse(is.na(x), FALSE, as.logical(x))) %>% as.data.frame()
+  shared_mat    <- as.matrix(m1) & as.matrix(m2)
+  existing_tags <- sub("_prot1$", "", existing_org1_cols)
+  dplyr::bind_rows(lapply(seq_len(nrow(shared_mat)), function(i) {
+    idx <- which(shared_mat[i, ])
+    if (!length(idx)) return(NULL)
+    data.frame(key = baseline_ppi_hela$key[i], tag = existing_tags[idx], stringsAsFactors = FALSE)
+  }))
+}
+
+organelle_edge_counts_hela <- shared_long_hela %>%
+  dplyr::count(tag, name = "n_edges") %>%
+  dplyr::arrange(dplyr::desc(n_edges))
+
+message("  Shared organelle edges: ", nrow(shared_long_hela))
+print(head(organelle_edge_counts_hela, 15))
+
+
+```
+
+## Chunk 3: QC plots and save outputs
+```{r hela_m2_qc}
+
+# --- Output directories ---
+out_dir_hela_base <- file.path(out_dir_hela, "baseline")
+dir.create(file.path(out_dir_hela_base, "qc"),     recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_hela_base, "tables"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Plot 1: Database support barplot ---
+filter_counts_hela <- baseline_ppi_hela %>%
+  dplyr::summarise(ComplexPortal_strict = sum(filter_ComplexPortal == "strict", na.rm = TRUE),
+                   CORUM               = sum(filter_CORUM == "present", na.rm = TRUE),
+                   Convergent          = sum(in_both, na.rm = TRUE)) %>%
+  tidyr::pivot_longer(everything(), names_to = "database", values_to = "n_edges")
+
+readr::write_csv(filter_counts_hela, file.path(out_dir_hela_base, "qc", "sourcedata_database_support.csv"))
+
+p_filters_hela <- ggplot(filter_counts_hela, aes(x = reorder(database, -n_edges), y = n_edges, fill = database)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = scales::comma(n_edges)), vjust = -0.3, size = 2) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(title = "Database support: HeLa Tier1 Baseline", x = NULL, y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(file.path(out_dir_hela_base, "qc", "barplot_database_support.pdf"), p_filters_hela,
+       width = 4, height = 4, device = cairo_pdf)
+
+# --- Plot 2: Support score distribution ---
+support_score_counts <- baseline_ppi_hela %>% dplyr::count(support_score)
+readr::write_csv(support_score_counts, file.path(out_dir_hela_base, "qc", "sourcedata_support_score.csv"))
+
+p_support_hela <- ggplot(baseline_ppi_hela, aes(x = factor(support_score))) +
+  geom_bar(fill = "steelblue", color = "black", linewidth = 0.3) +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3, size = 2) +
+  labs(title = "Support score distribution: HeLa Tier1 Baseline", x = "Support score", y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_hela_base, "qc", "barplot_support_score.pdf"), p_support_hela,
+       width = 4, height = 4, device = cairo_pdf)
+
+# --- Plot 3: Organelle edge counts ---
+organelle_colors <- c(
+  "Mito" = "#E41A1C", "MitoIMS" = "#FC8D62", "MitoMatrix" = "#8DA0CB",
+  "MitoMIM" = "#E78AC3", "MitoMOM" = "#A6D854", "OXPHOS" = "#FFD92F",
+  "ER" = "#377EB8", "Golgi" = "#4DAF4A", "Lysosome" = "#984EA3",
+  "EndoLyso" = "#FF7F00", "EarlyEndosome" = "#FFFF33",
+  "RecyclingEndosome" = "#A65628", "Autophagy" = "#F781BF",
+  "SynGO" = "#66C2A5", "Nucleus" = "#B3B3B3", "Cytoplasm" = "#1B9E77"
+)
+readr::write_csv(organelle_edge_counts_hela, file.path(out_dir_hela_base, "qc", "sourcedata_organelle_edges.csv"))
+
+p_organelle_hela <- ggplot(organelle_edge_counts_hela %>% head(20),
+                            aes(x = reorder(tag, n_edges), y = n_edges, fill = tag)) +
+  geom_col(color = "black", linewidth = 0.3) +
+  geom_text(aes(label = n_edges), hjust = -0.1, size = 2) +
+  scale_fill_manual(values = organelle_colors, guide = "none") +
+  coord_flip() +
+  labs(title = "Shared organelle edges: HeLa Tier1 Baseline (top 20)", x = NULL, y = "Number of edges") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_hela_base, "qc", "barplot_organelle_edges.pdf"), p_organelle_hela,
+       width = 5, height = 4.5, device = cairo_pdf)
+
+# --- Plot 4: Node degree distribution ---
+degree_hela <- data.frame(gene = c(baseline_ppi_hela$Gene1, baseline_ppi_hela$Gene2)) %>%
+  dplyr::count(gene, name = "degree") %>%
+  dplyr::arrange(dplyr::desc(degree))
+
+readr::write_csv(degree_hela, file.path(out_dir_hela_base, "qc", "sourcedata_node_degree.csv"))
+
+p_degree_hela <- ggplot(degree_hela, aes(x = degree)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "black", linewidth = 0.3) +
+  labs(title = "Node degree distribution: HeLa Tier1 Baseline", x = "Degree", y = "Number of proteins") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+ggsave(file.path(out_dir_hela_base, "qc", "histogram_node_degree.pdf"), p_degree_hela,
+       width = 4, height = 3, device = cairo_pdf)
+
+# --- Save tables ---
+baseline_summary_hela <- data.frame(
+  metric = c("ctrl_proteome_union", "tier1_edges_total", "baseline_edges",
+             "baseline_unique_proteins", "proteome_coverage_pct",
+             "edges_CORUM", "edges_ComplexPortal_strict", "edges_convergent",
+             "median_node_degree", "max_node_degree"),
+  value  = c(length(hela_ctrl_genes), nrow(master_ppi_gold_hela), nrow(baseline_ppi_hela),
+             length(baseline_proteins_hela),
+             round(100 * length(baseline_proteins_hela) / length(hela_ctrl_genes), 1),
+             sum(baseline_ppi_hela$filter_CORUM == "present", na.rm = TRUE),
+             sum(baseline_ppi_hela$filter_ComplexPortal == "strict", na.rm = TRUE),
+             sum(baseline_ppi_hela$in_both, na.rm = TRUE),
+             median(degree_hela$degree), max(degree_hela$degree))
+)
+
+readr::write_csv(baseline_summary_hela, file.path(out_dir_hela_base, "tables", "baseline_summary.csv"))
+readr::write_csv(baseline_ppi_hela,     file.path(out_dir_hela_base, "tables", "baseline_ppi_hela.csv"))
+readr::write_csv(shared_long_hela,      file.path(out_dir_hela_base, "tables", "shared_organelle_edges.csv"))
+
+message("Module 2 complete")
+message("  Control proteome (union)  : ", length(hela_ctrl_genes))
+message("  Baseline edges            : ", nrow(baseline_ppi_hela))
+message("  Unique proteins           : ", length(baseline_proteins_hela))
+message("  Output: baseline_ppi_hela ready for Module 3")
+```
+
+
+
+
 # =================================================
 # old Module 12: PPI Vulnerability Analysis - HeLa nMOST
 # =================================================
