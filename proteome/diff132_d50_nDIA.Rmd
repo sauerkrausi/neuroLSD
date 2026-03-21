@@ -23214,100 +23214,104 @@ ggsave(file.path(out_dir_hela_preproc, "qc", "intensity_density_by_batch.pdf"), 
 message("Module 0 complete")
 message("  KOs passing QC     : ", length(ko_genes_pass))
 message("  Proteins in matrix : ", nrow(hela_log2fc_wide_qc))
+message("  Output             : hela_log2fc_wide_qc ready for Module 1")
 ```
 
-## Chunk 6: Per-Protein Significance Testing (limma moderated t-test + BH-FDR)
+
+## Chunk 6: Per-Protein Significance Testing (limma, KO vs pooled batch-corrected null)
 ```{r hela_m0_stats}
 # =============================================================================
 # Statistical significance of KO-induced protein changes
 # =============================================================================
 #
 # DESIGN RATIONALE:
-#   HeLa nMOST has a single cell type; each KO runs in one batch with 3-4 reps.
-#   The one-sample t-test (replicate log2FCs vs mu=0) proved too liberal at n=3-4:
-#   no variance shrinkage, low df, inflated discovery rate (~50% PPIs lost per KO).
+#   Both KO and control replicates are expressed as log2FC relative to their
+#   own batch control mean (batch effects removed). Control residual log2FCs
+#   (ctrl_rep - batch_ctrl_mean) form the empirical null capturing biological
+#   + technical variability expected under no perturbation. Pooling all ~60
+#   control residuals across all batches gives a stable null variance estimate.
 #
-# FIX: limma moderated t-test (two-sample: KO replicates vs within-batch controls).
-#   eBayes shrinks per-gene variance estimates toward a global prior derived from
-#   all ~7000 tested proteins within that KO's batch -- substantially increases
-#   effective df and produces well-calibrated p-values at small n.
+#   Single limma model: ~ 0 + genotype, one contrast per KO (KO - ctrl).
+#   eBayes shrinks per-protein variance toward a global prior estimated from
+#   all proteins x all samples. BH-FDR applied across all protein x KO tests.
 #
-# IMPUTATION: genes must have >= 2 valid values in KO AND >= 2 in controls.
-#   Residual NAs (in genes that pass the filter) are set to per-row half-minimum
-#   (standard left-censored LFQ imputation). This is conservative: imputing
-#   low values increases within-group variance, reducing false positives.
-#
-# FDR: BH correction applied across ALL protein x KO tests jointly (~7000 x 39).
+# SIGNIFICANCE: q < 0.01 AND |log2FC| >= 1.3 (both required).
 # =============================================================================
 
-#BiocManager::install("limma")
+# BiocManager::install("limma")
 library(limma)
-message("Running limma moderated t-tests (KO vs within-batch controls)...")
+message("Building log2FC matrix (KO replicates + pooled control residuals)...")
 
-stat_results_limma <- purrr::map_dfr(ko_genes_pass, function(ko) {
+# --- Step 1: control residual log2FCs (ctrl_rep - batch_ctrl_mean) ---
+hela_ctrl_residuals <- hela_long %>%
+  dplyr::filter(is_control, !is.na(log2_intensity)) %>%
+  dplyr::left_join(hela_ctrl_means %>% dplyr::select(Genes, batch, ctrl_mean_log2), by = c("Genes", "batch")) %>%
+  dplyr::mutate(log2FC = log2_intensity - ctrl_mean_log2) %>%
+  dplyr::filter(!is.na(log2FC)) %>%
+  dplyr::select(Genes, sample, log2FC) %>%
+  dplyr::mutate(group = "ctrl")
 
-  # Batch(es) for this KO (expected: always 1 batch per KO in this design)
-  ko_batch <- hela_pheno_filtered %>%
-    dplyr::filter(ko_gene == ko) %>%
-    dplyr::pull(batch) %>%
-    unique()
+# --- Step 2: combine KO log2FCs + control residuals ---
+ko_fc_long <- hela_log2fc_long %>%
+  dplyr::filter(ko_gene %in% ko_genes_pass, !is.na(log2FC)) %>%
+  dplyr::select(Genes, sample, group = ko_gene, log2FC)
 
-  samples_ko   <- hela_pheno_filtered %>% dplyr::filter(ko_gene == ko) %>% dplyr::pull(sample)
-  samples_ctrl <- hela_pheno_filtered %>% dplyr::filter(is_control, batch %in% ko_batch) %>% dplyr::pull(sample)
-  samples_all  <- c(samples_ko, samples_ctrl)
+all_fc_long <- dplyr::bind_rows(ko_fc_long, hela_ctrl_residuals)
 
-  # Build intensity matrix (proteins x samples)
-mat_wide <- hela_long %>%
-    dplyr::filter(sample %in% samples_all) %>%
-    dplyr::select(Genes, sample, log2_intensity) %>%
-    tidyr::pivot_wider(names_from = sample, values_from = log2_intensity, values_fn = mean) %>%  # <- add values_fn = mean
-    tibble::column_to_rownames("Genes") %>%
-    as.matrix()
+# --- Step 3: protein x sample matrix (collapse duplicate gene names by mean) ---
+mat_fc <- all_fc_long %>%
+  dplyr::group_by(Genes, sample) %>%
+  dplyr::summarise(log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = sample, values_from = log2FC) %>%
+  tibble::column_to_rownames("Genes") %>%
+  as.matrix()
 
-  # Restrict to samples that exist in quant
-  samples_ko_in   <- samples_ko[samples_ko     %in% colnames(mat_wide)]
-  samples_ctrl_in <- samples_ctrl[samples_ctrl %in% colnames(mat_wide)]
-  col_order       <- c(samples_ko_in, samples_ctrl_in)
-  mat_wide        <- mat_wide[, col_order, drop = FALSE]
+# Sample metadata aligned to matrix column order
+sample_meta  <- dplyr::distinct(all_fc_long, sample, group)
+sample_group <- tibble::tibble(sample = colnames(mat_fc)) %>%
+  dplyr::left_join(sample_meta, by = "sample")
 
-  # Require >= 2 valid values in each group per gene
-  n_ko_valid   <- rowSums(!is.na(mat_wide[, samples_ko_in,   drop = FALSE]))
-  n_ctrl_valid <- rowSums(!is.na(mat_wide[, samples_ctrl_in, drop = FALSE]))
-  keep         <- n_ko_valid >= 2 & n_ctrl_valid >= 2
+message("  Matrix dimensions: ", nrow(mat_fc), " proteins x ", ncol(mat_fc), " samples")
+message("  Control samples  : ", sum(sample_group$group == "ctrl"))
+message("  KO samples       : ", sum(sample_group$group != "ctrl"))
 
-  # Need enough genes for eBayes prior estimation and enough samples for df
-  if (sum(keep) < 10 || length(col_order) < 4) return(dplyr::tibble())
+# --- Step 4: filter proteins -- require >= 2 valid ctrl values ---
+n_ctrl_valid <- rowSums(!is.na(mat_fc[, sample_group$group == "ctrl", drop = FALSE]))
+mat_fc <- mat_fc[n_ctrl_valid >= 2, , drop = FALSE]
+message("  Proteins after filter: ", nrow(mat_fc))
 
-  mat_filt <- mat_wide[keep, , drop = FALSE]
+# --- Step 5: impute residual NAs with per-row half-minimum ---
+row_halfmin <- apply(mat_fc, 1, function(x) min(x, na.rm = TRUE) / 2)
+for (j in seq_len(nrow(mat_fc))) {
+  mat_fc[j, is.na(mat_fc[j, ])] <- row_halfmin[j]
+}
 
-  # Impute residual NAs: per-row half-minimum (left-censored imputation)
-  row_halfmin <- apply(mat_filt, 1, function(x) min(x, na.rm = TRUE) / 2)
-  for (j in seq_len(nrow(mat_filt))) {
-    mat_filt[j, is.na(mat_filt[j, ])] <- row_halfmin[j]
-  }
+# --- Step 6: design matrix (treatment coding, no intercept) ---
+# make.names() handles gene names with special characters
+safe_levels <- make.names(c("ctrl", ko_genes_pass))
+group_safe  <- make.names(sample_group$group)
+group_vec   <- factor(group_safe, levels = safe_levels)
+design_mat  <- model.matrix(~ 0 + group_vec)
+colnames(design_mat) <- safe_levels
 
-  # Design: ctrl = reference, ko = effect of interest
-  group_vec  <- factor(c(rep("ko", length(samples_ko_in)), rep("ctrl", length(samples_ctrl_in))),
-                       levels = c("ctrl", "ko"))
-  design_mat <- model.matrix(~ group_vec)
+# --- Step 7: contrasts -- each KO vs ctrl ---
+contrast_strings <- paste0(make.names(ko_genes_pass), " - ctrl")
+contrast_mat     <- limma::makeContrasts(contrasts = contrast_strings, levels = design_mat)
+colnames(contrast_mat) <- ko_genes_pass
 
-  fit <- limma::lmFit(mat_filt, design_mat)
-  fit <- limma::eBayes(fit)
+# --- Step 8: fit ---
+fit  <- limma::lmFit(mat_fc, design_mat)
+fit2 <- limma::contrasts.fit(fit, contrast_mat)
+fit2 <- limma::eBayes(fit2)
 
-  limma::topTable(fit, coef = 2, number = Inf, sort.by = "none") %>%
+# --- Step 9: extract results per KO ---
+stat_results_limma <- purrr::map_dfr(seq_along(ko_genes_pass), function(i) {
+  limma::topTable(fit2, coef = i, number = Inf, sort.by = "none") %>%
     tibble::rownames_to_column("Genes") %>%
-    dplyr::transmute(
-      Genes,
-      ko_gene     = ko,
-      n_ko_reps   = length(samples_ko_in),
-      n_ctrl_reps = length(samples_ctrl_in),
-      pval        = P.Value
-    )
+    dplyr::transmute(Genes, ko_gene = ko_genes_pass[i], pval = P.Value)
 })
 
-message("  Tests run       : ", nrow(stat_results_limma))
-
-# --- BH-FDR across all tests ---
+# --- Step 10: BH-FDR across all tests ---
 stat_results_limma <- stat_results_limma %>%
   dplyr::mutate(
     qval       = p.adjust(pval, method = "BH"),
@@ -23315,17 +23319,18 @@ stat_results_limma <- stat_results_limma %>%
     neglog10_q = dplyr::if_else(!is.na(qval), -log10(qval), NA_real_)
   )
 
-message("  Significant (q < 0.05): ",
-        sum(!is.na(stat_results_limma$qval) & stat_results_limma$qval < 0.05))
+message("  Tests run             : ", nrow(stat_results_limma))
+message("  Significant (q < 0.01): ", sum(!is.na(stat_results_limma$qval) & stat_results_limma$qval < 0.01))
 
-# --- Merge into summary table ---
+# --- Step 11: merge into summary table ---
 hela_log2fc_summary_stats <- hela_log2fc_summary_qc %>%
   dplyr::left_join(
-    stat_results_limma %>% dplyr::select(Genes, ko_gene, n_ko_reps, n_ctrl_reps, pval, qval, neglog10_p, neglog10_q),
+    stat_results_limma %>% dplyr::select(Genes, ko_gene, pval, qval, neglog10_p, neglog10_q),
     by = c("Genes", "ko_gene")
   )
 
-readr::write_csv(hela_log2fc_summary_stats,file.path(out_dir_hela_preproc, "tables", "hela_log2fc_summary_stats.csv"))
+readr::write_csv(hela_log2fc_summary_stats,
+                 file.path(out_dir_hela_preproc, "tables", "hela_log2fc_summary_stats.csv"))
 
 # --- Wide matrices for vulnerability module ---
 hela_neglog10p_wide <- hela_log2fc_summary_stats %>%
@@ -23345,28 +23350,25 @@ readr::write_csv(pval_hist_data, file.path(out_dir_hela_preproc, "qc", "sourceda
 
 p_pval_hist <- ggplot(pval_hist_data, aes(x = pval)) +
   geom_histogram(bins = 50, fill = "steelblue", color = "black", linewidth = 0.2) +
-  geom_vline(xintercept = 0.05, linetype = "dashed", color = "red") +
-  labs(title = "p-value distribution (limma moderated t-test, all protein x KO)",
+  geom_vline(xintercept = 0.01, linetype = "dashed", color = "red") +
+  labs(title = "p-value distribution (limma, KO vs pooled ctrl null)",
        x = "p-value", y = "Count") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"), p_pval_hist, width = 4, height = 3, device = cairo_pdf)
-
-
-
+ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"),
+       p_pval_hist, width = 4, height = 3, device = cairo_pdf)
 
 # --- QC: stacked barplot -- significant up/unchanged/down per KO ---
-# thresholds: p < 0.05 and q < 0.05; direction from mean_log2FC
-
-classify_direction <- function(df, sig_col, thresh = 0.05) {
+# Significance: p or q < 0.01 AND |mean_log2FC| >= 1.3
+classify_direction <- function(df, sig_col, thresh = 0.01, lfc_thresh = 1.3) {
   df %>%
     dplyr::filter(!is.na(mean_log2FC), !is.na(.data[[sig_col]])) %>%
     dplyr::mutate(
       direction = dplyr::case_when(
-        .data[[sig_col]] < thresh & mean_log2FC < 0 ~ "reduced",
-        .data[[sig_col]] < thresh & mean_log2FC > 0 ~ "increased",
-        TRUE                                         ~ "unchanged"
+        .data[[sig_col]] < thresh & mean_log2FC <= -lfc_thresh ~ "reduced",
+        .data[[sig_col]] < thresh & mean_log2FC >=  lfc_thresh ~ "increased",
+        TRUE                                                    ~ "unchanged"
       ),
       direction = factor(direction, levels = c("increased", "unchanged", "reduced"))
     ) %>%
@@ -23380,7 +23382,6 @@ make_dir_barplot <- function(count_df, title_str) {
     dplyr::filter(direction == "reduced") %>%
     dplyr::arrange(dplyr::desc(n)) %>%
     dplyr::pull(ko_gene)
-
   count_df %>%
     dplyr::mutate(ko_gene = factor(ko_gene, levels = ko_order_bar)) %>%
     ggplot(aes(x = ko_gene, y = n, fill = direction)) +
@@ -23388,19 +23389,15 @@ make_dir_barplot <- function(count_df, title_str) {
     scale_fill_manual(values = bar_colors) +
     labs(title = title_str, x = NULL, y = "Proteins", fill = NULL) +
     theme_bw(base_size = 6) +
-    theme(
-      panel.grid    = element_blank(),
-      panel.border  = element_rect(color = "black", fill = NA),
-      axis.text.x   = element_text(angle = 45, hjust = 1),
-      legend.position = "bottom"
-    )
+    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
 }
 
-counts_p <- classify_direction(hela_log2fc_summary_stats, sig_col = "pval")
-counts_q <- classify_direction(hela_log2fc_summary_stats, sig_col = "qval")
+counts_p <- classify_direction(hela_log2fc_summary_stats, sig_col = "pval", thresh = 0.01, lfc_thresh = 1.3)
+counts_q <- classify_direction(hela_log2fc_summary_stats, sig_col = "qval", thresh = 0.01, lfc_thresh = 1.3)
 
-p_dir_p <- make_dir_barplot(counts_p, "Protein direction by KO (p < 0.05)")
-p_dir_q <- make_dir_barplot(counts_q, "Protein direction by KO (q < 0.05)")
+p_dir_p <- make_dir_barplot(counts_p, "Protein direction by KO (p < 0.01, |log2FC| >= 1.3)")
+p_dir_q <- make_dir_barplot(counts_q, "Protein direction by KO (q < 0.01, |log2FC| >= 1.3)")
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "barplot_protein_direction_p.pdf"), p_dir_p, width = 4, height = 4, device = cairo_pdf)
 ggsave(file.path(out_dir_hela_preproc, "qc", "barplot_protein_direction_q.pdf"), p_dir_q, width = 4, height = 4, device = cairo_pdf)
@@ -23408,11 +23405,18 @@ ggsave(file.path(out_dir_hela_preproc, "qc", "barplot_protein_direction_q.pdf"),
 readr::write_csv(counts_p, file.path(out_dir_hela_preproc, "qc", "sourcedata_protein_direction_p.csv"))
 readr::write_csv(counts_q, file.path(out_dir_hela_preproc, "qc", "sourcedata_protein_direction_q.csv"))
 
+# --- Summary table ---
+summary_dir <- counts_q %>%
+  tidyr::pivot_wider(names_from = direction, values_from = n, values_fill = 0L) %>%
+  dplyr::mutate(total       = increased + unchanged + reduced,
+                pct_changed = round(100 * (increased + reduced) / total, 1)) %>%
+  dplyr::arrange(dplyr::desc(reduced))
+print(summary_dir, n = Inf)
 
-
-message("Chunk 6 complete: limma significance testing done")
+message("Chunk 6 complete")
 message("  Output: hela_log2fc_summary_stats, hela_neglog10p_wide, hela_neglog10q_wide")
 ```
+
 
 
 # Module 2: Baseline PPI Network
