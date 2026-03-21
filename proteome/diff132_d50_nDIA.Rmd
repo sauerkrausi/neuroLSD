@@ -23325,8 +23325,7 @@ hela_log2fc_summary_stats <- hela_log2fc_summary_qc %>%
     by = c("Genes", "ko_gene")
   )
 
-readr::write_csv(hela_log2fc_summary_stats,
-                 file.path(out_dir_hela_preproc, "tables", "hela_log2fc_summary_stats.csv"))
+readr::write_csv(hela_log2fc_summary_stats,file.path(out_dir_hela_preproc, "tables", "hela_log2fc_summary_stats.csv"))
 
 # --- Wide matrices for vulnerability module ---
 hela_neglog10p_wide <- hela_log2fc_summary_stats %>%
@@ -23352,12 +23351,70 @@ p_pval_hist <- ggplot(pval_hist_data, aes(x = pval)) +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
 
-ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"),
-       p_pval_hist, width = 4, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"), p_pval_hist, width = 4, height = 3, device = cairo_pdf)
+
+
+
+
+# --- QC: stacked barplot -- significant up/unchanged/down per KO ---
+# thresholds: p < 0.05 and q < 0.05; direction from mean_log2FC
+
+classify_direction <- function(df, sig_col, thresh = 0.05) {
+  df %>%
+    dplyr::filter(!is.na(mean_log2FC), !is.na(.data[[sig_col]])) %>%
+    dplyr::mutate(
+      direction = dplyr::case_when(
+        .data[[sig_col]] < thresh & mean_log2FC < 0 ~ "reduced",
+        .data[[sig_col]] < thresh & mean_log2FC > 0 ~ "increased",
+        TRUE                                         ~ "unchanged"
+      ),
+      direction = factor(direction, levels = c("increased", "unchanged", "reduced"))
+    ) %>%
+    dplyr::count(ko_gene, direction)
+}
+
+bar_colors <- c("increased" = "#C0392B", "unchanged" = "grey75", "reduced" = "#2980B9")
+
+make_dir_barplot <- function(count_df, title_str) {
+  ko_order_bar <- count_df %>%
+    dplyr::filter(direction == "reduced") %>%
+    dplyr::arrange(dplyr::desc(n)) %>%
+    dplyr::pull(ko_gene)
+
+  count_df %>%
+    dplyr::mutate(ko_gene = factor(ko_gene, levels = ko_order_bar)) %>%
+    ggplot(aes(x = ko_gene, y = n, fill = direction)) +
+    geom_bar(stat = "identity", width = 0.8, color = "black", linewidth = 0.15) +
+    scale_fill_manual(values = bar_colors) +
+    labs(title = title_str, x = NULL, y = "Proteins", fill = NULL) +
+    theme_bw(base_size = 6) +
+    theme(
+      panel.grid    = element_blank(),
+      panel.border  = element_rect(color = "black", fill = NA),
+      axis.text.x   = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom"
+    )
+}
+
+counts_p <- classify_direction(hela_log2fc_summary_stats, sig_col = "pval")
+counts_q <- classify_direction(hela_log2fc_summary_stats, sig_col = "qval")
+
+p_dir_p <- make_dir_barplot(counts_p, "Protein direction by KO (p < 0.05)")
+p_dir_q <- make_dir_barplot(counts_q, "Protein direction by KO (q < 0.05)")
+
+ggsave(file.path(out_dir_hela_preproc, "qc", "barplot_protein_direction_p.pdf"), p_dir_p, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "barplot_protein_direction_q.pdf"), p_dir_q, width = 4, height = 4, device = cairo_pdf)
+
+readr::write_csv(counts_p, file.path(out_dir_hela_preproc, "qc", "sourcedata_protein_direction_p.csv"))
+readr::write_csv(counts_q, file.path(out_dir_hela_preproc, "qc", "sourcedata_protein_direction_q.csv"))
+
+
 
 message("Chunk 6 complete: limma significance testing done")
 message("  Output: hela_log2fc_summary_stats, hela_neglog10p_wide, hela_neglog10q_wide")
 ```
+
+
 # Module 2: Baseline PPI Network
 ## Chunk 1: Tier1 filtering to HeLa Control proteome
 Union of proteins detected in any Control sample across all 15 batches
