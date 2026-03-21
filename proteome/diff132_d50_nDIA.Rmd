@@ -25415,7 +25415,8 @@ sig_summary_hela <- prot_long_hela %>%
     n_gained_q  = sum(is_gained_q, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  dplyr::left_join(ko_to_class_hela, by = c("ko_gene" = "KO"))
+  dplyr::left_join(ko_to_class_hela, by = c("ko_gene" = "KO")) %>%
+  dplyr::rename(DiseaseClass = class)
 
 readr::write_csv(sig_summary_hela, file.path(out_dir_vuln_hela, "tables", "significance_summary.csv"))
 message("  Saved: significance_summary.csv")
@@ -25434,11 +25435,11 @@ message("Chunk 1 complete")
 message("Building HeLa KO edge states table...")
 
 # Minimal baseline columns for cross-join
-baseline_edge_hela <- baseline_ppi_hela_ann %>%
-  dplyr::select(Gene1, Gene2, support_score, in_both_predictions,
-                dplyr::all_of(paste0(organelle_tags, "_prot1")),
-                dplyr::all_of(paste0(organelle_tags, "_prot2"))) %>%
-  dplyr::mutate(key = .make_undirected_key(Gene1, Gene2))
+# baseline_ppi_hela is the annotated version -- baseline_ppi_hela_ann is saved back as baseline_ppi_hela at end of M2 C2
+baseline_edge_hela <- baseline_ppi_hela %>%
+  dplyr::select(key, Gene1, Gene2, support_score, in_both_predictions,
+                dplyr::any_of(paste0(organelle_tags, "_prot1")),
+                dplyr::any_of(paste0(organelle_tags, "_prot2")))
 
 message("  Baseline PPIs: ", nrow(baseline_edge_hela))
 
