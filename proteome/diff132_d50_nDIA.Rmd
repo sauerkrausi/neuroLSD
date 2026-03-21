@@ -26194,117 +26194,111 @@ dir.create(file.path(out_dir_vuln_hela, "sourcedata/complex_networks_q"), recurs
 dir.create(file.path(out_dir_vuln_hela, "sourcedata/complex_networks_p"), recursive = TRUE, showWarnings = FALSE)
 
 # =============================================================================
-# 9.1 Trimer / Tetramer disruption heatmaps
+# 9.1 Trimer / Tetramer / Complex disruption heatmaps: KO x organelle
+# Rows = KO, cols = organelle, value = fraction disrupted -- same format as PPI organelle heatmap
 # =============================================================================
-message("9.1 Trimer / Tetramer heatmaps...")
+message("9.1 Structure disruption heatmaps (KO x organelle)...")
 
-# --- Helper: build binary heatmap matrix (structure x KO) ---
-make_structure_hm <- function(ko_states, id_col, state_col = "state_q") {
-  # select only scalar columns before pivot to avoid list-column fill errors
+# --- Helper: build KO x organelle fraction-disrupted summary ---
+make_ko_org_hm <- function(ko_states, organelle_col, state_col, n_col, frac_col_name) {
   ko_states %>%
-    dplyr::mutate(disrupted_bin = as.integer(.data[[state_col]] == "disrupted")) %>%
-    dplyr::select(dplyr::all_of(id_col), ko_gene, disrupted_bin) %>%
-    tidyr::pivot_wider(names_from = ko_gene, values_from = disrupted_bin, values_fill = 0L)
+    dplyr::filter(!is.na(.data[[organelle_col]])) %>%
+    dplyr::group_by(ko_gene, DiseaseClass, organelle = .data[[organelle_col]]) %>%
+    dplyr::summarise(
+      n_total      = dplyr::n(),
+      n_disrupted  = sum(.data[[state_col]] == "disrupted", na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(frac = n_disrupted / n_total) %>%
+    dplyr::rename(!!frac_col_name := frac)
 }
 
-# --- Helper: draw and save structure heatmap ---
-draw_structure_hm <- function(hm_wide, id_col, row_annot_df, ann_colors, title_str, out_path, out_sd_path) {
+# --- Helper: draw KO x organelle heatmap ---
+draw_ko_org_hm <- function(summary_df, frac_col, title_str, out_path, out_sd_path) {
+  hm_wide <- summary_df %>%
+    dplyr::select(ko_gene, organelle, dplyr::all_of(frac_col)) %>%
+    tidyr::pivot_wider(names_from = organelle, values_from = dplyr::all_of(frac_col), values_fill = NA)
+
   if (nrow(hm_wide) < 2 || ncol(hm_wide) < 3) { message("  Insufficient data: ", title_str); return(invisible(NULL)) }
+
   hm_mat <- as.matrix(hm_wide[, -1])
-  rownames(hm_mat) <- hm_wide[[id_col]]
+  rownames(hm_mat) <- hm_wide$ko_gene
 
-  # Sort rows by n disrupted KOs descending
-  row_ord  <- order(rowSums(hm_mat), decreasing = TRUE)
-  hm_ord   <- hm_mat[row_ord, , drop = FALSE]
+  # Row annotation: disease class
+  row_ann <- ko_to_class_hela %>%
+    dplyr::filter(KO %in% rownames(hm_mat)) %>% as.data.frame()
+  rownames(row_ann) <- row_ann$KO
+  row_ann <- row_ann[rownames(hm_mat), "class", drop = FALSE]
+  colnames(row_ann) <- "DiseaseClass"
+  dc_p <- intersect(names(disease_colors_hela), unique(na.omit(row_ann$DiseaseClass)))
 
-  # Column annotation
-  ko_in_mat <- colnames(hm_ord)
-  col_ann <- ko_to_class_hela %>% dplyr::filter(KO %in% ko_in_mat) %>% as.data.frame()
-  rownames(col_ann) <- col_ann$KO
-  col_ann <- col_ann[ko_in_mat, "class", drop = FALSE]
-  colnames(col_ann) <- "DiseaseClass"
-  dc_p <- intersect(names(disease_colors_hela), unique(na.omit(col_ann$DiseaseClass)))
+  readr::write_csv(hm_wide, out_sd_path)
 
-  # Row annotation
-  if (!is.null(row_annot_df)) {
-    row_ann <- row_annot_df[rownames(hm_ord), , drop = FALSE]
-  } else {
-    row_ann <- NULL
-  }
-
-  full_ann_colors <- c(ann_colors, list(DiseaseClass = disease_colors_hela[dc_p]))
-
-  readr::write_csv(as.data.frame(hm_ord) %>% tibble::rownames_to_column(id_col), out_sd_path)
-
-  pdf(out_path, width = 12, height = max(6, nrow(hm_ord) * 0.08 + 2))
-  pheatmap::pheatmap(hm_ord,
-    color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
-    cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
-    annotation_row = row_ann, annotation_col = col_ann, annotation_colors = full_ann_colors,
-    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+  pdf(out_path, width = max(6, ncol(hm_mat) * 0.5 + 2), height = max(5, nrow(hm_mat) * 0.3 + 2))
+  pheatmap::pheatmap(hm_mat,
+    color = colorRampPalette(c("white", "#C51B7D"))(100),
+    border_color = NA, fontsize = 6, cellwidth = 12, cellheight = 10,
+    cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2",
+    annotation_row = row_ann,
+    annotation_colors = list(DiseaseClass = disease_colors_hela[dc_p]),
     main = title_str)
   dev.off()
   message("  Saved: ", basename(out_path))
 }
 
-# --- Trimer heatmaps ---
+# --- Trimer: join organelle from trimer_evidence_hela ---
 if (nrow(trimer_ko_states_hela) > 0) {
-  # Row annotation from trimer_evidence_hela
   tri_ann_col <- intersect(c("shared_organelle", "majority_organelle"), colnames(trimer_evidence_hela))[1]
-  tri_row_ann <- NULL
-  tri_ann_colors <- list()
   if (!is.na(tri_ann_col)) {
-    tri_meta <- trimer_evidence_hela %>%
-      dplyr::select(trimer_id, dplyr::all_of(tri_ann_col)) %>%
-      dplyr::distinct(trimer_id, .keep_all = TRUE) %>%
-      as.data.frame()
-    rownames(tri_meta) <- tri_meta$trimer_id
-    tri_meta <- tri_meta[, tri_ann_col, drop = FALSE]
-    colnames(tri_meta) <- "organelle"
-    tri_row_ann  <- tri_meta
-    n_org_tri    <- length(unique(na.omit(tri_meta$organelle)))
-    org_pal_tri  <- setNames(colorRampPalette(RColorBrewer::brewer.pal(max(3, min(n_org_tri, 12)), "Set3"))(n_org_tri),
-                              unique(na.omit(tri_meta$organelle)))
-    tri_ann_colors <- list(organelle = org_pal_tri)
-  }
+    tri_org_lookup <- trimer_evidence_hela %>%
+      dplyr::select(trimer_id, organelle = dplyr::all_of(tri_ann_col)) %>%
+      dplyr::distinct(trimer_id, .keep_all = TRUE)
 
-  for (sig_type in c("q", "p")) {
-    hm_tri <- make_structure_hm(trimer_ko_states_hela, "trimer_id", paste0("state_", sig_type))
-    draw_structure_hm(hm_tri, "trimer_id", tri_row_ann, tri_ann_colors,
-      paste0("Trimer Disruption (", sig_type, " < 0.05)\n", nrow(hm_tri), " trimers x ", ncol(hm_tri) - 1, " KOs"),
-      file.path(out_dir_vuln_hela, "plots/trimers", paste0("heatmap_trimer_KO_annotation_HeLa_", sig_type, ".pdf")),
-      file.path(out_dir_vuln_hela, "sourcedata", paste0("heatmap_trimer_KO_", sig_type, "_sourcedata.csv")))
+    trimer_ko_org_hela <- trimer_ko_states_hela %>%
+      dplyr::left_join(tri_org_lookup, by = "trimer_id")
+
+    for (sig_type in c("q", "p")) {
+      state_col <- paste0("state_", sig_type)
+      tri_summary <- make_ko_org_hm(trimer_ko_org_hela, "organelle", state_col, "n_total", "frac")
+      draw_ko_org_hm(tri_summary, "frac",
+        paste0("Trimer disruption: KO x organelle (", sig_type, " < 0.05)"),
+        file.path(out_dir_vuln_hela, "plots/trimers",   paste0("heatmap_trimer_KO_annotation_HeLa_", sig_type, ".pdf")),
+        file.path(out_dir_vuln_hela, "sourcedata",      paste0("heatmap_trimer_KO_", sig_type, "_sourcedata.csv")))
+    }
   }
 }
 
-# --- Tetramer heatmaps ---
+# --- Tetramer ---
 if (exists("tetramer_ko_states_hela") && nrow(tetramer_ko_states_hela) > 0 &&
     "tetramer_id" %in% colnames(tetramer_ko_states_hela)) {
   tet_ann_col <- intersect(c("shared_organelle", "majority_organelle"), colnames(tetramer_evidence_hela))[1]
-  tet_row_ann <- NULL
-  tet_ann_colors <- list()
   if (!is.na(tet_ann_col)) {
-    tet_meta <- tetramer_evidence_hela %>%
-      dplyr::select(tetramer_id, dplyr::all_of(tet_ann_col)) %>%
-      dplyr::distinct(tetramer_id, .keep_all = TRUE) %>%
-      as.data.frame()
-    rownames(tet_meta) <- tet_meta$tetramer_id
-    tet_meta <- tet_meta[, tet_ann_col, drop = FALSE]
-    colnames(tet_meta) <- "organelle"
-    tet_row_ann <- tet_meta
-    n_org_tet   <- length(unique(na.omit(tet_meta$organelle)))
-    tet_ann_colors <- list(organelle = setNames(
-      colorRampPalette(RColorBrewer::brewer.pal(max(3, min(n_org_tet, 12)), "Set3"))(n_org_tet),
-      unique(na.omit(tet_meta$organelle))))
-  }
+    tet_org_lookup <- tetramer_evidence_hela %>%
+      dplyr::select(tetramer_id, organelle = dplyr::all_of(tet_ann_col)) %>%
+      dplyr::distinct(tetramer_id, .keep_all = TRUE)
 
-  for (sig_type in c("q", "p")) {
-    hm_tet <- make_structure_hm(tetramer_ko_states_hela, "tetramer_id", paste0("state_", sig_type))
-    draw_structure_hm(hm_tet, "tetramer_id", tet_row_ann, tet_ann_colors,
-      paste0("Tetramer Disruption (", sig_type, " < 0.05)\n", nrow(hm_tet), " tetramers x ", ncol(hm_tet) - 1, " KOs"),
-      file.path(out_dir_vuln_hela, "plots/tetramers", paste0("heatmap_tetramer_KO_annotation_HeLa_", sig_type, ".pdf")),
-      file.path(out_dir_vuln_hela, "sourcedata", paste0("heatmap_tetramer_KO_", sig_type, "_sourcedata.csv")))
+    tetramer_ko_org_hela <- tetramer_ko_states_hela %>%
+      dplyr::left_join(tet_org_lookup, by = "tetramer_id")
+
+    for (sig_type in c("q", "p")) {
+      state_col <- paste0("state_", sig_type)
+      tet_summary <- make_ko_org_hm(tetramer_ko_org_hela, "organelle", state_col, "n_total", "frac")
+      draw_ko_org_hm(tet_summary, "frac",
+        paste0("Tetramer disruption: KO x organelle (", sig_type, " < 0.05)"),
+        file.path(out_dir_vuln_hela, "plots/tetramers", paste0("heatmap_tetramer_KO_annotation_HeLa_", sig_type, ".pdf")),
+        file.path(out_dir_vuln_hela, "sourcedata",      paste0("heatmap_tetramer_KO_", sig_type, "_sourcedata.csv")))
+    }
   }
+}
+
+# --- Complex: majority_organelle already in complex_ko_states_hela ---
+for (sig_type in c("q", "p")) {
+  state_col <- paste0("state_", sig_type)
+  cx_summary_org <- make_ko_org_hm(complex_ko_states_hela, "majority_organelle", state_col, "n_total", "frac")
+  draw_ko_org_hm(cx_summary_org, "frac",
+    paste0("Complex disruption: KO x organelle (", sig_type, " < 0.05)"),
+    file.path(out_dir_vuln_hela, "plots/complexes", paste0("heatmap_complex_KO_annotation_HeLa_", sig_type, ".pdf")),
+    file.path(out_dir_vuln_hela, "sourcedata",      paste0("heatmap_complex_KO_", sig_type, "_sourcedata.csv")))
 }
 
 # =============================================================================
@@ -26487,8 +26481,24 @@ plot_cx_ko_network_hela <- function(cx_idx, ko, ko_edge_export, complex_evidence
 
   cx_meta   <- complex_evidence_hela %>% dplyr::filter(complex_idx == cx_idx)
   cx_size   <- cx_meta$complex_size[1]
-  cx_name   <- dplyr::coalesce(cx_meta$corum_matched_name[1], "")
-  cx_name   <- if (!is.na(cx_name) && nchar(cx_name) > 0) paste0("\n", substr(cx_name, 1, 50)) else ""
+
+  # Validation label
+  val_status  <- dplyr::coalesce(cx_meta$validation_status[1], "novel")
+  val_label   <- dplyr::case_when(
+    val_status == "strict_match"  ~ "KNOWN (strict)",
+    val_status == "relaxed_match" ~ "KNOWN (relaxed)",
+    TRUE                          ~ "NOVEL"
+  )
+
+  # Matched complex name: CORUM first, then ComplexPortal
+  cx_name <- ""
+  corum_name <- cx_meta$corum_matched_name[1]
+  cp_id      <- cx_meta$cp_matched_id[1]
+  if (!is.na(corum_name) && nchar(corum_name) > 0) {
+    cx_name <- paste0("\n", substr(corum_name, 1, 50))
+  } else if (!is.na(cp_id) && nchar(cp_id) > 0) {
+    cx_name <- paste0("\nCP: ", cp_id)
+  }
 
   edge_state_vec <- edges_ko[[sig_col]]
 
@@ -26524,7 +26534,7 @@ plot_cx_ko_network_hela <- function(cx_idx, ko, ko_edge_export, complex_evidence
   vlcex <- ifelse(cx_size > 30, 0.4, ifelse(cx_size > 15, 0.5, 0.6))
   sig_label <- toupper(sub("state_", "", sig_col))
 
-  plot_title <- paste0("Complex ", cx_idx, " | ", ko, " [", sig_label, "]",
+  plot_title <- paste0("Complex ", cx_idx, " | ", ko, " [", sig_label, "] | ", val_label,
     "\nSize: ", cx_size, " | Edges: ", nrow(edges_ko),
     " | Lost nodes: ", n_lost_nodes, " | Disrupted nodes: ", n_dis_nodes, cx_name)
 
@@ -26596,6 +26606,7 @@ message("\nModule 7 complete")
 message("  KOs analyzed  : ", length(ko_list_hela))
 message("  Output        : ", out_dir_vuln_hela)
 ```
+
 # =================================================
 # old Module 12: PPI Vulnerability Analysis - HeLa nMOST
 # =================================================
