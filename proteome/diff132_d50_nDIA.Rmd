@@ -25288,6 +25288,895 @@ message("Network plots saved to: ", out_dir_cx_nets_hela)
 ```
 
 
+# Module 7: KO Vulnerability Analysis (HeLa)
+Significance-filtered PPI/trimer/tetramer/complex vulnerability across 39 HeLa KOs
+both p and q thresholds evaluated throughout
+
+## Chunk 0: Setup and Configuration
+```{r m12_m7_c0_setup}
+# =============================================================================
+# Setup: libraries, thresholds, disease classes, output dirs, helpers
+# =============================================================================
+
+library(tidyverse)
+library(pheatmap)
+library(RColorBrewer)
+library(ggrepel)
+library(scales)
+library(igraph)
+library(fmsb)
+
+# --- Significance thresholds (-log10 scale) ---
+q_thresh_hela <- -log10(0.05)   # 1.3
+p_thresh_hela <- -log10(0.05)   # 1.3
+
+# --- Disease class definitions ---
+# Priority order: Sphingolipidoses and NCL first; duplicate KOs (e.g. GLB1,
+# ATP13A2) are assigned to the highest-priority matching class.
+disease_classes_hela <- list(
+  Sphingolipidoses                    = c("ARSA", "ASAH1", "GALC", "GBA1", "GLA", "GLB1", "GM2A", "HEXA", "HEXB", "PSAP", "SMPD1"),
+  Neuronal.ceroid.lipofuscinoses      = c("PPT1", "CTSD", "GRN", "ATP13A2", "CTSF", "KCTD7", "TPP1", "CLN3", "DNAJC5", "CLN5", "CLN6", "MFSD8", "CLN8"),
+  Mucopolysaccharidoses               = c("GLB1", "ARSB", "GALNS", "GNS", "GUSB", "HGSNAT", "HYAL1", "IDS", "IDUA", "NAGLU", "SGSH"),
+  Glycoproteinoses                    = c("AGA", "CTSA", "FUCA", "MAN2B1", "MANBA", "NAGA", "NEU1"),
+  Integral.membrane.protein.disorders = c("ATP13A2", "CLN3", "CTNS", "LAMP2", "MCOLN1", "NPC1", "NPC2", "SCARB2", "SLC17A5"),
+  PTM.defects                         = c("GNPTAB", "GNPTG", "SUMF1"),
+  Lipid.storage.diseases              = c("GAA", "LIPA")
+)
+
+disease_colors_hela <- c(
+  Sphingolipidoses                    = "#D53E4F",
+  Neuronal.ceroid.lipofuscinoses      = "#FEE08B",
+  Mucopolysaccharidoses               = "#F46D43",
+  Glycoproteinoses                    = "#FDAE61",
+  Integral.membrane.protein.disorders = "#E6F598",
+  PTM.defects                         = "#ABDDA4",
+  Lipid.storage.diseases              = "#66C2A5"
+)
+
+disease_priority_hela <- names(disease_classes_hela)  # priority = list order
+
+# KO -> primary disease class (priority-resolved, one class per KO)
+ko_to_class_hela <- purrr::map_dfr(disease_classes_hela, ~data.frame(KO = .x, stringsAsFactors = FALSE), .id = "class") %>%
+  dplyr::mutate(class = factor(class, levels = disease_priority_hela)) %>%
+  dplyr::arrange(KO, class) %>%
+  dplyr::distinct(KO, .keep_all = TRUE) %>%
+  dplyr::mutate(class = as.character(class))
+
+message("Disease class mapping: ", nrow(ko_to_class_hela), " KOs assigned")
+
+# --- HeLa radar annotations: exclude neuronal/synaptic compartments ---
+radar_annotations_hela <- intersect(
+  c("Mito", "MitoMatrix", "MitoMIM", "MitoMOM", "MitoIMS",
+    "OXPHOS", "mtComplexI", "Golgi", "Lysosome", "ER",
+    "Cytoplasm", "Nucleus", "Autophagy", "EndoLyso",
+    "EarlyEndosome", "RecyclingEndosome", "vATPase"),
+  organelle_tags   # defined in M12 M2 from binary_matrix
+)
+message("Radar annotations (HeLa): ", paste(radar_annotations_hela, collapse = ", "))
+
+# --- Output dirs ---
+out_dir_vuln_hela <- file.path(out_dir_hela_ppi, "KO_eval")
+dir.create(file.path(out_dir_vuln_hela, "plots/global"),    recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "plots/complexes"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "plots/radar"),     recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "plots/radar/by_disease_class"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "tables"),          recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "sourcedata"),      recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "sourcedata/radar"),recursive = TRUE, showWarnings = FALSE)
+
+# --- Helper: save plot + sourcedata CSV ---
+save_plot_sd_hela <- function(plot, filename, data, width = 6, height = 5) {
+  pdf_path <- file.path(out_dir_vuln_hela, paste0(filename, ".pdf"))
+  ggplot2::ggsave(pdf_path, plot, width = width, height = height, device = cairo_pdf)
+  csv_path <- file.path(out_dir_vuln_hela, "sourcedata", paste0(basename(filename), "_sourcedata.csv"))
+  readr::write_csv(data, csv_path)
+  message("Saved: ", basename(pdf_path))
+  invisible(list(pdf = pdf_path, csv = csv_path))
+}
+
+message("Module 7 setup complete")
+message("  Significance: p < 0.05 and q < 0.05 evaluated in parallel")
+```
+
+
+## Chunk 1: Build Significance-Filtered Proteome Data
+```{r m12_m7_c1_proteome}
+# =============================================================================
+# Build proteome significance table from hela_log2fc_summary_stats (M0 C6)
+# No neuron dimension -- single cell type
+# =============================================================================
+
+message("Building HeLa significance-filtered proteome data...")
+
+prot_long_hela <- hela_log2fc_summary_stats %>%
+  dplyr::filter(ko_gene %in% colnames(hela_log2fc_wide_qc)[-1]) %>%
+  dplyr::mutate(
+    is_sig_p   = !is.na(neglog10_p) & neglog10_p >= p_thresh_hela,
+    is_sig_q   = !is.na(neglog10_q) & neglog10_q >= q_thresh_hela,
+    is_lost_p  = is_sig_p  & !is.na(mean_log2FC) & mean_log2FC < 0,
+    is_lost_q  = is_sig_q  & !is.na(mean_log2FC) & mean_log2FC < 0,
+    is_gained_p = is_sig_p & !is.na(mean_log2FC) & mean_log2FC > 0,
+    is_gained_q = is_sig_q & !is.na(mean_log2FC) & mean_log2FC > 0
+  )
+
+ko_list_hela <- unique(prot_long_hela$ko_gene)
+message("  KOs in analysis: ", length(ko_list_hela))
+
+# Significance summary per KO
+sig_summary_hela <- prot_long_hela %>%
+  dplyr::group_by(ko_gene) %>%
+  dplyr::summarise(
+    n_proteins  = dplyr::n(),
+    n_sig_p     = sum(is_sig_p,  na.rm = TRUE),
+    n_sig_q     = sum(is_sig_q,  na.rm = TRUE),
+    n_lost_p    = sum(is_lost_p, na.rm = TRUE),
+    n_lost_q    = sum(is_lost_q, na.rm = TRUE),
+    n_gained_p  = sum(is_gained_p, na.rm = TRUE),
+    n_gained_q  = sum(is_gained_q, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(ko_to_class_hela, by = c("ko_gene" = "KO"))
+
+readr::write_csv(sig_summary_hela, file.path(out_dir_vuln_hela, "tables", "significance_summary.csv"))
+message("  Saved: significance_summary.csv")
+message("Chunk 1 complete")
+```
+
+
+## Chunk 2: Build KO Edge States Table
+```{r m12_m7_c2_edge_states}
+# =============================================================================
+# KO edge states: for each baseline PPI x KO, classify as lost/retained/unknown
+# Uses significance flags from prot_long_hela; both p and q state columns
+# Also builds shared_long_hela_full for radar plots (all shared org tags per edge)
+# =============================================================================
+
+message("Building HeLa KO edge states table...")
+
+# Minimal baseline columns for cross-join
+baseline_edge_hela <- baseline_ppi_hela_ann %>%
+  dplyr::select(Gene1, Gene2, support_score, in_both_predictions,
+                dplyr::all_of(paste0(organelle_tags, "_prot1")),
+                dplyr::all_of(paste0(organelle_tags, "_prot2"))) %>%
+  dplyr::mutate(key = .make_undirected_key(Gene1, Gene2))
+
+message("  Baseline PPIs: ", nrow(baseline_edge_hela))
+
+# Cross-join baseline x KO list
+ko_dummy_hela <- data.frame(ko_gene = ko_list_hela, dummy = 1L)
+edge_dummy_hela <- baseline_edge_hela %>% dplyr::mutate(dummy = 1L)
+
+baseline_expanded_hela <- edge_dummy_hela %>%
+  dplyr::left_join(ko_dummy_hela, by = "dummy", relationship = "many-to-many") %>%
+  dplyr::select(-dummy)
+
+message("  Expanded table rows: ", nrow(baseline_expanded_hela))
+
+# Sig lookup per protein x KO
+prot_sig_hela <- prot_long_hela %>%
+  dplyr::select(Genes, ko_gene, mean_log2FC, is_lost_p, is_lost_q, is_gained_p, is_gained_q)
+
+ko_edge_states_hela <- baseline_expanded_hela %>%
+  dplyr::left_join(prot_sig_hela, by = c("Gene1" = "Genes", "ko_gene")) %>%
+  dplyr::rename(fc_A = mean_log2FC, lost_A_p = is_lost_p, lost_A_q = is_lost_q,
+                gained_A_p = is_gained_p, gained_A_q = is_gained_q) %>%
+  dplyr::left_join(prot_sig_hela, by = c("Gene2" = "Genes", "ko_gene")) %>%
+  dplyr::rename(fc_B = mean_log2FC, lost_B_p = is_lost_p, lost_B_q = is_lost_q,
+                gained_B_p = is_gained_p, gained_B_q = is_gained_q) %>%
+  dplyr::mutate(
+    state_q = dplyr::case_when(
+      lost_A_q | lost_B_q       ~ "lost",
+      !is.na(fc_A) | !is.na(fc_B) ~ "retained",
+      TRUE                       ~ "unknown"
+    ),
+    state_p = dplyr::case_when(
+      lost_A_p | lost_B_p       ~ "lost",
+      !is.na(fc_A) | !is.na(fc_B) ~ "retained",
+      TRUE                       ~ "unknown"
+    ),
+    loss_driver_q = dplyr::case_when(
+      lost_A_q & lost_B_q ~ "both", lost_A_q ~ "Gene1", lost_B_q ~ "Gene2", TRUE ~ NA_character_),
+    loss_driver_p = dplyr::case_when(
+      lost_A_p & lost_B_p ~ "both", lost_A_p ~ "Gene1", lost_B_p ~ "Gene2", TRUE ~ NA_character_)
+  ) %>%
+  dplyr::left_join(ko_to_class_hela, by = c("ko_gene" = "KO")) %>%
+  dplyr::rename(DiseaseClass = class)
+
+# Shared organelle per edge (first match, for summary tables)
+org1_cols <- paste0(organelle_tags, "_prot1")
+org2_cols <- paste0(organelle_tags, "_prot2")
+exist_p1  <- intersect(org1_cols, colnames(ko_edge_states_hela))
+exist_p2  <- intersect(org2_cols, colnames(ko_edge_states_hela))
+exist_tags_ko <- sub("_prot1$", "", exist_p1)
+
+if (length(exist_p1) > 0) {
+  m1 <- as.matrix(ko_edge_states_hela[, exist_p1]); m1[is.na(m1)] <- FALSE
+  m2 <- as.matrix(ko_edge_states_hela[, exist_p2]); m2[is.na(m2)] <- FALSE
+  shared_mat_ko <- m1 & m2
+  ko_edge_states_hela$OrgPair <- ifelse(rowSums(shared_mat_ko) > 0, "same", "cross")
+  ko_edge_states_hela$shared_organelle <- apply(shared_mat_ko, 1, function(r) {
+    idx <- which(r); if (length(idx) > 0) exist_tags_ko[idx[1]] else NA_character_
+  })
+} else {
+  ko_edge_states_hela$OrgPair        <- NA_character_
+  ko_edge_states_hela$shared_organelle <- NA_character_
+}
+
+# Save (drop heavy annotation columns)
+ko_edge_export_hela <- ko_edge_states_hela %>%
+  dplyr::select(Gene1, Gene2, key, ko_gene, DiseaseClass,
+                support_score, in_both_predictions,
+                fc_A, fc_B, lost_A_p, lost_A_q, lost_B_p, lost_B_q,
+                state_q, state_p, loss_driver_q, loss_driver_p,
+                OrgPair, shared_organelle)
+readr::write_csv(ko_edge_export_hela, file.path(out_dir_vuln_hela, "tables", "ko_edge_states.csv"))
+
+# KO-level summary
+ko_summary_hela <- ko_edge_export_hela %>%
+  dplyr::group_by(ko_gene, DiseaseClass) %>%
+  dplyr::summarise(
+    total_edges  = dplyr::n(),
+    n_lost_q     = sum(state_q == "lost", na.rm = TRUE),
+    n_lost_p     = sum(state_p == "lost", na.rm = TRUE),
+    n_retained_q = sum(state_q == "retained", na.rm = TRUE),
+    frac_lost_q  = n_lost_q / total_edges,
+    frac_lost_p  = n_lost_p / total_edges,
+    .groups = "drop"
+  )
+readr::write_csv(ko_summary_hela, file.path(out_dir_vuln_hela, "tables", "ko_summary_global.csv"))
+
+# KO x organelle summary
+ko_org_summary_hela <- ko_edge_export_hela %>%
+  dplyr::filter(OrgPair == "same", !is.na(shared_organelle)) %>%
+  dplyr::group_by(ko_gene, DiseaseClass, shared_organelle) %>%
+  dplyr::summarise(
+    n_edges     = dplyr::n(),
+    n_lost_q    = sum(state_q == "lost", na.rm = TRUE),
+    n_lost_p    = sum(state_p == "lost", na.rm = TRUE),
+    frac_lost_q = n_lost_q / n_edges,
+    frac_lost_p = n_lost_p / n_edges,
+    .groups = "drop"
+  )
+readr::write_csv(ko_org_summary_hela, file.path(out_dir_vuln_hela, "tables", "ko_summary_by_organelle.csv"))
+
+# --- shared_long_hela_full: all shared org tags per edge (for radar) ---
+# Use distinct edges from baseline (not the expanded KO table)
+edge_annot_base_hela <- baseline_edge_hela %>%
+  dplyr::select(key, dplyr::all_of(exist_p1), dplyr::all_of(exist_p2)) %>%
+  dplyr::distinct(key, .keep_all = TRUE)
+
+m_p1 <- as.matrix(edge_annot_base_hela[, exist_p1]); m_p1[is.na(m_p1)] <- FALSE
+m_p2 <- as.matrix(edge_annot_base_hela[, exist_p2]); m_p2[is.na(m_p2)] <- FALSE
+shared_mat_base_hela <- m_p1 & m_p2
+colnames(shared_mat_base_hela) <- exist_tags_ko
+
+shared_long_hela_full <- as.data.frame(shared_mat_base_hela) %>%
+  dplyr::mutate(key = edge_annot_base_hela$key) %>%
+  tidyr::pivot_longer(-key, names_to = "tag", values_to = "shared") %>%
+  dplyr::filter(shared) %>%
+  dplyr::select(key, tag)
+
+message("  shared_long_hela_full: ", nrow(shared_long_hela_full), " edge-tag pairs")
+message("Chunk 2 complete: ", nrow(ko_edge_export_hela), " edge x KO rows")
+```
+
+
+## Chunk 3: Trimer Vulnerability
+```{r m12_m7_c3_trimers}
+# =============================================================================
+# Trimer vulnerability: for each trimer x KO, count lost members (p and q)
+# =============================================================================
+
+message("Analyzing HeLa trimer vulnerability...")
+
+trimer_genes_hela <- trimer_evidence_hela %>%
+  dplyr::select(trimer_id, Gene1, Gene2, Gene3)
+
+prot_sig_trim_hela <- prot_long_hela %>%
+  dplyr::select(Genes, ko_gene, mean_log2FC, is_lost_p, is_lost_q)
+
+trimer_vuln_list_hela <- lapply(ko_list_hela, function(ko) {
+  loss_data <- prot_sig_trim_hela %>%
+    dplyr::filter(ko_gene == ko) %>%
+    dplyr::select(Genes, mean_log2FC, is_lost_p, is_lost_q)
+
+  trimer_genes_hela %>%
+    dplyr::left_join(loss_data, by = c("Gene1" = "Genes")) %>%
+    dplyr::rename(fc1 = mean_log2FC, lost1_p = is_lost_p, lost1_q = is_lost_q) %>%
+    dplyr::left_join(loss_data, by = c("Gene2" = "Genes")) %>%
+    dplyr::rename(fc2 = mean_log2FC, lost2_p = is_lost_p, lost2_q = is_lost_q) %>%
+    dplyr::left_join(loss_data, by = c("Gene3" = "Genes")) %>%
+    dplyr::rename(fc3 = mean_log2FC, lost3_p = is_lost_p, lost3_q = is_lost_q) %>%
+    dplyr::mutate(
+      ko_gene  = ko,
+      n_lost_q = rowSums(cbind(lost1_q, lost2_q, lost3_q), na.rm = TRUE),
+      n_lost_p = rowSums(cbind(lost1_p, lost2_p, lost3_p), na.rm = TRUE),
+      state_q  = dplyr::if_else(n_lost_q >= 1, "disrupted", "intact"),
+      state_p  = dplyr::if_else(n_lost_p >= 1, "disrupted", "intact")
+    )
+})
+
+trimer_ko_states_hela <- dplyr::bind_rows(trimer_vuln_list_hela) %>%
+  dplyr::left_join(ko_to_class_hela, by = c("ko_gene" = "KO")) %>%
+  dplyr::rename(DiseaseClass = class)
+
+readr::write_csv(trimer_ko_states_hela, file.path(out_dir_vuln_hela, "tables", "trimer_ko_states.csv"))
+
+trimer_summary_ko_hela <- trimer_ko_states_hela %>%
+  dplyr::group_by(ko_gene, DiseaseClass) %>%
+  dplyr::summarise(
+    total_trimers    = dplyr::n(),
+    n_disrupted_q    = sum(state_q == "disrupted"),
+    n_disrupted_p    = sum(state_p == "disrupted"),
+    frac_disrupted_q = n_disrupted_q / total_trimers,
+    frac_disrupted_p = n_disrupted_p / total_trimers,
+    .groups = "drop"
+  )
+readr::write_csv(trimer_summary_ko_hela, file.path(out_dir_vuln_hela, "tables", "trimer_summary_ko.csv"))
+
+message("Chunk 3 complete: trimer vulnerability done")
+```
+
+
+## Chunk 4: Tetramer Vulnerability
+```{r m12_m7_c4_tetramers}
+# =============================================================================
+# Tetramer vulnerability: same logic as trimers, 4 members
+# =============================================================================
+
+message("Analyzing HeLa tetramer vulnerability...")
+
+if (nrow(tetramer_evidence_hela) == 0) {
+  message("  No tetramers detected -- skipping")
+  tetramer_summary_ko_hela <- data.frame(ko_gene = ko_list_hela, DiseaseClass = NA,
+    total_tetramers = 0, n_disrupted_q = 0, n_disrupted_p = 0,
+    frac_disrupted_q = NA_real_, frac_disrupted_p = NA_real_, stringsAsFactors = FALSE)
+} else {
+  tetramer_genes_hela <- tetramer_evidence_hela %>%
+    dplyr::select(tetramer_id, Gene1, Gene2, Gene3, Gene4)
+
+  prot_sig_tet_hela <- prot_long_hela %>%
+    dplyr::select(Genes, ko_gene, mean_log2FC, is_lost_p, is_lost_q)
+
+  tetramer_vuln_list_hela <- lapply(ko_list_hela, function(ko) {
+    loss_data <- prot_sig_tet_hela %>%
+      dplyr::filter(ko_gene == ko) %>%
+      dplyr::select(Genes, mean_log2FC, is_lost_p, is_lost_q)
+
+    tetramer_genes_hela %>%
+      dplyr::left_join(loss_data, by = c("Gene1" = "Genes")) %>%
+      dplyr::rename(fc1 = mean_log2FC, lost1_p = is_lost_p, lost1_q = is_lost_q) %>%
+      dplyr::left_join(loss_data, by = c("Gene2" = "Genes")) %>%
+      dplyr::rename(fc2 = mean_log2FC, lost2_p = is_lost_p, lost2_q = is_lost_q) %>%
+      dplyr::left_join(loss_data, by = c("Gene3" = "Genes")) %>%
+      dplyr::rename(fc3 = mean_log2FC, lost3_p = is_lost_p, lost3_q = is_lost_q) %>%
+      dplyr::left_join(loss_data, by = c("Gene4" = "Genes")) %>%
+      dplyr::rename(fc4 = mean_log2FC, lost4_p = is_lost_p, lost4_q = is_lost_q) %>%
+      dplyr::mutate(
+        ko_gene  = ko,
+        n_lost_q = rowSums(cbind(lost1_q, lost2_q, lost3_q, lost4_q), na.rm = TRUE),
+        n_lost_p = rowSums(cbind(lost1_p, lost2_p, lost3_p, lost4_p), na.rm = TRUE),
+        state_q  = dplyr::if_else(n_lost_q >= 1, "disrupted", "intact"),
+        state_p  = dplyr::if_else(n_lost_p >= 1, "disrupted", "intact")
+      )
+  })
+
+  tetramer_ko_states_hela <- dplyr::bind_rows(tetramer_vuln_list_hela) %>%
+    dplyr::left_join(ko_to_class_hela, by = c("ko_gene" = "KO")) %>%
+    dplyr::rename(DiseaseClass = class)
+
+  readr::write_csv(tetramer_ko_states_hela, file.path(out_dir_vuln_hela, "tables", "tetramer_ko_states.csv"))
+
+  tetramer_summary_ko_hela <- tetramer_ko_states_hela %>%
+    dplyr::group_by(ko_gene, DiseaseClass) %>%
+    dplyr::summarise(
+      total_tetramers  = dplyr::n(),
+      n_disrupted_q    = sum(state_q == "disrupted"),
+      n_disrupted_p    = sum(state_p == "disrupted"),
+      frac_disrupted_q = n_disrupted_q / total_tetramers,
+      frac_disrupted_p = n_disrupted_p / total_tetramers,
+      .groups = "drop"
+    )
+  readr::write_csv(tetramer_summary_ko_hela, file.path(out_dir_vuln_hela, "tables", "tetramer_summary_ko.csv"))
+}
+
+message("Chunk 4 complete: tetramer vulnerability done")
+```
+
+
+## Chunk 5: Complex Vulnerability + Heatmaps
+```{r m12_m7_c5_complexes}
+# =============================================================================
+# Complex vulnerability: disruption threshold scales with complex size
+#   size <= 4: any 1 lost member = disrupted
+#   size >  4: >= 25% members lost = disrupted
+# Two heatmaps: rows annotated by majority_organelle and by validation_status
+# =============================================================================
+
+message("Analyzing HeLa complex vulnerability...")
+
+# Derive validation_status if not already present (added in M6 but may not persist)
+if (!"validation_status" %in% colnames(complex_evidence_hela)) {
+  complex_evidence_hela <- complex_evidence_hela %>%
+    dplyr::mutate(validation_status = dplyr::case_when(
+      in_known_complex         ~ "strict_match",
+      in_known_complex_relaxed ~ "relaxed_match",
+      TRUE                     ~ "novel"
+    ))
+}
+
+complex_members_hela <- complex_evidence_hela %>%
+  dplyr::select(complex_idx, complex_size, majority_organelle, validation_status,
+                corum_matched_name, cp_matched_id, members)
+
+prot_loss_q_hela <- prot_long_hela %>% dplyr::select(Genes, ko_gene, is_lost_q) %>%
+  tidyr::pivot_wider(names_from = ko_gene, values_from = is_lost_q)
+prot_loss_p_hela <- prot_long_hela %>% dplyr::select(Genes, ko_gene, is_lost_p) %>%
+  tidyr::pivot_wider(names_from = ko_gene, values_from = is_lost_p)
+
+# Build named vectors per KO for fast lookup
+complex_vuln_list_hela <- lapply(ko_list_hela, function(ko) {
+  loss_q <- prot_long_hela %>% dplyr::filter(ko_gene == ko) %>%
+    dplyr::select(Genes, is_lost_q) %>% tibble::deframe()
+  loss_p <- prot_long_hela %>% dplyr::filter(ko_gene == ko) %>%
+    dplyr::select(Genes, is_lost_p) %>% tibble::deframe()
+
+  complex_members_hela %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      n_members   = length(members),
+      n_lost_q    = sum(loss_q[members], na.rm = TRUE),
+      n_lost_p    = sum(loss_p[members], na.rm = TRUE),
+      frac_lost_q = n_lost_q / n_members,
+      frac_lost_p = n_lost_p / n_members,
+      state_q = dplyr::case_when(
+        n_members <= 4 & n_lost_q >= 1        ~ "disrupted",
+        n_members >  4 & frac_lost_q >= 0.25  ~ "disrupted",
+        TRUE ~ "intact"
+      ),
+      state_p = dplyr::case_when(
+        n_members <= 4 & n_lost_p >= 1        ~ "disrupted",
+        n_members >  4 & frac_lost_p >= 0.25  ~ "disrupted",
+        TRUE ~ "intact"
+      )
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(ko_gene = ko)
+})
+
+complex_ko_states_hela <- dplyr::bind_rows(complex_vuln_list_hela) %>%
+  dplyr::left_join(ko_to_class_hela, by = c("ko_gene" = "KO")) %>%
+  dplyr::rename(DiseaseClass = class)
+
+complex_ko_export_hela <- complex_ko_states_hela %>% dplyr::select(-members)
+readr::write_csv(complex_ko_export_hela, file.path(out_dir_vuln_hela, "tables", "complex_ko_states.csv"))
+
+complex_summary_ko_hela <- complex_ko_states_hela %>%
+  dplyr::group_by(ko_gene, DiseaseClass) %>%
+  dplyr::summarise(
+    total_complexes  = dplyr::n(),
+    n_disrupted_q    = sum(state_q == "disrupted"),
+    n_disrupted_p    = sum(state_p == "disrupted"),
+    frac_disrupted_q = n_disrupted_q / total_complexes,
+    frac_disrupted_p = n_disrupted_p / total_complexes,
+    .groups = "drop"
+  )
+readr::write_csv(complex_summary_ko_hela, file.path(out_dir_vuln_hela, "tables", "complex_summary_ko.csv"))
+
+# =============================================================================
+# Heatmap 1: complexes x KOs, row annotation = majority_organelle
+# Heatmap 2: complexes x KOs, row annotation = validation_status
+# Both: q-value disruption binary; KO columns colored by DiseaseClass
+# =============================================================================
+message("Generating complex vulnerability heatmaps...")
+
+# Build binary disruption matrix (complexes x KOs, q-value)
+hm_data_hela <- complex_ko_states_hela %>%
+  dplyr::mutate(disrupted_bin = as.integer(state_q == "disrupted")) %>%
+  dplyr::select(complex_idx, ko_gene, disrupted_bin) %>%
+  tidyr::pivot_wider(names_from = ko_gene, values_from = disrupted_bin, values_fill = 0L)
+
+if (nrow(hm_data_hela) >= 2 && ncol(hm_data_hela) >= 3) {
+  hm_mat_hela <- as.matrix(hm_data_hela[, -1])
+  rownames(hm_mat_hela) <- hm_data_hela$complex_idx
+
+  # Row annotations
+  cx_annot_hela <- complex_evidence_hela %>%
+    dplyr::distinct(complex_idx, majority_organelle, validation_status) %>%
+    dplyr::filter(complex_idx %in% rownames(hm_mat_hela)) %>%
+    as.data.frame()
+  rownames(cx_annot_hela) <- cx_annot_hela$complex_idx
+  cx_annot_hela <- cx_annot_hela[rownames(hm_mat_hela), , drop = FALSE]
+
+  # Column annotation (disease class per KO)
+  ko_in_mat <- colnames(hm_mat_hela)
+  col_annot_hela <- ko_to_class_hela %>%
+    dplyr::filter(KO %in% ko_in_mat) %>%
+    dplyr::select(KO, class) %>%
+    as.data.frame()
+  rownames(col_annot_hela) <- col_annot_hela$KO
+  col_annot_hela <- col_annot_hela[ko_in_mat, "class", drop = FALSE]
+  colnames(col_annot_hela) <- "DiseaseClass"
+
+  dc_present  <- intersect(names(disease_colors_hela), unique(na.omit(col_annot_hela$DiseaseClass)))
+  org_present <- unique(na.omit(cx_annot_hela$majority_organelle))
+  vs_present  <- unique(na.omit(cx_annot_hela$validation_status))
+  n_org <- length(org_present); n_vs <- length(vs_present)
+  org_pal <- setNames(colorRampPalette(RColorBrewer::brewer.pal(max(3, min(n_org, 12)), "Set3"))(n_org), org_present)
+  vs_pal  <- c(strict_match = "steelblue", relaxed_match = "lightblue", novel = "grey80")[vs_present]
+
+  # Sort rows by n disrupted KOs
+  row_sums_hela <- rowSums(hm_mat_hela)
+  row_ord_hela  <- order(row_sums_hela, decreasing = TRUE)
+  hm_ord_hela   <- hm_mat_hela[row_ord_hela, , drop = FALSE]
+
+  readr::write_csv(as.data.frame(hm_ord_hela) %>% tibble::rownames_to_column("complex_idx"),
+    file.path(out_dir_vuln_hela, "sourcedata", "complex_heatmap_qval_sourcedata.csv"))
+
+  # Heatmap 1: row annotation = majority_organelle
+  row_annot_org <- cx_annot_hela[rownames(hm_ord_hela), "majority_organelle", drop = FALSE]
+  ann_colors_org <- list(DiseaseClass = disease_colors_hela[dc_present],
+                         majority_organelle = org_pal)
+
+  pdf(file.path(out_dir_vuln_hela, "plots/complexes", "heatmap_complex_vuln_by_organelle.pdf"), width = 12, height = 18)
+  pheatmap::pheatmap(hm_ord_hela,
+    color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
+    cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
+    annotation_row = row_annot_org, annotation_col = col_annot_hela,
+    annotation_colors = ann_colors_org,
+    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+    main = paste0("Complex Vulnerability (q < 0.05)\n", nrow(hm_ord_hela), " complexes x ", ncol(hm_ord_hela), " KOs | annotated by organelle"))
+  dev.off()
+  message("  Saved: heatmap_complex_vuln_by_organelle.pdf")
+
+  # Heatmap 2: row annotation = validation_status
+  row_annot_vs <- cx_annot_hela[rownames(hm_ord_hela), "validation_status", drop = FALSE]
+  ann_colors_vs <- list(DiseaseClass = disease_colors_hela[dc_present],
+                        validation_status = vs_pal)
+
+  pdf(file.path(out_dir_vuln_hela, "plots/complexes", "heatmap_complex_vuln_by_validation.pdf"), width = 12, height = 18)
+  pheatmap::pheatmap(hm_ord_hela,
+    color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
+    cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
+    annotation_row = row_annot_vs, annotation_col = col_annot_hela,
+    annotation_colors = ann_colors_vs,
+    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+    main = paste0("Complex Vulnerability (q < 0.05)\n", nrow(hm_ord_hela), " complexes x ", ncol(hm_ord_hela), " KOs | annotated by validation status"))
+  dev.off()
+  message("  Saved: heatmap_complex_vuln_by_validation.pdf")
+} else {
+  message("  Insufficient data for complex heatmaps")
+}
+
+message("Chunk 5 complete")
+```
+
+
+## Chunk 6: PPI Vulnerability Visualizations
+```{r m12_m7_c6_ppi_viz}
+# =============================================================================
+# PPI vulnerability plots: barplots (q and p), organelle x KO heatmaps,
+# structure comparison barplots (Proteins / PPIs / Trimers / Tetramers / Complexes)
+# =============================================================================
+
+message("Generating HeLa PPI vulnerability visualizations...")
+
+ko_order_hela <- ko_summary_hela %>%
+  dplyr::arrange(DiseaseClass, dplyr::desc(frac_lost_q)) %>%
+  dplyr::pull(ko_gene)
+
+# --- Barplot: edge states per KO (q and p) ---
+for (sig_type in c("q", "p")) {
+  state_col <- paste0("state_", sig_type)
+  plot_data_bar <- ko_edge_export_hela %>%
+    dplyr::group_by(ko_gene, .data[[state_col]]) %>%
+    dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+    dplyr::mutate(state = factor(.data[[state_col]], levels = c("retained", "lost", "unknown")),
+                  ko_gene = factor(ko_gene, levels = ko_order_hela))
+
+  p_bar <- ggplot2::ggplot(plot_data_bar, ggplot2::aes(x = ko_gene, y = n, fill = state)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
+    ggplot2::labs(x = NULL, y = "PPI edges", title = paste0("PPI edge states per KO (", sig_type, " < 0.05)")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+  save_plot_sd_hela(p_bar, paste0("plots/global/barplot_ppi_states_", sig_type, "val"), plot_data_bar, width = 10, height = 5)
+}
+
+# --- Organelle x KO heatmap (fraction lost, q and p) ---
+for (sig_type in c("q", "p")) {
+  frac_col <- paste0("frac_lost_", sig_type)
+  hm_org_data <- ko_org_summary_hela %>%
+    dplyr::select(ko_gene, shared_organelle, dplyr::all_of(frac_col)) %>%
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = dplyr::all_of(frac_col), values_fill = NA)
+
+  if (nrow(hm_org_data) < 2) next
+
+  hm_org_mat <- as.matrix(hm_org_data[, -1])
+  rownames(hm_org_mat) <- hm_org_data$ko_gene
+
+  ko_in_org <- rownames(hm_org_mat)
+  col_annot_org <- ko_to_class_hela %>%
+    dplyr::filter(KO %in% ko_in_org) %>% as.data.frame()
+  rownames(col_annot_org) <- col_annot_org$KO
+  col_annot_org <- col_annot_org[ko_in_org, "class", drop = FALSE]
+  colnames(col_annot_org) <- "DiseaseClass"
+  dc_org <- intersect(names(disease_colors_hela), unique(na.omit(col_annot_org$DiseaseClass)))
+
+  readr::write_csv(hm_org_data,
+    file.path(out_dir_vuln_hela, "sourcedata", paste0("heatmap_organelle_ko_", sig_type, "val_sourcedata.csv")))
+
+  pdf(file.path(out_dir_vuln_hela, "plots/global", paste0("heatmap_organelle_ko_", sig_type, "val.pdf")), width = 12, height = 10)
+  pheatmap::pheatmap(hm_org_mat,
+    color = colorRampPalette(c("white", "#C51B7D"))(100),
+    border_color = NA, fontsize = 6, cellwidth = 10, cellheight = 10,
+    cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2",
+    annotation_row = col_annot_org,
+    annotation_colors = list(DiseaseClass = disease_colors_hela[dc_org]),
+    main = paste0("Fraction PPIs lost by organelle (", sig_type, " < 0.05)"))
+  dev.off()
+  message("  Saved: heatmap_organelle_ko_", sig_type, "val.pdf")
+}
+
+# --- Structure comparison: Proteins / PPIs / Trimers / Tetramers / Complexes ---
+comparison_data_hela <- dplyr::bind_rows(
+  sig_summary_hela %>%
+    dplyr::select(ko_gene, DiseaseClass, n_lost_p, n_lost_q) %>%
+    dplyr::mutate(structure = "Proteins"),
+  ko_summary_hela %>%
+    dplyr::select(ko_gene, DiseaseClass, n_lost_p, n_lost_q) %>%
+    dplyr::mutate(structure = "PPIs"),
+  trimer_summary_ko_hela %>%
+    dplyr::select(ko_gene, DiseaseClass, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
+    dplyr::mutate(structure = "Trimers"),
+  tetramer_summary_ko_hela %>%
+    dplyr::select(ko_gene, DiseaseClass, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
+    dplyr::mutate(structure = "Tetramers"),
+  complex_summary_ko_hela %>%
+    dplyr::select(ko_gene, DiseaseClass, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
+    dplyr::mutate(structure = "Complexes")
+) %>%
+  dplyr::mutate(structure = factor(structure, levels = c("Proteins", "PPIs", "Trimers", "Tetramers", "Complexes")),
+                ko_gene = factor(ko_gene, levels = ko_order_hela))
+
+readr::write_csv(comparison_data_hela, file.path(out_dir_vuln_hela, "tables", "structure_loss_comparison.csv"))
+
+for (sig_type in c("q", "p")) {
+  y_col <- paste0("n_lost_", sig_type)
+  p_facet <- ggplot2::ggplot(comparison_data_hela,
+      ggplot2::aes(x = ko_gene, y = .data[[y_col]], fill = DiseaseClass)) +
+    ggplot2::geom_col(color = "black", linewidth = 0.2) +
+    ggplot2::facet_wrap(~structure, ncol = 1, scales = "free_y") +
+    ggplot2::scale_fill_manual(values = disease_colors_hela, na.value = "grey70") +
+    ggplot2::labs(x = NULL, y = paste0("N lost/disrupted (", sig_type, " < 0.05)"),
+                  title = paste0("Structure vulnerability by KO (", sig_type, " < 0.05)")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+                   strip.background = ggplot2::element_rect(fill = "white"))
+
+  save_plot_sd_hela(p_facet, paste0("plots/global/barplot_structure_loss_faceted_", sig_type, "val"),
+                    comparison_data_hela, width = 10, height = 14)
+}
+
+message("Chunk 6 complete")
+```
+
+
+## Chunk 7: Extended KO Analysis
+```{r m12_m7_c7_extended}
+# =============================================================================
+# Per-organelle barplots: n lost PPIs per organelle per KO
+# Disease class bubble plot: frac lost PPIs vs frac disrupted complexes
+# =============================================================================
+
+message("Extended KO analysis...")
+
+dir.create(file.path(out_dir_vuln_hela, "plots/KO_extended"), recursive = TRUE, showWarnings = FALSE)
+
+# --- Bubble: frac lost PPI (x) vs frac disrupted complex (y), colored by DiseaseClass ---
+bubble_data_hela <- ko_summary_hela %>%
+  dplyr::select(ko_gene, DiseaseClass, frac_lost_q) %>%
+  dplyr::rename(frac_ppi_q = frac_lost_q) %>%
+  dplyr::left_join(complex_summary_ko_hela %>% dplyr::select(ko_gene, frac_disrupted_q),
+                   by = "ko_gene")
+
+p_bubble_hela <- ggplot2::ggplot(bubble_data_hela,
+    ggplot2::aes(x = frac_ppi_q, y = frac_disrupted_q, fill = DiseaseClass)) +
+  ggplot2::geom_point(shape = 21, size = 4, stroke = 0.5, color = "black") +
+  ggrepel::geom_text_repel(ggplot2::aes(label = ko_gene), size = 2, max.overlaps = 30, seed = 42) +
+  ggplot2::scale_fill_manual(values = disease_colors_hela, na.value = "grey70") +
+  ggplot2::labs(x = "Fraction lost PPIs (q < 0.05)", y = "Fraction disrupted complexes (q < 0.05)",
+                title = "HeLa KO vulnerability: PPI loss vs complex disruption") +
+  ggplot2::theme_bw(base_size = 6) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank())
+
+save_plot_sd_hela(p_bubble_hela, "plots/KO_extended/bubble_ppi_vs_complex", bubble_data_hela, width = 6, height = 5)
+
+# --- Per-organelle barplot: top organelles by mean fraction lost (q) across KOs ---
+top_org_hela <- ko_org_summary_hela %>%
+  dplyr::group_by(shared_organelle) %>%
+  dplyr::summarise(mean_frac_q = mean(frac_lost_q, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::arrange(dplyr::desc(mean_frac_q)) %>%
+  dplyr::slice_head(n = 15)
+
+org_ko_plot_data <- ko_org_summary_hela %>%
+  dplyr::filter(shared_organelle %in% top_org_hela$shared_organelle) %>%
+  dplyr::mutate(shared_organelle = factor(shared_organelle, levels = top_org_hela$shared_organelle),
+                ko_gene = factor(ko_gene, levels = ko_order_hela))
+
+p_org_bar <- ggplot2::ggplot(org_ko_plot_data,
+    ggplot2::aes(x = ko_gene, y = frac_lost_q, fill = DiseaseClass)) +
+  ggplot2::geom_col(color = "black", linewidth = 0.15) +
+  ggplot2::facet_wrap(~shared_organelle, ncol = 3, scales = "free_y") +
+  ggplot2::scale_fill_manual(values = disease_colors_hela, na.value = "grey70") +
+  ggplot2::labs(x = NULL, y = "Fraction lost PPIs (q < 0.05)",
+                title = "Lost PPIs per organelle per KO (top 15 organelles)") +
+  ggplot2::theme_bw(base_size = 5) +
+  ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                 axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+                 strip.background = ggplot2::element_rect(fill = "white"))
+
+save_plot_sd_hela(p_org_bar, "plots/KO_extended/barplot_ppi_loss_by_organelle", org_ko_plot_data, width = 12, height = 10)
+
+message("Chunk 7 complete")
+```
+
+
+## Chunk 8: Radar / Spider Plots
+```{r m12_m7_c8_radar}
+# =============================================================================
+# Radar plots: PPI vulnerability profile by organelle
+# Global: one line per disease class (mean lost PPIs / KO in class)
+# Per disease class: one line per KO within the class
+# Both q and p thresholds; HeLa organelles only (no synaptic/neuronal)
+# =============================================================================
+
+message("Generating HeLa radar plots...")
+
+out_dir_radar_hela    <- file.path(out_dir_vuln_hela, "plots/radar")
+out_dir_radar_dc_hela <- file.path(out_dir_radar_hela, "by_disease_class")
+out_dir_radar_sd_hela <- file.path(out_dir_vuln_hela, "sourcedata/radar")
+
+# --- Prepare global radar data (disease class average, one sig type) ---
+prepare_radar_global_hela <- function(df_states, shared_long, sig_state_col, radar_anns) {
+  shared_tags <- shared_long %>% dplyr::distinct(key, tag)
+  df_tagged <- df_states %>%
+    dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many") %>%
+    dplyr::filter(!is.na(tag), !is.na(DiseaseClass), tag %in% radar_anns)
+
+  n_per_class <- df_tagged %>%
+    dplyr::distinct(ko_gene, DiseaseClass) %>%
+    dplyr::count(DiseaseClass, name = "n_KOs")
+
+  df_tagged %>%
+    dplyr::filter(.data[[sig_state_col]] == "lost") %>%
+    dplyr::group_by(DiseaseClass, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    dplyr::left_join(n_per_class, by = "DiseaseClass") %>%
+    dplyr::mutate(loss_per_KO = n_lost / n_KOs) %>%
+    dplyr::select(DiseaseClass, tag, loss_per_KO) %>%
+    tidyr::pivot_wider(names_from = tag, values_from = loss_per_KO, values_fill = 0) %>%
+    { for (a in radar_anns) if (!a %in% colnames(.)) .[[a]] <- 0; . } %>%
+    dplyr::select(DiseaseClass, dplyr::all_of(radar_anns))
+}
+
+# --- Prepare per-genotype radar data ---
+prepare_radar_byko_hela <- function(df_states, shared_long, sig_state_col, radar_anns) {
+  shared_tags <- shared_long %>% dplyr::distinct(key, tag)
+  df_tagged <- df_states %>%
+    dplyr::left_join(shared_tags, by = "key", relationship = "many-to-many") %>%
+    dplyr::filter(!is.na(tag), !is.na(DiseaseClass), tag %in% radar_anns)
+
+  df_tagged %>%
+    dplyr::filter(.data[[sig_state_col]] == "lost") %>%
+    dplyr::group_by(ko_gene, DiseaseClass, tag) %>%
+    dplyr::summarise(n_lost = dplyr::n(), .groups = "drop") %>%
+    tidyr::pivot_wider(names_from = tag, values_from = n_lost, values_fill = 0) %>%
+    { for (a in radar_anns) if (!a %in% colnames(.)) .[[a]] <- 0; . }
+}
+
+# --- Plot global radar (one line per disease class) ---
+plot_radar_global_hela <- function(radar_data, sig_label, out_dir, radar_anns, out_dir_sd) {
+  ann_cols <- intersect(radar_anns, colnames(radar_data))
+  if (length(ann_cols) < 3 || nrow(radar_data) < 1) return(invisible(NULL))
+
+  data_mat <- as.data.frame(radar_data[, ann_cols])
+  rownames(data_mat) <- radar_data$DiseaseClass
+  max_val <- max(data_mat, na.rm = TRUE) * 1.1
+  if (max_val == 0) max_val <- 1
+
+  radar_df <- rbind(rep(max_val, ncol(data_mat)), rep(0, ncol(data_mat)), data_mat)
+  colnames(radar_df) <- ann_cols
+
+  dc_in_data  <- radar_data$DiseaseClass
+  line_colors <- disease_colors_hela[dc_in_data]
+  fill_colors <- adjustcolor(line_colors, alpha.f = 0.15)
+
+  fname <- paste0("radar_ppi_global_", sig_label, ".pdf")
+  pdf(file.path(out_dir, fname), width = 8, height = 8)
+  par(mar = c(1, 1, 2, 1))
+  fmsb::radarchart(radar_df,
+    axistype = 1, pcol = line_colors, pfcol = fill_colors,
+    plwd = 2, plty = 1, cglcol = "grey70", cglty = 1, cglwd = 0.8,
+    axislabcol = "grey30", vlcex = 0.7, calcex = 0.6,
+    title = paste0("PPI Vulnerability by Disease Class (HeLa, ", sig_label, " < 0.05)\nNormalized lost PPIs per KO"))
+  legend("topright", legend = dc_in_data, col = line_colors, lwd = 2, lty = 1, bty = "n", cex = 0.7)
+  dev.off()
+  message("  Saved: ", fname)
+  readr::write_csv(radar_data, file.path(out_dir_sd, paste0("radar_global_", sig_label, "_sourcedata.csv")))
+}
+
+# --- Plot per-disease-class radar (one line per KO) ---
+plot_radar_dc_hela <- function(radar_byko, dc, sig_label, out_dir, radar_anns, out_dir_sd) {
+  dc_data <- radar_byko %>% dplyr::filter(DiseaseClass == dc)
+  if (nrow(dc_data) == 0) return(invisible(NULL))
+
+  ann_cols <- intersect(radar_anns, colnames(dc_data))
+  if (length(ann_cols) < 3) return(invisible(NULL))
+
+  data_mat <- as.data.frame(dc_data[, ann_cols])
+  rownames(data_mat) <- dc_data$ko_gene
+  max_val <- max(data_mat, na.rm = TRUE) * 1.1
+  if (max_val == 0) max_val <- 1
+
+  radar_df <- rbind(rep(max_val, ncol(data_mat)), rep(0, ncol(data_mat)), data_mat)
+  colnames(radar_df) <- ann_cols
+
+  base_col   <- disease_colors_hela[dc]
+  n_ko       <- nrow(dc_data)
+  line_colors <- colorRampPalette(c(base_col, adjustcolor(base_col, red.f = 1.3, green.f = 1.3, blue.f = 1.3)))(n_ko)
+  fill_colors <- adjustcolor(line_colors, alpha.f = 0.1)
+
+  dc_label <- gsub("[^A-Za-z0-9]", "_", dc)
+  fname    <- paste0("radar_", dc_label, "_", sig_label, ".pdf")
+  pdf(file.path(out_dir, fname), width = 8, height = 8)
+  par(mar = c(1, 1, 2, 1))
+  fmsb::radarchart(radar_df,
+    axistype = 1, pcol = line_colors, pfcol = fill_colors,
+    plwd = 2, plty = 1, cglcol = "grey70", cglty = 1, cglwd = 0.8,
+    axislabcol = "grey30", vlcex = 0.7, calcex = 0.6,
+    title = paste0(dc, " | PPI Vulnerability (", sig_label, " < 0.05)\nLost PPIs per organelle"))
+  legend("topright", legend = dc_data$ko_gene, col = line_colors, lwd = 2, lty = 1, bty = "n", cex = 0.65)
+  dev.off()
+  message("  Saved: ", fname)
+
+  src <- dc_data %>% dplyr::select(ko_gene, DiseaseClass, dplyr::all_of(ann_cols))
+  readr::write_csv(src, file.path(out_dir_sd, paste0("radar_", dc_label, "_", sig_label, "_sourcedata.csv")))
+}
+
+# --- Run all radars for both p and q ---
+for (sig_type in c("q", "p")) {
+  state_col <- paste0("state_", sig_type)
+
+  # Global
+  rd_global <- prepare_radar_global_hela(ko_edge_export_hela, shared_long_hela_full,
+                                          state_col, radar_annotations_hela)
+  plot_radar_global_hela(rd_global, sig_type, out_dir_radar_hela,
+                          radar_annotations_hela, out_dir_radar_sd_hela)
+  readr::write_csv(rd_global, file.path(out_dir_vuln_hela, "tables", paste0("radar_global_", sig_type, ".csv")))
+
+  # Per disease class
+  rd_byko <- prepare_radar_byko_hela(ko_edge_export_hela, shared_long_hela_full,
+                                      state_col, radar_annotations_hela)
+  dc_present_hela <- unique(na.omit(ko_edge_export_hela$DiseaseClass))
+  for (dc in dc_present_hela) {
+    plot_radar_dc_hela(rd_byko, dc, sig_type, out_dir_radar_dc_hela,
+                       radar_annotations_hela, out_dir_radar_sd_hela)
+  }
+}
+
+message("Chunk 8 complete: radar plots done")
+message("\nModule 7 complete")
+message("  KOs analyzed  : ", length(ko_list_hela))
+message("  Output        : ", out_dir_vuln_hela)
+```
+
+
 # =================================================
 # old Module 12: PPI Vulnerability Analysis - HeLa nMOST
 # =================================================
