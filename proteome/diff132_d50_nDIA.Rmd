@@ -23216,68 +23216,112 @@ message("  KOs passing QC     : ", length(ko_genes_pass))
 message("  Proteins in matrix : ", nrow(hela_log2fc_wide_qc))
 ```
 
-## Chunk 6: Per-Protein Significance Testing (one-sample t-test + BH-FDR)
+## Chunk 6: Per-Protein Significance Testing (limma moderated t-test + BH-FDR)
 ```{r hela_m0_stats}
 # =============================================================================
 # Statistical significance of KO-induced protein changes
 # =============================================================================
 #
 # DESIGN RATIONALE:
-#   HeLa nMOST has a single cell type (no iN/iDA split). Each KO is run in one
-#   batch, with 3-4 biological replicates. The log2FC per replicate is already
-#   batch-corrected (KO_replicate - batch_ctrl_mean), so batch effects are
-#   absorbed before the test.
+#   HeLa nMOST has a single cell type; each KO runs in one batch with 3-4 reps.
+#   The one-sample t-test (replicate log2FCs vs mu=0) proved too liberal at n=3-4:
+#   no variance shrinkage, low df, inflated discovery rate (~50% PPIs lost per KO).
 #
-# TEST: one-sample t-test per protein x KO, testing replicate-level log2FCs
-#   against mu = 0 (i.e., "is this protein significantly changed vs. control?").
-#   This is appropriate because:
-#     (a) replicates are within the same batch -> no batch covariate needed
-#     (b) batch-matched FC is the natural null-centered variable
-#     (c) t-test handles small n (typically 3-4 reps) without normality assumption
-#         at this sample size via robustness of t to mild departures
+# FIX: limma moderated t-test (two-sample: KO replicates vs within-batch controls).
+#   eBayes shrinks per-gene variance estimates toward a global prior derived from
+#   all ~7000 tested proteins within that KO's batch -- substantially increases
+#   effective df and produces well-calibrated p-values at small n.
+#
+# IMPUTATION: genes must have >= 2 valid values in KO AND >= 2 in controls.
+#   Residual NAs (in genes that pass the filter) are set to per-row half-minimum
+#   (standard left-censored LFQ imputation). This is conservative: imputing
+#   low values increases within-group variance, reducing false positives.
 #
 # FDR: BH correction applied across ALL protein x KO tests jointly (~7000 x 39).
-#   This is conservative but standard for proteomics-scale testing.
-#
-# OUTPUT: neglog10_p and neglog10_q added to hela_log2fc_summary_qc;
-#   also pivoted to wide matrices for the PPI vulnerability module.
 # =============================================================================
 
-message("Running one-sample t-tests (replicate log2FC vs mu=0)...")
+#BiocManager::install("limma")
+library(limma)
+message("Running limma moderated t-tests (KO vs within-batch controls)...")
 
-# --- Run t-test per protein x KO ---
-# Requires >= 2 valid replicate FCs; returns NA otherwise
-stat_results <- hela_log2fc_long %>%
-  dplyr::filter(ko_gene %in% ko_genes_pass, !is.na(log2FC)) %>%
-  dplyr::group_by(Genes, ko_gene) %>%
-  dplyr::summarise(
-    n_obs  = dplyr::n(),
-    pval   = dplyr::if_else(
-      dplyr::n() >= 2,
-      tryCatch(t.test(log2FC, mu = 0)$p.value, error = function(e) NA_real_),
-      NA_real_
-    ),
-    .groups = "drop"
-  )
+stat_results_limma <- purrr::map_dfr(ko_genes_pass, function(ko) {
 
-message("  Tests run       : ", sum(!is.na(stat_results$pval)))
-message("  Skipped (n < 2) : ", sum(is.na(stat_results$pval)))
+  # Batch(es) for this KO (expected: always 1 batch per KO in this design)
+  ko_batch <- hela_pheno_filtered %>%
+    dplyr::filter(ko_gene == ko) %>%
+    dplyr::pull(batch) %>%
+    unique()
+
+  samples_ko   <- hela_pheno_filtered %>% dplyr::filter(ko_gene == ko) %>% dplyr::pull(sample)
+  samples_ctrl <- hela_pheno_filtered %>% dplyr::filter(is_control, batch %in% ko_batch) %>% dplyr::pull(sample)
+  samples_all  <- c(samples_ko, samples_ctrl)
+
+  # Build intensity matrix (proteins x samples)
+mat_wide <- hela_long %>%
+    dplyr::filter(sample %in% samples_all) %>%
+    dplyr::select(Genes, sample, log2_intensity) %>%
+    tidyr::pivot_wider(names_from = sample, values_from = log2_intensity, values_fn = mean) %>%  # <- add values_fn = mean
+    tibble::column_to_rownames("Genes") %>%
+    as.matrix()
+
+  # Restrict to samples that exist in quant
+  samples_ko_in   <- samples_ko[samples_ko     %in% colnames(mat_wide)]
+  samples_ctrl_in <- samples_ctrl[samples_ctrl %in% colnames(mat_wide)]
+  col_order       <- c(samples_ko_in, samples_ctrl_in)
+  mat_wide        <- mat_wide[, col_order, drop = FALSE]
+
+  # Require >= 2 valid values in each group per gene
+  n_ko_valid   <- rowSums(!is.na(mat_wide[, samples_ko_in,   drop = FALSE]))
+  n_ctrl_valid <- rowSums(!is.na(mat_wide[, samples_ctrl_in, drop = FALSE]))
+  keep         <- n_ko_valid >= 2 & n_ctrl_valid >= 2
+
+  # Need enough genes for eBayes prior estimation and enough samples for df
+  if (sum(keep) < 10 || length(col_order) < 4) return(dplyr::tibble())
+
+  mat_filt <- mat_wide[keep, , drop = FALSE]
+
+  # Impute residual NAs: per-row half-minimum (left-censored imputation)
+  row_halfmin <- apply(mat_filt, 1, function(x) min(x, na.rm = TRUE) / 2)
+  for (j in seq_len(nrow(mat_filt))) {
+    mat_filt[j, is.na(mat_filt[j, ])] <- row_halfmin[j]
+  }
+
+  # Design: ctrl = reference, ko = effect of interest
+  group_vec  <- factor(c(rep("ko", length(samples_ko_in)), rep("ctrl", length(samples_ctrl_in))),
+                       levels = c("ctrl", "ko"))
+  design_mat <- model.matrix(~ group_vec)
+
+  fit <- limma::lmFit(mat_filt, design_mat)
+  fit <- limma::eBayes(fit)
+
+  limma::topTable(fit, coef = 2, number = Inf, sort.by = "none") %>%
+    tibble::rownames_to_column("Genes") %>%
+    dplyr::transmute(
+      Genes,
+      ko_gene     = ko,
+      n_ko_reps   = length(samples_ko_in),
+      n_ctrl_reps = length(samples_ctrl_in),
+      pval        = P.Value
+    )
+})
+
+message("  Tests run       : ", nrow(stat_results_limma))
 
 # --- BH-FDR across all tests ---
-stat_results <- stat_results %>%
+stat_results_limma <- stat_results_limma %>%
   dplyr::mutate(
-    qval        = p.adjust(pval, method = "BH"),
-    neglog10_p  = dplyr::if_else(!is.na(pval),  -log10(pval),  NA_real_),
-    neglog10_q  = dplyr::if_else(!is.na(qval),  -log10(qval),  NA_real_)
+    qval       = p.adjust(pval, method = "BH"),
+    neglog10_p = dplyr::if_else(!is.na(pval), -log10(pval), NA_real_),
+    neglog10_q = dplyr::if_else(!is.na(qval), -log10(qval), NA_real_)
   )
 
 message("  Significant (q < 0.05): ",
-        sum(!is.na(stat_results$qval) & stat_results$qval < 0.05))
+        sum(!is.na(stat_results_limma$qval) & stat_results_limma$qval < 0.05))
 
 # --- Merge into summary table ---
 hela_log2fc_summary_stats <- hela_log2fc_summary_qc %>%
   dplyr::left_join(
-    stat_results %>% dplyr::select(Genes, ko_gene, n_obs, pval, qval, neglog10_p, neglog10_q),
+    stat_results_limma %>% dplyr::select(Genes, ko_gene, n_ko_reps, n_ctrl_reps, pval, qval, neglog10_p, neglog10_q),
     by = c("Genes", "ko_gene")
   )
 
@@ -23285,12 +23329,10 @@ readr::write_csv(hela_log2fc_summary_stats,
                  file.path(out_dir_hela_preproc, "tables", "hela_log2fc_summary_stats.csv"))
 
 # --- Wide matrices for vulnerability module ---
-# neglog10_p wide
 hela_neglog10p_wide <- hela_log2fc_summary_stats %>%
   dplyr::select(Genes, ko_gene, neglog10_p) %>%
   tidyr::pivot_wider(names_from = ko_gene, values_from = neglog10_p)
 
-# neglog10_q wide
 hela_neglog10q_wide <- hela_log2fc_summary_stats %>%
   dplyr::select(Genes, ko_gene, neglog10_q) %>%
   tidyr::pivot_wider(names_from = ko_gene, values_from = neglog10_q)
@@ -23298,14 +23340,14 @@ hela_neglog10q_wide <- hela_log2fc_summary_stats %>%
 readr::write_csv(hela_neglog10p_wide, file.path(out_dir_hela_preproc, "tables", "hela_neglog10p_wide.csv"))
 readr::write_csv(hela_neglog10q_wide, file.path(out_dir_hela_preproc, "tables", "hela_neglog10q_wide.csv"))
 
-# --- QC plot: p-value histogram (should show enrichment near 0) ---
-pval_hist_data <- stat_results %>% dplyr::filter(!is.na(pval))
+# --- QC: p-value histogram ---
+pval_hist_data <- stat_results_limma %>% dplyr::filter(!is.na(pval))
 readr::write_csv(pval_hist_data, file.path(out_dir_hela_preproc, "qc", "sourcedata_pval_histogram.csv"))
 
 p_pval_hist <- ggplot(pval_hist_data, aes(x = pval)) +
   geom_histogram(bins = 50, fill = "steelblue", color = "black", linewidth = 0.2) +
   geom_vline(xintercept = 0.05, linetype = "dashed", color = "red") +
-  labs(title = "p-value distribution (one-sample t-test, all protein x KO)",
+  labs(title = "p-value distribution (limma moderated t-test, all protein x KO)",
        x = "p-value", y = "Count") +
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
@@ -23313,12 +23355,9 @@ p_pval_hist <- ggplot(pval_hist_data, aes(x = pval)) +
 ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"),
        p_pval_hist, width = 4, height = 3, device = cairo_pdf)
 
-message("Chunk 6 complete: significance testing done")
+message("Chunk 6 complete: limma significance testing done")
 message("  Output: hela_log2fc_summary_stats, hela_neglog10p_wide, hela_neglog10q_wide")
 ```
-
-
-
 # Module 2: Baseline PPI Network
 ## Chunk 1: Tier1 filtering to HeLa Control proteome
 Union of proteins detected in any Control sample across all 15 batches
@@ -25384,7 +25423,6 @@ message("  Significance: p < 0.05 and q < 0.05 evaluated in parallel")
 ```{r m12_m7_c1_proteome}
 # =============================================================================
 # Build proteome significance table from hela_log2fc_summary_stats (M0 C6)
-# No neuron dimension -- single cell type
 # =============================================================================
 
 message("Building HeLa significance-filtered proteome data...")
