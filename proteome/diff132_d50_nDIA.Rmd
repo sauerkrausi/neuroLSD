@@ -26200,9 +26200,10 @@ message("9.1 Trimer / Tetramer heatmaps...")
 
 # --- Helper: build binary heatmap matrix (structure x KO) ---
 make_structure_hm <- function(ko_states, id_col, state_col = "state_q") {
+  # select only scalar columns before pivot to avoid list-column fill errors
   ko_states %>%
     dplyr::mutate(disrupted_bin = as.integer(.data[[state_col]] == "disrupted")) %>%
-    dplyr::select(dplyr::all_of(c(id_col, "ko_gene", "disrupted_bin"))) %>%
+    dplyr::select(dplyr::all_of(id_col), ko_gene, disrupted_bin) %>%
     tidyr::pivot_wider(names_from = ko_gene, values_from = disrupted_bin, values_fill = 0L)
 }
 
@@ -26255,6 +26256,7 @@ if (nrow(trimer_ko_states_hela) > 0) {
   if (!is.na(tri_ann_col)) {
     tri_meta <- trimer_evidence_hela %>%
       dplyr::select(trimer_id, dplyr::all_of(tri_ann_col)) %>%
+      dplyr::distinct(trimer_id, .keep_all = TRUE) %>%
       as.data.frame()
     rownames(tri_meta) <- tri_meta$trimer_id
     tri_meta <- tri_meta[, tri_ann_col, drop = FALSE]
@@ -26284,6 +26286,7 @@ if (exists("tetramer_ko_states_hela") && nrow(tetramer_ko_states_hela) > 0 &&
   if (!is.na(tet_ann_col)) {
     tet_meta <- tetramer_evidence_hela %>%
       dplyr::select(tetramer_id, dplyr::all_of(tet_ann_col)) %>%
+      dplyr::distinct(tetramer_id, .keep_all = TRUE) %>%
       as.data.frame()
     rownames(tet_meta) <- tet_meta$tetramer_id
     tet_meta <- tet_meta[, tet_ann_col, drop = FALSE]
@@ -26593,7 +26596,6 @@ message("\nModule 7 complete")
 message("  KOs analyzed  : ", length(ko_list_hela))
 message("  Output        : ", out_dir_vuln_hela)
 ```
-
 # =================================================
 # old Module 12: PPI Vulnerability Analysis - HeLa nMOST
 # =================================================
