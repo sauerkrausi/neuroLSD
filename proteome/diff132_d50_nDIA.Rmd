@@ -25288,6 +25288,7 @@ message("Network plots saved to: ", out_dir_cx_nets_hela)
 ```
 
 
+
 # Module 7: KO Vulnerability Analysis (HeLa)
 Significance-filtered PPI/trimer/tetramer/complex vulnerability across 39 HeLa KOs
 both p and q thresholds evaluated throughout
@@ -26172,11 +26173,426 @@ for (sig_type in c("q", "p")) {
 }
 
 message("Chunk 8 complete: radar plots done")
+```
+
+
+## Chunk 9: Extended Visualizations (Structure Heatmaps, Per-KO Plots, Complex Networks)
+```{r m12_m7_c9_extended_viz}
+# =============================================================================
+# 9.1  Trimer and tetramer disruption heatmaps (q and p)
+# 9.2  Barplots: lost structures by organelle annotation
+# 9.3  Per-KO edge scatter (Gene1 FC vs Gene2 FC, colored by edge state)
+# 9.4  Complex network plots with lost edges (q and p)
+# =============================================================================
+
+dir.create(file.path(out_dir_vuln_hela, "plots/trimers"),         recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "plots/tetramers"),       recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "plots/per_ko"),          recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "plots/complex_networks_q"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "plots/complex_networks_p"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "sourcedata/complex_networks_q"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir_vuln_hela, "sourcedata/complex_networks_p"), recursive = TRUE, showWarnings = FALSE)
+
+# =============================================================================
+# 9.1 Trimer / Tetramer disruption heatmaps
+# =============================================================================
+message("9.1 Trimer / Tetramer heatmaps...")
+
+# --- Helper: build binary heatmap matrix (structure x KO) ---
+make_structure_hm <- function(ko_states, id_col, state_col = "state_q") {
+  ko_states %>%
+    dplyr::mutate(disrupted_bin = as.integer(.data[[state_col]] == "disrupted")) %>%
+    dplyr::select(dplyr::all_of(c(id_col, "ko_gene", "disrupted_bin"))) %>%
+    tidyr::pivot_wider(names_from = ko_gene, values_from = disrupted_bin, values_fill = 0L)
+}
+
+# --- Helper: draw and save structure heatmap ---
+draw_structure_hm <- function(hm_wide, id_col, row_annot_df, ann_colors, title_str, out_path, out_sd_path) {
+  if (nrow(hm_wide) < 2 || ncol(hm_wide) < 3) { message("  Insufficient data: ", title_str); return(invisible(NULL)) }
+  hm_mat <- as.matrix(hm_wide[, -1])
+  rownames(hm_mat) <- hm_wide[[id_col]]
+
+  # Sort rows by n disrupted KOs descending
+  row_ord  <- order(rowSums(hm_mat), decreasing = TRUE)
+  hm_ord   <- hm_mat[row_ord, , drop = FALSE]
+
+  # Column annotation
+  ko_in_mat <- colnames(hm_ord)
+  col_ann <- ko_to_class_hela %>% dplyr::filter(KO %in% ko_in_mat) %>% as.data.frame()
+  rownames(col_ann) <- col_ann$KO
+  col_ann <- col_ann[ko_in_mat, "class", drop = FALSE]
+  colnames(col_ann) <- "DiseaseClass"
+  dc_p <- intersect(names(disease_colors_hela), unique(na.omit(col_ann$DiseaseClass)))
+
+  # Row annotation
+  if (!is.null(row_annot_df)) {
+    row_ann <- row_annot_df[rownames(hm_ord), , drop = FALSE]
+  } else {
+    row_ann <- NULL
+  }
+
+  full_ann_colors <- c(ann_colors, list(DiseaseClass = disease_colors_hela[dc_p]))
+
+  readr::write_csv(as.data.frame(hm_ord) %>% tibble::rownames_to_column(id_col), out_sd_path)
+
+  pdf(out_path, width = 12, height = max(6, nrow(hm_ord) * 0.08 + 2))
+  pheatmap::pheatmap(hm_ord,
+    color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
+    cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
+    annotation_row = row_ann, annotation_col = col_ann, annotation_colors = full_ann_colors,
+    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+    main = title_str)
+  dev.off()
+  message("  Saved: ", basename(out_path))
+}
+
+# --- Trimer heatmaps ---
+if (nrow(trimer_ko_states_hela) > 0) {
+  # Row annotation from trimer_evidence_hela
+  tri_ann_col <- intersect(c("shared_organelle", "majority_organelle"), colnames(trimer_evidence_hela))[1]
+  tri_row_ann <- NULL
+  tri_ann_colors <- list()
+  if (!is.na(tri_ann_col)) {
+    tri_meta <- trimer_evidence_hela %>%
+      dplyr::select(trimer_id, dplyr::all_of(tri_ann_col)) %>%
+      as.data.frame()
+    rownames(tri_meta) <- tri_meta$trimer_id
+    tri_meta <- tri_meta[, tri_ann_col, drop = FALSE]
+    colnames(tri_meta) <- "organelle"
+    tri_row_ann  <- tri_meta
+    n_org_tri    <- length(unique(na.omit(tri_meta$organelle)))
+    org_pal_tri  <- setNames(colorRampPalette(RColorBrewer::brewer.pal(max(3, min(n_org_tri, 12)), "Set3"))(n_org_tri),
+                              unique(na.omit(tri_meta$organelle)))
+    tri_ann_colors <- list(organelle = org_pal_tri)
+  }
+
+  for (sig_type in c("q", "p")) {
+    hm_tri <- make_structure_hm(trimer_ko_states_hela, "trimer_id", paste0("state_", sig_type))
+    draw_structure_hm(hm_tri, "trimer_id", tri_row_ann, tri_ann_colors,
+      paste0("Trimer Disruption (", sig_type, " < 0.05)\n", nrow(hm_tri), " trimers x ", ncol(hm_tri) - 1, " KOs"),
+      file.path(out_dir_vuln_hela, "plots/trimers", paste0("heatmap_trimer_KO_annotation_HeLa_", sig_type, ".pdf")),
+      file.path(out_dir_vuln_hela, "sourcedata", paste0("heatmap_trimer_KO_", sig_type, "_sourcedata.csv")))
+  }
+}
+
+# --- Tetramer heatmaps ---
+if (exists("tetramer_ko_states_hela") && nrow(tetramer_ko_states_hela) > 0 &&
+    "tetramer_id" %in% colnames(tetramer_ko_states_hela)) {
+  tet_ann_col <- intersect(c("shared_organelle", "majority_organelle"), colnames(tetramer_evidence_hela))[1]
+  tet_row_ann <- NULL
+  tet_ann_colors <- list()
+  if (!is.na(tet_ann_col)) {
+    tet_meta <- tetramer_evidence_hela %>%
+      dplyr::select(tetramer_id, dplyr::all_of(tet_ann_col)) %>%
+      as.data.frame()
+    rownames(tet_meta) <- tet_meta$tetramer_id
+    tet_meta <- tet_meta[, tet_ann_col, drop = FALSE]
+    colnames(tet_meta) <- "organelle"
+    tet_row_ann <- tet_meta
+    n_org_tet   <- length(unique(na.omit(tet_meta$organelle)))
+    tet_ann_colors <- list(organelle = setNames(
+      colorRampPalette(RColorBrewer::brewer.pal(max(3, min(n_org_tet, 12)), "Set3"))(n_org_tet),
+      unique(na.omit(tet_meta$organelle))))
+  }
+
+  for (sig_type in c("q", "p")) {
+    hm_tet <- make_structure_hm(tetramer_ko_states_hela, "tetramer_id", paste0("state_", sig_type))
+    draw_structure_hm(hm_tet, "tetramer_id", tet_row_ann, tet_ann_colors,
+      paste0("Tetramer Disruption (", sig_type, " < 0.05)\n", nrow(hm_tet), " tetramers x ", ncol(hm_tet) - 1, " KOs"),
+      file.path(out_dir_vuln_hela, "plots/tetramers", paste0("heatmap_tetramer_KO_annotation_HeLa_", sig_type, ".pdf")),
+      file.path(out_dir_vuln_hela, "sourcedata", paste0("heatmap_tetramer_KO_", sig_type, "_sourcedata.csv")))
+  }
+}
+
+# =============================================================================
+# 9.2 Barplots: lost structures by organelle annotation
+# =============================================================================
+message("9.2 Barplots by organelle annotation...")
+
+# --- PPIs (already built in C6 organelle heatmap, here as barplot) ---
+for (sig_type in c("q", "p")) {
+  frac_col <- paste0("frac_lost_", sig_type)
+  p_org_ppi <- ggplot2::ggplot(ko_org_summary_hela,
+      ggplot2::aes(x = shared_organelle, y = .data[[frac_col]], fill = DiseaseClass)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+    ggplot2::scale_fill_manual(values = disease_colors_hela, na.value = "grey70") +
+    ggplot2::labs(x = NULL, y = paste0("Fraction lost PPIs (", sig_type, " < 0.05)"),
+                  title = paste0("PPI loss by organelle (", sig_type, " < 0.05)")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+  save_plot_sd_hela(p_org_ppi, paste0("plots/global/barplot_lost_ppi_by_annotation_", sig_type),
+                    ko_org_summary_hela, width = 10, height = 5)
+}
+
+# --- Trimers by organelle ---
+if (nrow(trimer_ko_states_hela) > 0 && !is.na(tri_ann_col)) {
+  tri_org_summary <- trimer_ko_states_hela %>%
+    dplyr::left_join(trimer_evidence_hela %>% dplyr::select(trimer_id, dplyr::all_of(tri_ann_col)),
+                     by = "trimer_id") %>%
+    dplyr::rename(organelle = dplyr::all_of(tri_ann_col)) %>%
+    dplyr::filter(!is.na(organelle)) %>%
+    dplyr::group_by(ko_gene, DiseaseClass, organelle) %>%
+    dplyr::summarise(n_disrupted_q = sum(state_q == "disrupted"),
+                     n_disrupted_p = sum(state_p == "disrupted"),
+                     n_total = dplyr::n(), .groups = "drop") %>%
+    dplyr::mutate(frac_disrupted_q = n_disrupted_q / n_total,
+                  frac_disrupted_p = n_disrupted_p / n_total)
+
+  for (sig_type in c("q", "p")) {
+    frac_col <- paste0("frac_disrupted_", sig_type)
+    p_org_tri <- ggplot2::ggplot(tri_org_summary,
+        ggplot2::aes(x = organelle, y = .data[[frac_col]], fill = DiseaseClass)) +
+      ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+      ggplot2::scale_fill_manual(values = disease_colors_hela, na.value = "grey70") +
+      ggplot2::labs(x = NULL, y = paste0("Fraction disrupted trimers (", sig_type, " < 0.05)"),
+                    title = paste0("Trimer disruption by organelle (", sig_type, " < 0.05)")) +
+      ggplot2::theme_bw(base_size = 6) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                     axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    save_plot_sd_hela(p_org_tri, paste0("plots/trimers/barplot_lost_trimer_by_annotation_", sig_type),
+                      tri_org_summary, width = 10, height = 5)
+  }
+}
+
+# --- Complexes by organelle ---
+cx_org_summary_hela <- complex_ko_states_hela %>%
+  dplyr::filter(!is.na(majority_organelle)) %>%
+  dplyr::group_by(ko_gene, DiseaseClass, majority_organelle) %>%
+  dplyr::summarise(n_disrupted_q = sum(state_q == "disrupted"),
+                   n_disrupted_p = sum(state_p == "disrupted"),
+                   n_total = dplyr::n(), .groups = "drop") %>%
+  dplyr::mutate(frac_disrupted_q = n_disrupted_q / n_total,
+                frac_disrupted_p = n_disrupted_p / n_total)
+
+for (sig_type in c("q", "p")) {
+  frac_col <- paste0("frac_disrupted_", sig_type)
+  p_org_cx <- ggplot2::ggplot(cx_org_summary_hela,
+      ggplot2::aes(x = majority_organelle, y = .data[[frac_col]], fill = DiseaseClass)) +
+    ggplot2::geom_col(position = "dodge", color = "black", linewidth = 0.2) +
+    ggplot2::scale_fill_manual(values = disease_colors_hela, na.value = "grey70") +
+    ggplot2::labs(x = NULL, y = paste0("Fraction disrupted complexes (", sig_type, " < 0.05)"),
+                  title = paste0("Complex disruption by organelle (", sig_type, " < 0.05)")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+  save_plot_sd_hela(p_org_cx, paste0("plots/complexes/barplot_lost_complex_by_annotation_", sig_type),
+                    cx_org_summary_hela, width = 10, height = 5)
+}
+
+# =============================================================================
+# 9.3 Per-KO edge scatter: Gene1 FC vs Gene2 FC, colored by edge state
+# =============================================================================
+message("9.3 Per-KO edge scatter plots...")
+
+# Join FCs into edge export table
+prot_fc_hela <- prot_long_hela %>% dplyr::select(Genes, ko_gene, mean_log2FC)
+
+per_ko_edge_data <- ko_edge_export_hela %>%
+  dplyr::left_join(prot_fc_hela, by = c("Gene1" = "Genes", "ko_gene")) %>%
+  dplyr::rename(fc_Gene1 = mean_log2FC) %>%
+  dplyr::left_join(prot_fc_hela, by = c("Gene2" = "Genes", "ko_gene")) %>%
+  dplyr::rename(fc_Gene2 = mean_log2FC) %>%
+  dplyr::mutate(state_q = factor(state_q, levels = c("lost", "retained", "unknown")))
+
+state_colors_edge <- c(lost = "#C51B7D", retained = "grey70", unknown = "grey90")
+
+for (ko in ko_list_hela) {
+  ko_data <- per_ko_edge_data %>% dplyr::filter(ko_gene == ko, !is.na(fc_Gene1) | !is.na(fc_Gene2))
+  if (nrow(ko_data) < 2) next
+
+  n_lost <- sum(ko_data$state_q == "lost", na.rm = TRUE)
+  n_tot  <- nrow(ko_data)
+
+  p_ko_scatter <- ggplot2::ggplot(ko_data, ggplot2::aes(x = fc_Gene1, y = fc_Gene2, color = state_q)) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey60", linewidth = 0.3) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "grey60", linewidth = 0.3) +
+    ggplot2::geom_point(size = 0.8, alpha = 0.6) +
+    ggplot2::scale_color_manual(values = state_colors_edge) +
+    ggplot2::labs(x = "Gene1 log2FC", y = "Gene2 log2FC", color = "Edge state (q)",
+                  title = paste0(ko, " | PPI edge landscape"),
+                  subtitle = paste0("Lost: ", n_lost, " / ", n_tot, " edges (q < 0.05)")) +
+    ggplot2::theme_bw(base_size = 6) +
+    ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                   panel.border = ggplot2::element_rect(color = "black", fill = NA))
+
+  pdf(file.path(out_dir_vuln_hela, "plots/per_ko", paste0(ko, "_edge_scatter.pdf")), width = 4, height = 4)
+  print(p_ko_scatter)
+  dev.off()
+  readr::write_csv(ko_data %>% dplyr::select(Gene1, Gene2, key, fc_Gene1, fc_Gene2, state_q, state_p),
+    file.path(out_dir_vuln_hela, "sourcedata", paste0(ko, "_edge_scatter_sourcedata.csv")))
+}
+message("  Per-KO scatter plots saved to: plots/per_ko/")
+
+# =============================================================================
+# 9.4 Complex network plots with lost edges (q and p)
+# =============================================================================
+message("9.4 Complex network plots with lost edges...")
+
+# Precompute baseline layouts for disrupted complexes
+cx_to_plot_vuln <- complex_ko_states_hela %>%
+  dplyr::filter(state_q == "disrupted" | state_p == "disrupted") %>%
+  dplyr::pull(complex_idx) %>%
+  unique()
+
+message("  Unique complexes to plot: ", length(cx_to_plot_vuln))
+
+# Edge lookup from baseline (need Gene1, Gene2, key per edge)
+baseline_edges_distinct_hela <- baseline_edge_hela %>%
+  dplyr::select(key, Gene1, Gene2) %>%
+  dplyr::distinct()
+
+baseline_layouts_vuln <- list()
+for (cidx in cx_to_plot_vuln) {
+  cx_row <- complex_evidence_hela %>% dplyr::filter(complex_idx == cidx)
+  if (nrow(cx_row) == 0) next
+  members <- cx_row$members[[1]]
+  if (length(members) < 2) next
+
+  edges_base <- baseline_edges_distinct_hela %>%
+    dplyr::filter(Gene1 %in% members, Gene2 %in% members)
+  if (nrow(edges_base) < 1) next
+
+  g_base <- igraph::graph_from_data_frame(edges_base %>% dplyr::select(Gene1, Gene2),
+    directed = FALSE, vertices = data.frame(name = members))
+
+  cx_size    <- length(members)
+  layout_mat <- if (cx_size <= 10) igraph::layout_in_circle(g_base) else
+                if (cx_size <= 20) igraph::layout_with_kk(g_base) else
+                igraph::layout_with_fr(g_base)
+  rownames(layout_mat) <- igraph::V(g_base)$name
+  baseline_layouts_vuln[[as.character(cidx)]] <- list(layout = layout_mat, members = members)
+}
+message("  Layouts precomputed: ", length(baseline_layouts_vuln))
+
+# --- Plot function: one complex x one KO ---
+plot_cx_ko_network_hela <- function(cx_idx, ko, ko_edge_export, complex_evidence_hela,
+                                     complex_ko_states_hela, baseline_layouts_vuln,
+                                     out_dir, out_dir_sd, sig_col) {
+  bl <- baseline_layouts_vuln[[as.character(cx_idx)]]
+  if (is.null(bl)) return(invisible(NULL))
+  members    <- bl$members
+  layout_mat <- bl$layout
+
+  edges_ko <- ko_edge_export %>%
+    dplyr::filter(ko_gene == ko, Gene1 %in% members, Gene2 %in% members)
+  if (nrow(edges_ko) == 0) return(invisible(NULL))
+
+  cx_sum <- complex_ko_states_hela %>%
+    dplyr::filter(complex_idx == cx_idx, ko_gene == ko)
+  if (nrow(cx_sum) == 0) return(invisible(NULL))
+
+  cx_meta   <- complex_evidence_hela %>% dplyr::filter(complex_idx == cx_idx)
+  cx_size   <- cx_meta$complex_size[1]
+  cx_name   <- dplyr::coalesce(cx_meta$corum_matched_name[1], "")
+  cx_name   <- if (!is.na(cx_name) && nchar(cx_name) > 0) paste0("\n", substr(cx_name, 1, 50)) else ""
+
+  edge_state_vec <- edges_ko[[sig_col]]
+
+  # Node states from edge states
+  node_states <- dplyr::bind_rows(
+    edges_ko %>% dplyr::select(node = Gene1, edge_state = dplyr::all_of(sig_col)),
+    edges_ko %>% dplyr::select(node = Gene2, edge_state = dplyr::all_of(sig_col))
+  ) %>%
+    dplyr::group_by(node) %>%
+    dplyr::summarise(n_cx  = dplyr::n(),
+                     n_lost = sum(edge_state == "lost", na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(node_state = dplyr::case_when(
+      n_lost == n_cx ~ "lost", n_lost > 0 ~ "disrupted", TRUE ~ "retained"))
+
+  g_ko <- igraph::graph_from_data_frame(edges_ko %>% dplyr::select(Gene1, Gene2),
+    directed = FALSE, vertices = data.frame(name = members))
+
+  igraph::E(g_ko)$color <- ifelse(edge_state_vec == "lost", "#CC0000", "grey40")
+  igraph::E(g_ko)$lty   <- ifelse(edge_state_vec == "lost", 2L, 1L)
+  igraph::E(g_ko)$width <- 1.8
+
+  vnames      <- igraph::V(g_ko)$name
+  layout_plot <- layout_mat[match(vnames, rownames(layout_mat)), , drop = FALSE]
+
+  node_palette   <- c(lost = "#CC0000", disrupted = "#FD8D3C", retained = "white")
+  node_state_vec <- node_states$node_state[match(vnames, node_states$node)]
+  node_state_vec[is.na(node_state_vec)] <- "retained"
+  vertex_colors  <- node_palette[node_state_vec]
+
+  n_lost_nodes <- sum(node_states$node_state == "lost")
+  n_dis_nodes  <- sum(node_states$node_state == "disrupted")
+  vsize <- ifelse(cx_size > 30, 6, ifelse(cx_size > 15, 8, 10))
+  vlcex <- ifelse(cx_size > 30, 0.4, ifelse(cx_size > 15, 0.5, 0.6))
+  sig_label <- toupper(sub("state_", "", sig_col))
+
+  plot_title <- paste0("Complex ", cx_idx, " | ", ko, " [", sig_label, "]",
+    "\nSize: ", cx_size, " | Edges: ", nrow(edges_ko),
+    " | Lost nodes: ", n_lost_nodes, " | Disrupted nodes: ", n_dis_nodes, cx_name)
+
+  cx_label <- sprintf("%03d", cx_idx)
+  pdf_path <- file.path(out_dir, paste0(cx_label, "_", ko, "_network.pdf"))
+  pdf(pdf_path, width = 8, height = 8)
+  par(mar = c(1, 1, 4, 1))
+  plot(g_ko, layout = layout_plot,
+    vertex.size = vsize, vertex.label.cex = vlcex,
+    vertex.color = vertex_colors, vertex.frame.color = "grey50",
+    edge.color = igraph::E(g_ko)$color,
+    edge.width = igraph::E(g_ko)$width,
+    edge.lty   = igraph::E(g_ko)$lty,
+    main = plot_title)
+  legend("bottomleft",
+    legend = c("Retained edge", "Lost edge", "Node: retained", "Node: disrupted", "Node: lost"),
+    col    = c("grey40", "#CC0000", "grey50", "grey50", "grey50"),
+    pt.bg  = c(NA, NA, "white", "#FD8D3C", "#CC0000"),
+    lwd = c(2, 2, NA, NA, NA), pch = c(NA, NA, 21, 21, 21),
+    lty = c(1, 2, NA, NA, NA), pt.cex = c(NA, NA, 1.2, 1.2, 1.2),
+    bty = "n", cex = 0.7, title = paste0("PPI state (", sig_label, ")"))
+  dev.off()
+
+  readr::write_csv(
+    edges_ko %>% dplyr::mutate(complex_idx = cx_idx, sig = sig_label, n_lost_nodes = n_lost_nodes),
+    file.path(out_dir_sd, paste0(cx_label, "_", ko, "_sourcedata.csv")))
+  readr::write_csv(
+    node_states %>% dplyr::mutate(complex_idx = cx_idx, ko_gene = ko, sig = sig_label),
+    file.path(out_dir_sd, paste0(cx_label, "_", ko, "_nodestates.csv")))
+
+  invisible(NULL)
+}
+
+# --- Run for all disrupted complex x KO, both q and p ---
+for (sig_type in c("q", "p")) {
+  sig_col      <- paste0("state_", sig_type)
+  out_cx_net   <- file.path(out_dir_vuln_hela, paste0("plots/complex_networks_", sig_type))
+  out_cx_net_sd <- file.path(out_dir_vuln_hela, paste0("sourcedata/complex_networks_", sig_type))
+
+  disrupted_sig_hela <- complex_ko_states_hela %>%
+    dplyr::filter(.data[[sig_col]] == "disrupted",
+                  complex_idx %in% as.integer(names(baseline_layouts_vuln)))
+
+  message("  Running ", toupper(sig_type), ": ", nrow(disrupted_sig_hela), " complex x KO combinations")
+
+  plot_n <- 0; skip_n <- 0
+  for (i in seq_len(nrow(disrupted_sig_hela))) {
+    row <- disrupted_sig_hela[i, ]
+    result <- tryCatch(
+      plot_cx_ko_network_hela(
+        cx_idx = row$complex_idx, ko = row$ko_gene,
+        ko_edge_export = ko_edge_export_hela,
+        complex_evidence_hela = complex_evidence_hela,
+        complex_ko_states_hela = complex_ko_states_hela,
+        baseline_layouts_vuln = baseline_layouts_vuln,
+        out_dir = out_cx_net, out_dir_sd = out_cx_net_sd,
+        sig_col = sig_col),
+      error = function(e) {
+        message("  SKIP cx ", row$complex_idx, " / ", row$ko_gene, ": ", e$message); "error"
+      })
+    if (identical(result, "error")) skip_n <- skip_n + 1 else plot_n <- plot_n + 1
+    if ((plot_n + skip_n) %% 100 == 0) message("  ", plot_n, " done / ", skip_n, " skipped")
+  }
+  message(toupper(sig_type), " complete: ", plot_n, " plots, ", skip_n, " skipped")
+}
+
+message("Chunk 9 complete")
 message("\nModule 7 complete")
 message("  KOs analyzed  : ", length(ko_list_hela))
 message("  Output        : ", out_dir_vuln_hela)
 ```
-
 
 # =================================================
 # old Module 12: PPI Vulnerability Analysis - HeLa nMOST
