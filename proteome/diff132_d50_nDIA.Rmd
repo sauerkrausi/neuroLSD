@@ -12299,15 +12299,15 @@ neuronal_genes <- unique(complete_data_annotated_day50$Genes)
 message("Neuronal proteome: ", length(neuronal_genes), " proteins")
 
 # --- Filter to gold tier ---
-message("Filtering to Tier 1 only...")
+# message("Filtering to Tier 1 only...")
 master_ppi_gold <- master_ppi_v3 %>%
   dplyr::filter(confidence_tier == "Tier1")
 message(" Tier 1 edges: ", nrow(master_ppi_gold))
 
 # for both tie 1 and 2
-master_ppi_gold <- master_ppi_v3 %>%
-  dplyr::filter(confidence_tier %in% c("Tier1", "Tier2"))
-message(" Tier 1 + 2 edges: ", nrow(master_ppi_gold))
+# master_ppi_gold <- master_ppi_v3 %>%
+#   dplyr::filter(confidence_tier %in% c("Tier1", "Tier2"))
+# message(" Tier 1 + 2 edges: ", nrow(master_ppi_gold))
 
 
 # --- Pre-filter stats ---
@@ -16071,7 +16071,7 @@ library(corrplot)
 # Configuration
 # =============================================================================
 drop_thresh <- -0.5
-conf_tiers_use <- c("gold")
+conf_tiers_use <- c("Tier1")
 
 # Significance thresholds (using -log10 scale)
 q_threshold <- -log10(0.05)  # 1.3
@@ -17860,7 +17860,7 @@ for (sig_tag in c("q", "p")) {
     ggplot2::geom_col(position = "stack") +
     ggplot2::facet_wrap(~neuron) +
     ggplot2::scale_fill_manual(values = node_palette_bar) +
-    ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = "Node sta/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/PPI/ppi_dual_evidence/KOxNeuron_eval_v6/plots/KOxNeuron/barplot_lost_tetramer_by_annotation_iN.pdfte",
+    ggplot2::labs(x = "Genotype", y = "Number of nodes", fill = node_palette_bar,
                   title = paste0("Node disruption per genotype (", sig_tag, "-sig)")) +
     ggplot2::theme_bw(base_size = 6) +
     ggplot2::theme(
