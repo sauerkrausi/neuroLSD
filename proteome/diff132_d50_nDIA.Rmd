@@ -23322,11 +23322,20 @@ stat_results_limma <- stat_results_limma %>%
 message("  Tests run             : ", nrow(stat_results_limma))
 message("  Significant (q < 0.05): ", sum(!is.na(stat_results_limma$qval) & stat_results_limma$qval < 0.05))
 
-# --- Step 11: merge into summary table ---
+# --- Step 11: merge into summary table + significance flags ---
+# Flags defined once here; downstream modules use them directly without recomputing
 hela_log2fc_summary_stats <- hela_log2fc_summary_qc %>%
   dplyr::left_join(
     stat_results_limma %>% dplyr::select(Genes, ko_gene, pval, qval, neglog10_p, neglog10_q),
     by = c("Genes", "ko_gene")
+  ) %>%
+  dplyr::mutate(
+    is_sig_p    = !is.na(pval)  & pval  < 0.01,
+    is_sig_q    = !is.na(qval)  & qval  < 0.01,
+    is_lost_p   = is_sig_p & !is.na(mean_log2FC) & mean_log2FC < -1.3,
+    is_lost_q   = is_sig_q & !is.na(mean_log2FC) & mean_log2FC < -1.3,
+    is_gained_p = is_sig_p & !is.na(mean_log2FC) & mean_log2FC >  1.3,
+    is_gained_q = is_sig_q & !is.na(mean_log2FC) & mean_log2FC >  1.3
   )
 
 readr::write_csv(hela_log2fc_summary_stats,
@@ -23356,8 +23365,7 @@ p_pval_hist <- ggplot(pval_hist_data, aes(x = pval)) +
   theme_bw(base_size = 6) +
   theme(
     panel.grid = element_blank(), 
-    panel.border = element_rect(color = "black", 
-                                fill = NA))
+    panel.border = element_rect(color = "black", fill = NA))
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"), p_pval_hist, width = 3, height = 3, device = cairo_pdf)
 
@@ -25412,10 +25420,6 @@ library(scales)
 library(igraph)
 library(fmsb)
 
-# --- Significance thresholds (-log10 scale) ---
-q_thresh_hela <- -log10(0.05)   # 1.3
-p_thresh_hela <- -log10(0.05)   # 1.3
-
 # --- Disease class definitions ---
 # Priority order: Sphingolipidoses and NCL first; duplicate KOs (e.g. GLB1,
 # ATP13A2) are assigned to the highest-priority matching class.
@@ -25489,20 +25493,14 @@ message("  Significance: p < 0.05 and q < 0.05 evaluated in parallel")
 ```{r m12_m7_c1_proteome}
 # =============================================================================
 # Build proteome significance table from hela_log2fc_summary_stats (M0 C6)
+# No neuron dimension -- single cell type
 # =============================================================================
 
 message("Building HeLa significance-filtered proteome data...")
 
+# Flags (is_sig_p/q, is_lost_p/q, is_gained_p/q) pre-computed in M0 C6 -- use directly
 prot_long_hela <- hela_log2fc_summary_stats %>%
-  dplyr::filter(ko_gene %in% colnames(hela_log2fc_wide_qc)[-1]) %>%
-  dplyr::mutate(
-    is_sig_p   = !is.na(neglog10_p) & neglog10_p >= p_thresh_hela,
-    is_sig_q   = !is.na(neglog10_q) & neglog10_q >= q_thresh_hela,
-    is_lost_p  = is_sig_p  & !is.na(mean_log2FC) & mean_log2FC < 0,
-    is_lost_q  = is_sig_q  & !is.na(mean_log2FC) & mean_log2FC < 0,
-    is_gained_p = is_sig_p & !is.na(mean_log2FC) & mean_log2FC > 0,
-    is_gained_q = is_sig_q & !is.na(mean_log2FC) & mean_log2FC > 0
-  )
+  dplyr::filter(ko_gene %in% colnames(hela_log2fc_wide_qc)[-1])
 
 ko_list_hela <- unique(prot_long_hela$ko_gene)
 message("  KOs in analysis: ", length(ko_list_hela))
@@ -25665,7 +25663,6 @@ shared_long_hela_full <- as.data.frame(shared_mat_base_hela) %>%
 message("  shared_long_hela_full: ", nrow(shared_long_hela_full), " edge-tag pairs")
 message("Chunk 2 complete: ", nrow(ko_edge_export_hela), " edge x KO rows")
 ```
-
 
 ## Chunk 3: Trimer Vulnerability
 ```{r m12_m7_c3_trimers}
@@ -25985,9 +25982,9 @@ for (sig_type in c("q", "p")) {
     ggplot2::scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
     ggplot2::labs(x = NULL, y = "PPI edges", title = paste0("PPI edge states per KO (", sig_type, " < 0.05)")) +
     ggplot2::theme_bw(base_size = 6) +
-    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 90, hjust = 1))
 
-  save_plot_sd_hela(p_bar, paste0("plots/global/barplot_ppi_states_", sig_type, "val"), plot_data_bar, width = 10, height = 5)
+  save_plot_sd_hela(p_bar, paste0("plots/global/barplot_ppi_states_", sig_type, "val"), plot_data_bar, width = 8, height = 5)
 }
 
 # --- Organelle x KO heatmap (fraction lost, q and p) ---
@@ -26065,8 +26062,7 @@ for (sig_type in c("q", "p")) {
                    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
                    strip.background = ggplot2::element_rect(fill = "white"))
 
-  save_plot_sd_hela(p_facet, paste0("plots/global/barplot_structure_loss_faceted_", sig_type, "val"),
-                    comparison_data_hela, width = 10, height = 14)
+  save_plot_sd_hela(p_facet, paste0("plots/global/barplot_structure_loss_faceted_", sig_type, "val"), comparison_data_hela, width = 10, height = 14)
 }
 
 message("Chunk 6 complete")
