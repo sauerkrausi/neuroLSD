@@ -728,7 +728,7 @@ gene_seq_data <- diff132_d50_PCA_df %>%
     genotype = ifelse(is.na(genotype) & neuron == "QC", "QC", genotype),
     replicate = ifelse(genotype == "QC", NA, replicate)
   ) %>%
-  filter(genotype != "QC") %>%  # <-- this line removes QC
+  dplyr::filter(genotype != "QC") %>%  # <-- this line removes QC
   dplyr::group_by(Genes, genotype, neuron) %>%
   dplyr::summarise(
     total_sequences = sum(N.Sequences, na.rm = TRUE),
@@ -766,12 +766,12 @@ gene_counts_per_rep <- cleaned_df %>%
 
 # Separate QC and non-QC
 qc_summary <- gene_counts_per_rep %>%
-  filter(genotype == "QC") %>%
+  dplyr::filter(genotype == "QC") %>%
   dplyr::group_by(genotype, neuron) %>%
   dplyr::summarise(quantified_genes = sum(quantified_genes), .groups = "drop")
 
 non_qc_summary <- gene_counts_per_rep %>%
-  filter(genotype != "QC") %>%
+  dplyr::filter(genotype != "QC") %>%
   dplyr::group_by(genotype, neuron) %>%
   summarise(quantified_genes = mean(quantified_genes), .groups = "drop")
 
@@ -900,7 +900,7 @@ rsd_filtered <- rsd_q1_to_q3 %>%
 # --- 1. Function to generate a single plot for one neuron type and one day
 make_day_plot <- function(df, neuron_type, day_label) {
   # Subset the data for the chosen neuron type and day
-  df_day <- df %>% filter(Neuron == neuron_type, Day == day_label)
+  df_day <- df %>% dplyr::filter(Neuron == neuron_type, Day == day_label)
   
   ggplot(df_day, aes(x = Genotype)) +
     # Semi-transparent ribbon showing the IQR band
@@ -985,7 +985,7 @@ diff132_d50_df <- diff132_d50_df[, -c(1, 2, 4,14,15,16,17,18,19,21)]
 
 # Filter out rows with missing or empty 'Genes' entries
 clean_d50_df <- diff132_d50_df %>%
-  filter(!is.na(Genes) & Genes != "") %>% 
+  dplyr::filter(!is.na(Genes) & Genes != "") %>% 
   dplyr::mutate(Genes = sub(";.*", "", Genes))  # Keep first gene symbol only
 
 
@@ -1024,8 +1024,8 @@ sample_d50_info <- clean_d50_df %>%
   column_to_rownames("sample_id")
 
 
-df_day30 <- clean_d50_df %>% filter(day == 30)
-df_day50 <- clean_d50_df %>% filter(day == 50)
+df_day30 <- clean_d50_df %>% dplyr::filter(day == 30)
+df_day50 <- clean_d50_df %>% dplyr::filter(day == 50)
 
 write.csv(df_day30, file = file.path(out_dir_d50_dataframes, "df_day30_heatmap.csv"),row.names = FALSE)
 write.csv(df_day50, file = file.path(out_dir_d50_dataframes, "df_day50_heatmap.csv"),row.names = FALSE)
@@ -1159,7 +1159,7 @@ clean_d50_transformed_df <- clean_d50_df %>%
     neg_log10_q_value = ifelse(q_value > 0, -log10(q_value), NA),
     neg_log10_p_value = ifelse(p_value > 0, -log10(p_value), NA)
   ) %>%
-  filter(!Genes %in% contaminant_genes)
+  dplyr::filter(!Genes %in% contaminant_genes)
 
 
 #  --- Step 2: Load and prepare annotation matrix (only once)
@@ -1173,7 +1173,7 @@ long_subcell_df <- subcell_df %>%
     names_to = "Localization",
     values_to = "Genes"
   ) %>%
-  filter(!is.na(Genes) & Genes != "") %>%
+  dplyr::filter(!is.na(Genes) & Genes != "") %>%
   dplyr::mutate(Genes = trimws(Genes)) %>%
   distinct()
 
@@ -1188,7 +1188,7 @@ binary_matrix <- long_subcell_df %>%
 
 # --- Step 3: Function to process each day independently
 process_day_data <- function(df, day_value, save_path) {
-  df_day <- df %>% filter(day == day_value)
+  df_day <- df %>% dplyr::filter(day == day_value)
 
   complete_data <- df_day %>%
     dplyr::select(Genes, sample_id, log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value) %>%
@@ -1277,7 +1277,7 @@ log2fc_annotated <- diff132_log2fc_df %>%
 
 # Filter significant (p < 0.05), summarize mean log2fc per annotation x sample_id
 sig_annotation_heatmap <- log2fc_annotated %>%
-  filter(p_value < 0.05) %>%
+  dplyr::filter(p_value < 0.05) %>%
   dplyr::group_by(Localization, sample_id, day, neuron) %>%
   dplyr::summarise(mean_log2fc = mean(log2fc, na.rm = TRUE), .groups = "drop")
 
@@ -1369,7 +1369,7 @@ included_terms <- setdiff(names(subcell_df), excluded_terms)
 gene_sets <- subcell_df %>%
   select(all_of(included_terms)) %>%
   pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
-  filter(!is.na(Gene) & Gene != "") %>%
+  dplyr::filter(!is.na(Gene) & Gene != "") %>%
   dplyr::mutate(Gene = trimws(Gene)) %>%
   dplyr::group_by(Category) %>%
   dplyr::summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
@@ -1398,7 +1398,7 @@ endo_terms <- c("Endo_iN_curated_Hundley", "Lysosome", "EarlyEndosome", "Recycli
 gene_sets_endo <- subcell_df %>%
   select(all_of(endo_terms)) %>%
   pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
-  filter(!is.na(Gene) & Gene != "") %>%
+  dplyr::filter(!is.na(Gene) & Gene != "") %>%
   dplyr::mutate(Gene = trimws(Gene)) %>%
   dplyr::group_by(Category) %>%
   dplyr::summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
@@ -1423,7 +1423,7 @@ synaptic_terms <- c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic",
 gene_sets_synaptic <- subcell_df %>%
   select(all_of(synaptic_terms)) %>%
   pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
-  filter(!is.na(Gene) & Gene != "") %>%
+  dplyr::filter(!is.na(Gene) & Gene != "") %>%
   dplyr::mutate(Gene = trimws(Gene)) %>%
   dplyr::group_by(Category) %>%
   dplyr::summarise(GeneSet = list(unique(Gene)), .groups = "drop") %>%
@@ -1459,7 +1459,7 @@ LSDgenes <- c(
 # ---- Prepare Long Format Data ----
 # Filter for LSD genes and pivot to long format
 df_clean_heatmap <- clean_d50_transformed_df %>%
-  filter(Genes %in% LSDgenes) %>%
+  dplyr::filter(Genes %in% LSDgenes) %>%
   select(Genes, genotype, neuron, day, mean_ctrl, mean_ko) %>%
   pivot_longer(cols = c(mean_ctrl, mean_ko), names_to = "condition", values_to = "value") %>%
   dplyr::mutate(day = as.integer(day))
@@ -1467,7 +1467,7 @@ df_clean_heatmap <- clean_d50_transformed_df %>%
 # ---- Filter for Matching Gene-Genotype Combinations at Day 50 ----
 # Only keep rows where the gene matches the genotype (e.g., GBA1 expression in GBA1 KO)
 plot_df <- df_clean_heatmap %>%
-  filter(Genes == genotype, day == 50)
+  dplyr::filter(Genes == genotype, day == 50)
 
 # ---- Replace NAs with 0 ----
 plot_df <- plot_df %>%
@@ -1477,7 +1477,7 @@ plot_df <- plot_df %>%
 label_df <- plot_df %>%
   dplyr::group_by(Genes) %>%
   dplyr::mutate(max_y = max(value, na.rm = TRUE)) %>%
-  filter(condition == "mean_ko" & value == 0) %>%
+  dplyr::filter(condition == "mean_ko" & value == 0) %>%
   dplyr::mutate(
     label = "not detected",
     y_label = max_y * 0.5,                          # Position label at 50% of max height
@@ -1513,7 +1513,7 @@ LSDgene_Abundance <- ggplot(plot_df, aes(x = neuron, y = value, fill = condition
 
 # ---- Plot LSD gene abundance in control background ----
 plot_df_ctrl <- df_clean_heatmap %>%
-  filter(condition == "mean_ctrl", day == 50) %>%
+  dplyr::filter(condition == "mean_ctrl", day == 50) %>%
   distinct(Genes, neuron, value) %>%
   dplyr::mutate(value = ifelse(is.na(value), 0, value))
 
@@ -1563,7 +1563,7 @@ all_rows <- expand.grid(
 
 # --- 2. Get actual values from df_clean_heatmap
 values_df <- df_clean_heatmap %>%
-  filter(day == 50, Genes == genotype) %>%
+  dplyr::filter(day == 50, Genes == genotype) %>%
   dplyr::group_by(Genes, neuron, condition) %>%
   dplyr::summarise(value = mean(value, na.rm = TRUE), .groups = "drop") %>%
   dplyr::mutate(RowID = paste(condition, neuron, sep = "_"))
@@ -1674,7 +1674,7 @@ make_ann_heatmap <- function(df, neuron_type, loc_ann, out_file) {
     dplyr::mutate(genotype = sub("_.*", "", Condition)) %>%
     pivot_longer(cols = all_of(loc_ann),
                  names_to = "Annotation", values_to = "is_annotated") %>%
-    filter(is_annotated == 1)
+    dplyr::filter(is_annotated == 1)
   
   ann_matrix <- long_df %>%
     dplyr::group_by(genotype, Annotation) %>%
@@ -1760,7 +1760,7 @@ make_ann_heatmap_sig <- function(df, neuron_type, loc_ann, out_file,
     left_join(long_sig, by = c("Genes", "genotype")) %>%
     dplyr::mutate(log2FC = ifelse(!is.na(sig_val) & sig_val >= neg_log10_thresh, log2FC, NA)) %>%
     pivot_longer(cols = all_of(loc_ann), names_to = "Annotation", values_to = "is_annotated") %>%
-    filter(is_annotated == 1)
+    dplyr::filter(is_annotated == 1)
 
   ann_matrix <- long_df %>%
     dplyr::group_by(genotype, Annotation) %>%
