@@ -12299,11 +12299,16 @@ neuronal_genes <- unique(complete_data_annotated_day50$Genes)
 message("Neuronal proteome: ", length(neuronal_genes), " proteins")
 
 # --- Filter to gold tier ---
-message("Filtering to gold tier only...")
+message("Filtering to Tier 1 only...")
 master_ppi_gold <- master_ppi_v3 %>%
   dplyr::filter(confidence_tier == "Tier1")
+message(" Tier 1 edges: ", nrow(master_ppi_gold))
 
-message("  Gold tier edges: ", nrow(master_ppi_gold))
+# for both tie 1 and 2
+master_ppi_gold <- master_ppi_v3 %>%
+  dplyr::filter(confidence_tier %in% c("Tier1", "Tier2"))
+message(" Tier 1 + 2 edges: ", nrow(master_ppi_gold))
+
 
 # --- Pre-filter stats ---
 n_pre <- nrow(master_ppi_gold)
