@@ -5281,12 +5281,12 @@ annotations_master <- diff132_d70_df_annotated %>%
 # 6.1 Day 30
 day30_asah1 <- complete_data_annotated_day30 %>%
   dplyr::select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
-  rename(
+  dplyr::rename(
     ASAH1_d30_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
     ASAH1_d30_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
   ) %>%
-  left_join(annotations_master, by = "Genes") %>%
-  mutate(
+  dplyr::left_join(annotations_master, by = "Genes") %>%
+  dplyr::mutate(
     across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
     across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
   )
@@ -5296,12 +5296,12 @@ write.csv(day30_asah1,file.path(out_dir_d70_dataframes, "diff132_day30_ASAH1_log
 # 6.2 Day 50
 day50_asah1 <- complete_data_annotated_day50 %>%
   dplyr::select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
-  rename(
+  dplyr::rename(
     ASAH1_d50_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
     ASAH1_d50_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
   ) %>%
   left_join(annotations_master, by = "Genes") %>%
-  mutate(
+  dplyr::mutate(
     across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
     across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
   )
@@ -5311,17 +5311,17 @@ write.csv(day50_asah1,file.path(out_dir_d70_dataframes, "diff132_day50_ASAH1_log
 # 6.3 Day 70
 day70_asah1 <- diff132_d70_df_annotated %>%
   dplyr::select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1) %>%
-  rename(
+  dplyr::rename(
     ASAH1_d70_iN_log2_fold_change  = d70_iN_log2fc_ASAH1,
     ASAH1_d70_iDA_log2_fold_change = d70_iDA_log2fc_ASAH1
   ) %>%
-  left_join(annotations_master, by = "Genes") %>%
-  mutate(
+  dplyr::left_join(annotations_master, by = "Genes") %>%
+  dplyr::mutate(
     across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
     across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
   )
 day70_asah1 <- day70_asah1 %>%
-  filter(!is.na(Genes), Genes != "")
+  dplyr::filter(!is.na(Genes), Genes != "")
 
 write.csv(day70_asah1,file.path(out_dir_d70_dataframes, "diff132_day70_ASAH1_log2fc_annotated.csv"),row.names = FALSE)
 
@@ -5351,16 +5351,16 @@ annotations_once <- day70_asah1 %>%
 
 # 7.4 Attach annotations; enforce NA→0 for numeric, NA→FALSE for logical
 asah1_timecourse_annotated <- asah1_timecourse_wide %>%
-  left_join(annotations_once, by = "Genes") %>%
-  mutate(
+  dplyr::left_join(annotations_once, by = "Genes") %>%
+  dplyr::mutate(
     across(where(is.numeric), ~ tidyr::replace_na(.x, 0)),
     across(where(is.logical), ~ tidyr::replace_na(.x, FALSE))
   )
 
 # 7.5 collapse duplicate Genes by mean to avoid rowname issues later
 asah1_timecourse_annotated <- asah1_timecourse_annotated %>%
-  group_by(Genes) %>%
-  summarise(across(everything(), ~ if (is.logical(.)) any(.x, na.rm = TRUE) else mean(.x, na.rm = TRUE)),
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(across(everything(), ~ if (is.logical(.)) any(.x, na.rm = TRUE) else mean(.x, na.rm = TRUE)),
             .groups = "drop")
 
 # 7.6 Save combined file
@@ -5384,10 +5384,10 @@ heat_cols <- intersect(
 # 8.2 Collapse duplicate Genes; sanitize values
 df_heat <- asah1_timecourse_annotated %>%
   dplyr::select(Genes, all_of(heat_cols)) %>%
-  filter(!is.na(Genes), Genes != "") %>%
-  group_by(Genes) %>%
-  summarise(across(all_of(heat_cols), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
-  mutate(across(all_of(heat_cols), ~ ifelse(is.finite(.x), .x, 0)))
+  dplyr::filter(!is.na(Genes), Genes != "") %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(across(all_of(heat_cols), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
+  dplyr::mutate(across(all_of(heat_cols), ~ ifelse(is.finite(.x), .x, 0)))
 
 # 8.3 Drop genes with all zeros and zero-variance rows
 nonzero_idx <- rowSums(abs(as.matrix(df_heat[, heat_cols, drop = FALSE]))) > 0
@@ -5446,10 +5446,10 @@ write.csv(as.data.frame(timecourse_mat),file.path(out_dir_d70_heatmap, "ASAH1_ti
 # --- 9. PCA analysis for ASAH1 vs Ctrl across day30, day50, day70
 # day 30 + 50 (already long in cleaned_df)
 df_30_50_long <- cleaned_df %>%
-  filter(day %in% c(30, 50),
+  dplyr::filter(day %in% c(30, 50),
          genotype %in% c("ctrl", "ASAH1"),
          neuron %in% c("iN", "iDA")) %>%
-  mutate(
+  dplyr::mutate(
     replicate = as.integer(replicate),
     sample_id = paste0("d", day, "_", neuron, "_", genotype, "_rep", replicate)
   ) %>%
@@ -5461,8 +5461,8 @@ df_70_long <- diff132_d70_df_proc %>%
          starts_with("d70_iN_Ctrl_rep"), starts_with("d70_iN_ASAH1_rep"),
          starts_with("d70_iDA_Ctrl_rep"), starts_with("d70_iDA_ASAH1_rep")) %>%
   tidyr::pivot_longer(-Genes, names_to = "replicate_raw", values_to = "quan") %>%
-  filter(!is.na(quan)) %>%
-  mutate(
+  dplyr::filter(!is.na(quan)) %>%
+  dplyr::mutate(
     day       = 70L,
     neuron    = ifelse(grepl("iN",    replicate_raw), "iN", "iDA"),
     genotype  = ifelse(grepl("ASAH1", replicate_raw), "ASAH1", "ctrl"),
@@ -5481,13 +5481,13 @@ write.csv(timecourse_pca_long,file.path(out_dir_d70_pca, "timecourse_pca_asah1.c
 
 # pivot once to wide for PCA
 pca_input_wide <- timecourse_pca_long %>%
-  mutate(
+  dplyr::mutate(
     Genes = trimws(Genes),
     sample_id = as.character(sample_id)
   ) %>%
-  filter(!is.na(Genes), Genes != "", !is.na(sample_id), sample_id != "") %>%
-  group_by(sample_id, Genes) %>%
-  summarise(quan = mean(quan, na.rm = TRUE), .groups = "drop") %>%  # or sum(), your call
+  dplyr::filter(!is.na(Genes), Genes != "", !is.na(sample_id), sample_id != "") %>%
+  dplyr::group_by(sample_id, Genes) %>%
+  dplyr::summarise(quan = mean(quan, na.rm = TRUE), .groups = "drop") %>%  # or sum(), your call
   tidyr::pivot_wider(
     names_from  = Genes,
     values_from = quan,
@@ -5504,7 +5504,7 @@ pca_scores <- as.data.frame(pca_res$x[, 1:2]) %>%
   tibble::rownames_to_column("sample_id") %>%
   tidyr::separate(sample_id, into = c("day_label","neuron","genotype","rep_raw"),
                   sep = "_", remove = FALSE) %>%
-  mutate(day_label = factor(day_label, levels = c("d30","d50","d70")))
+  dplyr::mutate(day_label = factor(day_label, levels = c("d30","d50","d70")))
 
 # plot
 gg <- ggplot(pca_scores, aes(PC1, PC2,
@@ -5529,7 +5529,7 @@ ggsave(filename = file.path(out_dir_d70_pca, "PCA_ctrl_ASAH1_iN_iDA_d30_d50_d70.
 # --- 9.d Day70-only PCA (plot + loadings CSV)
 # filter to day70 samples already in your wide matrix
 pca_input_wide_d70 <- pca_input_wide %>%
-  filter(grepl("^d70_", sample_id))
+  dplyr::filter(grepl("^d70_", sample_id))
 
 X70 <- as.matrix(pca_input_wide_d70 %>% dplyr::select(-sample_id))
 rownames(X70) <- pca_input_wide_d70$sample_id
@@ -5691,8 +5691,8 @@ col_map_neuron_day <- c(
 # --- Step 4. Per-neuron violin 
 plot_violin_asah1_timecourse <- function(neuron_label, ann_keep = ann_vec) {
   dfp <- .build_asah1_timecourse_long(neuron_label, ann_keep) %>%
-    group_by(Annotation, Day) %>%
-    mutate(
+    dplyr::group_by(Annotation, Day) %>%
+    dplyr::mutate(
       p01 = quantile(log2FC, 0.01, na.rm = TRUE),
       p99 = quantile(log2FC, 0.99, na.rm = TRUE),
       log2FC_capped = pmin(pmax(log2FC, p01), p99),
@@ -5732,8 +5732,8 @@ plot_violin_asah1_timecourse_both <- function(ann_keep = ann_vec) {
   df_iDA <- .build_asah1_timecourse_long("iDA", ann_keep)
 
   dfp <- bind_rows(df_iN, df_iDA) %>%
-    group_by(Annotation, Neuron, Day) %>%
-    mutate(
+    dplyr::group_by(Annotation, Neuron, Day) %>%
+    dplyr::mutate(
       p01 = quantile(log2FC, 0.01, na.rm = TRUE),
       p99 = quantile(log2FC, 0.99, na.rm = TRUE),
       log2FC_capped = pmin(pmax(log2FC, p01), p99),
