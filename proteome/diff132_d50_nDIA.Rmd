@@ -3040,7 +3040,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
     message(sprintf("No requested genotypes found for %s. Skipping.", annotation_col))
     return(invisible(NULL))
   }
-  long_df <- long_df %>% filter(genotype %in% present_genos)
+  long_df <- long_df %>% dplyr::filter(genotype %in% present_genos)
 
   # 3.3 variability per protein across present genotypes
   var_tbl <- long_df %>%
@@ -3182,10 +3182,10 @@ n_pcs_plot <- 5
 # --- 3. define PCA function for iDA protein abundance  
 run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
   ann_long <- complete_data_annotated_day50 %>%
-    filter(.data[[annotation_col]] == 1) %>%
+    dplyr::filter(.data[[annotation_col]] == 1) %>%
     dplyr::select(Genes, matches("_iDA_log2_fold_change$")) %>%
     tidyr::pivot_longer(cols = -Genes, names_to = "Condition", values_to = "log2FC") %>%
-    mutate(genotype = sub("_.*$", "", Condition)) %>%
+    dplyr::mutate(genotype = sub("_.*$", "", Condition)) %>%
     dplyr::select(genotype, Genes, log2FC)
 
   if (nrow(ann_long) == 0) {
@@ -3194,8 +3194,8 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
   }
 
   wide_geno_by_gene <- ann_long %>%
-    pivot_wider(names_from = Genes, values_from = log2FC) %>%
-    arrange(genotype)
+    tidyr::pivot_wider(names_from = Genes, values_from = log2FC) %>%
+    dplyr::arrange(genotype)
 
   geno_ids <- wide_geno_by_gene$genotype
   mat <- wide_geno_by_gene %>% select(-genotype) %>% as.data.frame()
@@ -3228,7 +3228,7 @@ run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
 
   pcs_to_use <- min(n_pcs, ncol(pca_fit$x))
   scores_df <- as.data.frame(pca_fit$x[, 1:pcs_to_use, drop = FALSE]) %>%
-    mutate(genotype = geno_ids) %>%
+    dplyr::mutate(genotype = geno_ids) %>%
     relocate(genotype)
 
   loadings_df <- as.data.frame(pca_fit$rotation[, 1:pcs_to_use, drop = FALSE]) %>%
@@ -3296,18 +3296,18 @@ annotations_to_combine <- c("Svexocytosis","Svendocytosis","vATPase","SVfusion")
 
 # --- 1. get combined gene set
 combined_genes <- complete_data_annotated_day50 %>%
-  filter(rowSums(select(., all_of(annotations_to_combine))) > 0) %>%
+  dplyr::filter(rowSums(select(., all_of(annotations_to_combine))) > 0) %>%
   pull(Genes) %>%
   unique()
 
 # --- 2. subset iDA log2FC data
 ida_df <- complete_data_annotated_day50 %>%
-  filter(Genes %in% combined_genes) %>%
+  dplyr::filter(Genes %in% combined_genes) %>%
   dplyr::select(Genes, matches("_iDA_log2_fold_change$")) %>%
   tidyr::pivot_longer(cols = -Genes, names_to = "Condition", values_to = "log2FC") %>%
-  mutate(genotype = sub("_.*$", "", Condition)) %>%
-  pivot_wider(names_from = Genes, values_from = log2FC) %>%
-  arrange(genotype)
+  dplyr::mutate(genotype = sub("_.*$", "", Condition)) %>%
+  tidyr::pivot_wider(names_from = Genes, values_from = log2FC) %>%
+  dplyr::arrange(genotype)
 
 geno_ids <- ida_df$genotype
 mat <- ida_df %>% dplyr::select(-genotype) %>% as.data.frame()
@@ -3331,7 +3331,7 @@ pca_combined <- prcomp(mat, center = TRUE, scale. = TRUE)
 # --- 4. PC permutations plot
 # 4.1 scores for genotypes
 scores_df <- as.data.frame(pca_combined$x) %>%
-  mutate(genotype = geno_ids) %>%
+  dplyr::mutate(genotype = geno_ids) %>%
   relocate(genotype)
 
 pcs_to_use <- min(5, ncol(pca_combined$x))
@@ -3387,23 +3387,23 @@ ggsave(file.path(pca_out_dir, "iDA_union_annotations_PCA_PCpairs_facet.pdf"), p_
 scores_df <- as.data.frame(pca_combined$x) %>% mutate(genotype = geno_ids)
 
 # --- 6. Call function for ASAH1, PC of interest = PC where ASAH1 has sig. score (check on PCA plots)
-pc_for_asah1 <- which.max(abs(scores_df %>% filter(genotype == "ASAH1") %>% dplyr::select(PC3)))
+pc_for_asah1 <- which.max(abs(scores_df %>% dplyr::filter(genotype == "ASAH1") %>% dplyr::select(PC3)))
 top_asah1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_asah1, drop = FALSE] %>%
-  rownames_to_column("Genes") %>%
-  rename(loading = 2) %>%
-  arrange(desc(abs(loading))) %>%
-  slice_head(n = 20)
+  tibble::rownames_to_column("Genes") %>%
+  dplyr::rename(loading = 2) %>%
+  dplyr::arrange(desc(abs(loading))) %>%
+  dplyr::slice_head(n = 20)
 
 write_csv(top_asah1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_drivers_", "ASAH1", "_PC", pc_for_asah1, ".csv")))
 
 
 # --- 7. Repeat for GBA1
-pc_for_gba1 <- which.max(abs(scores_df %>% filter(genotype == "GBA1") %>% dplyr::select(PC3)))
+pc_for_gba1 <- which.max(abs(scores_df %>% dplyr::filter(genotype == "GBA1") %>% dplyr::select(PC3)))
 top_gba1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_gba1, drop = FALSE] %>%
-  rownames_to_column("Genes") %>%
-  rename(loading = 2) %>%
-  arrange(desc(abs(loading))) %>%
-  slice_head(n = 20)
+  tibble::rownames_to_column("Genes") %>%
+  dplyr::rename(loading = 2) %>%
+  dplyr::arrange(desc(abs(loading))) %>%
+  dplyr::slice_head(n = 20)
 
 write_csv(top_gba1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_drivers_", "GBA1", "_PC", pc_for_gba1, ".csv")))
 
@@ -3427,7 +3427,7 @@ Aimed to plot neuro markers to plot differences between neuron types
 
 # --- Step 1. add annotation to cleaned_df (from PCA calculation, since has raw intensities for each gene in it)
 PCAclean_d50_transformed_df <- cleaned_df %>%
-  filter(!Genes %in% contaminant_genes)
+  dplyr::filter(!Genes %in% contaminant_genes)
 
 
 # --- Step 2. Join localization annotations into the filtered df
@@ -3442,7 +3442,7 @@ PCAclean_d50_annotated[is.na(PCAclean_d50_annotated)] <- FALSE
 # --- Step 4. Dunction for plotting proteins of Interest 
 plot_multiple_genes <- function(genes, data = PCAclean_d50_annotated) {
   gene_df <- data %>%
-    filter(Genes %in% genes, genotype == "ctrl", neuron %in% c("iN", "iDA"), day == 50)
+    dplyr::filter(Genes %in% genes, genotype == "ctrl", neuron %in% c("iN", "iDA"), day == 50)
 
   ggplot(gene_df, aes(x = neuron, y = quan, fill = neuron)) +
     geom_bar(stat = "summary", fun = mean, position = position_dodge(width = 0.6), width = 0.5) +
@@ -3504,18 +3504,18 @@ ascd_ann_long_df <- complete_data_annotated_day50 %>%
     names_to = "Condition",
     values_to = "log2FC"
   ) %>%
-  mutate(
+  dplyr::mutate(
     neuron = ifelse(grepl("_iDA_", Condition), "iDA", "iN"),
     genotype = sub("_.*", "", Condition),  # everything before first "_" is genotype
     group = paste(genotype, neuron, sep = "_")
   ) %>%
   # pivot annotations
   tidyr::pivot_longer(cols = all_of(all_ann), names_to = "Annotation", values_to = "is_annotated") %>%
-  filter(is_annotated == 1)
+  dplyr::filter(is_annotated == 1)
 
 # --- 2. Compute average log2FC per annotation per group ---
 ascd_avg_ann_fc_summary <- ascd_ann_long_df %>%
-  group_by(group, neuron, Annotation) %>%
+  dplyr::group_by(group, neuron, Annotation) %>%
   dplyr::summarise(
     avg_log2FC = mean(log2FC, na.rm = TRUE),
     sd_log2FC  = sd(log2FC,  na.rm = TRUE),
@@ -3523,15 +3523,15 @@ ascd_avg_ann_fc_summary <- ascd_ann_long_df %>%
 
 # --- 3. Order groups within each neuron ---
 ascd_avg_ann_fc_summary <- ascd_avg_ann_fc_summary %>%
-  arrange(neuron, avg_log2FC) %>%
+  dplyr::arrange(neuron, avg_log2FC) %>%
   group_by(neuron) %>%
-  mutate(group = factor(group, levels = unique(group)))
+  dplyr::mutate(group = factor(group, levels = unique(group)))
 
 # --- 4. Merge ordering back into main df ---
 ascd_ann_long_df <- ascd_ann_long_df %>%
   inner_join(ascd_avg_ann_fc_summary %>% dplyr::select(group, neuron), 
              by = c("group", "neuron")) %>%
-  mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group)))
+  dplyr::mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group)))
 
 # --- 5. Plot: mean ± SD from summary ---
 d50_ascd_ann_plot <- ggplot(ascd_avg_ann_fc_summary, aes(x = group, y = avg_log2FC)) +
@@ -3562,10 +3562,10 @@ ggsave(file.path(out_dir_d50_ascd_avg, "diff132_d50_ascending_Avg_Svexocytosis.p
 
 # --- 7. Zoom into first 6 groups per neuron ---
 ascd_top6_summary <- ascd_avg_ann_fc_summary %>%
-  group_by(neuron) %>%
+  dplyr::group_by(neuron) %>%
   slice_head(n = 6) %>%
   ungroup() %>%
-  mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group)))
+  dplyr::mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group)))
 
 # --- 8. Plot top 6
 d50_ascd_ann_plot_top6 <- ggplot(ascd_top6_summary, aes(x = group, y = avg_log2FC)) +
@@ -3611,13 +3611,13 @@ dir.create(out_dir_diffQC, recursive = TRUE, showWarnings = FALSE)
 
 # Ctrl: take one row per gene x neuron (mean_ctrl is identical across KO rows)
 ctrl_df <- clean_d50_df %>%
-  filter(day == 50) %>%
+  dplyr::filter(day == 50) %>%
   distinct(Genes, neuron, .keep_all = TRUE) %>%
   transmute(Genes, neuron, genotype = "ctrl", mean_intensity = mean_ctrl, sd_intensity = sd_ctrl)
 
 # KO: rename mean_ko/sd_ko to match ctrl structure
 ko_df <- clean_d50_df %>%
-  filter(day == 50) %>%
+  dplyr::filter(day == 50) %>%
   transmute(Genes, neuron, genotype, mean_intensity = mean_ko, sd_intensity = sd_ko)
 
 # Set genotype factor with ctrl first, then alphabetical
@@ -3625,7 +3625,7 @@ all_genotypes <- sort(unique(c("ctrl", ko_df$genotype)))
 all_genotypes <- c("ctrl", all_genotypes[all_genotypes != "ctrl"])
 
 differentiation_df <- bind_rows(ctrl_df, ko_df) %>%
-  mutate(genotype = factor(genotype, levels = all_genotypes))
+  dplyr::mutate(genotype = factor(genotype, levels = all_genotypes))
 
 # --- Gene lists
 neuron_drivers <- c("BDNF", "CAMK2B", "CRTC1", "DCX", "JUN", "MAP2", "NCAM1", "NEFH", "NEFL", "NEFM", "NES", "POU3F2", "SLC17A7", "SYN1", "SYP", "TUBB3", "TH", "BSN", "SYNJ1", "GAP43", "SYN2", "SYN3")
@@ -3634,7 +3634,7 @@ postsyn_genes <- c("DLG4", "DLG3", "DLG2", "SHANK1", "SHANK2", "SHANK3", "HOMER1
 
 # --- Plot function for marker genes (individual facets)
 plot_diff_markers <- function(genes, data, title_text) {
-  plot_df <- data %>% filter(Genes %in% genes)
+  plot_df <- data %>% dplyr::filter(Genes %in% genes)
   if (nrow(plot_df) == 0) return(NULL)
   
   ggplot(plot_df, aes(x = genotype, y = mean_intensity, fill = neuron)) +
@@ -3653,8 +3653,8 @@ ggsave(file.path(out_dir_diffQC, "diff132_d50_Neuronal_markers.pdf"), p_neuro, w
 
 # --- Plot 2: TH for iDA only (log2)
 th_df <- differentiation_df %>% 
-  filter(Genes == "TH", neuron == "iDA") %>%
-  mutate(log2_intensity = log2(mean_intensity), log2_sd_upper = log2(mean_intensity + sd_intensity) - log2_intensity, log2_sd_lower = log2_intensity - log2(pmax(mean_intensity - sd_intensity, 1)))
+  dplyr::filter(Genes == "TH", neuron == "iDA") %>%
+  dplyr::mutate(log2_intensity = log2(mean_intensity), log2_sd_upper = log2(mean_intensity + sd_intensity) - log2_intensity, log2_sd_lower = log2_intensity - log2(pmax(mean_intensity - sd_intensity, 1)))
 
 p_th <- ggplot(th_df, aes(x = genotype, y = log2_intensity, fill = genotype)) +
   geom_bar(stat = "identity", width = 0.7) +
@@ -3719,25 +3719,25 @@ vatpase_genes <- c("ATP6V1G1", "ATP6AP2", "ATP6V1B2", "ATP6V1C1", "ATP6V1E1", "A
 				   
 # --- 1. Filter and compute log2FC ---
 vatpase_long_df <- clean_d50_transformed_df %>%
-  filter(Genes %in% vatpase_genes, day == 50) %>%
-  mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
-  mutate(group = paste(genotype, neuron, sep = "_"))
+  dplyr::filter(Genes %in% vatpase_genes, day == 50) %>%
+  dplyr::mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
+  dplyr::mutate(group = paste(genotype, neuron, sep = "_"))
 
 # --- 2. Compute average log2FC per group ---
 avg_fc_summary <- vatpase_long_df %>%
-  group_by(group, neuron) %>%
-  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+  dplyr::group_by(group, neuron) %>%
+  dplyr::summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
 
 # --- 3. Order by increasing avg log2FC ---
 avg_fc_summary <- avg_fc_summary %>%
-  arrange(neuron, avg_log2FC) %>%
-  group_by(neuron) %>%
-  mutate(group = factor(group, levels = unique(group)))
+  dplyr::arrange(neuron, avg_log2FC) %>%
+  dplyr::group_by(neuron) %>%
+  dplyr::mutate(group = factor(group, levels = unique(group)))
 
 # --- 4. Merge ordering into main data frame ---
 vatpase_long_df <- vatpase_long_df %>%
   inner_join(avg_fc_summary %>% dplyr::select(group, neuron), by = c("group", "neuron")) %>%
-  mutate(group = factor(group, levels = levels(avg_fc_summary$group)))
+  dplyr::mutate(group = factor(group, levels = levels(avg_fc_summary$group)))
 
 # --- 5. Plot ---
 d50_vATPase_plot <- ggplot(vatpase_long_df, aes(x = group, y = log2FC, group = Genes)) +
@@ -3947,25 +3947,25 @@ svsnare_genes <- c("SYP", "VAMP2", "STXBP1", "CPLX1", "SYT1", "SNAP25","SNAP","S
 
 # --- 1. Filter and compute log2FC
 svsnare_long_df <- clean_d50_transformed_df %>%
-  filter(Genes %in% svsnare_genes, day == 50) %>%
-  mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
-  mutate(group = paste(genotype, neuron, sep = "_"))
+  dplyr::filter(Genes %in% svsnare_genes, day == 50) %>%
+  dplyr::mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
+  dplyr::mutate(group = paste(genotype, neuron, sep = "_"))
 
 # --- 2. Compute average log2FC per group
 avg_svsnare_fc_summary <- svsnare_long_df %>%
-  group_by(group, neuron) %>%
-  summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+  dplyr::group_by(group, neuron) %>%
+  dplyr::summarise(avg_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
 
 # --- 3. Order by increasing avg log2FC
 avg_svsnare_fc_summary <- avg_svsnare_fc_summary %>%
-  arrange(neuron, avg_log2FC) %>%
-  group_by(neuron) %>%
-  mutate(group = factor(group, levels = unique(group)))
+  dplyr::arrange(neuron, avg_log2FC) %>%
+  dplyr::group_by(neuron) %>%
+  dplyr::mutate(group = factor(group, levels = unique(group)))
 
 # --- 4. Merge ordering into main data frame
 svsnare_long_df <- svsnare_long_df %>%
   inner_join(avg_svsnare_fc_summary %>% dplyr::select(group, neuron), by = c("group", "neuron")) %>%
-  mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
+  dplyr::mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
 
 # --- 5. Plot
 d50_svsnare_plot <- ggplot(svsnare_long_df, aes(x = group, y = log2FC, group = Genes)) +
@@ -4007,9 +4007,9 @@ svdocking_genes <- c("SYP","VAMP2","SYB2","STXBP1","UNC18A","CPLX1","SYT1","SNAP
 
 # --- 1. Filter and compute log2FC
 svdocking_long_df <- clean_d50_transformed_df %>%
-  filter(Genes %in% svdocking_genes, day == 50) %>%
-  mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
-  mutate(group = paste(genotype, neuron, sep = "_"))
+  dplyr::filter(Genes %in% svdocking_genes, day == 50) %>%
+  dplyr::mutate(log2FC = log2(mean_ko / mean_ctrl)) %>%
+  dplyr::mutate(group = paste(genotype, neuron, sep = "_"))
 
 # --- 2. Compute mean and SD per group
 svdocking_summary <- svdocking_long_df %>%
@@ -4080,9 +4080,9 @@ dev_genes <- c("BDNF", "CAMK2B", "CRTC1", "DCX", "JUN", "MAP2", "NCAM1",
 
 # --- Step 2. Prepare Data ----
 dev_plot_df <- clean_d50_transformed_df %>%
-  filter(Genes %in% dev_genes) %>%
+  dplyr::filter(Genes %in% dev_genes) %>%
   dplyr::select(Genes, neuron, day, mean_ctrl) %>%
-  mutate(day = as.factor(day))  # Ensure day is treated as categorical for plotting
+  dplyr::mutate(day = as.factor(day))  # Ensure day is treated as categorical for plotting
 
 
 # --- Step 3.Plot ----
@@ -4129,11 +4129,11 @@ plot_ctrl_markers_norm <- function(data, out_dir, genes = marker_genes_line) {
   
   # Filter the dataset for Ctrl, iN/iDA, Day 30 & 50, and selected genes
   ctrl_df <- data %>%
-    filter(Genes %in% genes,
+    dplyr::filter(Genes %in% genes,
            genotype == "ctrl",
            neuron %in% c("iN", "iDA"),
            day %in% c(30, 50)) %>%
-    mutate(day = factor(day, levels = c(30, 50)))
+    dplyr::mutate(day = factor(day, levels = c(30, 50)))
   
   # Normalize quan to Day 30 mean within each neuron × gene group
   ctrl_norm <- ctrl_df %>%
@@ -4147,7 +4147,7 @@ plot_ctrl_markers_norm <- function(data, out_dir, genes = marker_genes_line) {
     summarise(mean_norm = mean(norm_quan, na.rm = TRUE), .groups = "drop")
   
   # Get Day 50 values for end-of-line labels
-  labels_df <- ctrl_means %>% filter(day == 50)
+  labels_df <- ctrl_means %>% dplyr::filter(day == 50)
   
   # Create the line plot
   p <- ggplot(ctrl_means,aes(x = day, y = mean_norm, group = interaction(Genes, neuron), color = neuron)) +
@@ -4211,7 +4211,7 @@ synapse_genes_df <- bind_rows(presyn_df, postsyn_df)
 
 # --- Step 3. Filter and transform data for control samples at Day 30/50 ---
 synapse_long <- clean_d50_transformed_df %>%
-  filter(Genes %in% synapse_genes_df$Genes) %>%
+  dplyr::filter(Genes %in% synapse_genes_df$Genes) %>%
   dplyr::select(Genes, neuron, day, mean_ctrl) %>%
   inner_join(synapse_genes_df, by = "Genes") %>%
   mutate(
@@ -4225,7 +4225,7 @@ delta_df <- synapse_long %>%
   group_by(Genes, neuron, marker_type, day) %>%
   summarise(log2_abundance = mean(log2_abundance, na.rm = TRUE), .groups = "drop") %>%
   pivot_wider(names_from = day, values_from = log2_abundance) %>%
-  filter(!is.na(`Day 30`) & !is.na(`Day 50`)) %>%
+  dplyr::filter(!is.na(`Day 30`) & !is.na(`Day 50`)) %>%
   mutate(direction = ifelse(`Day 50` > `Day 30`, "up", "down"))
 
 # --- Step 5. Reshape back to long format for plotting ---
@@ -4298,8 +4298,8 @@ marker_genes_df <- tibble(
                   rep("Neuron-driver", length(neuron_drivers)))
 )
 # --- Step 2. Filter for NeuroDev == TRUE
-d30_neurodev <- complete_data_annotated_day30 %>% filter(NeuroDev == TRUE)
-d50_neurodev <- complete_data_annotated_day50 %>% filter(NeuroDev == TRUE)
+d30_neurodev <- complete_data_annotated_day30 %>% dplyr::filter(NeuroDev == TRUE)
+d50_neurodev <- complete_data_annotated_day50 %>% dplyr::filter(NeuroDev == TRUE)
 
 
 # --- Step 3.  Reshape to long format and add 'day'
@@ -4332,14 +4332,14 @@ combined_df_annotated <- combined_df %>%
 
 # Now you can summarize or plot
 summary_df <- combined_df_annotated %>%
-  filter(genotype %in% c("ctrl", "ASAH1", "GBA1", "SMPD1", "GRN")) %>%
+  dplyr::filter(genotype %in% c("ctrl", "ASAH1", "GBA1", "SMPD1", "GRN")) %>%
   group_by(marker_type, genotype, neuron, day) %>%
   summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
 
 
 # --- Step 5. Plot
 NeuoDevd30d50 <- ggplot(
-  combined_df_annotated %>% filter(genotype %in% c("ctrl", "ASAH1", "GBA1", "SMPD1", "GRN")),
+  combined_df_annotated %>% dplyr::filter(genotype %in% c("ctrl", "ASAH1", "GBA1", "SMPD1", "GRN")),
   aes(x = day, y = log2FC, group = interaction(Genes, neuron), marker_type = marker_type)
 ) +
   # Individual traces
@@ -4408,7 +4408,7 @@ ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtCompl
   df_wide %>%
     dplyr::select(Genes, all_of(ann_vec), log2FC = all_of(log2_col)) %>%
     tidyr::pivot_longer(cols = all_of(ann_vec), names_to = "Annotation", values_to = "is_annotated") %>%
-    filter(is_annotated %in% c(TRUE, 1)) %>%
+    dplyr::filter(is_annotated %in% c(TRUE, 1)) %>%
     transmute(
       Genes, Annotation,
       Neuron = neuron_label,
@@ -4456,7 +4456,7 @@ readr::write_csv(
 
 # --- Step 6. define plotting function (define on per neuron level)
 plot_violin_asah1_log2 <- function(neuron_label) {
-  dfp <- filter(asah1_timecourse_log2_df, Neuron == neuron_label)
+  dfp <- dplyr::filter(asah1_timecourse_log2_df, Neuron == neuron_label)
 
   # 6.1 color range
   col_map <- c(
