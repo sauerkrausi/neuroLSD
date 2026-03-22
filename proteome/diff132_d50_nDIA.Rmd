@@ -1019,7 +1019,7 @@ heatmap_matrix_d50 <- heatmap_matrix_d50[, apply(heatmap_matrix_d50, 2, var) != 
 # --- Step 4. Create Annotations for Heatmap & save as csv
 # Extract sample information for annotations
 sample_d50_info <- clean_d50_df %>%
-  select(sample_id, genotype, neuron) %>%
+  dplyr::select(sample_id, genotype, neuron) %>%
   distinct() %>%
   column_to_rownames("sample_id")
 
@@ -1035,7 +1035,7 @@ write.csv(df_day50, file = file.path(out_dir_d50_dataframes, "df_day50_heatmap.c
 generate_heatmap <- function(df, day_label) {
   heatmap_data <- df %>%
     dplyr::mutate(sample_id = paste(genotype, neuron, sep = "_")) %>%
-    select(Genes, sample_id, fold_change) %>%
+    dplyr::select(Genes, sample_id, fold_change) %>%
     pivot_wider(
       names_from = sample_id,
       values_from = fold_change,
@@ -1055,7 +1055,7 @@ generate_heatmap <- function(df, day_label) {
   # Annotations
   sample_info <- df %>%
     dplyr::mutate(sample_id = paste(genotype, neuron, sep = "_")) %>%
-    select(sample_id, genotype, neuron) %>%
+    dplyr::select(sample_id, genotype, neuron) %>%
     distinct() %>%
     column_to_rownames("sample_id")
 
@@ -1168,7 +1168,7 @@ subcell_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/tmpneur
 subcell_df[] <- lapply(subcell_df, as.character)
 
 long_subcell_df <- subcell_df %>%
-  pivot_longer(
+  tidyr::pivot_longer(
     cols = everything(),
     names_to = "Localization",
     values_to = "Genes"
@@ -1236,7 +1236,7 @@ log2fc_cols <- grep("_log2_fold_change$", colnames(complete_data_annotated_day50
 annotation_cols <- colnames(binary_matrix)[-1]  # exclude "Genes"
 
 log2FC_d50_annotated <- complete_data_annotated_day50 %>%
-  select(Genes, all_of(log2fc_cols), all_of(annotation_cols))
+  dplyr::select(Genes, all_of(log2fc_cols), all_of(annotation_cols))
 
 # Rename columns: remove "_log2_fold_change" suffix
 colnames(log2FC_d50_annotated) <- gsub("_log2_fold_change$", "", colnames(log2FC_d50_annotated))
@@ -1283,7 +1283,7 @@ sig_annotation_heatmap <- log2fc_annotated %>%
 
 # Pivot to matrix: rows = annotations, columns = sample_id
 sig_heatmap_matrix <- sig_annotation_heatmap %>%
-  select(Localization, sample_id, mean_log2fc) %>%
+  dplyr::select(Localization, sample_id, mean_log2fc) %>%
   pivot_wider(names_from = sample_id, values_from = mean_log2fc) %>%
   column_to_rownames("Localization") %>%
   as.matrix()
@@ -1295,7 +1295,7 @@ sample_order <- sig_annotation_heatmap %>%
   pull(sample_id)
 
 sig_heatmap_matrix <- sig_annotation_heatmap %>%
-  select(Localization, sample_id, mean_log2fc) %>%
+  dplyr::select(Localization, sample_id, mean_log2fc) %>%
   pivot_wider(names_from = sample_id, values_from = mean_log2fc, values_fn = mean) %>%
   column_to_rownames("Localization") %>%
   as.matrix()
@@ -1368,8 +1368,8 @@ included_terms <- setdiff(names(subcell_df), excluded_terms)
 
 # Create named list of gene sets from annotations
 gene_sets <- subcell_df %>%
-  select(all_of(included_terms)) %>%
-  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  dplyr::select(all_of(included_terms)) %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
   dplyr::filter(!is.na(Gene) & Gene != "") %>%
   dplyr::mutate(Gene = trimws(Gene)) %>%
   dplyr::group_by(Category) %>%
@@ -1397,8 +1397,8 @@ endo_terms <- c("Endo_iN_curated_Hundley", "Lysosome", "EarlyEndosome", "Recycli
 
 # Create named list of gene sets
 gene_sets_endo <- subcell_df %>%
-  select(all_of(endo_terms)) %>%
-  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  dplyr::select(all_of(endo_terms)) %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
   dplyr::filter(!is.na(Gene) & Gene != "") %>%
   dplyr::mutate(Gene = trimws(Gene)) %>%
   dplyr::group_by(Category) %>%
@@ -1422,8 +1422,8 @@ synaptic_terms <- c("SynGO", "SynapseSVs", "Presynaptic", "Postsynaptic",
 
 # Create named list of gene sets
 gene_sets_synaptic <- subcell_df %>%
-  select(all_of(synaptic_terms)) %>%
-  pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
+  dplyr::select(all_of(synaptic_terms)) %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "Category", values_to = "Gene") %>%
   dplyr::filter(!is.na(Gene) & Gene != "") %>%
   dplyr::mutate(Gene = trimws(Gene)) %>%
   dplyr::group_by(Category) %>%
@@ -1461,8 +1461,8 @@ LSDgenes <- c(
 # Filter for LSD genes and pivot to long format
 df_clean_heatmap <- clean_d50_transformed_df %>%
   dplyr::filter(Genes %in% LSDgenes) %>%
-  select(Genes, genotype, neuron, day, mean_ctrl, mean_ko) %>%
-  pivot_longer(cols = c(mean_ctrl, mean_ko), names_to = "condition", values_to = "value") %>%
+  dplyr::select(Genes, genotype, neuron, day, mean_ctrl, mean_ko) %>%
+  tidyr::pivot_longer(cols = c(mean_ctrl, mean_ko), names_to = "condition", values_to = "value") %>%
   dplyr::mutate(day = as.integer(day))
 
 # ---- Filter for Matching Gene-Genotype Combinations at Day 50 ----
@@ -1572,7 +1572,7 @@ values_df <- df_clean_heatmap %>%
 # --- 4. Build matrix
 heatmap_matrix_abundance <- all_rows %>%
   left_join(values_df, by = c("Genes","neuron","condition","RowID")) %>%
-  select(Genes, RowID, value) %>%
+  dplyr::select(Genes, RowID, value) %>%
   pivot_wider(names_from = Genes, values_from = value) %>%
   column_to_rownames("RowID") %>%
   as.matrix()
@@ -1616,7 +1616,7 @@ dev.off()
 # --- 8. Implement log2 converted heatmap here 
 heatmap_matrix_log2 <- all_rows %>%
   left_join(values_df, by = c("Genes","neuron","condition","RowID")) %>%
-  select(Genes, RowID, value) %>%
+  dplyr::select(Genes, RowID, value) %>%
   pivot_wider(names_from = Genes, values_from = value) %>%
   column_to_rownames("RowID") %>%
   # log2 transform (add pseudocount to avoid log2(0))
@@ -1647,7 +1647,7 @@ pheatmap::pheatmap(
   main = "LSD Protein Abundance (Control vs KO) at Day 50 - log2 transformed"
 )
 dev.off()
-
+dev.off()
 
 ```
 
@@ -1667,13 +1667,13 @@ loc_ann <- c("Lysosome","RecyclingEndosome", "Endo_iN_curated_Hundley","EarlyEnd
 make_ann_heatmap <- function(df, neuron_type, loc_ann, out_file) {
   
   long_df <- df %>%
-    pivot_longer(
+    tidyr::pivot_longer(
       cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
       names_to = "Condition",
       values_to = "log2FC"
     ) %>%
     dplyr::mutate(genotype = sub("_.*", "", Condition)) %>%
-    pivot_longer(cols = all_of(loc_ann),
+    tidyr::pivot_longer(cols = all_of(loc_ann),
                  names_to = "Annotation", values_to = "is_annotated") %>%
     dplyr::filter(is_annotated == 1)
   
@@ -1747,12 +1747,12 @@ make_ann_heatmap_sig <- function(df, neuron_type, loc_ann, out_file,
   neg_log10_thresh <- -log10(sig_threshold)
 
   long_fc <- df %>%
-    pivot_longer(cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
+    tidyr::pivot_longer(cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
                  names_to = "Condition", values_to = "log2FC") %>%
     dplyr::mutate(genotype = sub("_.*", "", Condition))
 
   long_sig <- df %>%
-    pivot_longer(cols = matches(paste0("_", neuron_type, "_", val_suffix, "$")),
+    tidyr::pivot_longer(cols = matches(paste0("_", neuron_type, "_", val_suffix, "$")),
                  names_to = "Condition_sig", values_to = "sig_val") %>%
     dplyr::mutate(genotype = sub("_.*", "", Condition_sig)) %>%
     dplyr::select(Genes, genotype, sig_val)
@@ -1760,7 +1760,7 @@ make_ann_heatmap_sig <- function(df, neuron_type, loc_ann, out_file,
   long_df <- long_fc %>%
     left_join(long_sig, by = c("Genes", "genotype")) %>%
     dplyr::mutate(log2FC = ifelse(!is.na(sig_val) & sig_val >= neg_log10_thresh, log2FC, NA)) %>%
-    pivot_longer(cols = all_of(loc_ann), names_to = "Annotation", values_to = "is_annotated") %>%
+    tidyr::pivot_longer(cols = all_of(loc_ann), names_to = "Annotation", values_to = "is_annotated") %>%
     dplyr::filter(is_annotated == 1)
 
   ann_matrix <- long_df %>%
@@ -2925,7 +2925,7 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
   
   # 1.1 reshape to long
   long_df <- df %>%
-    pivot_longer(
+    tidyr::pivot_longer(
       cols = matches(paste0("_", neuron_type, "_log2_fold_change$")),
       names_to = "Condition",
       values_to = "log2FC"
@@ -2934,7 +2934,7 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
   
   # 1.2 attach annotations
   long_df <- long_df %>%
-    pivot_longer(cols = all_of(loc_ann),
+    tidyr::pivot_longer(cols = all_of(loc_ann),
                  names_to = "Annotation", values_to = "is_annotated") %>%
     filter(is_annotated == 1)
   
@@ -3025,13 +3025,13 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
   # 3.1 subset to annotation == 1 and iDA log2FC columns
   long_df <- complete_data_annotated_day50 %>%
     filter(.data[[annotation_col]] == 1) %>%
-    pivot_longer(
+    tidyr::pivot_longer(
       cols = matches("_iDA_log2_fold_change$"),
       names_to = "Condition",
       values_to = "log2FC"
     ) %>%
     mutate(genotype = sub("_.*$", "", Condition)) %>%
-    select(Genes, genotype, log2FC)
+    dplyr::select(Genes, genotype, log2FC)
 
   # 3.2 restrict to requested genotypes that actually exist
   requested_genos <- unique(c(group1_vec, group2_vec))
@@ -3179,10 +3179,10 @@ n_pcs_plot <- 5
 run_synaptic_pca_iDA <- function(annotation_col, n_pcs = 5) {
   ann_long <- complete_data_annotated_day50 %>%
     filter(.data[[annotation_col]] == 1) %>%
-    select(Genes, matches("_iDA_log2_fold_change$")) %>%
-    pivot_longer(cols = -Genes, names_to = "Condition", values_to = "log2FC") %>%
+    dplyr::select(Genes, matches("_iDA_log2_fold_change$")) %>%
+    tidyr::pivot_longer(cols = -Genes, names_to = "Condition", values_to = "log2FC") %>%
     mutate(genotype = sub("_.*$", "", Condition)) %>%
-    select(genotype, Genes, log2FC)
+    dplyr::select(genotype, Genes, log2FC)
 
   if (nrow(ann_long) == 0) {
     message("No rows after filtering for ", annotation_col, ". Skipping.")
@@ -3299,14 +3299,14 @@ combined_genes <- complete_data_annotated_day50 %>%
 # --- 2. subset iDA log2FC data
 ida_df <- complete_data_annotated_day50 %>%
   filter(Genes %in% combined_genes) %>%
-  select(Genes, matches("_iDA_log2_fold_change$")) %>%
-  pivot_longer(cols = -Genes, names_to = "Condition", values_to = "log2FC") %>%
+  dplyr::select(Genes, matches("_iDA_log2_fold_change$")) %>%
+  tidyr::pivot_longer(cols = -Genes, names_to = "Condition", values_to = "log2FC") %>%
   mutate(genotype = sub("_.*$", "", Condition)) %>%
   pivot_wider(names_from = Genes, values_from = log2FC) %>%
   arrange(genotype)
 
 geno_ids <- ida_df$genotype
-mat <- ida_df %>% select(-genotype) %>% as.data.frame()
+mat <- ida_df %>% dplyr::select(-genotype) %>% as.data.frame()
 
 # 2.1 Ensure all features are numeric
 mat <- mat %>% mutate(across(everything(), as.numeric))
@@ -3383,7 +3383,7 @@ ggsave(file.path(pca_out_dir, "iDA_union_annotations_PCA_PCpairs_facet.pdf"), p_
 scores_df <- as.data.frame(pca_combined$x) %>% mutate(genotype = geno_ids)
 
 # --- 6. Call function for ASAH1, PC of interest = PC where ASAH1 has sig. score (check on PCA plots)
-pc_for_asah1 <- which.max(abs(scores_df %>% filter(genotype == "ASAH1") %>% select(PC3)))
+pc_for_asah1 <- which.max(abs(scores_df %>% filter(genotype == "ASAH1") %>% dplyr::select(PC3)))
 top_asah1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_asah1, drop = FALSE] %>%
   rownames_to_column("Genes") %>%
   rename(loading = 2) %>%
@@ -3394,7 +3394,7 @@ write_csv(top_asah1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_d
 
 
 # --- 7. Repeat for GBA1
-pc_for_gba1 <- which.max(abs(scores_df %>% filter(genotype == "GBA1") %>% select(PC3)))
+pc_for_gba1 <- which.max(abs(scores_df %>% filter(genotype == "GBA1") %>% dplyr::select(PC3)))
 top_gba1_drivers <- as.data.frame(pca_combined$rotation)[, pc_for_gba1, drop = FALSE] %>%
   rownames_to_column("Genes") %>%
   rename(loading = 2) %>%
@@ -3495,7 +3495,7 @@ all_ann <- c("Svexocytosis")
 
 # --- 1. Reshape log2FC data into long format ---
 ascd_ann_long_df <- complete_data_annotated_day50 %>%
-  pivot_longer(
+  tidyr::pivot_longer(
     cols = matches("_log2_fold_change$"),
     names_to = "Condition",
     values_to = "log2FC"
@@ -3506,7 +3506,7 @@ ascd_ann_long_df <- complete_data_annotated_day50 %>%
     group = paste(genotype, neuron, sep = "_")
   ) %>%
   # pivot annotations
-  pivot_longer(cols = all_of(all_ann), names_to = "Annotation", values_to = "is_annotated") %>%
+  tidyr::pivot_longer(cols = all_of(all_ann), names_to = "Annotation", values_to = "is_annotated") %>%
   filter(is_annotated == 1)
 
 # --- 2. Compute average log2FC per annotation per group ---
@@ -3525,7 +3525,7 @@ ascd_avg_ann_fc_summary <- ascd_avg_ann_fc_summary %>%
 
 # --- 4. Merge ordering back into main df ---
 ascd_ann_long_df <- ascd_ann_long_df %>%
-  inner_join(ascd_avg_ann_fc_summary %>% select(group, neuron), 
+  inner_join(ascd_avg_ann_fc_summary %>% dplyr::select(group, neuron), 
              by = c("group", "neuron")) %>%
   mutate(group = factor(group, levels = levels(ascd_avg_ann_fc_summary$group)))
 
@@ -3732,7 +3732,7 @@ avg_fc_summary <- avg_fc_summary %>%
 
 # --- 4. Merge ordering into main data frame ---
 vatpase_long_df <- vatpase_long_df %>%
-  inner_join(avg_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
+  inner_join(avg_fc_summary %>% dplyr::select(group, neuron), by = c("group", "neuron")) %>%
   mutate(group = factor(group, levels = levels(avg_fc_summary$group)))
 
 # --- 5. Plot ---
@@ -3960,7 +3960,7 @@ avg_svsnare_fc_summary <- avg_svsnare_fc_summary %>%
 
 # --- 4. Merge ordering into main data frame
 svsnare_long_df <- svsnare_long_df %>%
-  inner_join(avg_svsnare_fc_summary %>% select(group, neuron), by = c("group", "neuron")) %>%
+  inner_join(avg_svsnare_fc_summary %>% dplyr::select(group, neuron), by = c("group", "neuron")) %>%
   mutate(group = factor(group, levels = levels(avg_svsnare_fc_summary$group)))
 
 # --- 5. Plot
@@ -4077,7 +4077,7 @@ dev_genes <- c("BDNF", "CAMK2B", "CRTC1", "DCX", "JUN", "MAP2", "NCAM1",
 # --- Step 2. Prepare Data ----
 dev_plot_df <- clean_d50_transformed_df %>%
   filter(Genes %in% dev_genes) %>%
-  select(Genes, neuron, day, mean_ctrl) %>%
+  dplyr::select(Genes, neuron, day, mean_ctrl) %>%
   mutate(day = as.factor(day))  # Ensure day is treated as categorical for plotting
 
 
@@ -4208,7 +4208,7 @@ synapse_genes_df <- bind_rows(presyn_df, postsyn_df)
 # --- Step 3. Filter and transform data for control samples at Day 30/50 ---
 synapse_long <- clean_d50_transformed_df %>%
   filter(Genes %in% synapse_genes_df$Genes) %>%
-  select(Genes, neuron, day, mean_ctrl) %>%
+  dplyr::select(Genes, neuron, day, mean_ctrl) %>%
   inner_join(synapse_genes_df, by = "Genes") %>%
   mutate(
     day = paste("Day", day),                  # Convert numeric to "Day X"
@@ -4226,7 +4226,7 @@ delta_df <- synapse_long %>%
 
 # --- Step 5. Reshape back to long format for plotting ---
 long_with_direction <- delta_df %>%
-  pivot_longer(cols = c(`Day 30`, `Day 50`), names_to = "day", values_to = "log2_abundance") %>%
+  tidyr::pivot_longer(cols = c(`Day 30`, `Day 50`), names_to = "day", values_to = "log2_abundance") %>%
   mutate(day = factor(day, levels = c("Day 30", "Day 50")))
 
 
@@ -4301,8 +4301,8 @@ d50_neurodev <- complete_data_annotated_day50 %>% filter(NeuroDev == TRUE)
 # --- Step 3.  Reshape to long format and add 'day'
 pivot_neurodev <- function(df, day_label) {
   df %>%
-    select(Genes, matches("_log2_fold_change$")) %>%
-    pivot_longer(
+    dplyr::select(Genes, matches("_log2_fold_change$")) %>%
+    tidyr::pivot_longer(
       cols = -Genes,
       names_to = "sample",
       values_to = "log2FC"
@@ -4402,8 +4402,8 @@ ann_vec <- c("Mito","MitoIMS","MitoMatrix","MitoMIM","MitoMOM","OXPHOS","mtCompl
   stopifnot(all(ann_vec %in% colnames(df_wide)))
 
   df_wide %>%
-    select(Genes, all_of(ann_vec), log2FC = all_of(log2_col)) %>%
-    pivot_longer(cols = all_of(ann_vec), names_to = "Annotation", values_to = "is_annotated") %>%
+    dplyr::select(Genes, all_of(ann_vec), log2FC = all_of(log2_col)) %>%
+    tidyr::pivot_longer(cols = all_of(ann_vec), names_to = "Annotation", values_to = "is_annotated") %>%
     filter(is_annotated %in% c(TRUE, 1)) %>%
     transmute(
       Genes, Annotation,
@@ -4440,7 +4440,7 @@ asah1_timecourse_log2_df <- asah1_timecourse_log2_df %>%
     log2FC_capped = pmin(pmax(log2FC, p01), p99)
   ) %>%
   ungroup() %>%
-  select(-p01, -p99)
+  dplyr::select(-p01, -p99)
 
 # --- Step 5. save df as csv
 readr::write_csv(
@@ -5268,12 +5268,12 @@ write.csv(asah1_timecourse_annotated, file.path(out_dir_d70_timecourse, "ASAH1_t
 
 # --- 6. Save ASAH1 log2FC + annotations for day30, day50, day70 
 annotations_master <- diff132_d70_df_annotated %>%
-  select(Genes, where(is.logical)) %>%
+  dplyr::select(Genes, where(is.logical)) %>%
   distinct(Genes, .keep_all = TRUE)
 
 # 6.1 Day 30
 day30_asah1 <- complete_data_annotated_day30 %>%
-  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
+  dplyr::select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
   rename(
     ASAH1_d30_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
     ASAH1_d30_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
@@ -5288,7 +5288,7 @@ write.csv(day30_asah1,file.path(out_dir_d70_dataframes, "diff132_day30_ASAH1_log
 
 # 6.2 Day 50
 day50_asah1 <- complete_data_annotated_day50 %>%
-  select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
+  dplyr::select(Genes, ASAH1_iN_log2_fold_change, ASAH1_iDA_log2_fold_change) %>%
   rename(
     ASAH1_d50_iN_log2_fold_change  = ASAH1_iN_log2_fold_change,
     ASAH1_d50_iDA_log2_fold_change = ASAH1_iDA_log2_fold_change
@@ -5303,7 +5303,7 @@ write.csv(day50_asah1,file.path(out_dir_d70_dataframes, "diff132_day50_ASAH1_log
 
 # 6.3 Day 70
 day70_asah1 <- diff132_d70_df_annotated %>%
-  select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1) %>%
+  dplyr::select(Genes, d70_iN_log2fc_ASAH1, d70_iDA_log2fc_ASAH1) %>%
   rename(
     ASAH1_d70_iN_log2_fold_change  = d70_iN_log2fc_ASAH1,
     ASAH1_d70_iDA_log2_fold_change = d70_iDA_log2fc_ASAH1
@@ -5323,11 +5323,11 @@ write.csv(day70_asah1,file.path(out_dir_d70_dataframes, "diff132_day70_ASAH1_log
 # --- 7. Combined ASAH1 timecourse (d30, d50, d70) + annotations
 # 7.1 Keep only the ASAH1 log2FC columns from each day table
 d30_pick <- day30_asah1 %>%
-  select(Genes, starts_with("ASAH1_d30_"))
+  dplyr::select(Genes, starts_with("ASAH1_d30_"))
 d50_pick <- day50_asah1 %>%
-  select(Genes, starts_with("ASAH1_d50_"))
+  dplyr::select(Genes, starts_with("ASAH1_d50_"))
 d70_pick <- day70_asah1 %>%
-  select(Genes, starts_with("ASAH1_d70_"))
+  dplyr::select(Genes, starts_with("ASAH1_d70_"))
 
 # 7.2 Combine ASAH1 columns across days
 asah1_timecourse_wide <- d30_pick %>%
@@ -5340,7 +5340,7 @@ ann_cols_day70 <- setdiff(
   c("Genes", grep("^ASAH1_", colnames(day70_asah1), value = TRUE))
 )
 annotations_once <- day70_asah1 %>%
-  select(Genes, all_of(ann_cols_day70))
+  dplyr::select(Genes, all_of(ann_cols_day70))
 
 # 7.4 Attach annotations; enforce NA→0 for numeric, NA→FALSE for logical
 asah1_timecourse_annotated <- asah1_timecourse_wide %>%
@@ -5376,7 +5376,7 @@ heat_cols <- intersect(
 
 # 8.2 Collapse duplicate Genes; sanitize values
 df_heat <- asah1_timecourse_annotated %>%
-  select(Genes, all_of(heat_cols)) %>%
+  dplyr::select(Genes, all_of(heat_cols)) %>%
   filter(!is.na(Genes), Genes != "") %>%
   group_by(Genes) %>%
   summarise(across(all_of(heat_cols), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
@@ -5446,14 +5446,14 @@ df_30_50_long <- cleaned_df %>%
     replicate = as.integer(replicate),
     sample_id = paste0("d", day, "_", neuron, "_", genotype, "_rep", replicate)
   ) %>%
-  select(sample_id, day, genotype, neuron, replicate, Genes, quan)
+  dplyr::select(sample_id, day, genotype, neuron, replicate, Genes, quan)
 
 # day 70 → long from wide replicate columns
 df_70_long <- diff132_d70_df_proc %>%
-  select(Genes,
+  dplyr::select(Genes,
          starts_with("d70_iN_Ctrl_rep"), starts_with("d70_iN_ASAH1_rep"),
          starts_with("d70_iDA_Ctrl_rep"), starts_with("d70_iDA_ASAH1_rep")) %>%
-  pivot_longer(-Genes, names_to = "replicate_raw", values_to = "quan") %>%
+  tidyr::pivot_longer(-Genes, names_to = "replicate_raw", values_to = "quan") %>%
   filter(!is.na(quan)) %>%
   mutate(
     day       = 70L,
@@ -5463,7 +5463,7 @@ df_70_long <- diff132_d70_df_proc %>%
     replicate = as.integer(sub(".*_rep([0-9]+)$", "\\1", replicate_raw)),
     sample_id = paste0("d", day, "_", neuron, "_", genotype, "_rep", replicate)
   ) %>%
-  select(sample_id, day, genotype, neuron, replicate, Genes, quan)
+  dplyr::select(sample_id, day, genotype, neuron, replicate, Genes, quan)
 
 # one long dataframe for all timepoints
 timecourse_pca_long <- bind_rows(df_30_50_long, df_70_long)
@@ -5487,7 +5487,7 @@ pca_input_wide <- timecourse_pca_long %>%
     values_fill = list(quan = 0)
   )
 
-X <- as.matrix(pca_input_wide %>% select(-sample_id))
+X <- as.matrix(pca_input_wide %>% dplyr::select(-sample_id))
 rownames(X) <- pca_input_wide$sample_id
 
 # PCA on log2-intensities
@@ -5524,7 +5524,7 @@ ggsave(filename = file.path(out_dir_d70_pca, "PCA_ctrl_ASAH1_iN_iDA_d30_d50_d70.
 pca_input_wide_d70 <- pca_input_wide %>%
   filter(grepl("^d70_", sample_id))
 
-X70 <- as.matrix(pca_input_wide_d70 %>% select(-sample_id))
+X70 <- as.matrix(pca_input_wide_d70 %>% dplyr::select(-sample_id))
 rownames(X70) <- pca_input_wide_d70$sample_id
 X70 <- X70[, apply(X70, 2, sd, na.rm = TRUE) > 0, drop = FALSE]
 
@@ -5693,7 +5693,7 @@ plot_violin_asah1_timecourse <- function(neuron_label, ann_keep = ann_vec) {
                              levels = c("iN_d30","iN_d50","iN_d70","iDA_d30","iDA_d50","iDA_d70"))
     ) %>%
     ungroup() %>%
-    select(-p01, -p99)
+    dplyr::select(-p01, -p99)
 
   p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC_capped, fill = CombinedGroup)) +
     geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
@@ -5734,7 +5734,7 @@ plot_violin_asah1_timecourse_both <- function(ann_keep = ann_vec) {
                              levels = c("iN_d30","iN_d50","iN_d70","iDA_d30","iDA_d50","iDA_d70"))
     ) %>%
     ungroup() %>%
-    select(-p01, -p99)
+    dplyr::select(-p01, -p99)
 
   p <- ggplot(dfp, aes(x = CombinedGroup, y = log2FC_capped, fill = CombinedGroup)) +
     geom_hline(yintercept = 0, color = "black", linetype = "dashed", linewidth = 0.5) +
@@ -5952,7 +5952,7 @@ mtci_map <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Strucure/
 
 # --- 2. pull the 6 ASAH1 log2FC columns from your combined table
 mtci_vals <- asah1_timecourse_annotated %>%
-  select(Genes,
+  dplyr::select(Genes,
          ASAH1_d30_iN_log2_fold_change, ASAH1_d50_iN_log2_fold_change, ASAH1_d70_iN_log2_fold_change,
          ASAH1_d30_iDA_log2_fold_change,ASAH1_d50_iDA_log2_fold_change,ASAH1_d70_iDA_log2_fold_change) %>%
   rename(Gene = Genes)
@@ -5987,7 +5987,7 @@ mtci_colors_per_condition <- mtci_map %>%
                          paste("color", Chain, "#959595FF"),
                          paste("color", Chain, toupper(col_fn(ASAH1_d70_iDA_log2_fold_change))))
   ) %>%
-  select(Gene, Chain,
+  dplyr::select(Gene, Chain,
          ASAH1_d30_iN_log2_fold_change, iN_d30_cmd,
          ASAH1_d50_iN_log2_fold_change, iN_d50_cmd,
          ASAH1_d70_iN_log2_fold_change, iN_d70_cmd,
@@ -6030,7 +6030,7 @@ plot_log2fc_violin <- function(data, annotations, genotypes) {
   annotation_genes <- map_dfr(annotations, function(ann) {
     data %>%
       filter(!!sym(ann)) %>%      # Select genes with the current annotation
-      select(Genes) %>%
+      dplyr::select(Genes) %>%
       mutate(annotation = ann)    # Label them with the annotation name
   })
 
@@ -6045,8 +6045,8 @@ plot_log2fc_violin <- function(data, annotations, genotypes) {
 
   # 4. Reshape data into long format for plotting
   plot_df_long <- plot_df %>%
-    select(Genes, annotation, all_of(fc_cols)) %>%
-    pivot_longer(
+    dplyr::select(Genes, annotation, all_of(fc_cols)) %>%
+    tidyr::pivot_longer(
       cols = -c(Genes, annotation),
       names_to = "sample", values_to = "log2FC"
     ) %>%
@@ -6569,7 +6569,7 @@ plot_impact_heatmap <- function(impact_scores, neuron_type, out_dir) {
   
   # 3. Build matrix for heatmap (rows = Genotype, col = Rank)
   impact_mat <- df_sub %>%
-    select(Genotype, Rank) %>%
+    dplyr::select(Genotype, Rank) %>%
     column_to_rownames("Genotype") %>%
     as.matrix()
   
@@ -6621,7 +6621,7 @@ all_impact_scores <- map_dfr(all_annotations, function(annot) {
 # --- Reshape to matrix ---
 impact_matrix <- all_impact_scores %>%
   mutate(Sample = paste0(Genotype, "_", Neuron)) %>%
-  select(Annotation, Sample, Rank) %>%
+  dplyr::select(Annotation, Sample, Rank) %>%
   pivot_wider(names_from = Sample, values_from = Rank) %>%
   column_to_rownames("Annotation") %>%
   as.matrix()
@@ -6896,7 +6896,7 @@ org_corr_df <- run_all_organelle_corr(
 # --- Step 3. convert into martix and define color schmes + plotting  
 # Convert to wide matrix: KO × Organelle
 org_corr_mat <- org_corr_df %>%
-  select(KO, Organelle, r) %>%
+  dplyr::select(KO, Organelle, r) %>%
   pivot_wider(names_from = Organelle, values_from = r) %>%
   column_to_rownames("KO") %>%
   as.matrix()
@@ -7141,7 +7141,7 @@ plot_bar_corr_split_neurons <- function(corr_mat, annotations, color_map, out_pa
   
   corr_long <- as.data.frame(corr_mat[, valid_annotations, drop = FALSE]) %>%
     rownames_to_column("Genotype") %>%
-    pivot_longer(-Genotype, names_to = "Annotation", values_to = "Correlation") %>%
+    tidyr::pivot_longer(-Genotype, names_to = "Annotation", values_to = "Correlation") %>%
     filter(Genotype %in% names(filtered_colors)) %>%
     mutate(
       neuron_type = ifelse(str_detect(Genotype, "_iN$"), "iN",
@@ -7250,8 +7250,8 @@ iDA_cols <- grep("_iDA$", colnames(log2FC_d50_annotated_GO), value = TRUE)
 shared_cols <- c("Genes", "Cluster")
 
 log2FC_iN_df <- log2FC_d50_annotated_GO %>%
-  select(all_of(c(shared_cols, iN_cols))) %>%
-  pivot_longer(cols = ends_with("_iN"), names_to = "Group", values_to = "Score") %>%
+  dplyr::select(all_of(c(shared_cols, iN_cols))) %>%
+  tidyr::pivot_longer(cols = ends_with("_iN"), names_to = "Group", values_to = "Score") %>%
   mutate(
     KO = str_replace(Group, "_iN$", ""),
     KO_Cell = Group,
@@ -7260,8 +7260,8 @@ log2FC_iN_df <- log2FC_d50_annotated_GO %>%
   filter(!is.na(Cluster), is.finite(Score))
 
 log2FC_iDA_df <- log2FC_d50_annotated_GO %>%
-  select(all_of(c(shared_cols, iDA_cols))) %>%
-  pivot_longer(cols = ends_with("_iDA"), names_to = "Group", values_to = "Score") %>%
+  dplyr::select(all_of(c(shared_cols, iDA_cols))) %>%
+  tidyr::pivot_longer(cols = ends_with("_iDA"), names_to = "Group", values_to = "Score") %>%
   mutate(
     KO = str_replace(Group, "_iDA$", ""),
     KO_Cell = Group,
@@ -7597,7 +7597,7 @@ bubble_df <- map_dfr(seq_along(genos_iN), function(i) {
   )
 }) %>%
   left_join(disease_class_df, by = "KO") %>%
-  pivot_longer(cols = c(Cor_iN, Cor_iDA), names_to = "Celltype", values_to = "Correlation") %>%
+  tidyr::pivot_longer(cols = c(Cor_iN, Cor_iDA), names_to = "Celltype", values_to = "Correlation") %>%
   mutate(Celltype = recode(Celltype, Cor_iN = "iN", Cor_iDA = "iDA"),
          DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
 
@@ -7654,9 +7654,9 @@ annotation_cols <- colnames(log2FC_d50_annotated_GO)[which(colnames(log2FC_d50_a
 
 # --- Step 4.2. Count number of genes per annotation (non-NA or non-zero entries)
 gene_count_df <- log2FC_d50_annotated_GO %>%
-  select(all_of(annotation_cols)) %>%
+  dplyr::select(all_of(annotation_cols)) %>%
   summarise(across(everything(), ~ sum(., na.rm = TRUE))) %>% 
-  pivot_longer(everything(), names_to = "Annotation", values_to = "GeneCount")
+  tidyr::pivot_longer(everything(), names_to = "Annotation", values_to = "GeneCount")
 
 # --- Step 4.3. Define annotation color classes
 annotation_classes_corrgeno <- list(
@@ -7817,7 +7817,7 @@ SphMut_df <- SphMut_df %>%
   mutate(sample_id = paste0(sample_id, "_d", day))
 
 SphMut_wide_df <- SphMut_df %>%
-  select(Genes, sample_id, log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value) %>%
+  dplyr::select(Genes, sample_id, log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value) %>%
   pivot_wider(
     names_from = sample_id,
     values_from = c(log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value),
@@ -7851,7 +7851,7 @@ write_csv(SphMut_annotated_df, file.path(out_dir_d50_SphMut, "SphMut_log2FC_day5
 log2fc_cols <- grep("log2_fold_change$", names(SphMut_annotated_df), value = TRUE)
 
 SphMut_mat <- SphMut_annotated_df %>%
-  select(all_of(log2fc_cols)) %>%
+  dplyr::select(all_of(log2fc_cols)) %>%
   as.matrix()
 rownames(SphMut_mat) <- SphMut_annotated_df$Genes
 SphMut_mat[!is.finite(SphMut_mat)] <- 0 
@@ -7949,7 +7949,7 @@ write_csv(SphMut_corr_df, file.path(out_dir_d50_SphMut, "SphMut_annotation_corre
 
 # --- Step 4. Create Corr matrix with KO annotations
 SphMut_corr_mat <- SphMut_corr_df %>%
-  select(KO, Organelle, r) %>%
+  dplyr::select(KO, Organelle, r) %>%
   pivot_wider(names_from = Organelle, values_from = r) %>%
   column_to_rownames("KO") %>%
   as.matrix()
@@ -8102,7 +8102,7 @@ input_diff118 <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Prot
 
 # --- Subset: ASAH1 vs Ctrl (day 23, from diff118)
 asah1_genes <- input_diff118 %>%
-  select(Gene.Symbol, SynGO, SynapseSVs, RecyclingEndosome, mtComplexI,
+  dplyr::select(Gene.Symbol, SynGO, SynapseSVs, RecyclingEndosome, mtComplexI,
          log2FC_ASAH1_d23_iN.Ctrl_d23_iN, log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA) %>%
   rename(Gene = Gene.Symbol,
          iN_d23 = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
@@ -8112,22 +8112,22 @@ asah1_genes <- input_diff118 %>%
 join_cols <- c("Genes", "Gene")  # Matching column names
 
 day30_subset <- complete_data_annotated_day30 %>%
-  select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
+  dplyr::select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
   rename(Gene = Genes)
 
 day50_subset <- complete_data_annotated_day50 %>%
-  select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
+  dplyr::select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
   rename(Gene = Genes)
 
 # --- Long-format merge
 merged_all <- list(
   d23 = asah1_genes %>% mutate(Time = "d23"),
   d30 = day30_subset %>%
-    select(Gene, iN = ASAH1_iN_log2_fold_change, iDA = ASAH1_iDA_log2_fold_change,
+    dplyr::select(Gene, iN = ASAH1_iN_log2_fold_change, iDA = ASAH1_iDA_log2_fold_change,
            SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
     mutate(Time = "d30"),
   d50 = day50_subset %>%
-    select(Gene, iN = ASAH1_iN_log2_fold_change, iDA = ASAH1_iDA_log2_fold_change,
+    dplyr::select(Gene, iN = ASAH1_iN_log2_fold_change, iDA = ASAH1_iDA_log2_fold_change,
            SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
     mutate(Time = "d50")
 ) %>% bind_rows()
@@ -8139,7 +8139,7 @@ annotation_cols <- annotation_cols[which(annotation_cols == "Mito"):which(annota
 
 # --- Subset for day 23
 asah1_genes <- input_diff118 %>%
-  select(Gene.Symbol, all_of(annotation_cols),
+  dplyr::select(Gene.Symbol, all_of(annotation_cols),
          log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
          log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA) %>%
   rename(
@@ -8147,11 +8147,11 @@ asah1_genes <- input_diff118 %>%
     log2FC_iN_ASAH1vsCtrl_d23 = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
     log2FC_iDA_ASAH1vsCtrl_d23 = log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA
   ) %>%
-  select(Gene, log2FC_iN_ASAH1vsCtrl_d23, log2FC_iDA_ASAH1vsCtrl_d23, everything())
+  dplyr::select(Gene, log2FC_iN_ASAH1vsCtrl_d23, log2FC_iDA_ASAH1vsCtrl_d23, everything())
 
 # --- Subset for day 30
 day30_subset <- complete_data_annotated_day30 %>%
-  select(Genes, all_of(annotation_cols),
+  dplyr::select(Genes, all_of(annotation_cols),
          ASAH1_iN_log2_fold_change,
          ASAH1_iDA_log2_fold_change) %>%
   rename(
@@ -8159,11 +8159,11 @@ day30_subset <- complete_data_annotated_day30 %>%
     log2FC_iN_ASAH1vsCtrl_d30 = ASAH1_iN_log2_fold_change,
     log2FC_iDA_ASAH1vsCtrl_d30 = ASAH1_iDA_log2_fold_change
   ) %>%
-  select(Gene, log2FC_iN_ASAH1vsCtrl_d30, log2FC_iDA_ASAH1vsCtrl_d30, everything())
+  dplyr::select(Gene, log2FC_iN_ASAH1vsCtrl_d30, log2FC_iDA_ASAH1vsCtrl_d30, everything())
 
 # --- Subset for day 50
 day50_subset <- complete_data_annotated_day50 %>%
-  select(Genes, all_of(annotation_cols),
+  dplyr::select(Genes, all_of(annotation_cols),
          ASAH1_iN_log2_fold_change,
          ASAH1_iDA_log2_fold_change) %>%
   rename(
@@ -8171,7 +8171,7 @@ day50_subset <- complete_data_annotated_day50 %>%
     log2FC_iN_ASAH1vsCtrl_d50 = ASAH1_iN_log2_fold_change,
     log2FC_iDA_ASAH1vsCtrl_d50 = ASAH1_iDA_log2_fold_change
   ) %>%
-  select(Gene, log2FC_iN_ASAH1vsCtrl_d50, log2FC_iDA_ASAH1vsCtrl_d50, everything())
+  dplyr::select(Gene, log2FC_iN_ASAH1vsCtrl_d50, log2FC_iDA_ASAH1vsCtrl_d50, everything())
 
 
 # --- Merge all (by Gene and annotations)
@@ -8184,7 +8184,7 @@ asah1_ctrl_d233050_wide_df <- list(
 
 # --- Reorder columns
 asah1_ctrl_d233050_wide_df <- asah1_ctrl_d233050_wide_df %>%
-  select(
+  dplyr::select(
     Gene,
     log2FC_iN_ASAH1vsCtrl_d23, log2FC_iDA_ASAH1vsCtrl_d23,
     log2FC_iN_ASAH1vsCtrl_d30, log2FC_iDA_ASAH1vsCtrl_d30,
@@ -8210,10 +8210,10 @@ annotation_cols_all <- c("SynGO","SynapseSVs",
 # --- Helper function to reshape and summarize
 prep_plot_data <- function(df, celltype) {
   df %>%
-    select(Gene, starts_with(paste0("log2FC_", celltype)), all_of(annotation_cols_all)) %>%
-    pivot_longer(cols = starts_with(paste0("log2FC_", celltype)), names_to = "Time", values_to = "log2FC") %>%
+    dplyr::select(Gene, starts_with(paste0("log2FC_", celltype)), all_of(annotation_cols_all)) %>%
+    tidyr::pivot_longer(cols = starts_with(paste0("log2FC_", celltype)), names_to = "Time", values_to = "log2FC") %>%
     mutate(Time = str_extract(Time, "d\\d+")) %>%
-    pivot_longer(cols = all_of(annotation_cols_all), names_to = "Annotation", values_to = "in_group") %>%
+    tidyr::pivot_longer(cols = all_of(annotation_cols_all), names_to = "Annotation", values_to = "in_group") %>%
     filter(in_group == TRUE) %>%
     group_by(Time, Annotation) %>%
     summarise(
@@ -8341,7 +8341,7 @@ make_hit_table <- function(gene_sets_list, celltype) {
       CellType  = celltype,
       Annotation = paste(annotations_to_check, collapse = ";")
     ) %>%
-    select(Gene = Genes, Annotation, CellType, Genotype)
+    dplyr::select(Gene = Genes, Annotation, CellType, Genotype)
 }
 
 hits_iN  <- make_hit_table(gene_sets_iN, "iN")
@@ -8667,7 +8667,7 @@ process_day_data_combined <- function(df, binary_matrix) {
   
   # Pivot to wide format
   complete_data <- df_filtered %>%
-    select(Genes, sample_id, log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value) %>%
+    dplyr::select(Genes, sample_id, log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value) %>%
     pivot_wider(
       names_from = sample_id,
       values_from = c(log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value),
@@ -8792,10 +8792,10 @@ usable_annotations <- setdiff(annotation_columns, c("Autophagy_det", "EndoDetail
 
 # Step 7c: Reshape to long format: Gene - Localization pairs
 annotation_long <- annot_subset %>%
-  select(Genes, all_of(usable_annotations)) %>%
-  pivot_longer(cols = -Genes, names_to = "Localization", values_to = "Present") %>%
+  dplyr::select(Genes, all_of(usable_annotations)) %>%
+  tidyr::pivot_longer(cols = -Genes, names_to = "Localization", values_to = "Present") %>%
   filter(Present) %>%
-  select(-Present) %>%
+  dplyr::select(-Present) %>%
   distinct()
 
 
@@ -8866,7 +8866,7 @@ ggsave(file.path(out_dir_d50_GRN, "diff132_day3050_GRN_DA_scattter.pdf"),  day30
 
 # --- Step 12. Base data
 plot_df <- day3050_subset %>%
-  select(Genes, GRN_iDA_d30_log2_fold_change, GRN_iDA_d50_log2_fold_change)
+  dplyr::select(Genes, GRN_iDA_d30_log2_fold_change, GRN_iDA_d50_log2_fold_change)
 
 
 # --- Step 13. Define enrichment ranking
@@ -8951,8 +8951,8 @@ disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = v
 
 # --- Step 2. Add Disease Class to subdataframe, reshape and join back annotations 
 annotated_log2fc_df <- complete_data_annotated_day50 %>%
-  select(Genes, matches("_iN_log2_fold_change$|_iDA_log2_fold_change$")) %>%
-  pivot_longer(cols = -Genes, names_to = "sample", values_to = "log2fc") %>%
+  dplyr::select(Genes, matches("_iN_log2_fold_change$|_iDA_log2_fold_change$")) %>%
+  tidyr::pivot_longer(cols = -Genes, names_to = "sample", values_to = "log2fc") %>%
   mutate(
     sample = str_remove(sample, "_log2_fold_change$"),
     KO = str_extract(sample, "^[^_]+"),
@@ -8974,7 +8974,7 @@ annotation_cols_all <- c(
 
 annotated_log2fc_df <- annotated_log2fc_df %>%
   left_join(
-    complete_data_annotated_day50 %>% select(Genes, all_of(annotation_cols_all)),
+    complete_data_annotated_day50 %>% dplyr::select(Genes, all_of(annotation_cols_all)),
     by = "Genes"
   )
 
@@ -8988,7 +8988,7 @@ plot_annotation_correlation <- function(annot_df, annotation_cols, out_dir, cell
   # Calculate average profile per annotation
   annotation_means <- map_dfc(annotation_cols, function(annot_col) {
     genes <- annot_df %>% filter(.data[[annot_col]] == 1) %>% pull(Genes)
-    sub <- annot_df %>% filter(Genes %in% genes) %>% select(matches("_(iN|iDA)$"))
+    sub <- annot_df %>% filter(Genes %in% genes) %>% dplyr::select(matches("_(iN|iDA)$"))
     colMeans(sub, na.rm = TRUE)
   })
   colnames(annotation_means) <- annotation_cols
@@ -9096,8 +9096,8 @@ for (annot in custom_annotation_cols) {
 
   # Step 3.2: Check valid samples with ≥3 annotated genes
   valid_samples <- annot_subset_df %>%
-    select(Genes, KO, DiseaseClass, matches("_(iN|iDA)$")) %>%
-    pivot_longer(cols = matches("_(iN|iDA)$"), names_to = "sample", values_to = "log2fc") %>%
+    dplyr::select(Genes, KO, DiseaseClass, matches("_(iN|iDA)$")) %>%
+    tidyr::pivot_longer(cols = matches("_(iN|iDA)$"), names_to = "sample", values_to = "log2fc") %>%
     group_by(sample) %>%
     filter(!is.na(log2fc)) %>%
     summarise(n_genes = n_distinct(Genes), .groups = "drop") %>%
@@ -9111,7 +9111,7 @@ for (annot in custom_annotation_cols) {
 
   # Step 3.3: Create filtered log2FC matrix
   log2fc_mat <- annot_subset_df %>%
-    select(Genes, all_of(valid_samples)) %>%
+    dplyr::select(Genes, all_of(valid_samples)) %>%
     group_by(Genes) %>%
     summarise(across(everything(), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
     column_to_rownames("Genes") %>%
@@ -9147,8 +9147,8 @@ plot_annotation_genotype_circos <- function(annot_df,annotation_cols,disease_cla
 
     # Make gene × genotype matrix
     mat_long <- sub_df %>%
-      select(Genes, matches("_(iN|iDA)$")) %>%
-      pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
+      dplyr::select(Genes, matches("_(iN|iDA)$")) %>%
+      tidyr::pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
       filter(!is.na(log2fc)) %>%
       group_by(sample) %>%
       filter(n() >= min_gene_n) %>%
@@ -9305,8 +9305,8 @@ plot_annotation_genotype_circos_split <- function(annot_df, annotation_cols, dis
 
     # 2. Build long-format matrix for valid samples
     mat_long <- sub_df %>%
-      select(Genes, matches("_(iN|iDA)$")) %>%
-      pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
+      dplyr::select(Genes, matches("_(iN|iDA)$")) %>%
+      tidyr::pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
       filter(!is.na(log2fc)) %>%
       group_by(sample) %>%
       filter(n() >= min_gene_n) %>%
@@ -9591,7 +9591,7 @@ fit_stratified_model <- function(df, neuron_label) {
       tidy = map(model, ~ if (!is.null(.x)) broom::tidy(.x) else NULL)
     ) %>%
     filter(!map_lgl(tidy, is.null)) %>%     # keep only successful fits
-    select(Genes, tidy) %>%
+    dplyr::select(Genes, tidy) %>%
     unnest(tidy) %>%
     mutate(neuron = neuron_label)
 }
@@ -9762,7 +9762,7 @@ expr_mat[is.na(expr_mat)] <- rowMeans(expr_mat, na.rm = TRUE)[row(expr_mat)[is.n
 
 # Prepare sample metadata
 sample_meta <- df_day50_filtered %>%
-  select(sample_id, genotype, neuron) %>%
+  dplyr::select(sample_id, genotype, neuron) %>%
   distinct() %>%
   mutate(sample_id = make.names(sample_id))
 
@@ -10042,7 +10042,7 @@ dir.create(output_dir_umap, showWarnings = FALSE, recursive = TRUE)
 # 1. Reshape results_all_df into a wide matrix: genes × coefficients
 # Pivot to wide format: each gene's logFC across all coefficients
 limma_UMAP_logfc_matrix <- results_all_df %>%
-  select(Genes, coef, logFC) %>%
+  dplyr::select(Genes, coef, logFC) %>%
   pivot_wider(names_from = coef, values_from = logFC) %>%
   column_to_rownames("Genes")
 
@@ -10074,7 +10074,7 @@ gene_meta <- results_all_df %>%
 gene_group <- results_all_df %>%
   group_by(Genes) %>%
   slice_max(order_by = abs(log2FoldChange), n = 1, with_ties = FALSE) %>%
-  select(Genes, coef)
+  dplyr::select(Genes, coef)
 
 umap_df <- umap_df %>%
   distinct(Genes, .keep_all = TRUE)
@@ -10131,7 +10131,7 @@ library(uwot)
 
 # feature matrix: rows = proteins, cols = (corr_to_orgX, logFC_genotypeY, …)
 feat_mat <- complete_data_annotated_day50 %>% 
-  select(Genes, ends_with("_log2_fold_change")) %>% 
+  dplyr::select(Genes, ends_with("_log2_fold_change")) %>% 
   column_to_rownames("Genes") %>% 
   as.matrix() %>% 
   scale(center = TRUE)
@@ -10154,7 +10154,7 @@ library(uwot)
 
 
 feat_mat <- complete_data_annotated_day50 %>%
-  select(Genes, ends_with("_log2_fold_change")) %>%
+  dplyr::select(Genes, ends_with("_log2_fold_change")) %>%
   distinct(Genes, .keep_all = TRUE) %>%  # drop any duplicates
   column_to_rownames("Genes") %>%
   as.matrix() %>%
@@ -10167,7 +10167,7 @@ annotations <- c("Mito", "Mito.IMS", "Mito.Matrix", "Mito.MIM", "Mito.MOM",
                  "Presynaptic", "Postsynaptic", "NeuroDev","EndoLyso","EarlyEndosome", "RecyclingEndosome", "SynapseSVs")
 
 binary_matrix <- complete_data_annotated_day50 %>%
-  select(Genes, all_of(annotations)) %>%
+  dplyr::select(Genes, all_of(annotations)) %>%
   distinct(Genes, .keep_all = TRUE) %>%
   tibble::column_to_rownames("Genes")
 
@@ -10198,8 +10198,8 @@ library(tidyr)
 
 # Reshape to long format: one row per Gene × Organelle
 umap_long <- umap_df %>%
-  select(V1, V2, Genes, all_of(annotations)) %>%
-  pivot_longer(cols = all_of(annotations), names_to = "Organelle", values_to = "Membership") %>%
+  dplyr::select(V1, V2, Genes, all_of(annotations)) %>%
+  tidyr::pivot_longer(cols = all_of(annotations), names_to = "Organelle", values_to = "Membership") %>%
   mutate(Membership = factor(Membership, levels = c(FALSE, TRUE), labels = c("No", "Yes")))
 
 # Plot with facets
@@ -10215,7 +10215,7 @@ ggplot(umap_long, aes(V1, V2, color = Membership)) +
 
 #Color all organelle annotations in one UMAP
 umap_df <- umap_df %>%
-  mutate(OrganelleCount = rowSums(select(., all_of(annotations)), na.rm = TRUE))
+  mutate(OrganelleCount = rowSums(dplyr::select(., all_of(annotations)), na.rm = TRUE))
 
 ggplot(umap_df, aes(V1, V2, color = OrganelleCount)) +
   geom_point(size = 1, alpha = 0.8) +
@@ -10335,12 +10335,12 @@ rownames(annotation_matrix_d50) <- UMAP_d50_df$Genes
 
 # Drop problematic annotations
 annotation_matrix_d50 <- annotation_matrix_d50 %>%
-  select(-c("Autophagy..Detailed.", "EndoDetailed"))
+  dplyr::select(-c("Autophagy..Detailed.", "EndoDetailed"))
 
 # --- Step 2: Identify valid annotations with ≥ 3 genes ---
 valid_annotations <- annotation_matrix_d50 %>%
   summarise(across(everything(), ~sum(.x == TRUE))) %>%
-  pivot_longer(cols = everything(), names_to = "Annotation", values_to = "Count") %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "Annotation", values_to = "Count") %>%
   filter(Count >= 3) %>%
   pull(Annotation)
 
@@ -10451,7 +10451,7 @@ gene_umap_df$Gene <- rownames(log2fc_matrix_d50)
 # subcell_df: each column = localization, values = gene symbols
 # Step 4: Convert to long format
 subcell_long <- subcell_df %>%
-  pivot_longer(cols = everything(), names_to = "Localization", values_to = "Gene") %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "Localization", values_to = "Gene") %>%
   filter(!is.na(Gene))
 
 # Step 5: Join with UMAP data (multi-row per gene possible)
@@ -10482,7 +10482,7 @@ UMAP_gene
 # Step 1: Create a data frame with all combinations of genes and localizations
 all_localizations <- unique(gene_umap_annotated$Localization)
 all_genes <- gene_umap_annotated %>%
-  select(Gene, V1, V2, Localization)
+  dplyr::select(Gene, V1, V2, Localization)
 
 # Create all combinations
 plot_data <- expand.grid(FacetLocalization = all_localizations, Gene = all_genes$Gene) %>%
@@ -10582,7 +10582,7 @@ HeLaCrossOmeCorrProt_df <- read.csv(
 
 # --- Step 3. Convert wide to long format and clean cluster names
 HeLaCrossOmeCorrProt_df_long <- HeLaCrossOmeCorrProt_df %>%
-  pivot_longer(cols = starts_with("Protein.Cluster"), names_to = "Cluster", values_to = "Score") %>%
+  tidyr::pivot_longer(cols = starts_with("Protein.Cluster"), names_to = "Cluster", values_to = "Score") %>%
   mutate(Cluster = Cluster %>%
            str_replace("Protein\\.Cluster\\.", "Cluster ") %>%
            str_replace("\\.Signature", ""))
@@ -10765,7 +10765,7 @@ neuron_proteome_wide <- complete_data_annotated_day50
 HeLaWCnMOST_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/HeLa_nMOSTWCprot.csv")
 
 neuron_long <- neuron_proteome_wide %>%
-  pivot_longer(-Genes, names_to = "sample_id", values_to = "log2_abundance") %>%
+  tidyr::pivot_longer(-Genes, names_to = "sample_id", values_to = "log2_abundance") %>%
   filter(str_detect(sample_id, "log2_fold_change")) %>%
   mutate(
     genotype = str_extract(sample_id, "^[^_]+"),
@@ -10787,7 +10787,7 @@ HeLa_long <- dplyr::rename(HeLaWCnMOST_df, Genes = Gene.names) %>%
 merged_df <- inner_join(neuron_df, HeLa_long, by = c("Genes", "genotype"))
 
 merged_wide <- merged_df %>%
-  pivot_longer(c(iN, iDA), names_to = "neuron_type", values_to = "neuron_abundance") %>%
+  tidyr::pivot_longer(c(iN, iDA), names_to = "neuron_type", values_to = "neuron_abundance") %>%
   mutate(sample = paste(genotype, neuron_type, sep = "_")) %>%
   dplyr::select(Genes, sample, abundance = neuron_abundance) %>%
   bind_rows(
