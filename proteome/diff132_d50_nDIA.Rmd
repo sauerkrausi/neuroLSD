@@ -5947,11 +5947,11 @@ write.csv(corr_mat,file.path(out_dir_d70_corr, "ASAH1_annotation_vs_effect_corre
 # --- 1. mapping (two cols: Gene.Name, ChimeraX or '# in ChimeraX')
 mtci_map <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Strucure/Mapping_mtCi/diff132/mtCi.csv",
                      stringsAsFactors = FALSE, check.names = FALSE) %>%
-  rename(
+  dplyr::rename(
     Gene  = if ("Gene.Name" %in% names(.)) "Gene.Name" else names(.)[1],
     Chain = if ("ChimeraX" %in% names(.)) "ChimeraX" else if ("# in ChimeraX" %in% names(.)) "# in ChimeraX" else names(.)[2]
   ) %>%
-  mutate(
+  dplyr::mutate(
     Gene  = as.character(Gene),
     Chain = ifelse(grepl("^#", Chain), Chain, paste0("#", Chain))
   ) %>%
@@ -5962,7 +5962,7 @@ mtci_vals <- asah1_timecourse_annotated %>%
   dplyr::select(Genes,
          ASAH1_d30_iN_log2_fold_change, ASAH1_d50_iN_log2_fold_change, ASAH1_d70_iN_log2_fold_change,
          ASAH1_d30_iDA_log2_fold_change,ASAH1_d50_iDA_log2_fold_change,ASAH1_d70_iDA_log2_fold_change) %>%
-  rename(Gene = Genes)
+  dplyr::rename(Gene = Genes)
 
 # --- 3. color function (same heatmap palette/domain you have used)
 col_fn <- col_numeric(
@@ -5973,8 +5973,8 @@ col_fn <- col_numeric(
 
 # --- 4. join, standardize col names, and build ChimeraX command strings
 mtci_colors_per_condition <- mtci_map %>%
-  left_join(asah1_timecourse_annotated, by = c("Gene" = "Genes")) %>%
-  mutate(
+  dplyr::left_join(asah1_timecourse_annotated, by = c("Gene" = "Genes")) %>%
+  dplyr::mutate(
     iN_d30_cmd  = ifelse(is.na(ASAH1_d30_iN_log2_fold_change),
                          paste("color", Chain, "#959595FF"),
                          paste("color", Chain, toupper(col_fn(ASAH1_d30_iN_log2_fold_change)))),
@@ -6038,12 +6038,12 @@ plot_log2fc_violin <- function(data, annotations, genotypes) {
     data %>%
       filter(!!sym(ann)) %>%      # Select genes with the current annotation
       dplyr::select(Genes) %>%
-      mutate(annotation = ann)    # Label them with the annotation name
+      dplyr::mutate(annotation = ann)    # Label them with the annotation name
   })
 
   # 2. Join gene annotations back to the full dataset
   plot_df <- annotation_genes %>%
-    left_join(data, by = "Genes")
+    dplyr::left_join(data, by = "Genes")
 
   # 3. Generate column names for iDA and iN comparisons for selected genotypes
   fc_cols <- unlist(lapply(genotypes, function(g) {
@@ -6421,7 +6421,7 @@ correlate_log2fc_annotations <- function(data, annotations, basedir, prefix = "d
 
   # Step 1: Filter genes belonging to any of the selected annotations
   filtered_data <- data %>%
-    filter(if_any(all_of(annotations), ~ .x == TRUE))
+    dplyr::filter(if_any(all_of(annotations), ~ .x == TRUE))
 
   # Step 2: Extract log2FC values (columns 2–47), replace NAs with 0
   log2fc_matrix <- filtered_data[, 2:47]
@@ -6569,7 +6569,7 @@ impact_scores <- bind_rows(impact_scores_iN, impact_scores_iDA)
 plot_impact_heatmap <- function(impact_scores, neuron_type, out_dir) {
   
   # 1. Subset for the neuron type
-  df_sub <- impact_scores %>% filter(Neuron == neuron_type)
+  df_sub <- impact_scores %>% dplyr::filter(Neuron == neuron_type)
 
   # 2. Order by rank (lowest = top)
   df_sub <- df_sub %>% arrange(Rank)
@@ -6581,8 +6581,7 @@ plot_impact_heatmap <- function(impact_scores, neuron_type, out_dir) {
     as.matrix()
   
   # 4. Save heatmap as PDF
-  pdf(file.path(out_dir, paste0("organelle_impact_scoring_", neuron_type, ".pdf")), 
-      width = 4, height = 5)
+  pdf(file.path(out_dir, paste0("organelle_impact_scoring_", neuron_type, ".pdf")), width = 4, height = 5)
   pheatmap::pheatmap(
     mat            = impact_mat,
     color          = colorRampPalette(c("red","white"))(100),
@@ -6848,7 +6847,6 @@ plot_class_impact_barplot(all_impacts, disease_classes, "iN", out_dir_d50_CrossC
 plot_class_impact_barplot(all_impacts, disease_classes, "iDA", out_dir_d50_CrossCorr)
 
 
-
 ```
 
 
@@ -7016,7 +7014,7 @@ gridExtra::grid.arrange(
 )
 
 dev.off()
-
+dev.off()
 ```
 
 
@@ -7150,13 +7148,13 @@ plot_bar_corr_split_neurons <- function(corr_mat, annotations, color_map, out_pa
     rownames_to_column("Genotype") %>%
     tidyr::pivot_longer(-Genotype, names_to = "Annotation", values_to = "Correlation") %>%
     filter(Genotype %in% names(filtered_colors)) %>%
-    mutate(
+    dplyr::mutate(
       neuron_type = ifelse(str_detect(Genotype, "_iN$"), "iN",
                      ifelse(str_detect(Genotype, "_iDA$"), "iDA", "Other")),
       base_genotype = str_remove(Genotype, "_iN$|_iDA$")
     ) %>%
-    group_by(Genotype, base_genotype, neuron_type, Annotation) %>%
-    summarise(
+    dplyr::group_by(Genotype, base_genotype, neuron_type, Annotation) %>%
+    dplyr::summarise(
       mean_corr = mean(Correlation, na.rm = TRUE),
       sem_corr = sd(Correlation, na.rm = TRUE) / sqrt(n()),
       .groups = "drop"
@@ -7168,7 +7166,7 @@ plot_bar_corr_split_neurons <- function(corr_mat, annotations, color_map, out_pa
   # Helper to plot one neuron type
   plot_one <- function(df_sub, neuron_type) {
     df_sub <- df_sub %>% arrange(mean_corr) %>%
-      mutate(base_genotype = factor(base_genotype, levels = unique(base_genotype)))
+      dplyr::mutate(base_genotype = factor(base_genotype, levels = unique(base_genotype)))
     
     ggplot(df_sub, aes(x = base_genotype, y = mean_corr, fill = Genotype)) +
       geom_bar(stat = "identity", color = "black", width = 0.6, linewidth = 0.2) +
@@ -7244,7 +7242,7 @@ get_cluster_by_partial_match <- function(gene, reference_df) {
 # --- Step 3. Annotate clusters using partial match
 log2FC_d50_annotated_GO <- log2FC_d50_annotated %>%
   rowwise() %>%
-  mutate(Cluster = get_cluster_by_partial_match(Genes, nMOST_GOannot)) %>%
+  dplyr::mutate(Cluster = get_cluster_by_partial_match(Genes, nMOST_GOannot)) %>%
   ungroup()
 
 # --- Step 4. Save merged dataframe
@@ -7259,22 +7257,22 @@ shared_cols <- c("Genes", "Cluster")
 log2FC_iN_df <- log2FC_d50_annotated_GO %>%
   dplyr::select(all_of(c(shared_cols, iN_cols))) %>%
   tidyr::pivot_longer(cols = ends_with("_iN"), names_to = "Group", values_to = "Score") %>%
-  mutate(
+  dplyr::mutate(
     KO = str_replace(Group, "_iN$", ""),
     KO_Cell = Group,
     CellType = "iN"
   ) %>%
-  filter(!is.na(Cluster), is.finite(Score))
+  dplyr::filter(!is.na(Cluster), is.finite(Score))
 
 log2FC_iDA_df <- log2FC_d50_annotated_GO %>%
   dplyr::select(all_of(c(shared_cols, iDA_cols))) %>%
   tidyr::pivot_longer(cols = ends_with("_iDA"), names_to = "Group", values_to = "Score") %>%
-  mutate(
+  dplyr::mutate(
     KO = str_replace(Group, "_iDA$", ""),
     KO_Cell = Group,
     CellType = "iDA"
   ) %>%
-  filter(!is.na(Cluster), is.finite(Score))
+  dplyr::filter(!is.na(Cluster), is.finite(Score))
 
 write.csv(log2FC_iN_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannot, "log2FC_iN_long.csv"), row.names = FALSE)
 write.csv(log2FC_iDA_df, file.path(out_dir_d50_CrossCorr_nMOSTGOavgannot, "log2FC_iDA_long.csv"), row.names = FALSE)
@@ -7301,16 +7299,16 @@ col_expanded <- expand_color_dict(col)
 # --- Step 7. Function: Barplot with SEM for iN or iDA, includes CSV output
 NeuroClusterBarplot <- function(df_long, cluster_name = 2, cell_type = "iN") {
   df_sub <- df_long %>%
-    filter(Cluster == cluster_name, CellType == cell_type)
+    dplyr::filter(Cluster == cluster_name, CellType == cell_type)
 
   group_order_df <- df_sub %>%
-    group_by(KO, KO_Cell) %>%
-    summarise(
+    dplyr::group_by(KO, KO_Cell) %>%
+    dplyr::summarise(
       mean_score = mean(Score, na.rm = TRUE),
       sem = sd(Score, na.rm = TRUE) / sqrt(n()),
       .groups = "drop"
     ) %>%
-    arrange(mean_score)
+    dplyr::arrange(mean_score)
 
   # Ensure character for plotting and matching
   group_order_df$KO_Cell <- as.character(group_order_df$KO_Cell)
@@ -7395,18 +7393,18 @@ plot_bar_corr_per_annotation_multi <- function(corr_mat, selected_genotypes, ann
     corr_vec <- corr_mat[geno, ]
     corr_df <- tibble(Annotation = names(corr_vec), Correlation = corr_vec) %>%
       left_join(annot_class_map, by = "Annotation") %>%
-      filter(!is.na(Correlation)) %>%
-      mutate(Class = factor(Class, levels = names(class_colors)))
+      dplyr::filter(!is.na(Correlation)) %>%
+      dplyr::mutate(Class = factor(Class, levels = names(class_colors)))
 
     # Compute summary
     summary_df <- corr_df %>%
-      group_by(Annotation, Class) %>%
-      summarise(
+      dplyr::group_by(Annotation, Class) %>%
+      dplyr::summarise(
         mean_corr = mean(Correlation, na.rm = TRUE),
         sem_corr = sd(Correlation, na.rm = TRUE) / sqrt(n()),
         .groups = "drop"
       ) %>%
-      arrange(mean_corr)
+      dplyr::arrange(mean_corr)
 
     # Plot
     p <- ggplot(summary_df, aes(x = reorder(Annotation, mean_corr), y = mean_corr, fill = Class)) +
@@ -7482,7 +7480,7 @@ disease_colors = c(Sphingolipidoses= "#1874CD",
 #   Neuronal.ceroid.lipofuscinoses = "lightblue",
 #   Integral.membrane.protein.disorders = "grey70"
 # )
-disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
+disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% dplyr::rename(KO = value, DiseaseClass = name)
 
 
 # --- Step 2. Define plotting function (facet wrap by annotation)
@@ -7504,8 +7502,8 @@ plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_c
     )
   })
   bubble_df <- bind_rows(df_list) %>%
-    left_join(disease_class_df, by = "KO") %>%
-    mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
+    dplyr::left_join(disease_class_df, by = "KO") %>%
+    dplyr::mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
 
   # -------------------------
   # Facet-wrapped plot
@@ -7544,7 +7542,7 @@ plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_c
   axis_lim <- range(c(bubble_df$Cor_iN, bubble_df$Cor_iDA), na.rm = TRUE)
 
   for (annot in unique_annot) {
-    df_annot <- filter(bubble_df, Annotation == annot)
+    df_annot <- dplyr::filter(bubble_df, Annotation == annot)
 
     p <- ggplot(df_annot, aes(x = Cor_iN, y = Cor_iDA, color = DiseaseClass)) +
       geom_point(alpha = 0.8, size = 2) +
@@ -7605,13 +7603,13 @@ bubble_df <- map_dfr(seq_along(genos_iN), function(i) {
 }) %>%
   left_join(disease_class_df, by = "KO") %>%
   tidyr::pivot_longer(cols = c(Cor_iN, Cor_iDA), names_to = "Celltype", values_to = "Correlation") %>%
-  mutate(Celltype = recode(Celltype, Cor_iN = "iN", Cor_iDA = "iDA"),
+  dplyr::mutate(Celltype = recode(Celltype, Cor_iN = "iN", Cor_iDA = "iDA"),
          DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
 
 # --- Summary: Mean and SD of correlation per Annotation × Celltype × DiseaseClass
 summary_df <- bubble_df %>%
-  group_by(Annotation, Celltype, DiseaseClass) %>%
-  summarise(
+  dplyr::group_by(Annotation, Celltype, DiseaseClass) %>%
+  dplyr::summarise(
     MeanCor = mean(Correlation, na.rm = TRUE),
     SDCor = sd(Correlation, na.rm = TRUE),
     .groups = "drop"
@@ -7662,7 +7660,7 @@ annotation_cols <- colnames(log2FC_d50_annotated_GO)[which(colnames(log2FC_d50_a
 # --- Step 4.2. Count number of genes per annotation (non-NA or non-zero entries)
 gene_count_df <- log2FC_d50_annotated_GO %>%
   dplyr::select(all_of(annotation_cols)) %>%
-  summarise(across(everything(), ~ sum(., na.rm = TRUE))) %>% 
+  dplyr::summarise(across(everything(), ~ sum(., na.rm = TRUE))) %>% 
   tidyr::pivot_longer(everything(), names_to = "Annotation", values_to = "GeneCount")
 
 # --- Step 4.3. Define annotation color classes
@@ -7717,7 +7715,7 @@ plot_corr_iN_vs_iDA_by_genotype <- function(corr_mat, annot_class_df, annot_colo
   }) %>%
     left_join(annot_class_df, by = "Annotation") %>%
     left_join(gene_count_df, by = "Annotation") %>%
-    mutate(Class = factor(Class, levels = names(annot_colors)))
+    dplyr::mutate(Class = factor(Class, levels = names(annot_colors)))
 
   # ---------- FACET-WRAPPED PLOT ----------
    p_facet <- ggplot(all_df, aes(x = Cor_iN, y = Cor_iDA, color = Class)) +
@@ -8111,7 +8109,7 @@ input_diff118 <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Prot
 asah1_genes <- input_diff118 %>%
   dplyr::select(Gene.Symbol, SynGO, SynapseSVs, RecyclingEndosome, mtComplexI,
          log2FC_ASAH1_d23_iN.Ctrl_d23_iN, log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA) %>%
-  rename(Gene = Gene.Symbol,
+  dplyr::rename(Gene = Gene.Symbol,
          iN_d23 = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
          iDA_d23 = log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA)
 
@@ -8120,11 +8118,11 @@ join_cols <- c("Genes", "Gene")  # Matching column names
 
 day30_subset <- complete_data_annotated_day30 %>%
   dplyr::select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
-  rename(Gene = Genes)
+  dplyr::rename(Gene = Genes)
 
 day50_subset <- complete_data_annotated_day50 %>%
   dplyr::select(Genes, contains("ASAH1"), SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
-  rename(Gene = Genes)
+  dplyr::rename(Gene = Genes)
 
 # --- Long-format merge
 merged_all <- list(
@@ -8136,7 +8134,7 @@ merged_all <- list(
   d50 = day50_subset %>%
     dplyr::select(Gene, iN = ASAH1_iN_log2_fold_change, iDA = ASAH1_iDA_log2_fold_change,
            SynGO, SynapseSVs, RecyclingEndosome, mtComplexI) %>%
-    mutate(Time = "d50")
+    dplyr::mutate(Time = "d50")
 ) %>% bind_rows()
 
 # --- Define annotation columns
