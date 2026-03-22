@@ -9456,7 +9456,7 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 
 
 # =================================================
-# Module 9: Linear Regression & Modeling
+# Module 9: Linear Regression & Modeling (SKIP)
 # =================================================
 Linear regression on neuro nDIA dataset
 
@@ -10579,51 +10579,49 @@ col <- c(
 
 # --- Step 2. Load and reshape the correlation data
 HeLaCrossOmeCorrProt_df <- read.csv(
-  '/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/MSstats/HeLaCrossOmeCorr/LSD-nMOST_Protein-LipidCorr_tidyplots.csv',
-  header = TRUE, sep = ',', stringsAsFactors = FALSE
-)
+  '/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/MSstats/HeLaCrossOmeCorr/LSD-nMOST_Protein-LipidCorr_tidyplots.csv', header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
 
 # --- Step 3. Convert wide to long format and clean cluster names
 HeLaCrossOmeCorrProt_df_long <- HeLaCrossOmeCorrProt_df %>%
   tidyr::pivot_longer(cols = starts_with("Protein.Cluster"), names_to = "Cluster", values_to = "Score") %>%
-  mutate(Cluster = Cluster %>%
+  dplyr::mutate(Cluster = Cluster %>%
            str_replace("Protein\\.Cluster\\.", "Cluster ") %>%
            str_replace("\\.Signature", ""))
 
 
 # --- Step 4.  Order clusters by median for optional use
 cluster_order <- HeLaCrossOmeCorrProt_df_long %>%
-  group_by(Cluster) %>%
-  summarise(med = median(Score, na.rm = TRUE)) %>%
-  arrange(med) %>%
-  pull(Cluster)
+  dplyr::group_by(Cluster) %>%
+  dplyr::summarise(med = median(Score, na.rm = TRUE)) %>%
+  dplyr::arrange(med) %>%
+  dplyr::pull(Cluster)
 
 HeLaCrossOmeCorrProt_df_long <- HeLaCrossOmeCorrProt_df_long %>%
-  mutate(Cluster = factor(Cluster, levels = cluster_order))
+  dplyr::mutate(Cluster = factor(Cluster, levels = cluster_order))
 
 
 # --- Step 5. Main plotting function
 HeLaClusterCorr <- function(df_long, cluster_name = "Cluster 7", plot_type = "mean") {
   df_filtered <- df_long %>%
-    filter(Cluster == cluster_name) %>%
-    mutate(Group = as.character(Group))
+    dplyr::filter(Cluster == cluster_name) %>%
+    dplyr::mutate(Group = as.character(Group))
 
   # Sort groups by mean score for consistent display
   group_order <- df_filtered %>%
-    group_by(Group) %>%
-    summarise(mean_score = mean(Score, na.rm = TRUE)) %>%
-    arrange(mean_score) %>%
-    pull(Group)
+    dplyr::group_by(Group) %>%
+    dplyr::summarise(mean_score = mean(Score, na.rm = TRUE)) %>%
+    dplyr::arrange(mean_score) %>%
+    dplyr::pull(Group)
 
   df_filtered <- df_filtered %>%
-    mutate(Group = factor(Group, levels = group_order))
+    dplyr::mutate(Group = factor(Group, levels = group_order))
 
   if (plot_type == "mean") {
     # Barplot of group means
     df_filtered %>%
-      group_by(Group) %>%
-      summarise(mean_score = mean(Score, na.rm = TRUE)) %>%
+      dplyr::group_by(Group) %>%
+      dplyr::summarise(mean_score = mean(Score, na.rm = TRUE)) %>%
       ggplot(aes(x = Group, y = mean_score)) +
       geom_col(fill = "grey40") +
       theme_minimal(base_size = 10) +
@@ -10692,18 +10690,18 @@ ggsave(file.path(out_dir_d50_nMOST_nDIAcorrelation,"nMOST_LSD_Corr_GOCluster8.pd
 # --- Step 1. Function to plot all cluster signatures for a specific genotype
 HeLaGenotypeSignature <- function(HeLaCrossOmeCorrProt_df_long, gene_name = "CLN3") {
   HeLaCrossOmeCorrProt_df_long_filtered <- HeLaCrossOmeCorrProt_df_long %>%
-    filter(Group == gene_name) %>%
-    mutate(Cluster = as.character(Cluster))
+    dplyr::filter(Group == gene_name) %>%
+    dplyr::mutate(Cluster = as.character(Cluster))
 
   # Order clusters by mean score
   cluster_order <- HeLaCrossOmeCorrProt_df_long_filtered  %>%
-    group_by(Cluster) %>%
-    summarise(mean_score = mean(Score, na.rm = TRUE)) %>%
-    arrange(mean_score) %>%
-    pull(Cluster)
+    dplyr::group_by(Cluster) %>%
+    dplyr::summarise(mean_score = mean(Score, na.rm = TRUE)) %>%
+    dplyr::arrange(mean_score) %>%
+    dplyr::pull(Cluster)
 
   HeLaCrossOmeCorrProt_df_long_filtered <- HeLaCrossOmeCorrProt_df_long_filtered %>%
-    mutate(Cluster = factor(Cluster, levels = cluster_order))
+    dplyr::mutate(Cluster = factor(Cluster, levels = cluster_order))
 
   ggplot(HeLaCrossOmeCorrProt_df_long_filtered, aes(x = Cluster, y = Score)) +
     geom_hline(yintercept = 0, linewidth = 0.4, linetype = "dashed", color = "black") +
@@ -10740,8 +10738,9 @@ read in HeLa nMOST file
 # iNeuron - Hela Proteome Correlations 
 # Neuron–HeLa Proteome Correlation Analysis
 # --------------------------------------------------- #
-library(tidyverse)
+library(ComplexHeatmap)
 detach("package:ComplexHeatmap", unload = TRUE)
+library(tidyverse)
 # -----------------------------
 # I. Disease Class Definitions
 # -----------------------------
@@ -10770,17 +10769,17 @@ HeLaWCnMOST_df <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Pro
 
 neuron_long <- neuron_proteome_wide %>%
   tidyr::pivot_longer(-Genes, names_to = "sample_id", values_to = "log2_abundance") %>%
-  filter(str_detect(sample_id, "log2_fold_change")) %>%
-  mutate(
+  dplyr::filter(str_detect(sample_id, "log2_fold_change")) %>%
+  dplyr::mutate(
     genotype = str_extract(sample_id, "^[^_]+"),
     neuron = str_extract(sample_id, "_(iN|iDA)_") %>% str_remove_all("_")
   )
 
 neuron_df <- neuron_long %>%
-  filter(!is.na(log2_abundance)) %>%
-  group_by(Genes, genotype, neuron) %>%
-  summarise(mean_log2_abundance = mean(log2_abundance), .groups = "drop") %>%
-  pivot_wider(names_from = neuron, values_from = mean_log2_abundance)
+  dplyr::filter(!is.na(log2_abundance)) %>%
+  dplyr::group_by(Genes, genotype, neuron) %>%
+  dplyr::summarise(mean_log2_abundance = mean(log2_abundance), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = mean_log2_abundance)
 
 HeLa_long <- dplyr::rename(HeLaWCnMOST_df, Genes = Gene.names) %>%
   tidyr::pivot_longer(cols = ends_with(".KO"),
@@ -10788,24 +10787,24 @@ HeLa_long <- dplyr::rename(HeLaWCnMOST_df, Genes = Gene.names) %>%
                       values_to = "hela_abundance") %>%
   dplyr::mutate(genotype = stringr::str_remove(genotype, "\\.KO"))
 
-merged_df <- inner_join(neuron_df, HeLa_long, by = c("Genes", "genotype"))
+merged_df <- dplyr::inner_join(neuron_df, HeLa_long, by = c("Genes", "genotype"))
 
 merged_wide <- merged_df %>%
   tidyr::pivot_longer(c(iN, iDA), names_to = "neuron_type", values_to = "neuron_abundance") %>%
-  mutate(sample = paste(genotype, neuron_type, sep = "_")) %>%
+  dplyr::mutate(sample = paste(genotype, neuron_type, sep = "_")) %>%
   dplyr::select(Genes, sample, abundance = neuron_abundance) %>%
   bind_rows(
     merged_df %>%
-      mutate(sample = paste0(genotype, "_HeLa")) %>%
-      select(Genes, sample, abundance = hela_abundance)
+      dplyr::mutate(sample = paste0(genotype, "_HeLa")) %>%
+      dplyr::select(Genes, sample, abundance = hela_abundance)
   ) %>%
-  group_by(Genes, sample) %>%
-  summarise(abundance = mean(abundance, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::group_by(Genes, sample) %>%
+  dplyr::summarise(abundance = mean(abundance, na.rm = TRUE), .groups = "drop") %>%
   pivot_wider(names_from = sample, values_from = abundance)
 
 abundance_matrix <- merged_wide %>%
   column_to_rownames("Genes") %>%
-  mutate(across(everything(), as.numeric)) %>%
+  dplyr::mutate(across(everything(), as.numeric)) %>%
   replace(is.na(.), 0) %>%
   as.matrix()
 
@@ -10847,8 +10846,8 @@ plot_dual_layer_circos <- function(link_df, title_text, output_path) {
   # Build disease class mapping aligned to ordered_samples_local
   ko_labels <- str_extract(ordered_samples_local, "^[^_]+")
   sector_classes_local <- tibble(sample = ordered_samples_local, KO = ko_labels) %>%
-    left_join(ko_to_class, by = "KO") %>%
-    mutate(disease_color = disease_colors[class]) %>%
+    dplyr::left_join(ko_to_class, by = "KO") %>%
+    dplyr::mutate(disease_color = disease_colors[class]) %>%
     replace_na(list(disease_color = "grey90"))
   
   # ensure correct alignment
@@ -10921,10 +10920,10 @@ plot_dual_layer_circos <- function(link_df, title_text, output_path) {
 pairwise_links <- expand.grid(from = colnames(correlation_matrix_nMOSTnDIA),
                               to = colnames(correlation_matrix_nMOSTnDIA),
                               stringsAsFactors = FALSE) %>%
-  filter(from != to) %>%
-  mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+  dplyr::filter(from != to) %>%
+  dplyr::mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
   distinct(pair_id, .keep_all = TRUE) %>%
-  mutate(correlation = mapply(function(x, y) correlation_matrix_nMOSTnDIA[x, y], from, to))
+  dplyr::mutate(correlation = mapply(function(x, y) correlation_matrix_nMOSTnDIA[x, y], from, to))
 
 
 # Identify inter-group correlations only
@@ -10939,11 +10938,11 @@ sample_groups <- data.frame(
 )
 
 pairwise_links_inter <- pairwise_links %>%
-  left_join(sample_groups, by = c("from" = "sample")) %>%
-  rename(group_from = group) %>%
-  left_join(sample_groups, by = c("to" = "sample")) %>%
-  rename(group_to = group) %>%
-  filter(group_from != group_to)  # Only inter-group comparisons
+  dplyr::left_join(sample_groups, by = c("from" = "sample")) %>%
+  dplyr::rename(group_from = group) %>%
+  dplyr::left_join(sample_groups, by = c("to" = "sample")) %>%
+  dplyr::rename(group_to = group) %>%
+  dplyr::filter(group_from != group_to)  # Only inter-group comparisons
 
 
 ## plot function for both inter and intra correlations 
@@ -11100,9 +11099,9 @@ library(ComplexHeatmap)
 # use binary_matrix from IVa to add to HeLa-nMOST dataframe
 # add to dataframe and save as .csv file 
 HeLaWCnMOST_df_annotated <- HeLaWCnMOST_df %>%
-  rename(Genes = 2) %>%
-  left_join(binary_matrix, by = "Genes") %>%
-  mutate(across(all_of(colnames(binary_matrix)[-1]), ~ ifelse(. == TRUE, TRUE, FALSE))) %>%
+  dplyr::rename(Genes = 2) %>%
+  dplyr::left_join(binary_matrix, by = "Genes") %>%
+  dplyr::mutate(across(all_of(colnames(binary_matrix)[-1]), ~ ifelse(. == TRUE, TRUE, FALSE))) %>%
   replace(is.na(.), FALSE)
 
 # save as csv
@@ -11147,7 +11146,7 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
 
   # Assign each sample to a cell type or origin
   sample_meta <- tibble(sample = sector_names) %>%
-    mutate(geno_membership = case_when(
+    dplyr::mutate(geno_membership = case_when(
       str_detect(sample, "_iN") ~ "iN",
       str_detect(sample, "_iDA") ~ "iDA",
       str_detect(sample, "\\.KO$") ~ "HeLa",
@@ -11162,12 +11161,12 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
   ## ─────────────────────────────────────────────────────────────
 
   link_df <- as.data.frame(as.table(cor_mat)) %>%
-    rename(from = Var1, to = Var2, correlation = Freq) %>%
-    mutate(from = as.character(from), to = as.character(to)) %>%
-    filter(from != to) %>%
-    mutate(pair_id = map2_chr(from, to, ~ paste(sort(c(.x, .y)), collapse = "_"))) %>%
+    dplyr::rename(from = Var1, to = Var2, correlation = Freq) %>%
+    dplyr::mutate(from = as.character(from), to = as.character(to)) %>%
+    dplyr::filter(from != to) %>%
+    dplyr::mutate(pair_id = map2_chr(from, to, ~ paste(sort(c(.x, .y)), collapse = "_"))) %>%
     distinct(pair_id, .keep_all = TRUE) %>%
-    select(-pair_id)
+    dplyr::select(-pair_id)
 
   ## ─────────────────────────────────────────────────────────────
   ## 3. Define color gradient for correlation strength
@@ -11183,7 +11182,7 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
 
   # Keep only strong correlations
   plot_links <- link_df %>%
-    filter(correlation < -0.3 | correlation > 0.3)
+    dplyr::filter(correlation < -0.3 | correlation > 0.3)
 
   if (nrow(plot_links) == 0) {
   message("No correlations pass threshold for annotation: ", annot_name)
@@ -11195,8 +11194,8 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
 
   # Filter and order metadata for plotting
   ordered_sample_meta <- sample_meta %>%
-    filter(sample %in% samples_in_plot) %>%
-    arrange(geno_membership, sample)
+    dplyr::filter(sample %in% samples_in_plot) %>%
+    dplyr::arrange(geno_membership, sample)
 
   ordered_samples <- ordered_sample_meta$sample
   ordered_membership <- ordered_sample_meta$geno_membership
@@ -11212,7 +11211,7 @@ plot_annotation_circos <- function(cor_mat, annot_name, output_path) {
 
   group_counts <- ordered_sample_meta %>%
     dplyr::count(geno_membership, name = "n") %>%
-    pull(n)
+    dplyr::pull(n)
 
   gap_after <- unlist(lapply(group_counts, function(n) {
     c(rep(gap_between_sectors, n - 1), gap_between_groups)
@@ -11318,23 +11317,23 @@ for (ann in selected_annotations) {
 calculate_annotation_correlation_matrix <- function(annot_name, neuron_df, hela_df) {
   # Filter for genes in annotation
   genes <- neuron_df %>%
-    filter(!!sym(annot_name) == TRUE) %>%
-    pull(Genes) %>%
+    dplyr::filter(!!sym(annot_name) == TRUE) %>%
+    dplyr::pull(Genes) %>%
     intersect(hela_df$Genes)
 
   # Prepare matrices
   neuron_mat <- neuron_df %>%
-    filter(Genes %in% genes) %>%
-    select(Genes, matches("^.*log2_fold_change.*")) %>%
-    group_by(Genes) %>%
-    summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::filter(Genes %in% genes) %>%
+    dplyr::select(Genes, matches("^.*log2_fold_change.*")) %>%
+    dplyr::group_by(Genes) %>%
+    dplyr::summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
     column_to_rownames("Genes")
 
   hela_mat <- hela_df %>%
-    filter(Genes %in% genes) %>%
-    select(Genes, matches("\\.KO$")) %>%
-    group_by(Genes) %>%
-    summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::filter(Genes %in% genes) %>%
+    dplyr::select(Genes, matches("\\.KO$")) %>%
+    dplyr::group_by(Genes) %>%
+    dplyr::summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
     column_to_rownames("Genes")
 
   # Keep only common genes
@@ -11425,18 +11424,18 @@ combined_genes <- unique(unlist(lapply(selected_annotations, function(ann) {
 ## ─────────────────────────────────────────────────────────────
 # Neuron matrix: iN and iDA
 neuron_mat_combined <- complete_data_annotated_day50 %>%
-  filter(Genes %in% combined_genes) %>%
-  select(Genes, matches("^.*log2_fold_change.*")) %>%
-  group_by(Genes) %>%
-  summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::filter(Genes %in% combined_genes) %>%
+  dplyr::select(Genes, matches("^.*log2_fold_change.*")) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
   column_to_rownames("Genes")
 
 # HeLa matrix
 hela_mat_combined <- HeLaWCnMOST_df_annotated %>%
-  filter(Genes %in% combined_genes) %>%
-  select(Genes, matches("\\.KO$")) %>%
-  group_by(Genes) %>%
-  summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::filter(Genes %in% combined_genes) %>%
+  dplyr::select(Genes, matches("\\.KO$")) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::summarise(across(everything(), mean, na.rm = TRUE), .groups = "drop") %>%
   column_to_rownames("Genes")
 
 
@@ -11519,17 +11518,17 @@ Goal: Build a Protein-Protein Interaction (PPI) vulnerability and rewiring lands
 - With IntAct validation: ~1.7k edges
 
 > Confidence Tier Logic
->> GOLD:
+>> Tier 1:
 - In both prediction sources (convergent evidence), OR
 - AFMprob >= 0.9 AND RFprob >= 0.9 (high structural + coevolution), OR
 - SPOC >= 0.95 (high omics integration)
 
->> SILVER:
+>> Tier 2:
 - AFMprob >= 0.8 (good structural), OR
 - RFprob >= 0.8 (good coevolution), OR
 - SPOC >= 0.9 (good omics)
 
->> BRONZE:
+>> Tie 3:
 - Remaining edges with lower confidence
 
 > Additional Flags
@@ -11538,6 +11537,8 @@ Goal: Build a Protein-Protein Interaction (PPI) vulnerability and rewiring lands
 
 > Key Insight
 AFMprob and RFprob correlate; ipTM_max does not correlate with other metrics. ipTM likely measures interface quality specifically, valuable for complex analysis but not for general PPI confidence tiering.
+
+
 
 # Module 1: PPI Database Construction
 Creates master_ppi_v3 with all filter columns and support scores
