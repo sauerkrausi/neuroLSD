@@ -3024,7 +3024,7 @@ svfusion_group2 <- c("ASAH1","CLN8","GBA1","ATP13A2","PSAP","SMPD1","HEXA","HEXB
 make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_top = 40, out_prefix = "SV") {
   # 3.1 subset to annotation == 1 and iDA log2FC columns
   long_df <- complete_data_annotated_day50 %>%
-    filter(.data[[annotation_col]] == 1) %>%
+    dplyr::filter(.data[[annotation_col]] == 1) %>%
     tidyr::pivot_longer(
       cols = matches("_iDA_log2_fold_change$"),
       names_to = "Condition",
@@ -3044,8 +3044,8 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
 
   # 3.3 variability per protein across present genotypes
   var_tbl <- long_df %>%
-    group_by(Genes) %>%
-    summarise(
+    dplyr::group_by(Genes) %>%
+    dplyr::summarise(
       n_genotypes = n_distinct(genotype),
       mean_log2FC = mean(log2FC, na.rm = TRUE),
       sd_log2FC   = sd(log2FC,  na.rm = TRUE),
@@ -3053,8 +3053,8 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
       mad_log2FC  = mad(log2FC, na.rm = TRUE),
       .groups = "drop"
     ) %>%
-    filter(n_genotypes >= 2) %>%
-    arrange(desc(sd_log2FC))
+    dplyr::filter(n_genotypes >= 2) %>%
+    dplyr::arrange(desc(sd_log2FC))
 
   # write full ranking
   write_csv(var_tbl, file.path(out_dir_key, paste0(out_prefix, "_top_variable_genes_iDA_ranked.csv")))
@@ -3062,10 +3062,10 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
   # 3.4 select top N and build matrix
   top_genes <- var_tbl %>% slice_head(n = n_top) %>% pull(Genes)
   wide_mat <- long_df %>%
-    filter(Genes %in% top_genes) %>%
+    dplyr::filter(Genes %in% top_genes) %>%
     dplyr::mutate(Genes = factor(Genes, levels = top_genes)) %>%
-    pivot_wider(names_from = genotype, values_from = log2FC) %>%
-    arrange(Genes)
+    tidyr::pivot_wider(names_from = genotype, values_from = log2FC) %>%
+    dplyr::arrange(Genes)
 
   # order columns: group1 then group2
   g1_order <- intersect(group1_vec, colnames(wide_mat))
@@ -3149,6 +3149,10 @@ make_topvar_heatmap_iDA(
   n_top = n_top_drivers,
   out_prefix = "SVfusion"
 )
+
+
+dev.off()
+dev.off()
 ```
 
 
