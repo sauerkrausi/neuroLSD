@@ -4137,14 +4137,14 @@ plot_ctrl_markers_norm <- function(data, out_dir, genes = marker_genes_line) {
   
   # Normalize quan to Day 30 mean within each neuron × gene group
   ctrl_norm <- ctrl_df %>%
-    group_by(Genes, neuron) %>%
-    mutate(norm_quan = quan / mean(quan[day == 30], na.rm = TRUE)) %>%
+    dplyr::group_by(Genes, neuron) %>%
+    dplyr::mutate(norm_quan = quan / mean(quan[day == 30], na.rm = TRUE)) %>%
     ungroup()
   
   # Compute mean normalized intensity for each group
   ctrl_means <- ctrl_norm %>%
-    group_by(Genes, neuron, day) %>%
-    summarise(mean_norm = mean(norm_quan, na.rm = TRUE), .groups = "drop")
+    dplyr::group_by(Genes, neuron, day) %>%
+    dplyr::summarise(mean_norm = mean(norm_quan, na.rm = TRUE), .groups = "drop")
   
   # Get Day 50 values for end-of-line labels
   labels_df <- ctrl_means %>% dplyr::filter(day == 50)
@@ -4213,8 +4213,8 @@ synapse_genes_df <- bind_rows(presyn_df, postsyn_df)
 synapse_long <- clean_d50_transformed_df %>%
   dplyr::filter(Genes %in% synapse_genes_df$Genes) %>%
   dplyr::select(Genes, neuron, day, mean_ctrl) %>%
-  inner_join(synapse_genes_df, by = "Genes") %>%
-  mutate(
+  dplyr::inner_join(synapse_genes_df, by = "Genes") %>%
+  dplyr::mutate(
     day = paste("Day", day),                  # Convert numeric to "Day X"
     log2_abundance = log2(mean_ctrl)          # Apply log2 transform
   )
@@ -4222,16 +4222,16 @@ synapse_long <- clean_d50_transformed_df %>%
 
 # --- Step 4.  Summarize per gene and reshape to wide for change calculation ---
 delta_df <- synapse_long %>%
-  group_by(Genes, neuron, marker_type, day) %>%
-  summarise(log2_abundance = mean(log2_abundance, na.rm = TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = day, values_from = log2_abundance) %>%
+  dplyr::group_by(Genes, neuron, marker_type, day) %>%
+  dplyr::summarise(log2_abundance = mean(log2_abundance, na.rm = TRUE), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = day, values_from = log2_abundance) %>%
   dplyr::filter(!is.na(`Day 30`) & !is.na(`Day 50`)) %>%
-  mutate(direction = ifelse(`Day 50` > `Day 30`, "up", "down"))
+  dplyr::mutate(direction = ifelse(`Day 50` > `Day 30`, "up", "down"))
 
 # --- Step 5. Reshape back to long format for plotting ---
 long_with_direction <- delta_df %>%
   tidyr::pivot_longer(cols = c(`Day 30`, `Day 50`), names_to = "day", values_to = "log2_abundance") %>%
-  mutate(day = factor(day, levels = c("Day 30", "Day 50")))
+  dplyr::mutate(day = factor(day, levels = c("Day 30", "Day 50")))
 
 
 # --- Step 6.  Plot function with per-gene trajectories and group average overlays ---
@@ -4311,7 +4311,7 @@ pivot_neurodev <- function(df, day_label) {
       names_to = "sample",
       values_to = "log2FC"
     ) %>%
-    mutate(
+    dplyr::mutate(
       day = day_label,
       sample = str_remove(sample, "_log2_fold_change$"),
       genotype = str_extract(sample, "^[^_]+"),
@@ -4328,13 +4328,13 @@ combined_df <- bind_rows(d30_long, d50_long)
 
 # Join annotation info
 combined_df_annotated <- combined_df %>%
-  inner_join(marker_genes_df, by = "Genes")
+  dplyr::inner_join(marker_genes_df, by = "Genes")
 
 # Now you can summarize or plot
 summary_df <- combined_df_annotated %>%
   dplyr::filter(genotype %in% c("ctrl", "ASAH1", "GBA1", "SMPD1", "GRN")) %>%
-  group_by(marker_type, genotype, neuron, day) %>%
-  summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
+  dplyr::group_by(marker_type, genotype, neuron, day) %>%
+  dplyr::summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop")
 
 
 # --- Step 5. Plot
@@ -4437,8 +4437,8 @@ asah1_timecourse_log2_df <- bind_rows(
 
 # --- Step 4. Implement outlier capping per Annotation × Neuron × Day (1st/99th percentiles)
 asah1_timecourse_log2_df <- asah1_timecourse_log2_df %>%
-  group_by(Annotation, Neuron, Day) %>%
-  mutate(
+  dplyr::group_by(Annotation, Neuron, Day) %>%
+  dplyr::mutate(
     p01 = quantile(log2FC, 0.01, na.rm = TRUE),
     p99 = quantile(log2FC, 0.99, na.rm = TRUE),
     log2FC_capped = pmin(pmax(log2FC, p01), p99)
@@ -4503,7 +4503,7 @@ plot_violin_asah1_log2_both <- function() {
   stopifnot(all(c("Neuron","Day","Annotation","log2FC_capped") %in% names(asah1_timecourse_log2_df)))
 
   dfp <- asah1_timecourse_log2_df %>%
-    mutate(
+    dplyr::mutate(
       CombinedGroup = factor(
         paste0(Neuron, "_", Day),
         levels = c("iN_d30","iN_d50","iDA_d30","iDA_d50")
@@ -4992,11 +4992,14 @@ plot_gene_bar_log2fc <- function(gene_symbol, genotype_label = "ASAH1") {
   safe_gene <- gsub("[^A-Za-z0-9_]+", "-", dfp$Gene[1])
   pdf(file.path(out_dir_d50_timecourse, paste0(genotype_label, "_", safe_gene, "_log2FC_bar_timecourse.pdf")),width = 1, height = 2)
 dev.off()
+
 }
 
 # --- 3. Call function for example SYP in ASAH1-/-
 plot_gene_bar_log2fc("SYP", "ASAH1")
 # plot_gene_bar_log2fc("SYN1", "GBA1")
+
+
 ```
 
 
