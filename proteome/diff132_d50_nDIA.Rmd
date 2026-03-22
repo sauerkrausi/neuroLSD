@@ -23235,7 +23235,7 @@ message("  Output             : hela_log2fc_wide_qc ready for Module 1")
 #   eBayes shrinks per-protein variance toward a global prior estimated from
 #   all proteins x all samples. BH-FDR applied across all protein x KO tests.
 #
-# SIGNIFICANCE: q < 0.01 AND |log2FC| >= 1.3 (both required).
+# SIGNIFICANCE: q < 0.05 AND |log2FC| >= 1 (both required).
 # =============================================================================
 
 # BiocManager::install("limma")
@@ -23320,7 +23320,7 @@ stat_results_limma <- stat_results_limma %>%
   )
 
 message("  Tests run             : ", nrow(stat_results_limma))
-message("  Significant (q < 0.01): ", sum(!is.na(stat_results_limma$qval) & stat_results_limma$qval < 0.01))
+message("  Significant (q < 0.05): ", sum(!is.na(stat_results_limma$qval) & stat_results_limma$qval < 0.05))
 
 # --- Step 11: merge into summary table ---
 hela_log2fc_summary_stats <- hela_log2fc_summary_qc %>%
@@ -23350,18 +23350,20 @@ readr::write_csv(pval_hist_data, file.path(out_dir_hela_preproc, "qc", "sourceda
 
 p_pval_hist <- ggplot(pval_hist_data, aes(x = pval)) +
   geom_histogram(bins = 50, fill = "steelblue", color = "black", linewidth = 0.2) +
-  geom_vline(xintercept = 0.01, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = 0.05, linetype = "dashed", color = "red") +
   labs(title = "p-value distribution (limma, KO vs pooled ctrl null)",
        x = "p-value", y = "Count") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA))
+  theme(
+    panel.grid = element_blank(), 
+    panel.border = element_rect(color = "black", 
+                                fill = NA))
 
-ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"),
-       p_pval_hist, width = 4, height = 3, device = cairo_pdf)
+ggsave(file.path(out_dir_hela_preproc, "qc", "pval_histogram.pdf"), p_pval_hist, width = 3, height = 3, device = cairo_pdf)
 
 # --- QC: stacked barplot -- significant up/unchanged/down per KO ---
-# Significance: p or q < 0.01 AND |mean_log2FC| >= 1.3
-classify_direction <- function(df, sig_col, thresh = 0.01, lfc_thresh = 1.3) {
+# Significance: p or q < 0.05 AND |mean_log2FC| >= 1
+classify_direction <- function(df, sig_col, thresh = 0.05, lfc_thresh = 1) {
   df %>%
     dplyr::filter(!is.na(mean_log2FC), !is.na(.data[[sig_col]])) %>%
     dplyr::mutate(
@@ -23389,15 +23391,18 @@ make_dir_barplot <- function(count_df, title_str) {
     scale_fill_manual(values = bar_colors) +
     labs(title = title_str, x = NULL, y = "Proteins", fill = NULL) +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(), panel.border = element_rect(color = "black", fill = NA),
-          axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+    theme(
+      panel.grid = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA),
+      axis.text.x = element_text(angle = 90, hjust = 1), 
+      legend.position = "bottom")
 }
 
-counts_p <- classify_direction(hela_log2fc_summary_stats, sig_col = "pval", thresh = 0.01, lfc_thresh = 1.3)
-counts_q <- classify_direction(hela_log2fc_summary_stats, sig_col = "qval", thresh = 0.01, lfc_thresh = 1.3)
+counts_p <- classify_direction(hela_log2fc_summary_stats, sig_col = "pval", thresh = 0.05, lfc_thresh = 1)
+counts_q <- classify_direction(hela_log2fc_summary_stats, sig_col = "qval", thresh = 0.05, lfc_thresh = 1)
 
-p_dir_p <- make_dir_barplot(counts_p, "Protein direction by KO (p < 0.01, |log2FC| >= 1.3)")
-p_dir_q <- make_dir_barplot(counts_q, "Protein direction by KO (q < 0.01, |log2FC| >= 1.3)")
+p_dir_p <- make_dir_barplot(counts_p, "Protein direction by KO (p < 0.05, |log2FC| >= 1.3)")
+p_dir_q <- make_dir_barplot(counts_q, "Protein direction by KO (q < 0.05, |log2FC| >= 1.3)")
 
 ggsave(file.path(out_dir_hela_preproc, "qc", "barplot_protein_direction_p.pdf"), p_dir_p, width = 4, height = 4, device = cairo_pdf)
 ggsave(file.path(out_dir_hela_preproc, "qc", "barplot_protein_direction_q.pdf"), p_dir_q, width = 4, height = 4, device = cairo_pdf)
