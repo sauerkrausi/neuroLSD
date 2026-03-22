@@ -252,6 +252,7 @@ run on Thermo Orbitrap Astral, nDIA, hrMS2
 
 # Circos plot for neuroLSD 
 ```{r}
+library(circlize)
 #read the csv file
 #read in first column (==gene) as row title
 LSD <- read.csv('/Users/felix/Documents/PostDoc/Harvard/03_LSD/Proteomics_Lipidomics/Data_forplots/Circos/LSD_circos.csv', 
@@ -410,18 +411,18 @@ long_subcell_df <- subcell_df %>%
 ```{r}
 # --- Step 4b: Replicate correlation summary
 rep_corr <- cleaned_df %>%
-  filter(neuron != "QC", !is.na(genotype)) %>%
-  group_by(Genes, day, neuron, genotype, replicate) %>%
-  summarise(quan = sum(quan), .groups = "drop") %>%
-  pivot_wider(names_from = replicate, values_from = quan, names_prefix = "rep") %>%
-  group_by(day, neuron, genotype) %>%
-  summarise(
+  dplyr::filter(neuron != "QC", !is.na(genotype)) %>%
+  dplyr::group_by(Genes, day, neuron, genotype, replicate) %>%
+  dplyr::summarise(quan = sum(quan), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = replicate, values_from = quan, names_prefix = "rep") %>%
+  dplyr::group_by(day, neuron, genotype) %>%
+  dplyr::summarise(
     r12 = cor(rep1, rep2, use = "complete.obs"),
     r13 = cor(rep1, rep3, use = "complete.obs"),
     r23 = cor(rep2, rep3, use = "complete.obs"),
     .groups = "drop"
   ) %>%
-  pivot_longer(cols = c(r12, r13, r23), names_to = "pair", values_to = "correlation")
+  tidyr::pivot_longer(cols = c(r12, r13, r23), names_to = "pair", values_to = "correlation")
 
 summary(rep_corr$correlation)
 
@@ -442,39 +443,32 @@ ReplicateDist2 <- ggplot(rep_corr, aes(x = correlation, fill = neuron, color = n
   theme_bw(base_size = 6) +
   theme(panel.grid = element_blank(), legend.position = "bottom")
 
+ggsave(file.path(out_dir_d50_QC, "diff132_replicateDataDistribution.pdf"), ReplicateDist, width = 4, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_replicateDataDistributionDensity.pdf"), ReplicateDist2, width = 4, height = 4, device = cairo_pdf)
 
-# Save Plot of replcitae distribution
-ggsave(file.path(out_dir_d50_QC,"diff132_replicateDataDistribution.pdf"), ReplicateDist, width = 4, height = 4, device = cairo_pdf)
-ggsave(file.path(out_dir_d50_QC,"diff132_replicateDataDistributionDensity.pdf"), ReplicateDist2, width = 4, height = 4, device = cairo_pdf)
-
-
-# --- correlation matrix of samples 
-# Create wide matrix of all samples
+# --- correlation matrix of samples
 rep_wide_df <- cleaned_df %>%
-  filter(neuron != "QC", !is.na(genotype)) %>%
-  group_by(Genes, day, neuron, genotype, replicate) %>%
-  summarise(quan = sum(quan), .groups = "drop") %>%
-  mutate(sample_id = paste(genotype, neuron, day, replicate, sep = "_")) %>%
-  arrange(day, neuron, genotype, replicate) %>%
-  select(Genes, sample_id, quan) %>%
-  pivot_wider(names_from = sample_id, values_from = quan)
+  dplyr::filter(neuron != "QC", !is.na(genotype)) %>%
+  dplyr::group_by(Genes, day, neuron, genotype, replicate) %>%
+  dplyr::summarise(quan = sum(quan), .groups = "drop") %>%
+  dplyr::mutate(sample_id = paste(genotype, neuron, day, replicate, sep = "_")) %>%
+  dplyr::arrange(day, neuron, genotype, replicate) %>%
+  dplyr::select(Genes, sample_id, quan) %>%
+  tidyr::pivot_wider(names_from = sample_id, values_from = quan)
 
-# Reorder columns to match sorted order
 sample_order <- cleaned_df %>%
-  filter(neuron != "QC", !is.na(genotype)) %>%
-  distinct(day, neuron, genotype, replicate) %>%
-  arrange(day, neuron, genotype, replicate) %>%
-  mutate(sample_id = paste(genotype, neuron, day, replicate, sep = "_")) %>%
-  pull(sample_id)
+  dplyr::filter(neuron != "QC", !is.na(genotype)) %>%
+  dplyr::distinct(day, neuron, genotype, replicate) %>%
+  dplyr::arrange(day, neuron, genotype, replicate) %>%
+  dplyr::mutate(sample_id = paste(genotype, neuron, day, replicate, sep = "_")) %>%
+  dplyr::pull(sample_id)
 
-# create correlation matrix
 rep_corr_matrix <- cor(rep_wide_df[, sample_order], use = "pairwise.complete.obs")
 
-# plot and save heatmap
 pdf(file.path(out_dir_d50_QC, "diff132_replicate_correlation_heatmap.pdf"), width = 12, height = 12)
 pheatmap::pheatmap(
   rep_corr_matrix,
-  color = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(100),
   breaks = seq(0.5, 1, length.out = 101),
   cluster_rows = FALSE,
   cluster_cols = FALSE,
@@ -486,29 +480,25 @@ pheatmap::pheatmap(
 )
 dev.off()
 
-
 # --- Within vs between replicate variance plots
-# Within-replicate variance per protein per sample_id
 rep_variance_per_gene <- cleaned_df %>%
-  filter(neuron != "QC", genotype != "ctrl", !is.na(genotype)) %>%
-  group_by(Genes, day, neuron, genotype) %>%
-  filter(n() == 3) %>%
-  summarise(var_within = var(quan, na.rm = TRUE), .groups = "drop") %>%
-  mutate(sample_id = paste(genotype, neuron, day, sep = "_"))
+  dplyr::filter(neuron != "QC", genotype != "ctrl", !is.na(genotype)) %>%
+  dplyr::group_by(Genes, day, neuron, genotype) %>%
+  dplyr::filter(dplyr::n() == 3) %>%
+  dplyr::summarise(var_within = var(quan, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(sample_id = paste(genotype, neuron, day, sep = "_"))
 
-# Create color palette for all sample_ids
-sample_ids <- unique(rep_variance_per_gene$sample_id)
-sample_colors <- setNames(colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(sample_ids)), sample_ids)
+sample_ids    <- unique(rep_variance_per_gene$sample_id)
+sample_colors <- setNames(colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdYlBu")))(length(sample_ids)), sample_ids)
 
-# Scatter plot
 rep_variance_scatter <- ggplot(rep_variance_per_gene, aes(x = Genes, y = log2(var_within), color = sample_id)) +
   geom_point(size = 0.1, alpha = 0.3) +
   scale_color_manual(values = sample_colors) +
   labs(x = "Proteins", y = "Within-replicate variance [log2]", color = NULL) +
   theme_bw(base_size = 6) +
   theme(
-    panel.grid = element_blank(), 
-    axis.text.x = element_blank(), 
+    panel.grid = element_blank(),
+    axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
     legend.position = "right"
   )
