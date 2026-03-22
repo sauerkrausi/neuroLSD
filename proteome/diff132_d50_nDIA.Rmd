@@ -513,45 +513,49 @@ ggsave(file.path(out_dir_d50_QC, "diff132_within_replicate_variance_scatter.pdf"
 # F-ratio = between-genotype variance / within-genotype variance
 # MSbetween: variance between genotypes (based on all replicates)
 # MSwithin: variance within genotypes (across replicates)
-
 # If F > 1: biological signal is larger than technical noise = real differences
 # If F < 1: technical noise is larger than biological signal = can't trust the differences
 
 # --- Create replicate-level fold changes per organelle annotation
 rep_fc_organelle <- cleaned_df %>%
-  filter(neuron != "QC", !is.na(genotype)) %>%
-  group_by(Genes, day, neuron, genotype, replicate) %>%
-  summarise(quan = sum(quan), .groups = "drop") %>%
+  dplyr::filter(neuron != "QC", !is.na(genotype)) %>%
+  dplyr::group_by(Genes, day, neuron, genotype, replicate) %>%
+  dplyr::summarise(quan = sum(quan), .groups = "drop") %>%
   # pivot to get ctrl and KO quantities side by side
-  pivot_wider(names_from = genotype, values_from = quan) %>%
+  tidyr::pivot_wider(names_from = genotype, values_from = quan) %>%
   # reshape back to long, keeping ctrl as reference
-  pivot_longer(cols = -c(Genes, day, neuron, replicate, ctrl), names_to = "genotype", values_to = "ko_quan") %>%
-  rename(ctrl_quan = ctrl) %>%
-  filter(!is.na(ko_quan), !is.na(ctrl_quan)) %>%
+  tidyr::pivot_longer(cols = -c(Genes, day, neuron, replicate, ctrl), names_to = "genotype", values_to = "ko_quan") %>%
+  dplyr::rename(ctrl_quan = ctrl) %>%
+  dplyr::filter(!is.na(ko_quan), !is.na(ctrl_quan)) %>%
   # calculate log2 fold change vs ctrl
-  mutate(log2fc = log2(ko_quan / ctrl_quan)) %>%
+  dplyr::mutate(log2fc = log2(ko_quan / ctrl_quan)) %>%
   # add subcellular localization annotation
-  left_join(long_subcell_df, by = "Genes") %>%
-  filter(!is.na(Localization))
+  dplyr::left_join(long_subcell_df, by = "Genes") %>%
+  dplyr::filter(!is.na(Localization))
 
 # --- Calculate F-ratio per gene per annotation
 f_ratio_per_gene <- rep_fc_organelle %>%
-  group_by(Localization, day, neuron, genotype, Genes) %>%
-  filter(n() == 3) %>%
-  ungroup() %>%
-  group_by(Localization, day, neuron, Genes) %>%
-  summarise(
-    ms_within = mean(tapply(log2fc, genotype, var, na.rm = TRUE), na.rm = TRUE),
+  dplyr::group_by(Localization, day, neuron, genotype, Genes) %>%
+  dplyr::filter(dplyr::n() == 3) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(Localization, day, neuron, Genes) %>%
+  dplyr::summarise(
+    ms_within  = mean(tapply(log2fc, genotype, var, na.rm = TRUE), na.rm = TRUE),
     ms_between = var(log2fc, na.rm = TRUE),
-    f_ratio = ms_between / ms_within,
+    f_ratio    = ms_between / ms_within,
     .groups = "drop"
   ) %>%
-  filter(is.finite(f_ratio))
+  dplyr::filter(is.finite(f_ratio))
 
 # --- Summarize F-ratio per annotation x day x neuron
 f_ratio_df <- f_ratio_per_gene %>%
-  group_by(Localization, day, neuron) %>%
-  summarise(mean_f = mean(f_ratio, na.rm = TRUE), sd_f = sd(f_ratio, na.rm = TRUE), se_f = sd_f / sqrt(n()), .groups = "drop")
+  dplyr::group_by(Localization, day, neuron) %>%
+  dplyr::summarise(
+    mean_f = mean(f_ratio, na.rm = TRUE),
+    sd_f   = sd(f_ratio, na.rm = TRUE),
+    se_f   = sd_f / sqrt(dplyr::n()),
+    .groups = "drop"
+  )
 
 # --- Plot F-ratio across annotations
 f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neuron, fill = neuron, group = neuron)) +
@@ -562,13 +566,13 @@ f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neu
   scale_color_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
   scale_fill_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
   facet_wrap(~ day, ncol = 2) +
-  labs(x = NULL, y = "F-ratio (between / within genotype variance)", color = NULL, fill = NULL, caption = "F > 1: biological signal > technical noise\nF < 1: technical noise > biological signal") +
+  labs(x = NULL, y = "F-ratio (between / within genotype variance)", color = NULL, fill = NULL,
+       caption = "F > 1: biological signal > technical noise\nF < 1: technical noise > biological signal") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(), 
-        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), 
-        legend.position = "bottom", 
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "bottom",
         plot.caption = element_text(hjust = 0))
-
 
 ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, width = 4, height = 2, device = cairo_pdf)
 
