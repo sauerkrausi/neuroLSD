@@ -7816,10 +7816,10 @@ SphMut_samples <- c("Ctrl_iN", "Ctrl_iDA", "GLB1_iN", "GLB1_iDA", "GBA1_iN", "GB
 
 # --- Step 2. Subset and pivot
 SphMut_df <- clean_d50_transformed_df %>%
-  filter(sample_id %in% SphMut_samples, day == 50)
+  dplyr::filter(sample_id %in% SphMut_samples, day == 50)
 
 SphMut_df <- SphMut_df %>%
-  mutate(sample_id = paste0(sample_id, "_d", day))
+  dplyr::mutate(sample_id = paste0(sample_id, "_d", day))
 
 SphMut_wide_df <- SphMut_df %>%
   dplyr::select(Genes, sample_id, log2_fold_change, mean_ctrl, mean_ko, neg_log10_q_value, neg_log10_p_value) %>%
@@ -7843,7 +7843,7 @@ SphMut_wide_df <- SphMut_df %>%
 
 # --- Step 3. Add annotations
 SphMut_annotated_df <- SphMut_wide_df %>%
-  left_join(binary_matrix, by = "Genes") %>%
+  dplyr::left_join(binary_matrix, by = "Genes") %>%
   replace(is.na(.), 0)
 
 
@@ -7863,7 +7863,7 @@ SphMut_mat[!is.finite(SphMut_mat)] <- 0
 
 # Sample annotations
 SphMut_sample_info <- tibble(sample_id = colnames(SphMut_mat)) %>%
-  mutate(
+  dplyr::mutate(
     Genotype = str_extract(sample_id, "^[^_]+"),
     Neuron = str_extract(sample_id, "_i[DN]A") %>% str_remove("^_")
   ) %>%
@@ -8020,7 +8020,7 @@ pheatmap::pheatmap(
   main = "SphMut Organelle Correlation - iDA only"
 )
 dev.off()
-
+dev.off()
 
 ```
 
@@ -8102,8 +8102,7 @@ dev.off()
 ```{r}
 # --- Step 1. Load and Inspect Data
 # Define the path to the input CSV file
-input_diff118 <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/dataframes/diff118_iN-iDA_d23_Ctrl-ASAH1-SMPD1_wholecellproteome_annotated.csv", 
-                          header = TRUE, sep = ',', stringsAsFactors = FALSE)
+input_diff118 <- read.csv("/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/20240801_dif118_iN-iDA_Ctrl-SMPD1-ASAH1_Proteomics/Eval/dataframes/diff118_iN-iDA_d23_Ctrl-ASAH1-SMPD1_wholecellproteome_annotated.csv", header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
 # --- Subset: ASAH1 vs Ctrl (day 23, from diff118)
 asah1_genes <- input_diff118 %>%
@@ -8147,7 +8146,7 @@ asah1_genes <- input_diff118 %>%
   dplyr::select(Gene.Symbol, all_of(annotation_cols),
          log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
          log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA) %>%
-  rename(
+  dplyr::rename(
     Gene = Gene.Symbol,
     log2FC_iN_ASAH1vsCtrl_d23 = log2FC_ASAH1_d23_iN.Ctrl_d23_iN,
     log2FC_iDA_ASAH1vsCtrl_d23 = log2FC_ASAH1_d23_iDA.Ctrl_d23_iDA
@@ -8159,7 +8158,7 @@ day30_subset <- complete_data_annotated_day30 %>%
   dplyr::select(Genes, all_of(annotation_cols),
          ASAH1_iN_log2_fold_change,
          ASAH1_iDA_log2_fold_change) %>%
-  rename(
+  dplyr::rename(
     Gene = Genes,
     log2FC_iN_ASAH1vsCtrl_d30 = ASAH1_iN_log2_fold_change,
     log2FC_iDA_ASAH1vsCtrl_d30 = ASAH1_iDA_log2_fold_change
@@ -8171,7 +8170,7 @@ day50_subset <- complete_data_annotated_day50 %>%
   dplyr::select(Genes, all_of(annotation_cols),
          ASAH1_iN_log2_fold_change,
          ASAH1_iDA_log2_fold_change) %>%
-  rename(
+  dplyr::rename(
     Gene = Genes,
     log2FC_iN_ASAH1vsCtrl_d50 = ASAH1_iN_log2_fold_change,
     log2FC_iDA_ASAH1vsCtrl_d50 = ASAH1_iDA_log2_fold_change
@@ -8217,11 +8216,11 @@ prep_plot_data <- function(df, celltype) {
   df %>%
     dplyr::select(Gene, starts_with(paste0("log2FC_", celltype)), all_of(annotation_cols_all)) %>%
     tidyr::pivot_longer(cols = starts_with(paste0("log2FC_", celltype)), names_to = "Time", values_to = "log2FC") %>%
-    mutate(Time = str_extract(Time, "d\\d+")) %>%
+    dplyr::mutate(Time = str_extract(Time, "d\\d+")) %>%
     tidyr::pivot_longer(cols = all_of(annotation_cols_all), names_to = "Annotation", values_to = "in_group") %>%
-    filter(in_group == TRUE) %>%
-    group_by(Time, Annotation) %>%
-    summarise(
+    dplyr::filter(in_group == TRUE) %>%
+    dplyr::group_by(Time, Annotation) %>%
+    dplyr::summarise(
       mean_log2FC = mean(log2FC, na.rm = TRUE),
       sem_log2FC = sd(log2FC, na.rm = TRUE) / sqrt(n()),
       .groups = "drop"
@@ -8341,7 +8340,7 @@ dev.off()
 make_hit_table <- function(gene_sets_list, celltype) {
   enframe(gene_sets_list, name = "Label", value = "Genes") %>%
     unnest(Genes) %>%
-    mutate(
+    dplyr::mutate(
       Genotype  = str_extract(Label, "^[^_]+"),
       CellType  = celltype,
       Annotation = paste(annotations_to_check, collapse = ";")
@@ -8382,7 +8381,7 @@ write_csv(overlap_df, file.path(out_dir_d50_SphMuteuler, "Pairwise_overlap_count
 
 
 
-# Linear model for deciphering drivers of GBA1/ASAH1 differences
+# Linear model for deciphering drivers of GBA1/ASAH1 differences (work in progress)
 ```{r}
 # ------------------
 # PCA plot of Sph mutants
@@ -8406,7 +8405,7 @@ pca_scores <- as.data.frame(pca_res$x)
 pca_scores$Sample <- rownames(pca_scores)
 
 pca_scores <- pca_scores %>%
-  mutate(
+  dplyr::mutate(
     Genotype = str_extract(Sample, "^[^_]+"),
     Neuron = case_when(
       grepl("_iDA_", Sample) ~ "iDA",
@@ -8472,11 +8471,11 @@ library(limma)
 
 
 SphMut_sample_info <- tibble(sample_id = colnames(SphMut_mat)) %>%
-  mutate(
+  dplyr::mutate(
     Genotype = str_extract(sample_id, "^[^_]+")
   ) %>%
-  filter(Genotype %in% c("GBA1", "ASAH1", "SMPD1", "HEXA", "HEXB", "PSAP")) %>%
-  mutate(Genotype = factor(Genotype)) %>%
+  dplyr::filter(Genotype %in% c("GBA1", "ASAH1", "SMPD1", "HEXA", "HEXB", "PSAP")) %>%
+  dplyr::mutate(Genotype = factor(Genotype)) %>%
   column_to_rownames("sample_id")
 
 
@@ -8534,7 +8533,7 @@ top_neuron_effect <- topTable(fit, coef = "NeuroniDA", number = Inf)
 ### ----  Full Linear Model: ~ 0 + Genotype + Neuron
 # 1. Sample metadata
 SphMut_sample_info <- tibble(sample_id = colnames(SphMut_mat)) %>%
-  mutate(
+  dplyr::mutate(
     Genotype = str_extract(sample_id, "^[^_]+"),
     Neuron = case_when(
       grepl("_iDA_", sample_id) ~ "iDA",
@@ -8951,22 +8950,22 @@ disease_colors <- c(
   Integral.membrane.protein.disorders = "#E6F598",
   Lipid.storage.diseases = "#66C2A5"
 )
-disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% rename(KO = value, DiseaseClass = name)
+disease_class_df <- enframe(disease_classes) %>% unnest(value) %>% dplyr::rename(KO = value, DiseaseClass = name)
 
 
 # --- Step 2. Add Disease Class to subdataframe, reshape and join back annotations 
 annotated_log2fc_df <- complete_data_annotated_day50 %>%
   dplyr::select(Genes, matches("_iN_log2_fold_change$|_iDA_log2_fold_change$")) %>%
   tidyr::pivot_longer(cols = -Genes, names_to = "sample", values_to = "log2fc") %>%
-  mutate(
+  dplyr::mutate(
     sample = str_remove(sample, "_log2_fold_change$"),
     KO = str_extract(sample, "^[^_]+"),
     celltype = str_extract(sample, "(iN|iDA)$"),
     log2fc = as.numeric(log2fc)
   ) %>%
-  left_join(disease_class_df, by = "KO") %>%
+  dplyr::left_join(disease_class_df, by = "KO") %>%
   distinct(Genes, sample, .keep_all = TRUE) %>%
-  pivot_wider(id_cols = c(Genes, KO, DiseaseClass), names_from = sample, values_from = log2fc)
+  tidyr::pivot_wider(id_cols = c(Genes, KO, DiseaseClass), names_from = sample, values_from = log2fc)
 
 # Add annotation columns back in
 annotation_cols_all <- c(
@@ -8978,7 +8977,7 @@ annotation_cols_all <- c(
 )
 
 annotated_log2fc_df <- annotated_log2fc_df %>%
-  left_join(
+  dplyr::left_join(
     complete_data_annotated_day50 %>% dplyr::select(Genes, all_of(annotation_cols_all)),
     by = "Genes"
   )
@@ -9004,8 +9003,8 @@ plot_annotation_correlation <- function(annot_df, annotation_cols, out_dir, cell
   
   # Create annotation bar
   annotation_df <- data.frame(DiseaseClass = colnames(annotation_cor)) %>%
-    left_join(annotation_cols %>% enframe(name = NULL, value = "Annotation"), by = c("DiseaseClass" = "Annotation")) %>%
-    mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
+    dplyr::left_join(annotation_cols %>% enframe(name = NULL, value = "Annotation"), by = c("DiseaseClass" = "Annotation")) %>%
+    dplyr::mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
   
   row_annot <- data.frame(DiseaseClass = factor(rep(names(disease_colors), length.out = ncol(annotation_cor)), levels = names(disease_colors)))
   rownames(row_annot) <- colnames(annotation_cor)
@@ -9043,7 +9042,7 @@ custom_annotation_cols <- c("SynGO", "Endo_iN_curated_Hundley", "SynapseSVs",
 
 plot_annotation_correlation(annotated_log2fc_df, custom_annotation_cols, out_dir_d50_DisClass)
 
-
+dev.off()
 ```
 
 ## Annotation-based Circos of correlations
@@ -9071,9 +9070,9 @@ neuron_colors <- c("iN" = "dodgerblue", "iDA" = "#D53E4F")
 # Step 1. Expand to sample-level keys
 disease_class_df <- enframe(disease_classes, name = "DiseaseClass", value = "KO") %>%
   unnest(KO) %>%
-  mutate(DiseaseColor = disease_colors[DiseaseClass]) %>%
+  dplyr::mutate(DiseaseColor = disease_colors[DiseaseClass]) %>%
   crossing(CellType = c("iN", "iDA")) %>%
-  mutate(sample = paste0(KO, "_", CellType))
+  dplyr::mutate(sample = paste0(KO, "_", CellType))
 
 
 # --- Step 2. Set Annotations of interest, can corr threshold 
@@ -9097,16 +9096,16 @@ for (annot in custom_annotation_cols) {
 
   # Step 3.1: Filter for annotated genes
   annot_subset_df <- annotated_log2fc_df %>%
-    filter(.data[[annot]] == 1)
+    dplyr::filter(.data[[annot]] == 1)
 
   # Step 3.2: Check valid samples with ≥3 annotated genes
   valid_samples <- annot_subset_df %>%
     dplyr::select(Genes, KO, DiseaseClass, matches("_(iN|iDA)$")) %>%
     tidyr::pivot_longer(cols = matches("_(iN|iDA)$"), names_to = "sample", values_to = "log2fc") %>%
-    group_by(sample) %>%
-    filter(!is.na(log2fc)) %>%
-    summarise(n_genes = n_distinct(Genes), .groups = "drop") %>%
-    filter(n_genes >= min_genes_per_genotype) %>%
+    dplyr::group_by(sample) %>%
+    dplyr::filter(!is.na(log2fc)) %>%
+    dplyr::summarise(n_genes = n_distinct(Genes), .groups = "drop") %>%
+    dplyr::filter(n_genes >= min_genes_per_genotype) %>%
     pull(sample)
 
   if (length(valid_samples) < 2) {
@@ -9117,8 +9116,8 @@ for (annot in custom_annotation_cols) {
   # Step 3.3: Create filtered log2FC matrix
   log2fc_mat <- annot_subset_df %>%
     dplyr::select(Genes, all_of(valid_samples)) %>%
-    group_by(Genes) %>%
-    summarise(across(everything(), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
+    dplyr::group_by(Genes) %>%
+    dplyr::summarise(across(everything(), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
     column_to_rownames("Genes") %>%
     as.matrix()
 
@@ -9130,11 +9129,11 @@ for (annot in custom_annotation_cols) {
 
   # Step 3.6: Link table for circos
   corr_links <- expand.grid(from = rownames(corr_mat), to = colnames(corr_mat), stringsAsFactors = FALSE) %>%
-    filter(from != to) %>%
-    mutate(pair_id = map2_chr(from, to, ~ paste(sort(c(.x, .y)), collapse = "_"))) %>%
+    dplyr::filter(from != to) %>%
+    dplyr::mutate(pair_id = map2_chr(from, to, ~ paste(sort(c(.x, .y)), collapse = "_"))) %>%
     distinct(pair_id, .keep_all = TRUE) %>%
-    mutate(correlation = mapply(function(x, y) corr_mat[x, y], from, to)) %>%
-    filter(abs(correlation) > cor_threshold)
+    dplyr::mutate(correlation = mapply(function(x, y) corr_mat[x, y], from, to)) %>%
+    dplyr::filter(abs(correlation) > cor_threshold)
 
   # Step 3.7: Save link table
   write.csv(corr_links, file = file.path(out_dir_d50_DisClass_circos, paste0("LinkTable_", annot, "_absCorr", cor_threshold, ".csv")), row.names = FALSE)
@@ -9154,9 +9153,9 @@ plot_annotation_genotype_circos <- function(annot_df,annotation_cols,disease_cla
     mat_long <- sub_df %>%
       dplyr::select(Genes, matches("_(iN|iDA)$")) %>%
       tidyr::pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
-      filter(!is.na(log2fc)) %>%
-      group_by(sample) %>%
-      filter(n() >= min_gene_n) %>%
+      dplyr::filter(!is.na(log2fc)) %>%
+      dplyr::group_by(sample) %>%
+      dplyr::filter(n() >= min_gene_n) %>%
       ungroup()
 
     mat_wide <- mat_long %>%
@@ -9176,11 +9175,11 @@ plot_annotation_genotype_circos <- function(annot_df,annotation_cols,disease_cla
 
     # Make link table
     link_df <- expand.grid(from = colnames(cor_mat), to = colnames(cor_mat), stringsAsFactors = FALSE) %>%
-      filter(from != to) %>%
-      mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+      dplyr::filter(from != to) %>%
+      dplyr::mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
       distinct(pair_id, .keep_all = TRUE) %>%
-      mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to)) %>%
-      filter(correlation >= pos_thresh | correlation <= neg_thresh)
+      dplyr::mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to)) %>%
+      dplyr::filter(correlation >= pos_thresh | correlation <= neg_thresh)
 
     if (nrow(link_df) == 0) {
       warning("Skipping: No links pass thresholds for ", annot)
@@ -9189,8 +9188,8 @@ plot_annotation_genotype_circos <- function(annot_df,annotation_cols,disease_cla
 
     # Build sector metadata with deduplication
     sector_meta_df <- tibble(sample = colnames(cor_mat)) %>%
-      left_join(disease_class_df, by = "sample") %>%
-      mutate(
+      dplyr::left_join(disease_class_df, by = "sample") %>%
+      dplyr::mutate(
         DiseaseClass = replace_na(DiseaseClass, "Unassigned"),
         DiseaseColor = replace_na(DiseaseColor, "grey90")
       ) %>%
@@ -9312,9 +9311,9 @@ plot_annotation_genotype_circos_split <- function(annot_df, annotation_cols, dis
     mat_long <- sub_df %>%
       dplyr::select(Genes, matches("_(iN|iDA)$")) %>%
       tidyr::pivot_longer(-Genes, names_to = "sample", values_to = "log2fc") %>%
-      filter(!is.na(log2fc)) %>%
-      group_by(sample) %>%
-      filter(n() >= min_gene_n) %>%
+      dplyr::filter(!is.na(log2fc)) %>%
+      dplyr::group_by(sample) %>%
+      dplyr::filter(n() >= min_gene_n) %>%
       ungroup()
 
     # 3. Pivot to wide format (Genes × samples)
@@ -9333,10 +9332,10 @@ plot_annotation_genotype_circos_split <- function(annot_df, annotation_cols, dis
     # 5. Build link data frames for positive and negative correlations
     make_link_df <- function(thresh, sign) {
       df <- expand.grid(from = colnames(cor_mat), to = colnames(cor_mat), stringsAsFactors = FALSE) %>%
-        filter(from != to) %>%
-        mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
+        dplyr::filter(from != to) %>%
+        dplyr::mutate(pair_id = pmap_chr(list(from, to), ~ paste(sort(c(..1, ..2)), collapse = "_"))) %>%
         distinct(pair_id, .keep_all = TRUE) %>%
-        mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to))
+        dplyr::mutate(correlation = mapply(function(x, y) cor_mat[x, y], from, to))
       if (sign == "pos") df %>% filter(correlation >= thresh) else df %>% filter(correlation <= thresh)
     }
 
@@ -9350,8 +9349,8 @@ plot_annotation_genotype_circos_split <- function(annot_df, annotation_cols, dis
 
     # 6. Build sector metadata with DiseaseClass and NeuronType
     sector_meta_df <- tibble(sample = colnames(cor_mat)) %>%
-      left_join(disease_class_df, by = "sample") %>%
-      mutate(DiseaseClass = replace_na(DiseaseClass, "Unassigned"),
+      dplyr::left_join(disease_class_df, by = "sample") %>%
+      dplyr::mutate(DiseaseClass = replace_na(DiseaseClass, "Unassigned"),
              DiseaseColor = replace_na(DiseaseColor, "grey90")) %>%
       distinct(sample, .keep_all = TRUE)
 
@@ -9384,8 +9383,8 @@ plot_annotation_genotype_circos_split <- function(annot_df, annotation_cols, dis
       # Reorder colors based on actual drawn sectors
       actual_order <- get.all.sector.index()
       sector_meta_ordered <- sector_meta_df %>%
-        filter(sample %in% actual_order) %>%
-        arrange(match(sample, actual_order))
+        dplyr::filter(sample %in% actual_order) %>%
+        dplyr::arrange(match(sample, actual_order))
       disease_class_colors_ordered <- sector_meta_ordered$DiseaseColor
       neuron_type_colors_ordered   <- neuron_colors[sector_meta_ordered$CellType]
 
