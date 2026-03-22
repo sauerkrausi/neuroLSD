@@ -2137,7 +2137,7 @@ make_ann_heatmap_pvals(
 
 # Ternary plots from log2FC per annotation
 ```{r}
-# library(Ternary)
+library(Ternary)
 # --- Step 1: create out dir for function call
 out_dir_d50_ternaryplots <- "/Users/felix/Documents/PostDoc/Harvard/03_LSD-PD/Proteomics/d50_diff132/day50/TernaryPlots_log2fc"
 dir.create(out_dir_d50_ternaryplots, recursive = TRUE, showWarnings = FALSE)
@@ -2930,7 +2930,7 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
       names_to = "Condition",
       values_to = "log2FC"
     ) %>%
-    mutate(genotype = sub("_.*", "", Condition))
+    dplyr::mutate(genotype = sub("_.*", "", Condition))
   
   # 1.2 attach annotations
   long_df <- long_df %>%
@@ -2940,13 +2940,13 @@ make_lineplot_all <- function(df, neuron_type, loc_ann, out_file) {
   
   # 1.3 summarise mean log2FC per genotype × annotation
   plot_df <- long_df %>%
-    group_by(genotype, Annotation) %>%
-    summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Annotation = factor(Annotation, levels = loc_ann))
+    dplyr::group_by(genotype, Annotation) %>%
+    dplyr::summarise(mean_log2FC = mean(log2FC, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(Annotation = factor(Annotation, levels = loc_ann))
   
   # 1.4 flag highlight sets
   plot_df <- plot_df %>%
-    mutate(
+    dplyr::mutate(
       highlight_color = case_when(
         genotype %in% highlight_blue ~ "dodgerblue",
         TRUE ~ "grey80"
@@ -3030,7 +3030,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
       names_to = "Condition",
       values_to = "log2FC"
     ) %>%
-    mutate(genotype = sub("_.*$", "", Condition)) %>%
+    dplyr::mutate(genotype = sub("_.*$", "", Condition)) %>%
     dplyr::select(Genes, genotype, log2FC)
 
   # 3.2 restrict to requested genotypes that actually exist
@@ -3063,7 +3063,7 @@ make_topvar_heatmap_iDA <- function(annotation_col, group1_vec, group2_vec, n_to
   top_genes <- var_tbl %>% slice_head(n = n_top) %>% pull(Genes)
   wide_mat <- long_df %>%
     filter(Genes %in% top_genes) %>%
-    mutate(Genes = factor(Genes, levels = top_genes)) %>%
+    dplyr::mutate(Genes = factor(Genes, levels = top_genes)) %>%
     pivot_wider(names_from = genotype, values_from = log2FC) %>%
     arrange(Genes)
 
