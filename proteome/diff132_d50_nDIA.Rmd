@@ -1343,6 +1343,7 @@ ph_sig <- pheatmap::pheatmap(sig_heatmap_matrix,
   main                     = "Mean log2FC by Localization (p < 0.05)")
 
 ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "diff132_d50_subcell_heatmap_pval.pdf"), ph_sig, width = 14, height = 10, device = grDevices::cairo_pdf)
+dev.off()
 ```
 
 
@@ -1353,7 +1354,7 @@ ggplot2::ggsave(file.path(out_dir_d50_heatmaps, "diff132_d50_subcell_heatmap_pva
 #  Euler plots of Subcellular Annotation Overlap 
 # --------------------------------------------------- #
 # Load eulerr if not already loaded
-# library(eulerr)
+library(eulerr)
 
 # -- 1.1: Euler Diagram for Top 10 Vesicular Categories --
 
