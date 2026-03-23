@@ -753,7 +753,7 @@ peptide_ID_QC <- ggplot(gene_seq_data, aes(x = Genes, y = log2(total_sequences),
     panel.grid = element_blank(),
     legend.position = "bottom"
   )
-
+peptide_ID_QC
 
 # --- Step 3. plot average protein IDs per genotype / neuron type ---- 
 # First, compute quantified genes per replicate (if replicate column exists)
@@ -773,10 +773,10 @@ qc_summary <- gene_counts_per_rep %>%
 non_qc_summary <- gene_counts_per_rep %>%
   dplyr::filter(genotype != "QC") %>%
   dplyr::group_by(genotype, neuron) %>%
-  summarise(quantified_genes = mean(quantified_genes), .groups = "drop")
+  dplyr::summarise(quantified_genes = mean(quantified_genes), .groups = "drop")
 
 # Combine
-gene_counts_summary <- bind_rows(qc_summary, non_qc_summary)
+gene_counts_summary <- dplyr::bind_rows(qc_summary, non_qc_summary)
 
 # Then, calculate mean and SD across replicates per genotype × neuron group
 gene_counts_genotype <- gene_counts_summary %>%
