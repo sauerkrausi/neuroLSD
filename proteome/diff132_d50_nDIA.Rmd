@@ -19572,7 +19572,7 @@ if (nrow(mito_ppi_summary) == 0) {
     heatmap_data <- mito_ppi_summary %>%
       dplyr::filter(neuron == neuron_type) %>%
       dplyr::select(genotype, shared_organelle, n_lost_q) %>%
-      tidyr::pivot_wider(names_from = shared_organelle, values_from = n_lost_q, values_fill = 0)
+      tidyr::pivot_wider(names_from = shared_organelle, values_from = n_lost_q, values_fill = 0, values_fn = max)
 
     if (nrow(heatmap_data) < 2 || ncol(heatmap_data) < 2) {
       message("  Insufficient data for heatmap (", neuron_type, ")")
@@ -19627,7 +19627,7 @@ if (nrow(mito_ppi_summary) == 0) {
     heatmap_data_frac <- mito_ppi_summary %>%
       dplyr::filter(neuron == neuron_type) %>%
       dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
-      tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = 0)
+      tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = 0, values_fn = max)
 
     if (nrow(heatmap_data_frac) < 2 || ncol(heatmap_data_frac) < 2) next
 
@@ -19740,7 +19740,7 @@ if (nrow(mito_ppi_summary) == 0) {
       heatmap_oxphos <- oxphos_detail %>%
         dplyr::filter(neuron == neuron_type) %>%
         dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
-        tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = 0)
+        tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = 0, values_fn = max)
 
       if (nrow(heatmap_oxphos) < 2 || ncol(heatmap_oxphos) < 2) next
 
