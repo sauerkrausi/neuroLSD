@@ -57,7 +57,7 @@ For more detailed package requirements, please check the manuscript.
   Segment with `run_cellpose_calcium_remoteHDD.py`, then analyze with Rmd pipelines. Input: nd2 files. 
   
 ## Versions of preprints
-📖 Preprint version 2 (current):[BioRxiv]( https://doi.org/10.1101/2025.10.08.681047) 
+📖 Preprint version 2 (current):[BioRxiv]( https://doi.org/10.1101/2025.10.08.681047)   
 📖 Preprint version 1: [BioRxiv](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
 
 Also contains the following datasets (removed from newer versions for clarity):
