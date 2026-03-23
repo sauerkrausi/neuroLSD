@@ -16040,7 +16040,7 @@ message("QC plots saved to: ", file.path(out_dir_stoich, "qc"))
 
 
 
-# Module 9: KO Vulnerability Analysis v6 (Significance-Filtered)
+# OLD Module 9: KO Vulnerability Analysis v6 (Significance-Filtered)
 
 ## Overview
 Adapted vulnerability analysis with:
@@ -16233,7 +16233,7 @@ message("Module 1 complete: Significance-filtered proteome data built")
 message("Building KO edge states table...")
 
 baseline_filtered <- baseline_filtered
-message("  Baseline PPIs (gold): ", nrow(baseline_filtered))
+message("  Baseline PPIs (Tier 1): ", nrow(baseline_filtered))
 
 baseline_expanded <- baseline_filtered %>%
   dplyr::mutate(dummy = 1) %>%
@@ -16267,7 +16267,10 @@ ko_edge_states <- baseline_expanded %>%
 
 # Add disease class mapping
 disease_map <- disease_class_df %>% dplyr::distinct(sample, .keep_all = TRUE)
-ko_edge_states <- ko_edge_states %>% dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+ko_edge_states <- ko_edge_states %>% dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
+
+# disease_map <- disease_class_df %>% dplyr::distinct(KO, DiseaseClass, DiseaseColor)
+# ko_edge_states <- ko_edge_states %>% dplyr::left_join(disease_map, by = c("genotype" = "KO"))
 
 # Add shared organelle information
 message("  Computing shared organelle annotations...")
@@ -16363,7 +16366,7 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
 }
 
 trimer_ko_states <- dplyr::bind_rows(trimer_vuln_list) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
 
 readr::write_csv(trimer_ko_states, file.path(out_dir_vuln, "tables", "trimer_ko_states.csv"))
 message("  Saved: trimer_ko_states.csv")
@@ -16424,7 +16427,7 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
 }
 
 tetramer_ko_states <- dplyr::bind_rows(tetramer_vuln_list) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
 
 readr::write_csv(tetramer_ko_states, file.path(out_dir_vuln, "tables", "tetramer_ko_states.csv"))
 message("  Saved: tetramer_ko_states.csv")
@@ -16500,7 +16503,7 @@ for (i in seq_len(nrow(ko_neuron_grid))) {
 }
 
 complex_ko_states <- dplyr::bind_rows(complex_vuln_list) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
 
 complex_ko_states_export <- complex_ko_states %>% dplyr::select(-members_list)
 readr::write_csv(complex_ko_states_export, file.path(out_dir_vuln, "tables", "complex_ko_states.csv"))
@@ -16530,7 +16533,8 @@ for (neuron_type in c("iN", "iDA")) {
     dplyr::filter(neuron == neuron_type) %>%
     dplyr::mutate(disrupted_binary = as.integer(state_q == "disrupted")) %>%
     dplyr::select(complex_id, genotype, disrupted_binary) %>%
-    tidyr::pivot_wider(names_from = genotype, values_from = disrupted_binary, values_fill = 0)
+    tidyr::pivot_wider(names_from = genotype, values_from = disrupted_binary, values_fill = 0L)
+
 
   if (nrow(hm_data) < 2 || ncol(hm_data) < 3) {
     message("  Insufficient data for heatmap (", neuron_type, ")")
@@ -16577,19 +16581,41 @@ for (neuron_type in c("iN", "iDA")) {
     file.path(out_dir_vuln, "sourcedata", paste0("complex_heatmap_qval_", neuron_type, "_sourcedata.csv")))
 
   pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_qval_", neuron_type, ".pdf")), width = 12, height = 20)
-  pheatmap::pheatmap(hm_mat_ordered, color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
-    cluster_rows = FALSE, cluster_cols = TRUE, clustering_method = "ward.D2",
-    annotation_row = row_annot_ordered, annotation_col = col_annot, annotation_colors = ann_colors,
-    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+  pheatmap::pheatmap(
+    hm_mat_ordered, 
+    color = c("grey95", "#C51B7D"), 
+    breaks = c(-0.5, 0.5, 1.5),
+    cluster_rows = FALSE, 
+    cluster_cols = TRUE, 
+    clustering_method = "ward.D2",
+    annotation_row = row_annot_ordered, 
+    annotation_col = col_annot, 
+    annotation_colors = ann_colors,
+    show_rownames = FALSE, 
+    fontsize = 6, 
+    fontsize_col = 7, 
+    cellwidth = 8, 
+    border_color = NA,
     main = paste0("Complex Vulnerability (", neuron_type, ", q < 0.05)\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
   message("  Saved: heatmap_complex_vuln_qval_", neuron_type, ".pdf")
 
   pdf(file.path(out_dir_vuln, "plots/complexes", paste0("heatmap_complex_vuln_qval_clustered_", neuron_type, ".pdf")), width = 12, height = 20)
-  pheatmap::pheatmap(hm_mat, color = c("grey95", "#C51B7D"), breaks = c(-0.5, 0.5, 1.5),
-    cluster_rows = TRUE, cluster_cols = TRUE, clustering_method = "ward.D2",
-    annotation_row = row_annot, annotation_col = col_annot, annotation_colors = ann_colors,
-    show_rownames = FALSE, fontsize = 6, fontsize_col = 7, cellwidth = 8, border_color = NA,
+  pheatmap::pheatmap(
+    hm_mat, 
+    color = c("grey95", "#C51B7D"), 
+    breaks = c(-0.5, 0.5, 1.5),
+    cluster_rows = TRUE, 
+    cluster_cols = TRUE, 
+    clustering_method = "ward.D2",
+    annotation_row = row_annot, 
+    annotation_col = col_annot, 
+    annotation_colors = ann_colors,
+    show_rownames = FALSE, 
+    fontsize = 6,
+    fontsize_col = 7, 
+    cellwidth = 8, 
+    border_color = NA,
     main = paste0("Complex Vulnerability Clustered (", neuron_type, ", q < 0.05)\n", nrow(hm_mat), " complexes x ", ncol(hm_mat), " KOs"))
   dev.off()
   message("  Saved: heatmap_complex_vuln_qval_clustered_", neuron_type, ".pdf")
@@ -16618,8 +16644,11 @@ p_ppi_states <- ggplot2::ggplot(plot_data_ppi, ggplot2::aes(x = genotype, y = n,
   ggplot2::scale_fill_manual(values = c(retained = "grey80", lost = "#C51B7D", unknown = "grey50")) +
   ggplot2::labs(x = NULL, y = "Number of PPI edges", title = "PPI edge states per KO (q < 0.05)") +
   ggplot2::theme_bw(base_size = 6) +
-  ggplot2::theme(panel.grid = ggplot2::element_blank(), axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
-                 strip.background = ggplot2::element_rect(fill = "white"), legend.position = "right")
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank(), 
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
+                 strip.background = ggplot2::element_rect(fill = "white"), 
+    legend.position = "right")
 
 save_plot_with_sourcedata(p_ppi_states, "plots/global/barplot_ppi_states_qval", plot_data_ppi, width = 10, height = 8)
 
@@ -16652,7 +16681,7 @@ for (neuron_filter in c("iN", "iDA")) {
   hm_data <- ko_summary_by_organelle %>%
     dplyr::filter(neuron == neuron_filter) %>%
     dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
-    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = NA)
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = NA, values_fn = max)
   
   if (nrow(hm_data) < 2) next
   
@@ -16661,16 +16690,23 @@ for (neuron_filter in c("iN", "iDA")) {
   
   annotation_row <- disease_map %>%
     dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
-    dplyr::select(genotype, DiseaseClass) %>%
-    dplyr::distinct(genotype, .keep_all = TRUE) %>%
-    dplyr::filter(genotype %in% rownames(hm_mat)) %>%
+    dplyr::select(KO, DiseaseClass) %>%
+    dplyr::distinct(KO, .keep_all = TRUE) %>%
+    dplyr::filter(KO %in% rownames(hm_mat)) %>%
     as.data.frame()
-  rownames(annotation_row) <- annotation_row$genotype
+  # annotation_row <- disease_map %>%
+  #   dplyr::mutate(genotype = sub("_(iN|iDA)$", "", sample)) %>%
+  #   dplyr::select(genotype, DiseaseClass) %>%
+  #   dplyr::distinct(genotype, .keep_all = TRUE) %>%
+  #   dplyr::filter(genotype %in% rownames(hm_mat)) %>%
+  #   as.data.frame()
+  rownames(annotation_row) <- annotation_row$KO
   annotation_row <- annotation_row[rownames(hm_mat), "DiseaseClass", drop = FALSE]
   
   ann_colors <- list(DiseaseClass = disease_class_palette[intersect(names(disease_class_palette), unique(na.omit(annotation_row$DiseaseClass)))])
   
   readr::write_csv(hm_data, file.path(out_dir_vuln, "sourcedata", paste0("heatmap_organelle_ko_qval_", neuron_filter, "_sourcedata.csv")))
+  #hm_mat <- as.data.frame(hm_mat)
   
   pdf(file.path(out_dir_vuln, "plots/global", paste0("heatmap_organelle_ko_qval_", neuron_filter, ".pdf")), width = 12, height = 10)
   pheatmap::pheatmap(
@@ -16698,21 +16734,21 @@ message("Generating comparison barplots...")
 # Combine summaries for comparison
 comparison_data <- dplyr::bind_rows(
   sig_summary %>%
-    dplyr::select(genotype, neuron, n_lost_p, n_lost_q) %>%
+    dplyr::select(genotype_neuron, neuron, n_lost_p, n_lost_q) %>%
     dplyr::mutate(structure = "Proteins"),
   ko_summary_global %>%
-    dplyr::select(genotype, neuron, n_lost_p, n_lost_q) %>%
+    dplyr::select(genotype_neuron, neuron, n_lost_p, n_lost_q) %>%
     dplyr::mutate(structure = "PPIs"),
   trimer_summary_ko %>%
-    dplyr::select(genotype, neuron, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::select(genotype_neuron, neuron, n_disrupted_p, n_disrupted_q) %>%
     dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
     dplyr::mutate(structure = "Trimers"),
   tetramer_summary_ko %>%
-    dplyr::select(genotype, neuron, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::select(genotype_neuron, neuron, n_disrupted_p, n_disrupted_q) %>%
     dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
     dplyr::mutate(structure = "Tetramers"),
   complex_summary_ko %>%
-    dplyr::select(genotype, neuron, n_disrupted_p, n_disrupted_q) %>%
+    dplyr::select(genotype_neuron, neuron, n_disrupted_p, n_disrupted_q) %>%
     dplyr::rename(n_lost_p = n_disrupted_p, n_lost_q = n_disrupted_q) %>%
     dplyr::mutate(structure = "Complexes")
 ) %>%
@@ -16720,8 +16756,8 @@ comparison_data <- dplyr::bind_rows(
 
 # Add disease class
 comparison_data <- comparison_data %>%
-  dplyr::mutate(genotype_neuron = paste(genotype, neuron, sep = "_")) %>%
-  dplyr::left_join(disease_map, by = c("genotype" = "sample"))
+  dplyr::mutate(genotype = paste(genotype_neuron, neuron, sep = "_")) %>%
+  dplyr::left_join(disease_map, by = c("genotype_neuron" = "sample"))
 
 readr::write_csv(comparison_data, file.path(out_dir_vuln, "tables", "structure_loss_comparison.csv"))
 
@@ -16792,8 +16828,17 @@ dir.create(file.path(out_dir_vuln, "plots/KOxNeuron/per_ko_bubble"), recursive =
 
 # Disease class lookup (used throughout this chunk)
 disease_class_lookup <- disease_map %>%
-  dplyr::distinct(sample, DiseaseClass) %>%
-  dplyr::rename(genotype = sample)
+  dplyr::distinct(KO, DiseaseClass) %>%
+  dplyr::rename(genotype = KO)
+
+# ko_to_class <- disease_map %>%
+#   dplyr::distinct(KO, DiseaseClass)
+
+# disease_class_lookup <- disease_map %>%
+#   dplyr::distinct(sample, DiseaseClass) %>%
+#   dplyr::rename(genotype = sample)
+# 
+
 
 # -----------------------------------------------------------------------------
 # 7.1 Bubble plots: iN vs iDA comparison (global, one per metric, q-value)
@@ -17178,11 +17223,21 @@ plot_ko_bubble_in_vs_ida(complex_ko_states, "Complex", "state_q", "shared_organe
 
 for (nt in c("iN", "iDA")) {
 
-  row_annot_base <- disease_class_lookup %>%
-    dplyr::filter(genotype %in% unique(c(ppi_ko_by_annot$genotype, trimer_ko_by_annot$genotype, tetramer_ko_by_annot$genotype, complex_ko_by_annot$genotype))) %>%
-    as.data.frame()
-  rownames(row_annot_base) <- row_annot_base$genotype
+  # row_annot_base <- disease_class_lookup %>%
+  #   dplyr::filter(genotype %in% unique(c(ppi_ko_by_annot$genotype, trimer_ko_by_annot$genotype, tetramer_ko_by_annot$genotype, complex_ko_by_annot$genotype))) %>%
+  #   as.data.frame()
+  # rownames(row_annot_base) <- row_annot_base$genotype
 
+    # build annotation from ko_to_class (KO name only, no neuron suffix)
+  all_ko_in_loop <- unique(c(ppi_ko_by_annot$genotype, trimer_ko_by_annot$genotype,
+                              tetramer_ko_by_annot$genotype, complex_ko_by_annot$genotype))
+  row_annot_base <- ko_to_class %>%
+    dplyr::filter(KO %in% all_ko_in_loop) %>%
+    dplyr::select(KO, DiseaseClass) %>%
+    as.data.frame()
+  rownames(row_annot_base) <- row_annot_base$KO
+  row_annot_base <- row_annot_base %>% dplyr::select(DiseaseClass)
+  
   # --- PPI heatmap ---
   ppi_hm_data <- ppi_ko_by_annot %>%
     dplyr::filter(neuron == nt) %>%
@@ -21840,983 +21895,6 @@ message("    - Sphingosine pathway analysis")
 message("\nOutput directory: ", out_dir_vuln)
 ```
 
-
-
-
-
-
-# MISC from PPI 
-# !! check out if can reuse !! GO functional enrichment of lost PPIs on a KO x neuron level
-```{r}
-# ─────────────────────────────────────────────────────────────────────────────
-# GO term enrichment on proteins involved in lost PPIs per KO × neuron
-# ─────────────────────────────────────────────────────────────────────────────
-# min of 5 lost PPIs per ontology
-# focus on Biological process (BP)
-# top_30 PPIs lost per KO x neuron
-
-# --- Step 0: Create output directories ---
-dir.create(file.path(out_dir_ppi_vuln, "plots/GO"), recursive = TRUE, showWarnings = FALSE)
-dir.create(file.path(out_dir_ppi_vuln, "tables/GO"), recursive = TRUE, showWarnings = FALSE)
-
-# Load required packages
-if (!requireNamespace("topGO", quietly = TRUE)) {
-  stop("Package 'topGO' is required. Install from Bioconductor:\n",
-       "BiocManager::install('topGO')")
-}
-if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
-  stop("Package 'org.Hs.eg.db' is required. Install from Bioconductor:\n",
-       "BiocManager::install('org.Hs.eg.db')")
-}
-
-library(topGO)
-library(org.Hs.eg.db)
-
-
-# --- Step 1: Define GO enrichment function ---
-run_GO_enrichment_for_lost_ppis <- function(gene_set, 
-                                             background_genes, 
-                                             tag = "KO_neuron", 
-                                             out_dir,
-                                             ontology = "BP",
-                                             top_n = 30) {
-  
-  # Check if gene set is empty
-  if (length(gene_set) < 3) {
-    message("Insufficient genes (<3) for ", tag, "; skipping GO enrichment.")
-    return(NULL)
-  }
-  
-  # Step 1.1: Create geneList for topGO
-  geneList <- factor(as.integer(background_genes %in% gene_set))
-  names(geneList) <- background_genes
-  
-  message("  Running GO enrichment for ", tag, " (", length(gene_set), " genes)...")
-  
-  # Step 1.2: Run topGO Fisher test
-  GOdata <- new("topGOdata",
-                ontology = ontology,
-                allGenes = geneList,
-                geneSel = function(x) x == 1,
-                annot = annFUN.org,
-                mapping = "org.Hs.eg.db",
-                ID = "symbol",
-                nodeSize = 5)  # Minimum 5 genes per GO term
-  
-  resultFisher <- runTest(GOdata, algorithm = "elim", statistic = "fisher")
-  
-  # Step 1.3: Generate GO table
-  go_table <- GenTable(GOdata, elimFisher = resultFisher, topNodes = top_n)
-  
-  # Handle cases where no significant terms found
-  if (nrow(go_table) == 0) {
-    message("  No significant GO terms found for ", tag)
-    return(NULL)
-  }
-  
-  go_table <- go_table %>%
-    mutate(
-      raw_pval     = score(resultFisher)[GO.ID],
-      Significant  = as.numeric(Significant),
-      Expected     = as.numeric(Expected),
-      Enrichment   = ifelse(Expected > 0, Significant / Expected, NA),
-      log10P       = -log10(raw_pval),
-      tag          = tag
-    ) %>%
-    filter(!is.na(raw_pval), !is.na(Enrichment)) %>%
-    arrange(raw_pval) %>%
-    slice_head(n = 10)
-  
-  # Step 1.4: Get associated genes per GO term
-  go_genes <- genesInTerm(GOdata)
-  go_table$Genes <- sapply(go_table$GO.ID, function(go_id) {
-    intersect(go_genes[[go_id]], gene_set) %>% paste(collapse = ";")
-  })
-  
-  # Step 1.5: Save GO term table
-  write_csv(go_table, file = file.path(out_dir, paste0("GO_results_", tag, ".csv")))
-  
-  # Step 1.6: Plot dot plot (only if we have results)
-  if (nrow(go_table) > 0) {
-    p <- ggplot(go_table, aes(x = Enrichment, y = reorder(Term, Enrichment))) +
-      geom_point(aes(size = log10P, fill = Enrichment), 
-                 shape = 21, color = "black", stroke = 0.25) +
-      scale_fill_gradient(low = "white", high = "firebrick") +
-      scale_size_continuous(range = c(2, 8)) +
-      theme_bw(base_size = 7) +
-      labs(
-        x = "Fold Enrichment",
-        y = "GO Term",
-        size = expression(-log[10]*"P"),
-        title = paste0("Top GO Terms: ", tag)
-      ) +
-      theme(
-        panel.grid = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA)
-      )
-    
-    # save pdf of GO dot plot per KO x neuron type
-    ggsave(file.path(out_dir, paste0("GO_dotplot_", tag, ".pdf")), p, width = 6, height = 4, device = cairo_pdf)
-  }
-  
-  return(go_table)
-}
-
-
-# --- Step 2: Extract proteins involved in lost PPIs per KO × neuron ---
-# Get unique proteins from lost edges
-proteins_in_lost_ppis <- ko_edge_states %>%
-  dplyr::filter(state == "lost") %>%
-  dplyr::select(genotype, neuron, Gene1, Gene2) %>%
-  tidyr::pivot_longer(cols = c(Gene1, Gene2), names_to = "partner", values_to = "Gene") %>%
-  dplyr::filter(!is.na(Gene)) %>%
-  dplyr::distinct(genotype, neuron, Gene)
-
-# --- Exclude Nucleus-annotated genes before GO analysis ---
-# Identify all Nucleus genes from long_subcell_df
-nucleus_genes <- long_subcell_df %>%
-  dplyr::filter(Localization == "Nucleus") %>%
-  dplyr::pull(Genes) %>%
-  unique()
-
-# Remove them from ko_edge_states-based background
-ko_edge_states <- ko_edge_states %>%
-  dplyr::filter(!(Gene1 %in% nucleus_genes | Gene2 %in% nucleus_genes))
-
-message("Excluded ", length(nucleus_genes), " Nucleus-annotated genes from GO evaluation.")
-
-# Background: all neuronal genes in the network (now without Nucleus)
-background_genes <- unique(c(ko_edge_states$Gene1, ko_edge_states$Gene2))
-background_genes <- background_genes[!is.na(background_genes)]
-
-message("Background genes: ", length(background_genes))
-
-
-# --- Step 3: Run GO enrichment for each KO × neuron ---
-ko_neuron_combos <- proteins_in_lost_ppis %>%
-  dplyr::distinct(genotype, neuron)
-
-go_results_all <- list()
-
-for (i in seq_len(nrow(ko_neuron_combos))) {
-  geno <- ko_neuron_combos$genotype[i]
-  nt   <- ko_neuron_combos$neuron[i]
-  
-  # Get genes involved in lost PPIs for this KO × neuron
-  genes_lost <- proteins_in_lost_ppis %>%
-    dplyr::filter(genotype == geno, neuron == nt) %>%
-    dplyr::pull(Gene) %>%
-    unique()
-  
-  tag <- paste0(geno, "_", nt)
-  
-  # Run GO enrichment
-  go_res <- run_GO_enrichment_for_lost_ppis(
-    gene_set = genes_lost,
-    background_genes = background_genes,
-    tag = tag,
-    out_dir = file.path(out_dir_ppi_vuln, "plots/GO"),
-    ontology = "BP"
-  )
-  
-  if (!is.null(go_res)) {
-    go_results_all[[tag]] <- go_res
-  }
-}
-
-# Combine all results
-go_results_combined <- dplyr::bind_rows(go_results_all)
-
-# save combined csv file
-write_csv(go_results_combined,file.path(out_dir_ppi_vuln, "tables/GO", "GO_results_all_KO_neuron.csv"))
-
-message("GO enrichment complete! Processed ", length(go_results_all), " KO × neuron combinations.")
-
-
-# --- Step 4: Compare GO terms between iN and iDA ---
-# Find common GO terms across neuron types
-go_comparison <- go_results_combined %>%
-  dplyr::select(GO.ID, Term, tag, Enrichment, log10P) %>%
-  tidyr::separate(tag, into = c("genotype", "neuron"), sep = "_", remove = FALSE) %>%
-  dplyr::group_by(GO.ID, Term) %>%
-  dplyr::summarise(
-    n_KOs = n_distinct(genotype),
-    n_iN = sum(neuron == "iN"),
-    n_iDA = sum(neuron == "iDA"),
-    mean_enrichment = mean(Enrichment, na.rm = TRUE),
-    max_log10P = max(log10P, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  dplyr::arrange(desc(n_KOs), desc(mean_enrichment))
-
-# save csv
-write_csv(go_comparison,file.path(out_dir_ppi_vuln, "tables/GO", "GO_comparison_iN_vs_iDA.csv"))
-
-# Plot: Top GO terms shared across KOs
-top_shared_go <- go_comparison %>%
-  dplyr::filter(n_KOs >= 3) %>%
-  dplyr::slice_head(n = 15)
-
-if (nrow(top_shared_go) > 0) {
-  p_shared <- ggplot(top_shared_go, 
-                     aes(x = mean_enrichment, y = reorder(Term, mean_enrichment))) +
-    geom_col(aes(fill = max_log10P), color = "black", linewidth = 0.2) +
-    scale_fill_gradient(low = "white", high = "firebrick", name = expression(-log[10]*"P")) +
-    geom_text(aes(label = paste0("n=", n_KOs)), hjust = -0.2, size = 2.5) +
-    theme_bw(base_size = 7) +
-    labs(
-      x = "Mean Fold Enrichment",
-      y = "GO Term",
-      title = "Top GO terms disrupted across multiple KOs"
-    ) +
-    theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA)
-    )
-  
-  # save pdf
-  ggsave(file.path(out_dir_ppi_vuln, "plots/GO", "GO_shared_across_KOs.pdf"),p_shared, width = 7, height = 5, device = cairo_pdf)
-}
-
-
-# --- Step 5: Heatmap of GO term enrichment across KOs ---
-# Pivot for heatmap
-go_heatmap_data <- go_results_combined %>%
-  dplyr::select(GO.ID, Term, tag, Enrichment) %>%
-  tidyr::pivot_wider(names_from = tag, values_from = Enrichment, values_fill = 0) %>%
-  dplyr::filter(rowSums(dplyr::across(where(is.numeric))) > 0)
-
-# Limit to top GO terms (present in multiple KOs)
-go_term_counts <- go_results_combined %>%
-  dplyr::count(GO.ID, Term) %>%
-  dplyr::arrange(desc(n)) %>%
-  dplyr::slice_head(n = 30)
-
-go_heatmap_subset <- go_heatmap_data %>%
-  dplyr::filter(GO.ID %in% go_term_counts$GO.ID)
-
-if (nrow(go_heatmap_subset) >= 3) {
-  go_mat <- as.matrix(go_heatmap_subset[, -c(1:2)])
-  rownames(go_mat) <- go_heatmap_subset$Term
-  
-  # Shorten GO term names for readability
-  rownames(go_mat) <- substr(rownames(go_mat), 1, 60)
-  
-  pheatmap::pheatmap(
-    go_mat,
-    scale = "none",
-    color = colorRampPalette(c("white", "orange", "firebrick"))(100),
-    cluster_rows = TRUE,
-    cluster_cols = TRUE,
-    show_rownames = TRUE,
-    show_colnames = TRUE,
-    fontsize = 6,
-    cellwidth = 10,
-    cellheight = 10,
-    border_color = NA,
-    main = "GO term enrichment across KO × neuron",
-    filename = file.path(out_dir_ppi_vuln, "plots/GO", "heatmap_GO_enrichment_all.pdf"),
-    width = 12,
-    height = 10
-  )
-}
-
-
-# --- Step 6: Disease class-specific GO enrichment ---
-proteins_by_disease <- ko_edge_states %>%
-  dplyr::filter(state == "lost", !is.na(DiseaseClass)) %>%
-  dplyr::select(DiseaseClass, genotype, neuron, Gene1, Gene2) %>%
-  tidyr::pivot_longer(cols = c(Gene1, Gene2), values_to = "Gene") %>%
-  dplyr::filter(!is.na(Gene)) %>%
-  dplyr::distinct(DiseaseClass, genotype, neuron, Gene)
-
-disease_classes <- unique(proteins_by_disease$DiseaseClass)
-
-for (dc in disease_classes) {
-  for (nt in c("iN", "iDA")) {
-    genes_dc <- proteins_by_disease %>%
-      dplyr::filter(DiseaseClass == dc, neuron == nt) %>%
-      dplyr::pull(Gene) %>%
-      unique()
-    
-    if (length(genes_dc) < 3) next
-    
-    tag <- paste0(dc, "_", nt)
-    tag <- gsub("[^A-Za-z0-9_]", "_", tag)  # Clean tag for filename
-    
-    go_res_dc <- run_GO_enrichment_for_lost_ppis(
-      gene_set = genes_dc,
-      background_genes = background_genes,
-      tag = tag,
-      out_dir = file.path(out_dir_ppi_vuln, "plots/GO"),
-      ontology = "BP"
-    )
-  }
-}
-
-message("Disease class-specific GO enrichment complete!")
-```
-
-# !! check out if can reuse !! Structural complex vulnearbility evaluation
-```{r}
-# ==========================================================================
-# Prepare Protein Complexes for AlphaFold3 Structure Prediction
-# Generates WT and KO structure files for disrupted/partial complexes
-# ==========================================================================
-
-library(httr)
-library(jsonlite)
-
-out_dir_structures <- file.path(out_dir_ppi_vuln, "structures")
-dir.create(out_dir_structures, recursive = TRUE, showWarnings = FALSE)
-
-
-# --- Step 1: Select target complexes ---
-# Top 10 per KO x neuron + top 50 global
-
-top_per_ko <- complex_ko_summary %>%
-  dplyr::filter(complex_state %in% c("disrupted", "partial")) %>%
-  dplyr::group_by(genotype, neuron) %>%
-  dplyr::slice_max(frac_edges_lost, n = 10, with_ties = FALSE) %>%
-  dplyr::ungroup()
-
-top_global <- complex_ko_summary %>%
-  dplyr::filter(complex_state %in% c("disrupted", "partial")) %>%
-  dplyr::group_by(complex_id) %>%
-  dplyr::summarise(mean_frac_lost = mean(frac_edges_lost, na.rm = TRUE), .groups = "drop") %>%
-  dplyr::slice_max(mean_frac_lost, n = 50, with_ties = FALSE)
-
-# Union: all complex x KO x neuron combinations from both sets
-target_contexts <- complex_ko_summary %>%
-  dplyr::filter(complex_state %in% c("disrupted", "partial")) %>%
-  dplyr::filter(complex_id %in% top_global$complex_id | 
-                paste(complex_id, genotype, neuron) %in% paste(top_per_ko$complex_id, top_per_ko$genotype, top_per_ko$neuron))
-
-message("Target contexts: ", nrow(target_contexts), " (complex x KO x neuron combinations)")
-message("Unique complexes: ", n_distinct(target_contexts$complex_id))
-
-
-# --- Step 2: Build protein-level data for target complexes ---
-# Join complex membership with per-KO expression data
-
-complex_proteins_base <- complexes_baseline %>%
-  dplyr::inner_join(complexes_summary %>% dplyr::select(community_id, complex_id), by = "community_id") %>%
-  dplyr::filter(complex_id %in% target_contexts$complex_id) %>%
-  dplyr::select(complex_id, Gene)
-
-# Expand to all KO x neuron contexts and add expression
-complex_protein_states <- target_contexts %>%
-  dplyr::select(complex_id, genotype, neuron, complex_state, frac_edges_lost) %>%
-  dplyr::left_join(complex_proteins_base, by = "complex_id", relationship = "many-to-many") %>%
-  dplyr::left_join(prot_long %>% dplyr::select(Genes, genotype, neuron, log2FC), 
-                   by = c("Gene" = "Genes", "genotype", "neuron")) %>%
-  dplyr::mutate(is_broken = !is.na(log2FC) & log2FC < drop_thresh)
-
-message("Protein-level rows: ", nrow(complex_protein_states))
-
-
-# --- Step 3: Build UniProt mapping and fetch sequences ---
-
-protein_to_uniprot <- baseline_edges_union %>%
-  dplyr::select(Gene1, Protein1) %>%
-  dplyr::rename(Gene = Gene1, UniProt = Protein1) %>%
-  dplyr::bind_rows(baseline_edges_union %>% dplyr::select(Gene2, Protein2) %>% dplyr::rename(Gene = Gene2, UniProt = Protein2)) %>%
-  dplyr::filter(!is.na(Gene), !is.na(UniProt)) %>%
-  dplyr::distinct(Gene, .keep_all = TRUE)
-
-# Get all unique genes needing sequences
-genes_needed <- unique(complex_protein_states$Gene)
-uniprot_ids_needed <- protein_to_uniprot %>% dplyr::filter(Gene %in% genes_needed) %>% dplyr::pull(UniProt) %>% unique()
-
-message("Fetching sequences for ", length(uniprot_ids_needed), " UniProt IDs...")
-
-fetch_uniprot_sequences <- function(uniprot_ids) {
-  sequences <- list()
-  for (i in seq_along(uniprot_ids)) {
-    uid <- uniprot_ids[i]
-    if (i %% 50 == 0) message("  Fetched ", i, "/", length(uniprot_ids))
-    tryCatch({
-      url <- paste0("https://rest.uniprot.org/uniprotkb/", uid, ".fasta")
-      response <- httr::GET(url, httr::timeout(10))
-      if (httr::status_code(response) == 200) {
-        fasta_text <- httr::content(response, "text", encoding = "UTF-8")
-        lines <- strsplit(fasta_text, "\n")[[1]]
-        sequences[[uid]] <- paste(lines[!grepl("^>", lines)], collapse = "")
-      } else {
-        sequences[[uid]] <- NA_character_
-      }
-      Sys.sleep(0.1)
-    }, error = function(e) { sequences[[uid]] <- NA_character_ })
-  }
-  return(sequences)
-}
-
-all_sequences <- fetch_uniprot_sequences(uniprot_ids_needed)
-message("Successfully fetched: ", sum(!is.na(all_sequences)), "/", length(all_sequences))
-
-
-# --- Step 4: Add UniProt IDs and sequences to protein states ---
-
-complex_protein_states <- complex_protein_states %>%
-  dplyr::left_join(protein_to_uniprot, by = "Gene") %>%
-  dplyr::mutate(sequence = sapply(UniProt, function(x) if (!is.na(x) && x %in% names(all_sequences)) all_sequences[[x]] else NA_character_))
-
-# Summary stats per complex x KO x neuron
-complex_context_summary <- complex_protein_states %>%
-  dplyr::group_by(complex_id, genotype, neuron, complex_state, frac_edges_lost) %>%
-  dplyr::summarise(
-    n_proteins_total = n(),
-    n_proteins_broken = sum(is_broken, na.rm = TRUE),
-    n_proteins_retained = sum(!is_broken, na.rm = TRUE),
-    proteins_broken = paste(Gene[is_broken], collapse = ";"),
-    proteins_retained = paste(Gene[!is_broken], collapse = ";"),
-    .groups = "drop"
-  ) %>%
-  dplyr::mutate(
-    structure_status = dplyr::case_when(
-      n_proteins_retained >= 2 & n_proteins_broken > 0 ~ "WT_and_KO",
-      n_proteins_retained < 2 & n_proteins_broken > 0 ~ "WT_only",
-      n_proteins_broken == 0 ~ "intact",
-      TRUE ~ "no_structure"
-    )
-  )
-
-
-# --- Step 5: Write master CSV ---
-
-master_csv <- complex_protein_states %>%
-  dplyr::select(complex_id, genotype, neuron, complex_state, frac_edges_lost, Gene, UniProt, sequence, log2FC, is_broken) %>%
-  dplyr::rename(protein = Gene, uniprot_id = UniProt) %>%
-  dplyr::left_join(complex_context_summary %>% dplyr::select(complex_id, genotype, neuron, n_proteins_total, n_proteins_broken, n_proteins_retained, structure_status), 
-                   by = c("complex_id", "genotype", "neuron")) %>%
-  dplyr::arrange(complex_id, genotype, neuron, desc(is_broken), protein)
-
-write_csv(master_csv, file.path(out_dir_structures, "master_complex_proteins.csv"))
-message("Wrote master CSV: ", nrow(master_csv), " rows")
-
-
-# --- Step 6: Helper functions for file generation ---
-
-make_af3_json <- function(proteins_df, complex_name) {
-  # AlphaFold Server schema: top-level list, with dialect and version
-  chains <- lapply(seq_len(nrow(proteins_df)), function(i) {
-    list(proteinChain = list(sequence = proteins_df$sequence[i], count = 1L))
-  })
-  job <- list(
-    name = complex_name,
-    modelSeeds = list(),
-    sequences = chains,
-    dialect = "alphafoldserver",
-    version = 1L
-  )
-  return(list(job))  # Must be wrapped in a list
-}
-
-write_fasta <- function(proteins_df, filepath) {
-  lines <- unlist(lapply(seq_len(nrow(proteins_df)), function(i) {
-    c(paste0(">", proteins_df$UniProt[i], "|", proteins_df$Gene[i]), proteins_df$sequence[i])
-  }))
-  writeLines(lines, filepath)
-}
-
-make_chimerax_script <- function(proteins_df, complex_name) {
-  # Color broken proteins red, retained proteins steel blue
-  lines <- c(
-    paste0("# ChimeraX coloring script for ", complex_name),
-    paste0("# Generated: ", Sys.time()),
-    "",
-    "# Chain color assignments (WT structure):",
-    "# Broken proteins = red, Retained proteins = steel blue",
-    ""
-  )
-  for (i in seq_len(nrow(proteins_df))) {
-    chain_id <- LETTERS[i]
-    color <- if (proteins_df$is_broken[i]) "red" else "dodgerblue3"
-    lfc <- if (!is.na(proteins_df$log2FC[i])) round(proteins_df$log2FC[i], 2) else "NA"
-    lines <- c(lines, 
-      paste0("# Chain ", chain_id, ": ", proteins_df$Gene[i], " (log2FC=", lfc, ", broken=", proteins_df$is_broken[i], ")"),
-      paste0("color /", chain_id, " ", color))
-  }
-  lines <- c(lines, "", "# Surface representation (optional):", "# surface", "# color surface /A-Z fromAtoms")
-  return(lines)
-}
-
-
-# --- Step 7: Generate structure files ---
-# One WT per complex, KO versions per context where broken proteins differ
-
-unique_complexes <- unique(target_contexts$complex_id)
-message("Generating WT files for ", length(unique_complexes), " complexes...")
-
-# Step 7a: Generate one WT per complex
-for (cid in unique_complexes) {
-  
-  # Get all proteins for this complex (from any context, they're the same)
-  wt_proteins <- complex_protein_states %>%
-    dplyr::filter(complex_id == cid) %>%
-    dplyr::select(Gene, UniProt, sequence) %>%
-    dplyr::distinct() %>%
-    dplyr::filter(!is.na(sequence), nchar(sequence) > 0)
-  
-  if (nrow(wt_proteins) < 2) next
-  
-  # Create complex directory
-  complex_dir <- file.path(out_dir_structures, cid)
-  dir.create(complex_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # WT files
-  wt_json <- make_af3_json(wt_proteins, paste0(cid, "_WT"))
-  write_json(wt_json, file.path(complex_dir, paste0(cid, "_WT.json")), pretty = TRUE, auto_unbox = TRUE)
-  write_fasta(wt_proteins, file.path(complex_dir, paste0(cid, "_WT.fasta")))
-}
-
-# Step 7b: Generate KO versions per context (only where proteins differ)
-contexts_to_process <- complex_context_summary %>% dplyr::filter(n_proteins_retained > 0, n_proteins_broken > 0)
-message("Generating KO files for ", nrow(contexts_to_process), " contexts...")
-
-# Track unique KO protein sets to avoid duplicates
-ko_signatures_done <- list()
-
-for (i in seq_len(nrow(contexts_to_process))) {
-  ctx <- contexts_to_process[i, ]
-  
-  # Get retained proteins for this context
-  ko_proteins <- complex_protein_states %>%
-    dplyr::filter(complex_id == ctx$complex_id, genotype == ctx$genotype, neuron == ctx$neuron, !is_broken, !is.na(sequence), nchar(sequence) > 0)
-  
-  if (nrow(ko_proteins) < 2) next
-  
-  # Check if we already generated this exact KO (same proteins missing)
-  ko_signature <- paste(ctx$complex_id, paste(sort(ko_proteins$Gene), collapse = ";"), sep = ":")
-  if (ko_signature %in% names(ko_signatures_done)) next
-  ko_signatures_done[[ko_signature]] <- TRUE
-  
-  complex_dir <- file.path(out_dir_structures, ctx$complex_id)
-  prefix <- paste(ctx$complex_id, ctx$genotype, ctx$neuron, sep = "_")
-  
-  # KO files
-  ko_json <- make_af3_json(ko_proteins, paste0(prefix, "_KO"))
-  write_json(ko_json, file.path(complex_dir, paste0(prefix, "_KO.json")), pretty = TRUE, auto_unbox = TRUE)
-  write_fasta(ko_proteins, file.path(complex_dir, paste0(prefix, "_KO.fasta")))
-  
-  # ChimeraX script (colors broken proteins on WT structure)
-  wt_proteins_annotated <- complex_protein_states %>%
-    dplyr::filter(complex_id == ctx$complex_id, genotype == ctx$genotype, neuron == ctx$neuron, !is.na(sequence), nchar(sequence) > 0)
-  chimerax_lines <- make_chimerax_script(wt_proteins_annotated, prefix)
-  writeLines(chimerax_lines, file.path(complex_dir, paste0(prefix, "_chimerax.cxc")))
-}
-
-message("Generated ", length(unique_complexes), " WT structures and ", length(ko_signatures_done), " unique KO structures")
-
-
-# --- Step 8: Write summary files ---
-
-# Context-level summary with full complex metadata
-complex_context_summary <- complex_context_summary %>%
-  dplyr::left_join(complexes_summary %>% dplyr::select(complex_id, proteins, organelle), by = "complex_id") %>%
-  dplyr::arrange(complex_id, genotype, neuron)
-
-write_csv(complex_context_summary, file.path(out_dir_structures, "complex_context_summary.csv"))
-
-# Per-complex summary (aggregated across KOs)
-complex_summary_agg <- complex_context_summary %>%
-  dplyr::group_by(complex_id) %>%
-  dplyr::summarise(
-    n_contexts = n(),
-    n_disrupted = sum(complex_state == "disrupted"),
-    n_partial = sum(complex_state == "partial"),
-    mean_frac_lost = mean(frac_edges_lost, na.rm = TRUE),
-    max_frac_lost = max(frac_edges_lost, na.rm = TRUE),
-    kos_affected = paste(unique(genotype), collapse = ";"),
-    .groups = "drop"
-  ) %>%
-  dplyr::left_join(complexes_summary %>% dplyr::select(complex_id, n_proteins, proteins, organelle), by = "complex_id") %>%
-  dplyr::arrange(desc(mean_frac_lost))
-
-write_csv(complex_summary_agg, file.path(out_dir_structures, "complex_summary_aggregated.csv"))
-
-
-# --- Step 9: README ---
-
-readme_lines <- c(
-  "# Protein Complex Structure Prediction Files",
-  paste0("# Generated: ", Sys.time()),
-  "",
-  "## Overview",
-  paste0("Total complexes: ", length(unique_complexes)),
-  paste0("Total KO contexts: ", length(ko_signatures_done)),
-  "",
-  "## File descriptions",
-  "",
-  "master_complex_proteins.csv",
-  "  Per-protein data for all target complexes. Columns:",
-  "  complex_id, genotype, neuron, complex_state, frac_edges_lost,",
-  "  protein, uniprot_id, sequence, log2FC, is_broken, n_proteins_total, n_proteins_broken",
-  "",
-  "complex_context_summary.csv",
-  "  Per-context summary (one row per complex x KO x neuron)",
-  "  Use this to see which KOs affect each complex and which proteins are broken",
-  "",
-  "complex_summary_aggregated.csv",
-  "  Per-complex summary with list of affected KOs",
-  "",
-  "## Per-complex directories",
-  "",
-  "Each Complex_XXXX/ folder contains:",
-  "  {complex}_WT.json              - AF3 input with all proteins (one per complex)",
-  "  {complex}_WT.fasta             - FASTA for WT",
-  "  {complex}_{genotype}_{neuron}_KO.json   - AF3 input without broken proteins",
-  "  {complex}_{genotype}_{neuron}_KO.fasta  - FASTA for KO",
-  "  {complex}_{genotype}_{neuron}_chimerax.cxc - ChimeraX coloring script",
-  "",
-  "## Workflow",
-  "",
-  "1. Run AF3 on {complex}_WT.json to get the baseline structure",
-  "2. Optionally run AF3 on KO versions to see structural impact of missing proteins",
-  "3. Use ChimeraX scripts to color broken proteins on the WT structure",
-  "",
-  "## AlphaFold3 Server usage",
-  "",
-  "1. Go to https://alphafoldserver.com",
-  "2. Click 'Upload JSON'",
-  "3. Upload the *_WT.json or *_KO.json file",
-  "4. Submit and wait for results",
-  "5. Download the predicted structure (.cif)",
-  "",
-  "## Complex states",
-  "",
-  "disrupted: >= 75% of intra-complex PPI edges lost",
-  "partial: 25-75% of edges lost",
-  "Edge lost = either partner protein has log2FC < -0.5"
-)
-
-writeLines(readme_lines, file.path(out_dir_structures, "README.txt"))
-
-
-# --- Step 10: Dot plot visualization of complex disruption ---
-
-# Prepare data: order complexes by mean frac_edges_lost
-complex_order <- complex_context_summary %>%
-  dplyr::group_by(complex_id) %>%
-  dplyr::summarise(mean_frac = mean(frac_edges_lost, na.rm = TRUE), .groups = "drop") %>%
-  dplyr::arrange(mean_frac) %>%
-  dplyr::pull(complex_id)
-
-plot_data <- complex_context_summary %>%
-  dplyr::mutate(complex_id = factor(complex_id, levels = complex_order),
-                complex_state = factor(complex_state, levels = c("intact", "partial", "disrupted")))
-
-# Get organelle annotations for side strip
-organelle_annot <- complex_context_summary %>%
-  dplyr::select(complex_id, organelle) %>%
-  dplyr::distinct() %>%
-  dplyr::mutate(complex_id = factor(complex_id, levels = complex_order))
-
-# Color palettes
-state_colors <- c("partial" = "#FDB863", "disrupted" = "#B2182B")
-organelle_colors <- c(
-  "SynGO" = "#1E88E5",
-  "Postsynaptic" = "#5E35B1",
-  "Svendocytosis" = "#00ACC1",
-  "ER" = "#43A047",
-  "Mito" = "#E53935",
-  "Golgi" = "#FDD835",
-  "EarlyEndosome" = "#FB8C00",
-  "EndoLyso" = "#8E24AA",
-  "Other" = "#BDBDBD"
-)
-
-# Main dot plot
-p_dots <- ggplot(plot_data, aes(x = genotype, y = complex_id)) +
-  geom_point(aes(size = frac_edges_lost, color = complex_state), alpha = 0.8) +
-  scale_size_continuous(range = c(0.5, 3), name = "Fraction\nedges lost", limits = c(0.25, 1)) +
-  scale_color_manual(values = state_colors, name = "State", drop = FALSE) +
-  facet_wrap(~neuron, scales = "free_x") +
-  labs(x = NULL, y = NULL, title = "Protein complex disruption across LSD genotypes") +
-  theme_bw(base_size = 6) +
-  theme(
-    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
-    axis.text.y = element_text(size = 4),
-    panel.grid.major = element_line(color = "grey90", linewidth = 0.2),
-    panel.grid.minor = element_blank(),
-    strip.background = element_rect(fill = "grey95"),
-    legend.position = "right",
-    panel.spacing = unit(0.5, "lines")
-  )
-
-# Organelle annotation strip (separate plot to combine)
-p_org <- ggplot(organelle_annot, aes(x = 1, y = complex_id, fill = organelle)) +
-  geom_tile(width = 1, height = 1) +
-  scale_fill_manual(values = organelle_colors, name = "Organelle") +
-  theme_void(base_size = 6) +
-  theme(
-    axis.text.y = element_blank(),
-    legend.position = "right"
-  ) +
-  labs(x = NULL, y = NULL)
-
-# Combine with patchwork if available, otherwise save separately
-if (requireNamespace("patchwork", quietly = TRUE)) {
-  library(patchwork)
-  p_combined <- p_org + p_dots + plot_layout(widths = c(0.03, 1), guides = "collect")
-  n_complexes <- n_distinct(plot_data$complex_id)
-  plot_height <- max(4, n_complexes * 0.12)
-  ggsave(file.path(out_dir_structures, "complex_disruption_dotplot.pdf"), p_combined, width = 8, height = plot_height, device = cairo_pdf)
-} else {
-  n_complexes <- n_distinct(plot_data$complex_id)
-  plot_height <- max(4, n_complexes * 0.12)
-  ggsave(file.path(out_dir_structures, "complex_disruption_dotplot.pdf"), p_dots, width = 7, height = plot_height, device = cairo_pdf)
-  ggsave(file.path(out_dir_structures, "complex_disruption_organelle_strip.pdf"), p_org, width = 0.5, height = plot_height, device = cairo_pdf)
-}
-
-message("Saved dot plot: complex_disruption_dotplot.pdf")
-
-
-message("")
-message("=== Structure preparation complete ===")
-message("Output: ", out_dir_structures)
-message("WT structures: ", length(unique_complexes))
-message("Unique KO structures: ", length(ko_signatures_done))
-message("Master CSV: master_complex_proteins.csv")
-```
-
-
-
-# !! check out if can reuse !! ChimeraX Automation for Complex Structure Comparison
-```{r}
-# ==========================================================================
-# ChimeraX Automation for Complex Structure Comparison
-# Generates .cxc command files for WT vs KO structure visualization
-# Generate ChimeraX command scripts (.cxc) for automated WT vs KO structure comparison.
-# Colors WT retained chains grey, broken chain(s) red, and KO structure blue to visualize complex disruption.
-# ==========================================================================
-
-# --- Step 1: Setup ---
-out_dir_chimerax <- file.path(out_dir_structures, "chimerax_scripts")
-dir.create(out_dir_chimerax, recursive = TRUE, showWarnings = FALSE)
-
-
-# --- Step 2: Add sequence prefix to protein data ---
-# First 10 amino acids for chain matching in ChimeraX
-master_csv <- read_csv(file.path(out_dir_structures, "master_complex_proteins.csv"), show_col_types = FALSE)
-
-master_csv <- master_csv %>%
-  dplyr::mutate(seq_prefix = substr(sequence, 1, 10))
-
-
-# --- Step 3: Build chain mapping reference ---
-# For each complex, map protein -> expected chain order (based on JSON order)
-# First get unique proteins per complex, then assign chain IDs
-
-complex_chain_map <- master_csv %>%
-  dplyr::filter(!is.na(sequence)) %>%
-  dplyr::select(complex_id, protein, seq_prefix) %>%
-  dplyr::distinct() %>%
-  dplyr::group_by(complex_id) %>%
-  dplyr::arrange(complex_id, protein) %>%
-  dplyr::mutate(
-    # Proteins are ordered alphabetically in our JSON generation
-    wt_chain_expected = LETTERS[row_number()]
-  ) %>%
-  dplyr::ungroup()
-
-
-# --- Step 4: Function to generate ChimeraX script ---
-generate_chimerax_script <- function(complex_id, genotype, neuron, 
-                                      proteins_df, broken_proteins,
-                                      wt_path, ko_path, output_path) {
-  
-  # Get chain info for this complex
-  chain_info <- proteins_df %>%
-    dplyr::mutate(
-      is_broken = protein %in% broken_proteins,
-      status = ifelse(is_broken, "BROKEN", "retained")
-    )
-  
-  # Build script lines
-  lines <- c(
-    paste0("# =========================================================="),
-    paste0("# ChimeraX script for ", complex_id, " - ", genotype, " ", neuron),
-    paste0("# Generated: ", Sys.time()),
-    paste0("# =========================================================="),
-    "",
-    "# --- Chain mapping (verify by sequence prefix) ---",
-    paste0("# Proteins in complex:")
-  )
-  
-  # Add chain mapping comments
-  for (i in seq_len(nrow(chain_info))) {
-    row <- chain_info[i, ]
-    lines <- c(lines, paste0(
-      "#   Chain ", row$wt_chain_expected, ": ", row$protein, 
-      " [", row$status, "] - starts with ", row$seq_prefix
-    ))
-  }
-  
-  # Get broken chain IDs
-  broken_chains <- chain_info %>%
-    dplyr::filter(is_broken) %>%
-    dplyr::pull(wt_chain_expected)
-  
-  retained_chains <- chain_info %>%
-    dplyr::filter(!is_broken) %>%
-    dplyr::pull(wt_chain_expected)
-  
-  lines <- c(lines,
-    "",
-    "# --- Load structures ---",
-    "# UPDATE THESE PATHS to your local AF3 output locations",
-    paste0("# open ", wt_path),
-    paste0("# open ", ko_path),
-    "",
-    "# After loading, structures will be #1 (WT) and #2 (KO)",
-    "# Uncomment the lines below once paths are set:",
-    "",
-    "# --- Align structures ---",
-    "matchmaker #2 to #1",
-    "",
-    "# --- Color scheme ---",
-    "# WT structure: grey for retained, red for broken chain(s)",
-    "# KO structure: dodgerblue3",
-    "",
-    "color #1 darkgrey"
-  )
-  
-  # Add commands to color broken chains red
-  for (chain in broken_chains) {
-    lines <- c(lines, paste0("color #1/", chain, " red"))
-  }
-  
-  lines <- c(lines,
-    "",
-    "color #2 dodgerblue3",
-    "",
-    "# --- Display settings ---",
-    "set bgColor white",
-    "lighting soft",
-    "graphics silhouettes true",
-    "",
-    "# --- Orient view ---",
-    "view orient",
-    "",
-    "# --- Optional: show cartoon only ---",
-    "# hide atoms",
-    "# show cartoons",
-    "",
-    "# --- Save image ---",
-    paste0("# save ", complex_id, "_", genotype, "_", neuron, "_overlay.png width 2000 height 2000"),
-    "",
-    "# --- RMSD info will appear in Log panel after matchmaker ---",
-    "",
-    "# ==========================================================",
-    "# Quick commands to paste:",
-    "# ==========================================================",
-    paste0("# matchmaker #2 to #1"),
-    paste0("# color #1 darkgrey"),
-    paste0("# color #1/", paste(broken_chains, collapse = " red; color #1/"), " red"),
-    paste0("# color #2 dodgerblue3"),
-    paste0("# set bgColor white"),
-    paste0("# lighting soft"),
-    paste0("# view orient")
-  )
-  
-  writeLines(lines, output_path)
-  return(TRUE)
-}
-
-
-# --- Step 5: Generate scripts for all WT_and_KO entries ---
-context_summary <- read_csv(file.path(out_dir_structures, "complex_context_summary.csv"), show_col_types = FALSE)
-
-wt_and_ko_contexts <- context_summary %>%
-  dplyr::filter(structure_status == "WT_and_KO")
-
-message("Generating ChimeraX scripts for ", nrow(wt_and_ko_contexts), " WT vs KO comparisons...")
-
-scripts_generated <- 0
-
-for (i in seq_len(nrow(wt_and_ko_contexts))) {
-  ctx <- wt_and_ko_contexts[i, ]
-  
-  # Get protein info for this complex
-  proteins_df <- complex_chain_map %>%
-    dplyr::filter(complex_id == ctx$complex_id)
-  
-  if (nrow(proteins_df) == 0) next
-  
-  # Parse broken proteins
-  broken_proteins <- unlist(strsplit(ctx$proteins_broken, ";"))
-  
-  # Define paths (placeholders - user updates)
-  wt_path <- paste0("path/to/", ctx$complex_id, "_WT_model_0.cif")
-  ko_path <- paste0("path/to/", ctx$complex_id, "_", ctx$genotype, "_", ctx$neuron, "_KO_model_0.cif")
-  
-  # Output path
-  script_path <- file.path(out_dir_chimerax, 
-                           paste0(ctx$complex_id, "_", ctx$genotype, "_", ctx$neuron, ".cxc"))
-  
-  # Generate script
-  success <- generate_chimerax_script(
-    complex_id = ctx$complex_id,
-    genotype = ctx$genotype,
-    neuron = ctx$neuron,
-    proteins_df = proteins_df,
-    broken_proteins = broken_proteins,
-    wt_path = wt_path,
-    ko_path = ko_path,
-    output_path = script_path
-  )
-  
-  if (success) scripts_generated <- scripts_generated + 1
-}
-
-message("Generated ", scripts_generated, " ChimeraX scripts")
-
-
-# --- Step 6: Generate master script for batch processing ---
-master_script <- c(
-  "# ==========================================================",
-  "# Master ChimeraX Script - Complex Structure Comparisons",
-  paste0("# Generated: ", Sys.time()),
-  "# ==========================================================",
-  "",
-  "# This script lists all available comparisons.",
-  "# Update the BASE_PATH variable to your AF3 output directory.",
-  "",
-  "# BASE_PATH = /path/to/your/af3_outputs/",
-  "",
-  "# Available comparisons:",
-  ""
-)
-
-for (i in seq_len(nrow(wt_and_ko_contexts))) {
-  ctx <- wt_and_ko_contexts[i, ]
-  master_script <- c(master_script,
-    paste0("# ", ctx$complex_id, " - ", ctx$genotype, " ", ctx$neuron, 
-           " (", ctx$n_proteins_broken, "/", ctx$n_proteins_total, " broken, ",
-           "frac_lost=", round(ctx$frac_edges_lost, 2), ")"))
-}
-
-writeLines(master_script, file.path(out_dir_chimerax, "00_master_list.txt"))
-
-
-# --- Step 7: Save chain mapping reference ---
-write_csv(complex_chain_map, file.path(out_dir_chimerax, "chain_mapping_reference.csv"))
-
-
-message("")
-message("=== ChimeraX automation complete ===")
-message("Output directory: ", out_dir_chimerax)
-message("Scripts generated: ", scripts_generated)
-message("Chain mapping: chain_mapping_reference.csv")
-message("")
-message("Usage:")
-message("1. Open ChimeraX")
-message("2. Load WT structure: open /path/to/Complex_XXXX_WT_model_0.cif")
-message("3. Load KO structure: open /path/to/Complex_XXXX_genotype_neuron_KO_model_0.cif")
-message("4. File > Open > Complex_XXXX_genotype_neuron.cxc")
-message("5. Or paste commands from script into ChimeraX command line")
-```
 
 
 
