@@ -1790,6 +1790,8 @@ make_ann_heatmap_sig <- function(df, neuron_type, loc_ann, out_file,
     main          = paste0("Mean log2FC (", sig_type, " < ", sig_threshold, ") - ", neuron_type),
     filename      = out_file
   )
+  readr::write_csv(tibble::rownames_to_column(as.data.frame(ann_mat), "genotype"),
+                 sub("\\.pdf$", "_sourcedata.csv", out_file))
   return(rownames(ann_mat)[ph$tree_row$order])
 }
 
@@ -4172,6 +4174,8 @@ plot_ctrl_markers_norm <- function(data, out_dir, genes = marker_genes_line) {
   ggsave(file.path(out_dir, "ctrl_d30d50_Neuro_QC_Markers_norm_facet.pdf"),
          p, width = 4, height = 4, device = cairo_pdf)
   
+  # save sourcedata
+  readr::write_csv(ctrl_means, file.path(out_dir, "ctrl_d30d50_Neuro_QC_Markers_norm_sourcedata.csv"))
   return(p)
 }
 
@@ -7505,6 +7509,10 @@ plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_c
     dplyr::left_join(disease_class_df, by = "KO") %>%
     dplyr::mutate(DiseaseClass = factor(DiseaseClass, levels = names(disease_colors)))
 
+  if (!is.null(out_path)) {
+  readr::write_csv(bubble_df, file.path(out_path, "facet_bubbleplot_iN_vs_iDA_by_annotation_sourcedata.csv"))
+  }
+  
   # -------------------------
   # Facet-wrapped plot
   # -------------------------
@@ -7544,6 +7552,9 @@ plot_corr_bubble_by_annotation <- function(corr_mat, disease_class_df, disease_c
   for (annot in unique_annot) {
     df_annot <- dplyr::filter(bubble_df, Annotation == annot)
 
+    if (!is.null(out_path)) {
+  readr::write_csv(df_annot, file.path(out_path, paste0("iN_vs_iDA_Genotype_", annot, "_sourcedata.csv")))
+}
     p <- ggplot(df_annot, aes(x = Cor_iN, y = Cor_iDA, color = DiseaseClass)) +
       geom_point(alpha = 0.8, size = 2) +
       ggrepel::geom_text_repel(
