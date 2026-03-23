@@ -17032,10 +17032,6 @@ for (nt in c("iN", "iDA")) {
 # 7.3 Per-KO Barplots by Annotation (faceted, separate iN and iDA)
 # -----------------------------------------------------------------------------
 
-disease_class_lookup <- disease_map %>%
-  dplyr::distinct(sample, DiseaseClass) %>%
-  dplyr::rename(genotype = sample)
-
 # --- 7.3.1 Lost PPI per KO, faceted by annotation ---
 ppi_ko_by_annot <- ko_summary_by_organelle %>%
   dplyr::filter(!is.na(shared_organelle))
@@ -17211,7 +17207,7 @@ plot_ko_bubble_in_vs_ida <- function(df, metric_name, state_col, annot_col, out_
 }
 
 # state_col is now "state_q" throughout; complex uses shared_organelle
-plot_ko_bubble_in_vs_ida(ko_edge_states, "PPI", "state_q", "shared_organelle", "ppi")
+#plot_ko_bubble_in_vs_ida(ko_edge_states, "PPI", "state_q", "shared_organelle", "ppi")
 plot_ko_bubble_in_vs_ida(trimer_ko_states, "Trimer", "state_q", "shared_organelle", "trimer")
 plot_ko_bubble_in_vs_ida(tetramer_ko_states, "Tetramer", "state_q", "shared_organelle", "tetramer")
 plot_ko_bubble_in_vs_ida(complex_ko_states, "Complex", "state_q", "shared_organelle", "complex")
@@ -17228,7 +17224,7 @@ for (nt in c("iN", "iDA")) {
   #   as.data.frame()
   # rownames(row_annot_base) <- row_annot_base$genotype
 
-    # build annotation from ko_to_class (KO name only, no neuron suffix)
+  # build annotation from ko_to_class (KO name only, no neuron suffix)
   all_ko_in_loop <- unique(c(ppi_ko_by_annot$genotype, trimer_ko_by_annot$genotype,
                               tetramer_ko_by_annot$genotype, complex_ko_by_annot$genotype))
   row_annot_base <- ko_to_class %>%
@@ -17236,13 +17232,13 @@ for (nt in c("iN", "iDA")) {
     dplyr::select(KO, DiseaseClass) %>%
     as.data.frame()
   rownames(row_annot_base) <- row_annot_base$KO
-  row_annot_base <- row_annot_base %>% dplyr::select(DiseaseClass)
+  #row_annot_base <- row_annot_base %>% dplyr::select(DiseaseClass)
   
   # --- PPI heatmap ---
   ppi_hm_data <- ppi_ko_by_annot %>%
     dplyr::filter(neuron == nt) %>%
     dplyr::select(genotype, shared_organelle, frac_lost_q) %>%
-    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = NA)
+    tidyr::pivot_wider(names_from = shared_organelle, values_from = frac_lost_q, values_fill = NA, values_fn = max)
 
   if (nrow(ppi_hm_data) >= 2 && ncol(ppi_hm_data) >= 3) {
     hm_mat <- as.matrix(ppi_hm_data[, -1]); rownames(hm_mat) <- ppi_hm_data$genotype
