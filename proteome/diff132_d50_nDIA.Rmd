@@ -22696,7 +22696,7 @@ baseline_summary_hela <- data.frame(
              "baseline_unique_proteins", "proteome_coverage_pct",
              "edges_CORUM", "edges_ComplexPortal_strict", "edges_convergent",
              "median_node_degree", "max_node_degree"),
-  value  = c(length(hela_ctrl_genes), nrow(master_ppi_gold_hela), nrow(baseline_ppi_hela),
+  value  = c(length(hela_ctrl_genes), nrow(master_ppi_tier_hela), nrow(baseline_ppi_hela),
              length(baseline_proteins_hela),
              round(100 * length(baseline_proteins_hela) / length(hela_ctrl_genes), 1),
              sum(baseline_ppi_hela$filter_CORUM == "present", na.rm = TRUE),
