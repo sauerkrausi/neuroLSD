@@ -26,6 +26,7 @@ library(ggplot2)
 library(Cairo)
 
 # data cleaning
+# install.packages("janitor")
 library(janitor)
 
 # stats
@@ -297,7 +298,13 @@ make_syn_barplots_with_stats <- function(df_input,
   # 3.2 Loop over metrics
   for (metric_var_name in metrics_keep) {
     df_metric <- df_base %>% filter(is.finite(.data[[metric_var_name]]))
-
+    
+# For SYP object_count, exclude empty image frames (keep >= 500)
+if (metric_var_name == "object_count") {
+  df_metric <- df_metric %>%
+    filter(stain_norm != "SYP" | .data[[metric_var_name]] >= 500)
+}
+    
     # Decide facets: coloc or non-coloc
     if (metric_var_name %in% coloc_metrics) {
       df_clean <- df_metric %>% mutate(facet_group = "SYP-Bassoon")
@@ -381,45 +388,65 @@ make_syn_barplots_with_stats <- function(df_input,
                            paste0("syn_violin_",metric_var_name,"_day",this_day,"_",fg,"_pvals.pdf")),
                  p_fg,width=3,height=4,units="in",device=cairo_pdf)
 
-          # 3.3.3 Extra: Day 38 Ctrl only (iN vs iDA)
-          if (this_day==38L) {
-            df_ctrl <- df_day_fg %>% filter(genotype=="Ctrl") %>%
-              mutate(group_id=factor(paste(genotype,neuron_type,sep="_"),
-                                     levels=c("Ctrl_iN","Ctrl_iDA")))
-            if(nrow(df_ctrl)>0){
-              wt <- tryCatch(wilcox.test(
-                df_ctrl %>% filter(group_id=="Ctrl_iN") %>% pull(.data[[metric_var_name]]),
-                df_ctrl %>% filter(group_id=="Ctrl_iDA") %>% pull(.data[[metric_var_name]]),
-                exact=FALSE), error=function(e) list(p.value=NA_real_))
-              pval_ctrl <- tibble(group1="Ctrl_iN",group2="Ctrl_iDA",
-                                  p_raw=as.numeric(wt$p.value),
-                                  p_adj=as.numeric(wt$p.value),
-                                  p_symbol=.p_to_symbol(as.numeric(wt$p.value))) %>%
-                mutate(y.position=max(df_ctrl[[metric_var_name]],na.rm=TRUE)*1.1,
-                       xmin=group1,xmax=group2,label=p_symbol)
+          # source data export
+          write_csv(
+            df_day_fg %>% select(group_id, genotype, neuron_type, day, all_of(metric_var_name)),
+            file.path(output_dir, paste0("sourcedata_syn_violin_",metric_var_name,"_day",this_day,"_",fg,".csv"))
+          )
 
-              p_ctrl <- ggplot(df_ctrl,aes(x=group_id,y=.data[[metric_var_name]],fill=group_id)) +
+          # 3.3.3 Extra: Day 38 coloc only: Ctrl_iN, Ctrl_iDA, ASAH1_iDA (no ASAH1_iN)
+          if (this_day==38L) {
+            groups_3 <- c("Ctrl_iN","Ctrl_iDA","ASAH1_iDA")
+            df_3grp <- df_day_fg %>%
+              filter(group_id %in% groups_3) %>%
+              mutate(group_id=factor(group_id, levels=groups_3))
+            if(nrow(df_3grp)>0){
+              all_comparisons_3 <- combn(groups_3, 2, simplify=FALSE)
+              stats_3grp <- purrr::map_df(all_comparisons_3, function(cmp) {
+                g1 <- cmp[1]; g2 <- cmp[2]
+                x1 <- df_3grp %>% filter(group_id==g1) %>% pull(.data[[metric_var_name]])
+                x2 <- df_3grp %>% filter(group_id==g2) %>% pull(.data[[metric_var_name]])
+                wt <- tryCatch(wilcox.test(x1,x2,exact=FALSE), error=function(e) list(p.value=NA_real_))
+                tibble(group1=g1,group2=g2,n1=sum(is.finite(x1)),n2=sum(is.finite(x2)),p_raw=as.numeric(wt$p.value))
+              }) %>% mutate(p_adj=p.adjust(p_raw,method="BH"), p_symbol=.p_to_symbol(p_adj))
+
+              base_y_3 <- max(df_3grp[[metric_var_name]], na.rm=TRUE)
+              if(!is.finite(base_y_3)) base_y_3 <- 0
+              pval_3grp <- stats_3grp %>%
+                mutate(step=ifelse(base_y_3>0,0.05*base_y_3,0.05),
+                       y.position=base_y_3+seq_len(n())*step,
+                       xmin=group1,xmax=group2,label=p_symbol) %>%
+                filter(!label %in% c("ns",""))
+
+              p_3grp <- ggplot(df_3grp,aes(x=group_id,y=.data[[metric_var_name]],fill=group_id)) +
                 geom_jitter(width=0.15,height=0,alpha=0.2,color="black") +
                 geom_violin(width=0.85,scale="width",trim=TRUE) +
                 geom_boxplot(width=0.25,outlier.shape=NA,fill="white",color="black",fatten=1) +
                 scale_fill_manual(values=group_colors,guide="none") +
-                labs(x="Ctrl: iN vs iDA", y=y_lab,
-                     title=paste0("Day 38 · ",metric_var_name," · ",fg," · Ctrl only")) +
+                labs(x="Genotype × Neuron type", y=y_lab,
+                     title=paste0("Day 38 · ",metric_var_name," · ",fg," · 3 groups")) +
                 theme_bw(base_size=6)+
                 theme(panel.grid=element_blank(),
                       axis.text.x=element_text(angle=30,hjust=1,vjust=1),
                       plot.title=element_text(face="bold"))
 
-              if(nrow(pval_ctrl)>0){
-                p_ctrl <- p_ctrl + stat_pvalue_manual(pval_ctrl,label="label",
+              if(nrow(pval_3grp)>0){
+                p_3grp <- p_3grp + stat_pvalue_manual(pval_3grp,label="label",
                                                       xmin="xmin",xmax="xmax",
                                                       y.position="y.position",
-                                                      tip.length=0.01,bracket.size=0.3,size=2.0)
+                                                      tip.length=0.01,bracket.size=0.3,size=2.0) +
+                  expand_limits(y=max(pval_3grp$y.position,na.rm=TRUE)*1.02)
               }
 
               ggsave(file.path(output_dir,
-                               paste0("syn_violin_",metric_var_name,"_day38_",fg,"_Ctrl_iN_vs_iDA_pvals.pdf")),
-                     p_ctrl,width=3,height=4,units="in",device=cairo_pdf)
+                               paste0("syn_violin_",metric_var_name,"_day38_",fg,"_3grp_pvals.pdf")),
+                     p_3grp,width=2.5,height=4,units="in",device=cairo_pdf)
+
+              # source data export for 3-group plot
+              write_csv(
+                df_3grp %>% select(group_id, genotype, neuron_type, day, all_of(metric_var_name)),
+                file.path(output_dir, paste0("sourcedata_syn_violin_",metric_var_name,"_day38_",fg,"_3grp.csv"))
+              )
             }
           }
 
@@ -450,6 +477,12 @@ make_syn_barplots_with_stats <- function(df_input,
           ggsave(file.path(output_dir,
                            paste0("syn_bar_",metric_var_name,"_day",this_day,"_",fg,"_pvals.pdf")),
                  p_fg,width=3,height=4.2,units="in",device=cairo_pdf)
+
+          # source data export for bar plots
+          write_csv(
+            df_day_fg %>% select(group_id, genotype, neuron_type, day, stain_norm, all_of(metric_var_name)),
+            file.path(output_dir, paste0("sourcedata_syn_bar_",metric_var_name,"_day",this_day,"_",fg,".csv"))
+          )
         }
       }
     }
