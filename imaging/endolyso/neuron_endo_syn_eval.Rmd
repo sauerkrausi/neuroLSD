@@ -363,6 +363,7 @@ if (metric_var_name == "object_count") {
         y_lab <- if(grepl("percent$",metric_var_name)) paste0(metric_var_name," [%]") else metric_var_name
 
         if (metric_var_name %in% coloc_metrics) {
+          
           # 3.3.2 Colocalization: single violin
           p_fg <- ggplot(df_day_fg, aes(x=group_id,y=.data[[metric_var_name]],fill=group_id)) +
             geom_jitter(width=0.15,height=0,alpha=0.2,color="black") +
@@ -451,6 +452,7 @@ if (metric_var_name == "object_count") {
           }
 
         } else {
+          
           # 3.3.4 Non-coloc: single bar
           p_fg <- ggplot(df_summary_fg,aes(x=group_id,y=mean_val,fill=group_id)) +
             geom_col(width=0.7) +
