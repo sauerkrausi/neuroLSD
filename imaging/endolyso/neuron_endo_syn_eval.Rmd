@@ -390,10 +390,7 @@ if (metric_var_name == "object_count") {
                  p_fg,width=3,height=4,units="in",device=cairo_pdf)
 
           # source data export
-          write_csv(
-            df_day_fg %>% select(group_id, genotype, neuron_type, day, all_of(metric_var_name)),
-            file.path(output_dir, paste0("sourcedata_syn_violin_",metric_var_name,"_day",this_day,"_",fg,".csv"))
-          )
+          write_csv(df_day_fg %>% select(group_id, genotype, neuron_type, day, all_of(metric_var_name)), file.path(output_dir, paste0("sourcedata_syn_violin_",metric_var_name,"_day",this_day,"_",fg,".csv")))
 
           # 3.3.3 Extra: Day 38 coloc only: Ctrl_iN, Ctrl_iDA, ASAH1_iDA (no ASAH1_iN)
           if (this_day==38L) {
