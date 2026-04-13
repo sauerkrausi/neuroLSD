@@ -7747,6 +7747,9 @@ plot_corr_iN_vs_iDA_by_genotype <- function(corr_mat, annot_class_df, annot_colo
   for (g in valid_genos) {
     df_g <- filter(all_df, Genotype == g)
     
+    # write sourcedata for bubbleplots
+    readr::write_csv(df_g, file.path(out_dir, paste0("iN_vs_iDA_bubble_", g, "_sourcedata.csv")))
+    
     # Label only annotations from specific classes
     df_label_select <- df_g %>% filter(Class %in% c("Synaptic", "Endo", "Lyso"))
     axis_lim <- range(c(all_df$Cor_iN, all_df$Cor_iDA), na.rm = TRUE)
