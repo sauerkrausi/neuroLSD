@@ -3413,6 +3413,7 @@ write_csv(top_gba1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_dr
 ```
 
 
+
 # Cell type comparison: iN vs iDA (ctrl, day 50)
 ```{r}
 # -------------------------------------------------- #
@@ -3655,7 +3656,6 @@ run_go_celltype(genes_ct_sig_iDA, bg_genes_ct, "sig_enriched_iDA", out_dir_d50_Q
 # per subcellular annotation
 # 3 categories: unchanged / enriched iN / enriched iDA
 # -------------------------------------------------- #
-```{r}
 # all 3 direction levels, fixed order for stacking
 # sig_enriched_iDA at bottom, unchanged in middle, sig_enriched_iN at top
 all_dirs_ct <- c("sig_enriched_iDA", "unchanged", "sig_enriched_iN")
