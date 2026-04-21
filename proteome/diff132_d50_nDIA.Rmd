@@ -3520,7 +3520,7 @@ barplot_ct_data <- barplot_ct_data %>%
 
 # plot
 p_ct_barplot <- ggplot(barplot_ct_data, aes(x = Annotation, y = mean_log2ratio)) +
-  geom_col(fill = "grey50", width = 0.7) +
+  geom_col(fill = "grey75", width = 0.7) +
   geom_errorbar(aes(ymin = mean_log2ratio - sem, ymax = mean_log2ratio + sem),
                 width = 0.3, linewidth = 0.3) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
@@ -3539,8 +3539,7 @@ ggsave(file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA.pdf"),
        p_ct_barplot, width = 6, height = 4, device = cairo_pdf)
 
 # source file
-readr::write_csv(barplot_ct_data,
-                 file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA_sourcedata.csv"))
+readr::write_csv(barplot_ct_data,file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA_sourcedata.csv"))
 
 
 
@@ -3581,8 +3580,7 @@ dev.off()
 upset_ct_sourcedata <- celltypecompare_df %>%
   dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj, direction)
 
-readr::write_csv(upset_ct_sourcedata,
-                 file.path(out_dir_d50_QC, "celltype_upset_iN_iDA_sourcedata.csv"))
+readr::write_csv(upset_ct_sourcedata, file.path(out_dir_d50_QC, "celltype_upset_iN_iDA_sourcedata.csv"))
 
 
 
@@ -3633,7 +3631,7 @@ run_go_celltype <- function(gene_set, background, label, out_dir) {
       scale_color_gradient(low = "dodgerblue4", high = "lightblue",
                            name = "p.adjust") +
       labs(title = paste("GO", ont, "|", label)) +
-      theme_bw(base_size = 7) +
+      theme_bw(base_size = 6) +
       theme(
         panel.grid   = element_blank(),
         axis.text.y  = element_text(size = 6)
@@ -8040,6 +8038,149 @@ plot_corr_iN_vs_iDA_by_genotype(
 
 ```
 
+
+
+# Peroxisomal Abundance Evaluation
+```{r}
+
+# -------------------------------------------------- #
+# Peroxisomal proteome: log2FC heatmap
+# combined (all KOs) and split (iN / iDA)
+# row annotation = peroxisomal subcellular location
+# -------------------------------------------------- #
+
+# --- Step 1: Load peroxisome gene list with subcellular annotations
+# adjust path if the file is stored elsewhere
+perox_file <- "/Users/felix/Desktop/ppi_cowork/peroxisome_genes_loc.csv"
+perox_raw <- read.csv(perox_file, header = TRUE, stringsAsFactors = FALSE)
+
+# --- Step 2: Extract first gene symbol from "Gene Names" (space-separated)
+# handle trailing-space column name introduced by read.csv ("Subcellular.location.")
+subcell_col <- grep("Subcellular", colnames(perox_raw), value = TRUE)[1]
+
+perox_annot <- perox_raw %>%
+  dplyr::mutate(
+    Genes            = trimws(sub(" .*", "", Gene.Names)),
+    PeroxAnnotation  = trimws(.data[[subcell_col]])
+  ) %>%
+  dplyr::filter(Genes != "") %>%
+  dplyr::select(Genes, PeroxAnnotation) %>%
+  dplyr::distinct(Genes, .keep_all = TRUE)
+
+# --- Step 3: Filter log2FC_d50_annotated for peroxisomal genes
+# KO columns are those ending in _iDA or _iN
+ko_cols_perox <- grep("_(iDA|iN)$", colnames(log2FC_d50_annotated), value = TRUE)
+
+perox_log2fc <- log2FC_d50_annotated %>%
+  dplyr::filter(Genes %in% perox_annot$Genes) %>%
+  dplyr::select(Genes, all_of(ko_cols_perox)) %>%
+  dplyr::left_join(perox_annot, by = "Genes")
+
+# --- Step 4: Build log2FC matrix (rows = genes, cols = KOs); NA -> 0
+perox_mat <- perox_log2fc %>%
+  dplyr::select(Genes, all_of(ko_cols_perox)) %>%
+  tibble::column_to_rownames("Genes") %>%
+  as.matrix()
+
+perox_mat[is.na(perox_mat)] <- 0
+
+# --- Step 5: Row annotation (one color bar for three peroxisomal subcategories)
+row_ann_perox <- perox_log2fc %>%
+  dplyr::select(Genes, PeroxAnnotation) %>%
+  tibble::column_to_rownames("Genes")
+
+# ensure row order matches matrix
+row_ann_perox <- row_ann_perox[rownames(perox_mat), , drop = FALSE]
+
+perox_colors <- c(
+  "Peroxisome"          = "#4DAF4A",
+  "Peroxisome Matrix"   = "#984EA3",
+  "Peroxisome Membrane" = "#FF7F00"
+)
+
+# --- Step 6: Column annotation for iN / iDA cell type
+col_ann_perox <- data.frame(
+  CellType = ifelse(grepl("_iDA$", ko_cols_perox), "iDA", "iN"),
+  row.names = ko_cols_perox
+)
+
+celltype_colors_perox <- c(iDA = "grey80", iN = "grey40")
+
+ann_colors_full_perox <- list(
+  PeroxAnnotation = perox_colors,
+  CellType        = celltype_colors_perox
+)
+
+
+# --- Step 7a: Heatmap – all 46 KO columns combined
+pdf(file.path(out_dir_d50_heatmaps, "peroxisome_log2fc_heatmap_all.pdf"),
+    width = 14, height = 9, useDingbats = FALSE)
+pheatmap::pheatmap(
+  mat               = perox_mat,
+  color             = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  annotation_row    = row_ann_perox,
+  annotation_col    = col_ann_perox,
+  annotation_colors = ann_colors_full_perox,
+  cluster_rows      = TRUE,
+  cluster_cols      = TRUE,
+  show_rownames     = TRUE,
+  show_colnames     = TRUE,
+  fontsize          = 6,
+  border_color      = NA,
+  na_col            = "grey90",
+  main              = "Peroxisomal Proteome – log2FC all KOs (day 50)"
+)
+dev.off()
+
+# source file for combined heatmap
+readr::write_csv(
+  perox_log2fc,
+  file.path(out_dir_d50_heatmaps, "peroxisome_log2fc_heatmap_all_sourcedata.csv")
+)
+
+
+# --- Step 7b: Split heatmaps – iN and iDA separately
+# function to subset by cell type, drop all-zero rows, and save
+plot_perox_split_heatmap <- function(mat, row_ann, perox_colors, cell_type, out_dir) {
+
+  # subset columns for this cell type
+  cols_sub <- grep(paste0("_", cell_type, "$"), colnames(mat), value = TRUE)
+  mat_sub  <- mat[, cols_sub, drop = FALSE]
+
+  # remove genes with all zeros (not detected in this cell type)
+  mat_sub <- mat_sub[rowSums(mat_sub != 0, na.rm = TRUE) > 0, , drop = FALSE]
+
+  # match row annotation to remaining genes
+  row_ann_sub <- row_ann[rownames(mat_sub), , drop = FALSE]
+
+  pdf(file.path(out_dir, paste0("peroxisome_log2fc_heatmap_", cell_type, ".pdf")),
+      width = 9, height = 9, useDingbats = FALSE)
+  pheatmap::pheatmap(
+    mat               = mat_sub,
+    color             = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+    annotation_row    = row_ann_sub,
+    annotation_colors = list(PeroxAnnotation = perox_colors),
+    cluster_rows      = TRUE,
+    cluster_cols      = TRUE,
+    show_rownames     = TRUE,
+    show_colnames     = TRUE,
+    fontsize          = 6,
+    border_color      = NA,
+    na_col            = "grey90",
+    main              = paste0("Peroxisomal Proteome – log2FC ", cell_type, " (day 50)")
+  )
+  dev.off()
+
+  # source file
+  readr::write_csv(
+    as.data.frame(mat_sub) %>% tibble::rownames_to_column("Genes"),
+    file.path(out_dir, paste0("peroxisome_log2fc_heatmap_", cell_type, "_sourcedata.csv"))
+  )
+}
+
+plot_perox_split_heatmap(perox_mat, row_ann_perox, perox_colors, "iN",  out_dir_d50_heatmaps)
+plot_perox_split_heatmap(perox_mat, row_ann_perox, perox_colors, "iDA", out_dir_d50_heatmaps)
+```
 
 
 
