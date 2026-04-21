@@ -3639,9 +3639,7 @@ run_go_celltype <- function(gene_set, background, label, out_dir) {
         axis.text.y  = element_text(size = 6)
       )
 
-    ggsave(
-      file.path(out_dir, paste0("GO_", ont, "_", label, "_dotplot.pdf")),
-      p, width = 6, height = 6, device = cairo_pdf
+    ggsave(file.path(out_dir, paste0("GO_", ont, "_", label, "_dotplot.pdf")),p, width = 6, height = 5, device = cairo_pdf
     )
   }
 }
