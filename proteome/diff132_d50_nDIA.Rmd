@@ -3639,6 +3639,20 @@ run_go_celltype <- function(gene_set, background, label, out_dir) {
         axis.text.y  = element_text(size = 6)
       )
 
+    ggsave(
+      file.path(out_dir, paste0("GO_", ont, "_", label, "_dotplot.pdf")),
+      p, width = 6, height = 6, device = cairo_pdf
+    )
+  }
+}
+
+# run for sig_enriched_iN
+run_go_celltype(genes_ct_sig_iN,  bg_genes_ct, "sig_enriched_iN",  out_dir_d50_QC)
+
+# run for sig_enriched_iDA
+run_go_celltype(genes_ct_sig_iDA, bg_genes_ct, "sig_enriched_iDA", out_dir_d50_QC)
+
+
 
 ```
 
