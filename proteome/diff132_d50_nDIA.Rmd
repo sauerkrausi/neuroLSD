@@ -8049,6 +8049,7 @@ plot_corr_iN_vs_iDA_by_genotype(
 # row annotation = peroxisomal subcellular location
 # -------------------------------------------------- #
 
+library(RColorBrewer)
 # --- Step 1: Load peroxisome gene list with subcellular annotations
 # adjust path if the file is stored elsewhere
 perox_file <- "/Users/felix/Desktop/ppi_cowork/peroxisome_genes_loc.csv"
@@ -8126,6 +8127,8 @@ pheatmap::pheatmap(
   show_rownames     = TRUE,
   show_colnames     = TRUE,
   fontsize          = 6,
+  cellheight = 8,
+  cellwidth = 8,
   border_color      = NA,
   na_col            = "grey90",
   main              = "Peroxisomal Proteome – log2FC all KOs (day 50)"
