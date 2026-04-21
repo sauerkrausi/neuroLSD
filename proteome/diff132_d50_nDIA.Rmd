@@ -3703,7 +3703,7 @@ stacked_ct_data <- stacked_ct_data %>%
 
 # colors and labels
 direction_colors_ct <- c(
-  sig_enriched_iN  = "firebrick",
+  sig_enriched_iN  = "orange",
   unchanged        = "grey80",
   sig_enriched_iDA = "dodgerblue3"
 )
@@ -3715,7 +3715,7 @@ direction_labels_ct <- c(
 
 # count version
 p_stacked_count <- ggplot(stacked_ct_data, aes(x = Annotation, y = n, fill = direction)) +
-  geom_col(width = 0.75, color = NA) +
+  geom_col(width = 0.95, color = NA) +
   scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
   labs(x = NULL, y = "Protein count",
        title = "Cell type proteins per annotation – count (ctrl iN vs iDA, day 50)") +
@@ -3728,7 +3728,7 @@ p_stacked_count <- ggplot(stacked_ct_data, aes(x = Annotation, y = n, fill = dir
 
 # fraction version (same ordering as count, y-axis in %)
 p_stacked_frac <- ggplot(stacked_ct_data, aes(x = Annotation, y = fraction, fill = direction)) +
-  geom_col(width = 0.75, color = NA) +
+  geom_col(width = 0.95, color = NA) +
   scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   labs(x = NULL, y = "Fraction of proteins",
@@ -3739,6 +3739,7 @@ p_stacked_frac <- ggplot(stacked_ct_data, aes(x = Annotation, y = fraction, fill
     panel.grid      = element_blank(),
     legend.position = "bottom"
   )
+
 
 ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_count_iN_iDA.pdf"),
        p_stacked_count, width = 7, height = 4, device = cairo_pdf)
