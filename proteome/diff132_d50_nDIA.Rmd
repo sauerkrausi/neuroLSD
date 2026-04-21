@@ -8122,6 +8122,7 @@ pheatmap::pheatmap(
   annotation_row    = row_ann_perox,
   annotation_col    = col_ann_perox,
   annotation_colors = ann_colors_full_perox,
+  scale = "row",
   cluster_rows      = TRUE,
   cluster_cols      = TRUE,
   show_rownames     = TRUE,
@@ -8131,7 +8132,7 @@ pheatmap::pheatmap(
   cellwidth = 8,
   border_color      = NA,
   na_col            = "grey90",
-  main              = "Peroxisomal Proteome, log2FC all KOs (day 50)"
+  main              = "Peroxisomal Proteome, log2FC all KOs (day 50, z-scaled by row)"
 )
 dev.off()
 
