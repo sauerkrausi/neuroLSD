@@ -8172,7 +8172,7 @@ plot_perox_split_heatmap <- function(mat, row_ann, perox_colors, cell_type, out_
     cellheight = 8,
     cellwidth = 8,
     na_col            = "grey90",
-    main              = paste0("Peroxisomal Proteome – log2FC ", cell_type, " (day 50)")
+    main              = paste0("Peroxisomal Proteome, log2FC ", cell_type, " (day 50)")
   )
   dev.off()
 
