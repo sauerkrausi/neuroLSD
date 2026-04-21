@@ -8249,17 +8249,15 @@ pheatmap::pheatmap(
   show_rownames     = TRUE,
   show_colnames     = TRUE,
   fontsize          = 6,
-  cellheight        = 15,
+  cellheight        = 8,
   cellwidth         = 8,
   border_color      = NA,
   na_col            = "grey90",
-  main              = "Mean log2FC per Peroxisomal Annotation Group – all KOs (sorted by All, day 50)"
+  main              = "Mean log2FC per Peroxisomal Annotation Group,  all KOs (sorted by All, day 50)"
 )
 dev.off()
 
-readr::write_csv(
-  as.data.frame(avg_perox_mat_sorted) %>% tibble::rownames_to_column("AnnotationGroup"),
-  file.path(out_dir_d50_heatmaps, "peroxisome_avg_log2fc_heatmap_all_sourcedata.csv")
+readr::write_csv(as.data.frame(avg_perox_mat_sorted) %>% tibble::rownames_to_column("AnnotationGroup"), file.path(out_dir_d50_heatmaps, "peroxisome_avg_log2fc_heatmap_all_sourcedata.csv")
 )
 
 
