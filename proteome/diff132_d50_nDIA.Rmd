@@ -8270,7 +8270,7 @@ plot_perox_avg_split <- function(avg_mat, row_ann, ann_colors, cell_type, out_di
   mat_ct  <- mat_ct[, order(mat_ct["All Peroxisomal", ]), drop = FALSE]
 
   col_ann_ct <- data.frame(
-    CellType  = cell_type,
+    CellType  = rep(cell_type, ncol(mat_ct)),
     row.names = colnames(mat_ct)
   )
 
@@ -8287,11 +8287,11 @@ plot_perox_avg_split <- function(avg_mat, row_ann, ann_colors, cell_type, out_di
     show_rownames     = TRUE,
     show_colnames     = TRUE,
     fontsize          = 6,
-    cellheight        = 15,
+    cellheight        = 8,
     cellwidth         = 8,
     border_color      = NA,
     na_col            = "grey90",
-    main              = paste0("Mean log2FC per Peroxisomal Annotation Group – ", cell_type, " (sorted by All, day 50)")
+    main              = paste0("Mean log2FC per Peroxisomal Annotation Group ", cell_type, " (sorted by All, day 50)")
   )
   dev.off()
 
