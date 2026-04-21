@@ -8042,7 +8042,6 @@ plot_corr_iN_vs_iDA_by_genotype(
 
 # Peroxisomal Abundance Evaluation
 ```{r}
-
 # -------------------------------------------------- #
 # Peroxisomal proteome: log2FC heatmap
 # combined (all KOs) and split (iN / iDA)
@@ -8050,6 +8049,7 @@ plot_corr_iN_vs_iDA_by_genotype(
 # -------------------------------------------------- #
 
 library(RColorBrewer)
+
 # --- Step 1: Load peroxisome gene list with subcellular annotations
 # adjust path if the file is stored elsewhere
 perox_file <- "/Users/felix/Desktop/ppi_cowork/peroxisome_genes_loc.csv"
@@ -8187,6 +8187,124 @@ plot_perox_split_heatmap <- function(mat, row_ann, perox_colors, cell_type, out_
 
 plot_perox_split_heatmap(perox_mat, row_ann_perox, perox_colors, "iN",  out_dir_d50_heatmaps)
 plot_perox_split_heatmap(perox_mat, row_ann_perox, perox_colors, "iDA", out_dir_d50_heatmaps)
+
+
+
+
+# -------------------------------------------------- #
+# Sorted heatmap: mean log2FC per annotation group
+# rows = 4 groups (All, Peroxisome, Matrix, Membrane)
+# cols = KOs sorted by "All Peroxisomal" mean
+# no z-scaling; raw mean log2FC per group
+# -------------------------------------------------- #
+
+# --- Step 8: Define groups and compute mean log2FC per group per KO
+# "All Peroxisomal" = mean across all peroxisomal genes in the matrix
+perox_groups <- list(
+  "All Peroxisomal"     = rownames(perox_mat),
+  "Peroxisome"          = perox_annot %>% dplyr::filter(PeroxAnnotation == "Peroxisome")          %>% pull(Genes),
+  "Peroxisome Matrix"   = perox_annot %>% dplyr::filter(PeroxAnnotation == "Peroxisome Matrix")   %>% pull(Genes),
+  "Peroxisome Membrane" = perox_annot %>% dplyr::filter(PeroxAnnotation == "Peroxisome Membrane") %>% pull(Genes)
+)
+
+# result: matrix of shape groups x KOs
+avg_perox_mat <- t(sapply(perox_groups, function(g) {
+  sub_mat <- perox_mat[rownames(perox_mat) %in% g, , drop = FALSE]
+  colMeans(sub_mat, na.rm = TRUE)
+}))
+
+# --- Step 9: Annotation for rows and columns
+# row annotation: grey30 for "All", existing perox_colors for subcategories
+perox_colors_avg <- c("All Peroxisomal" = "grey30", perox_colors)
+
+row_ann_avg <- data.frame(
+  Group     = names(perox_groups),
+  row.names = names(perox_groups)
+)
+
+ann_colors_avg <- list(
+  Group    = perox_colors_avg,
+  CellType = celltype_colors_perox
+)
+
+
+# --- Step 10a: Combined heatmap – all KOs sorted by "All Peroxisomal" row
+avg_perox_mat_sorted <- avg_perox_mat[, order(avg_perox_mat["All Peroxisomal", ])]
+
+col_ann_avg_all <- data.frame(
+  CellType  = ifelse(grepl("_iDA$", colnames(avg_perox_mat_sorted)), "iDA", "iN"),
+  row.names = colnames(avg_perox_mat_sorted)
+)
+
+pdf(file.path(out_dir_d50_heatmaps, "peroxisome_avg_log2fc_heatmap_all.pdf"),
+    width = 14, height = 4, useDingbats = FALSE)
+pheatmap::pheatmap(
+  mat               = avg_perox_mat_sorted,
+  color             = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+  annotation_row    = row_ann_avg,
+  annotation_col    = col_ann_avg_all,
+  annotation_colors = ann_colors_avg,
+  cluster_rows      = FALSE,
+  cluster_cols      = FALSE,
+  show_rownames     = TRUE,
+  show_colnames     = TRUE,
+  fontsize          = 6,
+  cellheight        = 15,
+  cellwidth         = 8,
+  border_color      = NA,
+  na_col            = "grey90",
+  main              = "Mean log2FC per Peroxisomal Annotation Group – all KOs (sorted by All, day 50)"
+)
+dev.off()
+
+readr::write_csv(
+  as.data.frame(avg_perox_mat_sorted) %>% tibble::rownames_to_column("AnnotationGroup"),
+  file.path(out_dir_d50_heatmaps, "peroxisome_avg_log2fc_heatmap_all_sourcedata.csv")
+)
+
+
+# --- Step 10b: Split heatmaps – iN and iDA, each sorted independently by "All Peroxisomal"
+plot_perox_avg_split <- function(avg_mat, row_ann, ann_colors, cell_type, out_dir) {
+
+  # subset to this cell type and sort by "All Peroxisomal"
+  cols_ct <- grep(paste0("_", cell_type, "$"), colnames(avg_mat), value = TRUE)
+  mat_ct  <- avg_mat[, cols_ct, drop = FALSE]
+  mat_ct  <- mat_ct[, order(mat_ct["All Peroxisomal", ]), drop = FALSE]
+
+  col_ann_ct <- data.frame(
+    CellType  = cell_type,
+    row.names = colnames(mat_ct)
+  )
+
+  pdf(file.path(out_dir, paste0("peroxisome_avg_log2fc_heatmap_", cell_type, ".pdf")),
+      width = 9, height = 4, useDingbats = FALSE)
+  pheatmap::pheatmap(
+    mat               = mat_ct,
+    color             = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
+    annotation_row    = row_ann,
+    annotation_col    = col_ann_ct,
+    annotation_colors = ann_colors,
+    cluster_rows      = FALSE,
+    cluster_cols      = FALSE,
+    show_rownames     = TRUE,
+    show_colnames     = TRUE,
+    fontsize          = 6,
+    cellheight        = 15,
+    cellwidth         = 8,
+    border_color      = NA,
+    na_col            = "grey90",
+    main              = paste0("Mean log2FC per Peroxisomal Annotation Group – ", cell_type, " (sorted by All, day 50)")
+  )
+  dev.off()
+
+  readr::write_csv(
+    as.data.frame(mat_ct) %>% tibble::rownames_to_column("AnnotationGroup"),
+    file.path(out_dir, paste0("peroxisome_avg_log2fc_heatmap_", cell_type, "_sourcedata.csv"))
+  )
+}
+
+plot_perox_avg_split(avg_perox_mat, row_ann_avg, ann_colors_avg, "iN",  out_dir_d50_heatmaps)
+plot_perox_avg_split(avg_perox_mat, row_ann_avg, ann_colors_avg, "iDA", out_dir_d50_heatmaps)
 ```
 
 
