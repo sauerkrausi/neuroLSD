@@ -10168,8 +10168,315 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 # =================================================
 # Module 9: Linear Regression & Modeling (SKIP)
 # =================================================
-Linear regression on neuro nDIA dataset
 
+# UMAP on log2FC
+```{r}
+
+
+# -------------------------------------------------- #
+# UMAP: proteins as points, 46 KO log2FC as features
+# -------------------------------------------------- #
+library(uwot)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(readr)
+
+# output directory
+out_dir_d50_UMAP <- file.path(dirname(out_dir_d50_heatmaps), "UMAP")
+dir.create(out_dir_d50_UMAP, recursive = TRUE, showWarnings = FALSE)
+
+
+# --- Step 1: Build feature matrix (proteins × KO columns)
+ko_cols_umap <- grep("_(iDA|iN)$", colnames(log2FC_d50_annotated), value = TRUE)
+
+umap_feat_mat <- log2FC_d50_annotated %>%
+  dplyr::select(Genes, all_of(ko_cols_umap)) %>%
+  tibble::column_to_rownames("Genes") %>%
+  as.matrix()
+
+# NA → 0
+umap_feat_mat[is.na(umap_feat_mat)] <- 0
+
+# remove proteins with zero variance (no information across KOs)
+umap_feat_mat <- umap_feat_mat[apply(umap_feat_mat, 1, var) > 0, ]
+
+
+# --- Step 2: UMAP embedding
+set.seed(42)
+umap_coords <- uwot::umap(umap_feat_mat, n_neighbors = 15, min_dist = 0.1,
+                           metric = "euclidean")
+
+umap_df <- data.frame(
+  Genes = rownames(umap_feat_mat),
+  UMAP1 = umap_coords[, 1],
+  UMAP2 = umap_coords[, 2],
+  stringsAsFactors = FALSE
+)
+
+
+# --- Step 3: Primary subcellular annotation per protein (first match, priority order)
+# annotations listed from highest to lowest priority
+annot_priority_umap <- c(
+  "Mito", "OXPHOS", "Lysosome", "EndoLyso", "ER", "Golgi",
+  "Autophagy", "SynGO", "Presynaptic", "Postsynaptic", "SynapseSVs",
+  "EarlyEndosome", "RecyclingEndosome", "NeuroDev", "Nucleus", "Cytoplasm"
+)
+annot_priority_umap <- annot_priority_umap[annot_priority_umap %in% colnames(binary_matrix)]
+
+primary_annot_df <- binary_matrix %>%
+  dplyr::filter(Genes %in% umap_df$Genes) %>%
+  dplyr::select(Genes, all_of(annot_priority_umap)) %>%
+  tidyr::pivot_longer(cols = -Genes, names_to = "Annotation", values_to = "IsAnnotated") %>%
+  dplyr::filter(IsAnnotated == TRUE) %>%
+  dplyr::mutate(Annotation = factor(Annotation, levels = annot_priority_umap)) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::slice_min(Annotation, n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(Genes, PrimaryAnnotation = Annotation) %>%
+  dplyr::mutate(PrimaryAnnotation = as.character(PrimaryAnnotation))
+
+umap_df <- umap_df %>%
+  dplyr::left_join(primary_annot_df, by = "Genes") %>%
+  dplyr::mutate(PrimaryAnnotation = dplyr::coalesce(PrimaryAnnotation, "Other"))
+
+
+# --- Step 4: Disease class mean log2FC per protein
+# map genotype → disease class; first occurrence handles proteins in multiple classes
+disease_class_map_umap <- utils::stack(disease_classes) %>%
+  dplyr::rename(Genotype = values, DiseaseClass = ind) %>%
+  dplyr::mutate(DiseaseClass = as.character(DiseaseClass)) %>%
+  dplyr::distinct(Genotype, .keep_all = TRUE)
+
+# for each disease class, mean log2FC per protein across its KO columns
+dc_means_list <- lapply(names(disease_classes), function(dc) {
+  genotypes_dc <- disease_classes[[dc]]
+  cols_dc <- ko_cols_umap[sub("_(iN|iDA)$", "", ko_cols_umap) %in% genotypes_dc]
+  if (length(cols_dc) == 0) return(NULL)
+
+  col_name <- gsub("\\.", "_", dc)
+  means    <- rowMeans(umap_feat_mat[, cols_dc, drop = FALSE], na.rm = TRUE)
+  setNames(data.frame(Genes = rownames(umap_feat_mat), mean = means), c("Genes", col_name))
+})
+dc_means_list <- Filter(Negate(is.null), dc_means_list)
+
+dc_means_df <- Reduce(function(a, b) dplyr::left_join(a, b, by = "Genes"), dc_means_list)
+umap_df     <- umap_df %>% dplyr::left_join(dc_means_df, by = "Genes")
+
+
+# --- Step 5: Mean log2FC per cell type across all KOs
+cols_iN_umap  <- grep("_iN$",  ko_cols_umap, value = TRUE)
+cols_iDA_umap <- grep("_iDA$", ko_cols_umap, value = TRUE)
+
+umap_df$mean_log2fc_iN  <- rowMeans(umap_feat_mat[umap_df$Genes, cols_iN_umap,  drop = FALSE])
+umap_df$mean_log2fc_iDA <- rowMeans(umap_feat_mat[umap_df$Genes, cols_iDA_umap, drop = FALSE])
+
+
+# --- Step 6: Linear model per protein – log2FC ~ DiseaseClass + CellType
+# additive model: separates disease class effect from cell type (iN vs iDA) effect
+# reference level: iDA; positive cell_type_coef = protein more changed in iN
+# Note: only proteins with KOs that map to disease_classes are modelled
+# Note: this loop may take several minutes for large protein sets
+long_fc_lm <- log2FC_d50_annotated %>%
+  dplyr::filter(Genes %in% umap_df$Genes) %>%
+  dplyr::select(Genes, all_of(ko_cols_umap)) %>%
+  tidyr::pivot_longer(cols = -Genes, names_to = "KO", values_to = "log2FC") %>%
+  dplyr::mutate(
+    Genotype  = sub("_(iN|iDA)$", "", KO),
+    CellType  = sub(".*_(iN|iDA)$", "\\1", KO)
+  ) %>%
+  dplyr::left_join(disease_class_map_umap %>% dplyr::select(Genotype, DiseaseClass),
+                   by = "Genotype") %>%
+  dplyr::filter(!is.na(DiseaseClass), !is.na(log2FC)) %>%
+  dplyr::mutate(
+    CellType     = factor(CellType,     levels = c("iDA", "iN")),
+    DiseaseClass = factor(DiseaseClass)
+  )
+
+lm_results_list <- lapply(unique(long_fc_lm$Genes), function(g) {
+  df <- dplyr::filter(long_fc_lm, Genes == g)
+
+  # require at least 2 disease classes and sufficient observations
+  if (nrow(df) < 10 | length(unique(df$DiseaseClass)) < 2) return(NULL)
+
+  fit <- tryCatch(lm(log2FC ~ DiseaseClass + CellType, data = df), error = function(e) NULL)
+  if (is.null(fit)) return(NULL)
+
+  s  <- summary(fit)
+  ct <- coef(fit)["CellTypeiN"]
+
+  data.frame(
+    Genes          = g,
+    cell_type_coef = ifelse(is.na(ct), 0, as.numeric(ct)),
+    r_squared      = s$r.squared
+  )
+})
+lm_results_df <- dplyr::bind_rows(lm_results_list)
+umap_df       <- umap_df %>% dplyr::left_join(lm_results_df, by = "Genes")
+
+# save source file with all coordinates and coloring data
+readr::write_csv(umap_df, file.path(out_dir_d50_UMAP, "UMAP_protein_sourcedata.csv"))
+
+
+# --- Step 7: Plotting functions
+# diverging color scale (for log2FC-type data, symmetric around 0)
+plot_umap_div <- function(df, color_col, color_label, title, out_path) {
+  df_plot <- df %>% dplyr::filter(!is.na(.data[[color_col]]))
+  lim     <- max(abs(df_plot[[color_col]]), na.rm = TRUE)
+
+  p <- ggplot(df_plot, aes(x = UMAP1, y = UMAP2, color = .data[[color_col]])) +
+    geom_point(size = 0.3, alpha = 0.6) +
+    scale_color_gradient2(low = "dodgerblue3", mid = "grey90", high = "firebrick",
+                          midpoint = 0, limits = c(-lim, lim), name = color_label) +
+    labs(title = title, x = "UMAP1", y = "UMAP2") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(),
+          axis.text = element_blank(), axis.ticks = element_blank())
+
+  ggsave(out_path, p, width = 5, height = 4, device = cairo_pdf)
+}
+
+# sequential color scale (for R², non-negative values)
+plot_umap_seq <- function(df, color_col, color_label, title, out_path) {
+  df_plot <- df %>% dplyr::filter(!is.na(.data[[color_col]]))
+
+  p <- ggplot(df_plot, aes(x = UMAP1, y = UMAP2, color = .data[[color_col]])) +
+    geom_point(size = 0.3, alpha = 0.6) +
+    scale_color_gradient(low = "grey90", high = "firebrick", name = color_label) +
+    labs(title = title, x = "UMAP1", y = "UMAP2") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(),
+          axis.text = element_blank(), axis.ticks = element_blank())
+
+  ggsave(out_path, p, width = 5, height = 4, device = cairo_pdf)
+}
+
+# categorical color scale (for subcellular annotation)
+plot_umap_cat <- function(df, color_col, color_map, title, out_path) {
+  p <- ggplot(df, aes(x = UMAP1, y = UMAP2, color = .data[[color_col]])) +
+    geom_point(size = 0.3, alpha = 0.6) +
+    scale_color_manual(values = color_map, na.value = "grey92", name = NULL) +
+    labs(title = title, x = "UMAP1", y = "UMAP2") +
+    theme_bw(base_size = 6) +
+    theme(panel.grid = element_blank(),
+          axis.text = element_blank(), axis.ticks = element_blank())
+
+  ggsave(out_path, p, width = 5, height = 4, device = cairo_pdf)
+}
+
+
+# --- Plot 1: Subcellular annotation
+annot_colors_umap <- c(
+  Mito              = "grey20",
+  OXPHOS            = "grey45",
+  Lysosome          = "dodgerblue3",
+  EndoLyso          = "dodgerblue",
+  ER                = "darkorange",
+  Golgi             = "gold3",
+  Autophagy         = "mediumpurple3",
+  SynGO             = "firebrick",
+  Presynaptic       = "firebrick3",
+  Postsynaptic      = "tomato",
+  SynapseSVs        = "salmon",
+  EarlyEndosome     = "steelblue3",
+  RecyclingEndosome = "steelblue",
+  NeuroDev          = "orchid3",
+  Nucleus           = "grey65",
+  Cytoplasm         = "grey80",
+  Other             = "grey92"
+)
+
+plot_umap_cat(
+  umap_df, "PrimaryAnnotation", annot_colors_umap,
+  "UMAP – Subcellular annotation",
+  file.path(out_dir_d50_UMAP, "UMAP_subcell_annotation.pdf")
+)
+
+# source file for annotation plot
+readr::write_csv(
+  umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, PrimaryAnnotation),
+  file.path(out_dir_d50_UMAP, "UMAP_subcell_annotation_sourcedata.csv")
+)
+
+
+# --- Plots 2-8: Disease class mean log2FC (one plot per class)
+dc_col_names <- gsub("\\.", "_", names(disease_classes))
+dc_col_names <- dc_col_names[dc_col_names %in% colnames(umap_df)]
+
+for (dc in dc_col_names) {
+  plot_umap_div(
+    umap_df, dc,
+    color_label = "Mean log2FC",
+    title       = paste0("UMAP – ", gsub("_", " ", dc)),
+    out_path    = file.path(out_dir_d50_UMAP, paste0("UMAP_", dc, "_mean_log2fc.pdf"))
+  )
+  readr::write_csv(
+    umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, all_of(dc)),
+    file.path(out_dir_d50_UMAP, paste0("UMAP_", dc, "_sourcedata.csv"))
+  )
+}
+
+
+# --- Plot 9: Mean log2FC across iN KOs
+plot_umap_div(
+  umap_df, "mean_log2fc_iN",
+  color_label = "Mean log2FC",
+  title       = "UMAP – Mean log2FC iN KOs",
+  out_path    = file.path(out_dir_d50_UMAP, "UMAP_mean_log2fc_iN.pdf")
+)
+readr::write_csv(
+  umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, mean_log2fc_iN),
+  file.path(out_dir_d50_UMAP, "UMAP_mean_log2fc_iN_sourcedata.csv")
+)
+
+
+# --- Plot 10: Mean log2FC across iDA KOs
+plot_umap_div(
+  umap_df, "mean_log2fc_iDA",
+  color_label = "Mean log2FC",
+  title       = "UMAP – Mean log2FC iDA KOs",
+  out_path    = file.path(out_dir_d50_UMAP, "UMAP_mean_log2fc_iDA.pdf")
+)
+readr::write_csv(
+  umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, mean_log2fc_iDA),
+  file.path(out_dir_d50_UMAP, "UMAP_mean_log2fc_iDA_sourcedata.csv")
+)
+
+
+# --- Plot 11: Cell type coefficient from linear model
+# positive = protein more strongly perturbed in iN than iDA
+plot_umap_div(
+  umap_df %>% dplyr::filter(!is.na(cell_type_coef)),
+  "cell_type_coef",
+  color_label = "iN vs iDA\ncoefficient",
+  title       = "UMAP – Cell type effect (lm: iN vs iDA)",
+  out_path    = file.path(out_dir_d50_UMAP, "UMAP_celltype_coef_lm.pdf")
+)
+readr::write_csv(
+  umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, cell_type_coef),
+  file.path(out_dir_d50_UMAP, "UMAP_celltype_coef_lm_sourcedata.csv")
+)
+
+
+# --- Plot 12: R² from linear model
+# high R² = protein response is well explained by disease class + cell type structure
+plot_umap_seq(
+  umap_df %>% dplyr::mutate(r_squared = dplyr::coalesce(r_squared, 0)),
+  "r_squared",
+  color_label = "R²",
+  title       = "UMAP – R² (disease class + cell type model)",
+  out_path    = file.path(out_dir_d50_UMAP, "UMAP_r_squared_lm.pdf")
+)
+readr::write_csv(
+  umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, r_squared),
+  file.path(out_dir_d50_UMAP, "UMAP_r_squared_lm_sourcedata.csv")
+)
+```
+
+
+
+Linear regression on neuro nDIA dataset
 # Linear regression on gene level across neurontypes
 ```{r}
 # --------------------------------------------------- #
