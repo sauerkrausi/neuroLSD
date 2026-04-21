@@ -3650,6 +3650,109 @@ run_go_celltype(genes_ct_sig_iDA, bg_genes_ct, "sig_enriched_iDA", out_dir_d50_Q
 
 
 
+# -------------------------------------------------- #
+# Stacked barplot: protein count and fraction
+# per subcellular annotation
+# 3 categories: unchanged / enriched iN / enriched iDA
+# -------------------------------------------------- #
+```{r}
+# all 3 direction levels, fixed order for stacking
+# sig_enriched_iDA at bottom, unchanged in middle, sig_enriched_iN at top
+all_dirs_ct <- c("sig_enriched_iDA", "unchanged", "sig_enriched_iN")
+
+# annotation columns from binary_matrix (all except Genes)
+annot_cols_ct <- colnames(binary_matrix)[-1]
+
+# for each annotation: count proteins in each direction category
+stacked_ct_list <- lapply(annot_cols_ct, function(ann) {
+  genes_in_ann <- binary_matrix %>%
+    dplyr::filter(.data[[ann]] == TRUE) %>%
+    pull(Genes)
+
+  sub_df <- celltypecompare_df %>%
+    dplyr::filter(Genes %in% genes_in_ann)
+
+  if (nrow(sub_df) == 0) return(NULL)
+
+  n_total <- nrow(sub_df)
+  # use factor to guarantee all 3 categories are present even if count = 0
+  counts <- table(factor(sub_df$direction, levels = all_dirs_ct))
+
+  data.frame(
+    Annotation = ann,
+    direction  = names(counts),
+    n          = as.integer(counts),
+    n_total    = n_total,
+    fraction   = as.numeric(counts) / n_total
+  )
+})
+stacked_ct_data <- dplyr::bind_rows(stacked_ct_list)
+
+# order annotations by fraction enriched in iN (descending)
+# annotations with the strongest iN enrichment appear on the left
+annot_order_ct <- stacked_ct_data %>%
+  dplyr::filter(direction == "sig_enriched_iN") %>%
+  dplyr::arrange(desc(fraction)) %>%
+  pull(Annotation)
+
+stacked_ct_data <- stacked_ct_data %>%
+  dplyr::mutate(
+    Annotation = factor(Annotation, levels = annot_order_ct),
+    direction  = factor(direction,  levels = all_dirs_ct)
+  )
+
+# colors and labels
+direction_colors_ct <- c(
+  sig_enriched_iN  = "firebrick",
+  unchanged        = "grey80",
+  sig_enriched_iDA = "dodgerblue3"
+)
+direction_labels_ct <- c(
+  sig_enriched_iN  = "Enriched iN",
+  unchanged        = "Unchanged",
+  sig_enriched_iDA = "Enriched iDA"
+)
+
+# count version
+p_stacked_count <- ggplot(stacked_ct_data, aes(x = Annotation, y = n, fill = direction)) +
+  geom_col(width = 0.75, color = NA) +
+  scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
+  labs(x = NULL, y = "Protein count",
+       title = "Cell type proteins per annotation – count (ctrl iN vs iDA, day 50)") +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x     = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    panel.grid      = element_blank(),
+    legend.position = "bottom"
+  )
+
+# fraction version (same ordering as count, y-axis in %)
+p_stacked_frac <- ggplot(stacked_ct_data, aes(x = Annotation, y = fraction, fill = direction)) +
+  geom_col(width = 0.75, color = NA) +
+  scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(x = NULL, y = "Fraction of proteins",
+       title = "Cell type proteins per annotation – fraction (ctrl iN vs iDA, day 50)") +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x     = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    panel.grid      = element_blank(),
+    legend.position = "bottom"
+  )
+
+ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_count_iN_iDA.pdf"),
+       p_stacked_count, width = 7, height = 4, device = cairo_pdf)
+
+ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_fraction_iN_iDA.pdf"),
+       p_stacked_frac, width = 7, height = 4, device = cairo_pdf)
+
+readr::write_csv(stacked_ct_data,
+                 file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_sourcedata.csv"))
+
+# extract sig gene vectors for downstream GO analysis
+# (previously defined in upset chunk – re-defined here since that chunk is removed)
+genes_ct_sig_iN  <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iN")  %>% pull(Genes)
+genes_ct_sig_iDA <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iDA") %>% pull(Genes)
 ```
 
 
