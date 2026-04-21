@@ -3715,7 +3715,7 @@ direction_labels_ct <- c(
 
 # count version
 p_stacked_count <- ggplot(stacked_ct_data, aes(x = Annotation, y = n, fill = direction)) +
-  geom_col(width = 0.95, color = NA) +
+  geom_col(width = 0.95, color = "black", linewidth = 0.25) +
   scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
   labs(x = NULL, y = "Protein count",
        title = "Cell type proteins per annotation – count (ctrl iN vs iDA, day 50)") +
@@ -3728,7 +3728,7 @@ p_stacked_count <- ggplot(stacked_ct_data, aes(x = Annotation, y = n, fill = dir
 
 # fraction version (same ordering as count, y-axis in %)
 p_stacked_frac <- ggplot(stacked_ct_data, aes(x = Annotation, y = fraction, fill = direction)) +
-  geom_col(width = 0.95, color = NA) +
+  geom_col(width = 0.95, color = "black", linewidth = 0.25) +
   scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   labs(x = NULL, y = "Fraction of proteins",
@@ -8407,6 +8407,93 @@ plot_perox_avg_split <- function(avg_mat, row_ann, ann_colors, cell_type, out_di
 
 plot_perox_avg_split(avg_perox_mat, row_ann_avg, ann_colors_avg, "iN",  out_dir_d50_heatmaps)
 plot_perox_avg_split(avg_perox_mat, row_ann_avg, ann_colors_avg, "iDA", out_dir_d50_heatmaps)
+
+
+
+
+
+# -------------------------------------------------- #
+# GO analysis on peroxisomal proteins per KO
+# threshold: log2FC >= 0.5 (enriched) or <= -0.5 (de-enriched)
+# min 5 genes required per direction to run GO
+# background: all genes in log2FC_d50_annotated
+# ontologies: BP, MF
+# -------------------------------------------------- #
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+# output directory for peroxisomal GO results
+out_dir_d50_perox_GO <- file.path(dirname(out_dir_d50_heatmaps), "perox_GO")
+dir.create(out_dir_d50_perox_GO, recursive = TRUE, showWarnings = FALSE)
+
+# background: all unique gene symbols measured in the dataset
+bg_genes_perox_GO <- unique(log2FC_d50_annotated$Genes)
+
+# function: run GO for one gene set, save dotplot + source CSV per ontology
+run_go_perox <- function(gene_set, background, label, out_dir, n_min = 5) {
+
+  # skip if too few genes to run a meaningful enrichment
+  if (length(gene_set) < n_min) {
+    message("Skipping ", label, " – ", length(gene_set), " genes (min = ", n_min, ")")
+    return(invisible(NULL))
+  }
+
+  for (ont in c("BP", "MF")) {
+    ego <- clusterProfiler::enrichGO(
+      gene          = gene_set,
+      universe      = background,
+      OrgDb         = org.Hs.eg.db,
+      keyType       = "SYMBOL",
+      ont           = ont,
+      pAdjustMethod = "BH",
+      pvalueCutoff  = 0.05,
+      qvalueCutoff  = 0.2,
+      readable      = TRUE
+    )
+
+    if (is.null(ego) || nrow(as.data.frame(ego)) == 0) {
+      message("No GO ", ont, " results for: ", label)
+      next
+    }
+
+    # save full result table
+    readr::write_csv(
+      as.data.frame(ego),
+      file.path(out_dir, paste0("GO_perox_", ont, "_", label, "_sourcedata.csv"))
+    )
+
+    # dotplot: size = gene count, color = blue gradient for p.adjust
+    p <- clusterProfiler::dotplot(ego, showCategory = 20, font.size = 6) +
+      scale_color_gradient(low = "dodgerblue4", high = "lightblue", name = "p.adjust") +
+      labs(title = paste0("GO ", ont, " | ", label, "  (|log2FC| \u2265 0.5)")) +
+      theme_bw(base_size = 6) +
+      theme(
+        panel.grid  = element_blank(),
+        axis.text.y = element_text(size = 5)
+      )
+
+    ggsave(
+      file.path(out_dir, paste0("GO_perox_", ont, "_", label, "_dotplot.pdf")),
+      p, width = 6, height = 5, device = cairo_pdf
+    )
+  }
+}
+
+# loop over all 46 KO columns
+# perox_log2fc retains original NA values (NA -> 0 was only applied to perox_mat)
+# filtering for !is.na ensures 0-imputed values do not contribute
+for (ko in ko_cols_perox) {
+
+  ko_vals <- perox_log2fc %>%
+    dplyr::select(Genes, all_of(ko)) %>%
+    dplyr::filter(!is.na(.data[[ko]]))
+
+  genes_up <- ko_vals %>% dplyr::filter(.data[[ko]] >=  0.5) %>% pull(Genes)
+  genes_dn <- ko_vals %>% dplyr::filter(.data[[ko]] <= -0.5) %>% pull(Genes)
+
+  run_go_perox(genes_up, bg_genes_perox_GO, paste0(ko, "_enriched"),   out_dir_d50_perox_GO)
+  run_go_perox(genes_dn, bg_genes_perox_GO, paste0(ko, "_deenriched"), out_dir_d50_perox_GO)
+}
 ```
 
 
