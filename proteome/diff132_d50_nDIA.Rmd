@@ -3413,6 +3413,235 @@ write_csv(top_gba1_drivers, file.path(pca_out_dir, paste0("combined_PCA_top20_dr
 ```
 
 
+# Cell type comparison: iN vs iDA (ctrl, day 50)
+```{r}
+# -------------------------------------------------- #
+# Build celltypecompare_df
+# -------------------------------------------------- #
+
+# --- Step 1: Extract ctrl neurons at day 50 from cleaned_df (raw quan)
+ctrl_d50 <- cleaned_df %>%
+  dplyr::filter(genotype == "ctrl", day == 50, neuron %in% c("iN", "iDA")) %>%
+  dplyr::select(Genes, neuron, replicate, quan)
+
+# --- Step 2: Mean quan per gene per cell type
+mean_by_celltype <- ctrl_d50 %>%
+  dplyr::group_by(Genes, neuron) %>%
+  dplyr::summarise(mean_quan = mean(quan, na.rm = TRUE), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = neuron, values_from = mean_quan, names_prefix = "mean_")
+
+# --- Step 3: Two-sample t-test per gene (iN replicates vs iDA replicates, raw quan)
+# t-test is preferred over Wilcoxon here: with n=3 per group it can reach p < 0.05
+# when effect size is large and within-group variance is low (Wilcoxon minimum is ~0.1).
+# var.equal = FALSE uses Welch correction (robust to unequal variance).
+# Only genes detected in both cell types are tested.
+gene_list_ct <- intersect(
+  ctrl_d50 %>% dplyr::filter(neuron == "iN")  %>% pull(Genes) %>% unique(),
+  ctrl_d50 %>% dplyr::filter(neuron == "iDA") %>% pull(Genes) %>% unique()
+)
+
+ttest_results_ct <- lapply(gene_list_ct, function(g) {
+  iN_vals  <- ctrl_d50 %>% dplyr::filter(Genes == g, neuron == "iN")  %>% pull(quan)
+  iDA_vals <- ctrl_d50 %>% dplyr::filter(Genes == g, neuron == "iDA") %>% pull(quan)
+  if (length(iN_vals) < 2 | length(iDA_vals) < 2) {
+    return(data.frame(Genes = g, ttest_p = NA_real_))
+  }
+  tt <- suppressWarnings(t.test(iN_vals, iDA_vals, var.equal = FALSE))
+  data.frame(Genes = g, ttest_p = tt$p.value)
+})
+ttest_ct_df <- dplyr::bind_rows(ttest_results_ct)
+ttest_ct_df$ttest_padj <- p.adjust(ttest_ct_df$ttest_p, method = "BH")
+
+# --- Step 4: Ratio iN / iDA (keep only proteins quantified in both; avoid Inf/NaN)
+ratio_ct_df <- mean_by_celltype %>%
+  dplyr::filter(!is.na(mean_iN) & !is.na(mean_iDA) & mean_iN > 0 & mean_iDA > 0) %>%
+  dplyr::mutate(
+    ratio_iN_iDA      = mean_iN / mean_iDA,
+    log2_ratio_iN_iDA = log2(mean_iN / mean_iDA)
+  )
+
+# --- Step 5: Join stats, annotate significance and direction
+celltypecompare_base <- ratio_ct_df %>%
+  dplyr::left_join(ttest_ct_df, by = "Genes") %>%
+  dplyr::mutate(
+    sig_ttest = !is.na(ttest_p) & ttest_p < 0.05,
+    direction = dplyr::case_when(
+      sig_ttest & ratio_iN_iDA > 1 ~ "sig_enriched_iN",
+      sig_ttest & ratio_iN_iDA < 1 ~ "sig_enriched_iDA",
+      TRUE                         ~ "unchanged"
+    )
+  )
+
+# --- Step 6: Add binary subcellular annotation columns
+celltypecompare_df <- celltypecompare_base %>%
+  dplyr::left_join(binary_matrix, by = "Genes")
+
+# --- Step 7: Save dataframe
+write.csv(celltypecompare_df,
+          file = file.path(out_dir_d50_dataframes, "celltypecompare_iN_iDA.csv"),
+          row.names = FALSE)
+
+
+
+
+# -------------------------------------------------- #
+# Barplot: relative enrichment per annotation group
+# mean log2(iN/iDA) per subcellular annotation
+# -------------------------------------------------- #
+
+# annotation column names from binary_matrix (exclude Genes)
+annot_cols_ct <- colnames(binary_matrix)[-1]
+
+# for each annotation, compute mean and SEM of log2_ratio_iN_iDA
+barplot_ct_data <- lapply(annot_cols_ct, function(ann) {
+  # get gene members of this annotation
+  genes_in_ann <- binary_matrix %>%
+    dplyr::filter(.data[[ann]] == TRUE) %>%
+    pull(Genes)
+
+  sub_df <- celltypecompare_df %>%
+    dplyr::filter(Genes %in% genes_in_ann, is.finite(log2_ratio_iN_iDA))
+
+  if (nrow(sub_df) == 0) return(NULL)
+
+  data.frame(
+    Annotation     = ann,
+    mean_log2ratio = mean(sub_df$log2_ratio_iN_iDA, na.rm = TRUE),
+    sem            = sd(sub_df$log2_ratio_iN_iDA, na.rm = TRUE) / sqrt(nrow(sub_df)),
+    n_proteins     = nrow(sub_df)
+  )
+})
+barplot_ct_data <- dplyr::bind_rows(barplot_ct_data)
+
+# order by mean ratio for readability
+barplot_ct_data <- barplot_ct_data %>%
+  dplyr::arrange(mean_log2ratio) %>%
+  dplyr::mutate(Annotation = factor(Annotation, levels = Annotation))
+
+# plot
+p_ct_barplot <- ggplot(barplot_ct_data, aes(x = Annotation, y = mean_log2ratio)) +
+  geom_col(fill = "grey50", width = 0.7) +
+  geom_errorbar(aes(ymin = mean_log2ratio - sem, ymax = mean_log2ratio + sem),
+                width = 0.3, linewidth = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+  labs(
+    x     = "Annotation",
+    y     = "Mean log2(iN / iDA)",
+    title = "Relative Enrichment of Subcellular Annotations: iN vs iDA (ctrl, day 50)"
+  ) +
+  theme_bw(base_size = 6) +
+  theme(
+    axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    panel.grid   = element_blank()
+  )
+
+ggsave(file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA.pdf"),
+       p_ct_barplot, width = 6, height = 4, device = cairo_pdf)
+
+# source file
+readr::write_csv(barplot_ct_data,
+                 file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA_sourcedata.csv"))
+
+
+
+
+# -------------------------------------------------- #
+# Upset plot: protein counts per direction category
+# unchanged / sig_enriched_iN / sig_enriched_iDA
+# -------------------------------------------------- #
+
+library(UpSetR)
+
+# gene sets by direction (mutually exclusive)
+# sig_enriched_iN  = higher in iN, Wilcoxon p < 0.05
+# sig_enriched_iDA = higher in iDA, Wilcoxon p < 0.05 (= de-enriched in iN)
+# unchanged        = not significant
+genes_ct_unchanged <- celltypecompare_df %>% dplyr::filter(direction == "unchanged")        %>% pull(Genes)
+genes_ct_sig_iN    <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iN")  %>% pull(Genes)
+genes_ct_sig_iDA   <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iDA") %>% pull(Genes)
+
+upset_ct_list <- list(
+  unchanged        = genes_ct_unchanged,
+  sig_enriched_iN  = genes_ct_sig_iN,
+  sig_enriched_iDA = genes_ct_sig_iDA
+)
+
+pdf(file.path(out_dir_d50_QC, "celltype_upset_iN_iDA.pdf"), width = 6, height = 4)
+UpSetR::upset(
+  UpSetR::fromList(upset_ct_list),
+  sets         = c("unchanged", "sig_enriched_iN", "sig_enriched_iDA"),
+  order.by     = "freq",
+  mainbar.y.label = "Protein Count",
+  sets.x.label    = "Set Size",
+  text.scale       = 1.2
+)
+dev.off()
+
+# source file: per-protein direction table
+upset_ct_sourcedata <- celltypecompare_df %>%
+  dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj, direction)
+
+readr::write_csv(upset_ct_sourcedata,
+                 file.path(out_dir_d50_QC, "celltype_upset_iN_iDA_sourcedata.csv"))
+
+
+
+
+# -------------------------------------------------- #
+# GO enrichment analysis on sig proteins iN and iDA
+# Biological Process (BP) and Molecular Function (MF)
+# Dotplot: x = GeneRatio, size = gene count, color = blue
+# -------------------------------------------------- #
+BiocManager::install("clusterProfiler")
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+# background: all unique genes measured in cleaned_df at day 50
+bg_genes_ct <- cleaned_df %>%
+  dplyr::filter(day == 50) %>%
+  pull(Genes) %>%
+  unique()
+
+# function: run GO enrichment for one gene set, save table + dotplot for BP and MF
+run_go_celltype <- function(gene_set, background, label, out_dir) {
+  for (ont in c("BP", "MF")) {
+    ego <- clusterProfiler::enrichGO(
+      gene          = gene_set,
+      universe      = background,
+      OrgDb         = org.Hs.eg.db,
+      keyType       = "SYMBOL",
+      ont           = ont,
+      pAdjustMethod = "BH",
+      pvalueCutoff  = 0.05,
+      qvalueCutoff  = 0.2,
+      readable      = TRUE
+    )
+
+    if (is.null(ego) || nrow(ego@result) == 0) {
+      message("No enriched GO ", ont, " terms for: ", label)
+      next
+    }
+
+    # save result table as source file
+    readr::write_csv(
+      as.data.frame(ego),
+      file.path(out_dir, paste0("GO_", ont, "_", label, "_sourcedata.csv"))
+    )
+
+    # dotplot: x = GeneRatio, size = Count (n genes in term), color = blue gradient (p.adjust)
+    p <- clusterProfiler::dotplot(ego, showCategory = 20, font.size = 7) +
+      scale_color_gradient(low = "dodgerblue4", high = "lightblue",
+                           name = "p.adjust") +
+      labs(title = paste("GO", ont, "|", label)) +
+      theme_bw(base_size = 7) +
+      theme(
+        panel.grid   = element_blank(),
+        axis.text.y  = element_text(size = 6)
+      )
+
+
+```
+
 
 
 # =================================================
