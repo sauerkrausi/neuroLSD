@@ -8131,7 +8131,7 @@ pheatmap::pheatmap(
   cellwidth = 8,
   border_color      = NA,
   na_col            = "grey90",
-  main              = "Peroxisomal Proteome – log2FC all KOs (day 50)"
+  main              = "Peroxisomal Proteome, log2FC all KOs (day 50)"
 )
 dev.off()
 
@@ -8169,6 +8169,8 @@ plot_perox_split_heatmap <- function(mat, row_ann, perox_colors, cell_type, out_
     show_colnames     = TRUE,
     fontsize          = 6,
     border_color      = NA,
+    cellheight = 8,
+    cellwidth = 8,
     na_col            = "grey90",
     main              = paste0("Peroxisomal Proteome – log2FC ", cell_type, " (day 50)")
   )
