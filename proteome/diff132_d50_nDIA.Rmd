@@ -8136,7 +8136,7 @@ pheatmap::pheatmap(
 )
 dev.off()
 
-# source file for combined heatmap
+ # source file for combined heatmap
 readr::write_csv(
   perox_log2fc,
   file.path(out_dir_d50_heatmaps, "peroxisome_log2fc_heatmap_all_sourcedata.csv")
@@ -8164,6 +8164,7 @@ plot_perox_split_heatmap <- function(mat, row_ann, perox_colors, cell_type, out_
     color             = colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(100),
     annotation_row    = row_ann_sub,
     annotation_colors = list(PeroxAnnotation = perox_colors),
+    scale = "row", 
     cluster_rows      = TRUE,
     cluster_cols      = TRUE,
     show_rownames     = TRUE,
@@ -8173,7 +8174,7 @@ plot_perox_split_heatmap <- function(mat, row_ann, perox_colors, cell_type, out_
     cellheight = 8,
     cellwidth = 8,
     na_col            = "grey90",
-    main              = paste0("Peroxisomal Proteome, log2FC ", cell_type, " (day 50)")
+    main              = paste0("Peroxisomal Proteome, log2FC ", cell_type, " (day 50, z-scaled by row)")
   )
   dev.off()
 
