@@ -10171,17 +10171,11 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 
 # UMAP on log2FC
 ```{r}
-
-
 # -------------------------------------------------- #
 # UMAP: proteins as points, 46 KO log2FC as features
 # -------------------------------------------------- #
+#install.packages("uwot")
 library(uwot)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(tibble)
-library(readr)
 
 # output directory
 out_dir_d50_UMAP <- file.path(dirname(out_dir_d50_heatmaps), "UMAP")
