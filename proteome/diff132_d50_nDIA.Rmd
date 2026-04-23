@@ -3566,14 +3566,16 @@ upset_ct_list <- list(
   sig_enriched_iDA = genes_ct_sig_iDA
 )
 
-pdf(file.path(out_dir_d50_QC, "celltype_upset_iN_iDA.pdf"), width = 6, height = 4)
+pdf(file.path(out_dir_d50_QC, "celltype_upset_iN_iDA.pdf"), width = 5, height = 4)
 UpSetR::upset(
   UpSetR::fromList(upset_ct_list),
   sets         = c("unchanged", "sig_enriched_iN", "sig_enriched_iDA"),
   order.by     = "freq",
   mainbar.y.label = "Protein Count",
   sets.x.label    = "Set Size",
-  text.scale       = 1.2
+  main.bar.color = "grey75",
+  sets.bar.color = "grey75",
+  text.scale       = 1
 )
 dev.off()
 
