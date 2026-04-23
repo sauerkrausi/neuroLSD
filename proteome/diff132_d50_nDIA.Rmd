@@ -7939,7 +7939,7 @@ plot_corr_bubble_by_annotation(
 
 
 # --------------------------------------------------- #
-# Scatter plot of within-annotation variance of iN - iDA corr
+# Line plot of within-annotation variance of iN - iDA corr
 #  annotations show the most biologically meaningful variation
 # --------------------------------------------------- #
 
@@ -8001,6 +8001,7 @@ print(p_iDA)
 # --- Save PDFs
 ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iN.pdf"), p_iN, width = 6, height = 4, device = cairo_pdf)
 ggsave(file.path(out_dir_d50_CrossCorr_bubble, "iN_iDA_corr_variance_annotation_iDA.pdf"), p_iDA, width = 6, height = 4, device = cairo_pdf)
+
 
 # --------------------------------------------------- #
 # Bubble plot by annotation 
