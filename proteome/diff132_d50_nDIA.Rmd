@@ -10200,8 +10200,7 @@ umap_feat_mat <- umap_feat_mat[apply(umap_feat_mat, 1, var) > 0, ]
 
 # --- Step 2: UMAP embedding
 set.seed(42)
-umap_coords <- uwot::umap(umap_feat_mat, n_neighbors = 10, min_dist = 0.05,
-                           metric = "euclidean")
+umap_coords <- uwot::umap(umap_feat_mat, n_neighbors = 7, min_dist = 0.05, spread = 2, metric = "euclidean")
 
 umap_df <- data.frame(
   Genes = rownames(umap_feat_mat),
