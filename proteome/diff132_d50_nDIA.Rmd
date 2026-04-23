@@ -10170,7 +10170,7 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 # Module 9: Linear Regression & Modeling (SKIP)
 # =================================================
 
-# UMAP on log2FC
+# UMAP on neuroLSD dataset 
 ```{r}
 # -------------------------------------------------- #
 # UMAP: proteins as points, 46 KO log2FC as features
@@ -10289,6 +10289,79 @@ for (dc in dc_col_names) {
 }
 
 
+
+# --- Step 5: Combined disease class – categorical
+# Plot A: Combined disease class – categorical
+# each protein assigned to disease class with max |mean log2FC|
+# threshold: |max| < 0.1 → "None" (grey)
+# uses disease_colors from environment
+
+
+# color map: dc_col_names (underscore versions) → disease_colors (original names)
+dc_name_map_ext  <- setNames(names(disease_classes), gsub("\\.", "_", names(disease_classes)))
+dc_color_map_ext <- c(
+  setNames(disease_colors[dc_name_map_ext[dc_col_names]], dc_col_names),
+  None = "grey92"
+)
+
+# assign each protein to disease class with max |mean log2FC|
+disease_class_assign_ext <- umap_df %>%
+  dplyr::select(Genes, all_of(dc_col_names)) %>%
+  tidyr::pivot_longer(cols = -Genes, names_to = "DiseaseClass", values_to = "mean_log2fc") %>%
+  dplyr::filter(!is.na(mean_log2fc)) %>%
+  dplyr::group_by(Genes) %>%
+  dplyr::slice_max(abs(mean_log2fc), n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(TopDiseaseClass = dplyr::if_else(abs(mean_log2fc) < 0.1, "None", DiseaseClass)) %>%
+  dplyr::select(Genes, TopDiseaseClass)
+
+umap_df <- umap_df %>%
+  dplyr::left_join(disease_class_assign_ext, by = "Genes") %>%
+  dplyr::mutate(TopDiseaseClass = dplyr::coalesce(TopDiseaseClass, "None"))
+
+plot_umap_cat(
+  umap_df, "TopDiseaseClass", dc_color_map_ext,
+  "UMAP – Top disease class (max |mean log2FC|, threshold 0.1)",
+  file.path(out_dir_d50_UMAP, "UMAP_top_disease_class.pdf")
+)
+
+readr::write_csv(
+  umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, TopDiseaseClass),
+  file.path(out_dir_d50_UMAP, "UMAP_top_disease_class_sourcedata.csv")
+)
+
+
+# -------------------------------------------------- #
+# Plots B: Per-class highlight plots
+# one plot per disease class: target class in disease color,
+# all other proteins grey92
+# -------------------------------------------------- #
+for (dc_hl in dc_col_names) {
+
+  # highlight column: target class name or "Other"
+  umap_df_hl <- umap_df %>%
+    dplyr::mutate(highlight = dplyr::if_else(TopDiseaseClass == dc_hl, dc_hl, "Other"))
+
+  # color map: target class color + grey for everything else
+  hl_color_map <- c(
+    setNames(disease_colors[dc_name_map_ext[dc_hl]], dc_hl),
+    Other = "grey92"
+  )
+
+  plot_umap_cat(
+    umap_df_hl, "highlight", hl_color_map,
+    paste0("UMAP – ", gsub("_", " ", dc_hl)),
+    file.path(out_dir_d50_UMAP, paste0("UMAP_", dc_hl, "_highlight.pdf"))
+  )
+
+  readr::write_csv(
+    umap_df_hl %>% dplyr::select(Genes, UMAP1, UMAP2, highlight),
+    file.path(out_dir_d50_UMAP, paste0("UMAP_", dc_hl, "_highlight_sourcedata.csv"))
+  )
+}
+
+# update master source file with TopDiseaseClass
+readr::write_csv(umap_df, file.path(out_dir_d50_UMAP, "UMAP_protein_sourcedata.csv"))
 ```
 
 
