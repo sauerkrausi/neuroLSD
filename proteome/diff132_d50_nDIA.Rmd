@@ -10170,14 +10170,12 @@ detach("package:ComplexHeatmap", unload = TRUE, character.only = TRUE)
 # Module 9: Linear Regression & Modeling (SKIP)
 # =================================================
 
-# UMAP on neuroLSD dataset 
+# UMAP on neuroLSD dataset for global overview
 ```{r}
-# -------------------------------------------------- #
 # UMAP: proteins as points, 46 KO log2FC as features
-# -------------------------------------------------- #
+
 #install.packages("uwot")
 library(uwot)
-
 
 # output directory
 out_dir_d50_UMAP <- file.path(dirname(out_dir_d50_heatmaps), "UMAP")
@@ -10242,69 +10240,33 @@ dc_col_names <- dc_col_names[dc_col_names %in% colnames(umap_df)]
 readr::write_csv(umap_df, file.path(out_dir_d50_UMAP, "UMAP_protein_sourcedata.csv"))
 
 
-# --- Step 4: Plotting functions
-# diverging color scale (for log2FC-type data, symmetric around 0)
-plot_umap_div <- function(df, color_col, color_label, title, out_path) {
-  df_plot <- df %>% dplyr::filter(!is.na(.data[[color_col]]))
-  lim     <- max(abs(df_plot[[color_col]]), na.rm = TRUE)
-
-  p <- ggplot(df_plot, aes(x = UMAP1, y = UMAP2, color = .data[[color_col]])) +
-    geom_point(size = 0.3, alpha = 0.6) +
-    scale_color_gradient2(low = "dodgerblue3", mid = "grey90", high = "firebrick",
-                          midpoint = 0, limits = c(-lim, lim), name = color_label) +
-    labs(title = title, x = "UMAP1", y = "UMAP2") +
-    theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(),
-          axis.text = element_blank(), axis.ticks = element_blank())
-
-  ggsave(out_path, p, width = 4, height = 4, device = cairo_pdf)
-}
-
-# categorical color scale
+# --- Step 4: Plotting function (categorical color scale)
+# aspect.ratio = 1 forces square plotting area; legend at bottom
 plot_umap_cat <- function(df, color_col, color_map, title, out_path) {
   p <- ggplot(df, aes(x = UMAP1, y = UMAP2, color = .data[[color_col]])) +
     geom_point(size = 0.3, alpha = 0.6) +
     scale_color_manual(values = color_map, na.value = "grey92", name = NULL) +
     labs(title = title, x = "UMAP1", y = "UMAP2") +
     theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(),
-          axis.text = element_blank(), axis.ticks = element_blank())
+    theme(panel.grid    = element_blank(),
+          axis.text     = element_blank(),
+          axis.ticks    = element_blank(),
+          aspect.ratio  = 1,
+          legend.position = "bottom")
 
   ggsave(out_path, p, width = 4, height = 4, device = cairo_pdf)
 }
 
 
-# --- Plots: Disease class mean log2FC (one per class, diverging scale)
-for (dc in dc_col_names) {
-  plot_umap_div(
-    umap_df, dc,
-    color_label = "Mean log2FC",
-    title       = paste0("UMAP – ", gsub("_", " ", dc)),
-    out_path    = file.path(out_dir_d50_UMAP, paste0("UMAP_", dc, "_mean_log2fc.pdf"))
-  )
-  readr::write_csv(
-    umap_df %>% dplyr::select(Genes, UMAP1, UMAP2, all_of(dc)),
-    file.path(out_dir_d50_UMAP, paste0("UMAP_", dc, "_sourcedata.csv"))
-  )
-}
-
-
-
 # --- Step 5: Combined disease class – categorical
-# Plot A: Combined disease class – categorical
-# each protein assigned to disease class with max |mean log2FC|
-# threshold: |max| < 0.1 → "None" (grey)
-# uses disease_colors from environment
-
-
 # color map: dc_col_names (underscore versions) → disease_colors (original names)
 dc_name_map_ext  <- setNames(names(disease_classes), gsub("\\.", "_", names(disease_classes)))
 dc_color_map_ext <- c(
   setNames(disease_colors[dc_name_map_ext[dc_col_names]], dc_col_names),
-  None = "grey92"
+  None = "grey75"
 )
 
-# assign each protein to disease class with max |mean log2FC|
+# assign each protein to disease class with max |mean log2FC|; < 0.1 → "None"
 disease_class_assign_ext <- umap_df %>%
   dplyr::select(Genes, all_of(dc_col_names)) %>%
   tidyr::pivot_longer(cols = -Genes, names_to = "DiseaseClass", values_to = "mean_log2fc") %>%
@@ -10331,22 +10293,18 @@ readr::write_csv(
 )
 
 
-# -------------------------------------------------- #
-# Plots B: Per-class highlight plots
-# one plot per disease class: target class in disease color,
-# all other proteins grey92
-# -------------------------------------------------- #
+# --- Step 6: Per-class highlight plots
+# one plot per disease class: target class in disease color, all others grey92
 for (dc_hl in dc_col_names) {
 
-  # highlight column: target class name or "Other"
   umap_df_hl <- umap_df %>%
     dplyr::mutate(highlight = dplyr::if_else(TopDiseaseClass == dc_hl, dc_hl, "Other"))
 
-  # color map: target class color + grey for everything else
-  hl_color_map <- c(
-    setNames(disease_colors[dc_name_map_ext[dc_hl]], dc_hl),
-    Other = "grey92"
+    hl_color_map <- c(
+    setNames("firebrick", dc_hl),
+    Other = "grey75"
   )
+
 
   plot_umap_cat(
     umap_df_hl, "highlight", hl_color_map,
@@ -10362,6 +10320,7 @@ for (dc_hl in dc_col_names) {
 
 # update master source file with TopDiseaseClass
 readr::write_csv(umap_df, file.path(out_dir_d50_UMAP, "UMAP_protein_sourcedata.csv"))
+
 ```
 
 
