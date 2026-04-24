@@ -3432,9 +3432,6 @@ mean_by_celltype <- ctrl_d50 %>%
   tidyr::pivot_wider(names_from = neuron, values_from = mean_quan, names_prefix = "mean_")
 
 # --- Step 3: Two-sample t-test per gene (iN replicates vs iDA replicates, raw quan)
-# t-test is preferred over Wilcoxon here: with n=3 per group it can reach p < 0.05
-# when effect size is large and within-group variance is low (Wilcoxon minimum is ~0.1).
-# var.equal = FALSE uses Welch correction (robust to unequal variance).
 # Only genes detected in both cell types are tested.
 gene_list_ct <- intersect(
   ctrl_d50 %>% dplyr::filter(neuron == "iN")  %>% pull(Genes) %>% unique(),
@@ -3462,15 +3459,17 @@ ratio_ct_df <- mean_by_celltype %>%
   )
 
 # --- Step 5: Join stats, annotate significance and direction
+# filter out all proteins that have log2FC smaller than 1 in either direction
 celltypecompare_base <- ratio_ct_df %>%
   dplyr::left_join(ttest_ct_df, by = "Genes") %>%
   dplyr::mutate(
     sig_ttest = !is.na(ttest_p) & ttest_p < 0.05,
-    direction = dplyr::case_when(
-      sig_ttest & ratio_iN_iDA > 1 ~ "sig_enriched_iN",
-      sig_ttest & ratio_iN_iDA < 1 ~ "sig_enriched_iDA",
-      TRUE                         ~ "unchanged"
-    )
+      sig_fc    = abs(log2_ratio_iN_iDA) >= 1,
+      direction = dplyr::case_when(
+        sig_ttest & sig_fc & ratio_iN_iDA > 1 ~ "sig_enriched_iN",
+        sig_ttest & sig_fc & ratio_iN_iDA < 1 ~ "sig_enriched_iDA",
+        TRUE                                   ~ "unchanged"
+      )
   )
 
 # --- Step 6: Add binary subcellular annotation columns
@@ -3548,7 +3547,7 @@ readr::write_csv(barplot_ct_data,file.path(out_dir_d50_QC, "celltype_barplot_ann
 # unchanged / sig_enriched_iN / sig_enriched_iDA
 # -------------------------------------------------- #
 
-library(UpSetR)
+#library(UpSetR)
 
 # gene sets by direction (mutually exclusive)
 # sig_enriched_iN  = higher in iN, Wilcoxon p < 0.05
@@ -3703,7 +3702,7 @@ stacked_ct_data <- stacked_ct_data %>%
 
 # colors and labels
 direction_colors_ct <- c(
-  sig_enriched_iN  = "orange",
+  sig_enriched_iN  = "grey45",
   unchanged        = "grey80",
   sig_enriched_iDA = "dodgerblue3"
 )
