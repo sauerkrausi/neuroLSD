@@ -3483,7 +3483,7 @@ ratio_ct_df <- mean_by_celltype %>%
 
 # --- Step 5: Join stats, annotate significance and direction (both methods)
 # method 1: ttest + log2FC >= 1
-# method 2: linear model p < 0.05
+# method 2: linear model p < 0.05 + log2FC >= 1
 celltypecompare_base <- ratio_ct_df %>%
   dplyr::left_join(ttest_ct_df, by = "Genes") %>%
   dplyr::left_join(lm_ct_df,    by = "Genes") %>%
@@ -3496,8 +3496,8 @@ celltypecompare_base <- ratio_ct_df %>%
       TRUE                                   ~ "unchanged"
     ),
     direction_lm = dplyr::case_when(
-      !is.na(lm_p) & lm_p < 0.05 & lm_coef_iN > 0 ~ "sig_enriched_iN",
-      !is.na(lm_p) & lm_p < 0.05 & lm_coef_iN < 0 ~ "sig_enriched_iDA",
+      !is.na(lm_p) & lm_p < 0.05 & sig_fc & lm_coef_iN > 0 ~ "sig_enriched_iN",
+      !is.na(lm_p) & lm_p < 0.05 & sig_fc & lm_coef_iN < 0 ~ "sig_enriched_iDA",
       TRUE                                           ~ "unchanged"
     )
   )
@@ -3684,10 +3684,8 @@ make_stacked_ct <- function(celltypecompare_df, direction_col, method_label, out
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
           panel.grid = element_blank(), legend.position = "bottom")
 
-  ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_count_", method_label, ".pdf")),
-         p_count, width = 7, height = 4, device = cairo_pdf)
-  ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_fraction_", method_label, ".pdf")),
-         p_frac, width = 7, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_count_", method_label, ".pdf")), p_count, width = 7, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_fraction_", method_label, ".pdf")), p_frac, width = 7, height = 4, device = cairo_pdf)
 
   readr::write_csv(stacked_data,
                    file.path(out_dir, paste0("celltype_stacked_barplot_", method_label, "_sourcedata.csv")))
