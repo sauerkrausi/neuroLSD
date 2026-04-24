@@ -3731,6 +3731,10 @@ p_stacked_count <- ggplot(stacked_ct_data, aes(x = Annotation, y = n, fill = dir
 # fraction version (same ordering as count, y-axis in %)
 p_stacked_frac <- ggplot(stacked_ct_data, aes(x = Annotation, y = fraction, fill = direction)) +
   geom_col(width = 0.95, color = "black", linewidth = 0.25) +
+  geom_text(data = stacked_ct_data %>% dplyr::filter(n > 0),
+            aes(label = paste0(n, "\n(", round(fraction * 100, 1), "%)")),
+            position = position_stack(vjust = 0.5),
+            size = 1.8, color = "black") +
   scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   labs(x = NULL, y = "Fraction of proteins",
@@ -3751,6 +3755,24 @@ ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_fraction_iN_iDA.pdf")
 
 readr::write_csv(stacked_ct_data,
                  file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_sourcedata.csv"))
+
+# gene-level source file: one row per gene × annotation with stats and direction
+stacked_ct_genes_list <- lapply(annot_cols_ct, function(ann) {
+  genes_in_ann <- binary_matrix %>%
+    dplyr::filter(.data[[ann]] == TRUE) %>%
+    pull(Genes)
+
+  celltypecompare_df %>%
+    dplyr::filter(Genes %in% genes_in_ann) %>%
+    dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj, direction) %>%
+    dplyr::mutate(Annotation = ann)
+})
+
+stacked_ct_genes_df <- dplyr::bind_rows(stacked_ct_genes_list) %>%
+  dplyr::select(Annotation, Genes, direction, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj)
+
+readr::write_csv(stacked_ct_genes_df,
+                 file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_genes_sourcedata.csv"))
 
 # extract sig gene vectors for downstream GO analysis
 # (previously defined in upset chunk – re-defined here since that chunk is removed)
