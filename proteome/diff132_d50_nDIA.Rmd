@@ -3719,6 +3719,115 @@ make_stacked_ct(celltypecompare_df, "direction_lm", "lm", out_dir_d50_QC)
 # gene vectors for downstream use
 genes_ct_sig_iN  <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iN")  %>% pull(Genes)
 genes_ct_sig_iDA <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iDA") %>% pull(Genes)
+
+
+# -------------------------------------------------- #
+# Annotation-level analysis: pie chart + GO enrichment
+# direction_lm used for significance; sig_enriched_iN and sig_enriched_iDA only
+# GO background: all proteins in celltypecompare_df
+# call: plot_annotation_analysis("Mito", ...) or any binary_matrix annotation
+# -------------------------------------------------- #
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+plot_annotation_analysis <- function(annotation, celltypecompare_df, binary_matrix, out_dir) {
+
+  # proteins in this annotation
+  genes_in_ann <- binary_matrix %>%
+    dplyr::filter(.data[[annotation]] == TRUE) %>%
+    pull(Genes)
+
+  # sig proteins only (direction_lm)
+  ann_sig_df <- celltypecompare_df %>%
+    dplyr::filter(Genes %in% genes_in_ann,
+                  direction_lm %in% c("sig_enriched_iN", "sig_enriched_iDA"))
+
+  if (nrow(ann_sig_df) == 0) {
+    message("No significant proteins for annotation: ", annotation)
+    return(invisible(NULL))
+  }
+
+  # --- Pie chart
+  pie_data <- ann_sig_df %>%
+    dplyr::count(direction_lm) %>%
+    dplyr::mutate(
+      pct          = round(n / sum(n) * 100, 1),
+      pie_label    = paste0(n, "\n(", pct, "%)"),
+      direction_lm = factor(direction_lm, levels = c("sig_enriched_iN", "sig_enriched_iDA"))
+    )
+
+  pie_colors_ann <- c(sig_enriched_iN = "grey45", sig_enriched_iDA = "dodgerblue3")
+
+  p_pie <- ggplot(pie_data, aes(x = "", y = n, fill = direction_lm)) +
+    geom_col(width = 1, color = "white", linewidth = 0.5) +
+    coord_polar(theta = "y") +
+    geom_text(aes(label = pie_label), position = position_stack(vjust = 0.5),
+              size = 2, color = "white") +
+    scale_fill_manual(values = pie_colors_ann,
+                      labels = c(sig_enriched_iN = "Enriched iN", sig_enriched_iDA = "Enriched iDA"),
+                      name = NULL) +
+    labs(title = paste0(annotation, " – significant proteins (lm, log2FC \u2265 1)")) +
+    theme_void(base_size = 6) +
+    theme(legend.position = "bottom", aspect.ratio = 1)
+
+  ggsave(file.path(out_dir, paste0("celltype_pie_", annotation, "_lm.pdf")),
+         p_pie, width = 4, height = 4, device = cairo_pdf)
+
+  readr::write_csv(
+    pie_data %>% dplyr::select(direction_lm, n, pct),
+    file.path(out_dir, paste0("celltype_pie_", annotation, "_lm_sourcedata.csv"))
+  )
+
+  # --- GO enrichment per direction
+  bg_genes_ann <- unique(celltypecompare_df$Genes)
+
+  run_go_ann <- function(gene_set, label) {
+    if (length(gene_set) < 5) {
+      message("Too few genes for GO (", length(gene_set), "): ", label)
+      return(invisible(NULL))
+    }
+    for (ont in c("BP", "MF")) {
+      ego <- clusterProfiler::enrichGO(
+        gene          = gene_set,
+        universe      = bg_genes_ann,
+        OrgDb         = org.Hs.eg.db,
+        keyType       = "SYMBOL",
+        ont           = ont,
+        pAdjustMethod = "BH",
+        pvalueCutoff  = 0.05,
+        qvalueCutoff  = 0.2,
+        readable      = TRUE
+      )
+      if (is.null(ego) || nrow(as.data.frame(ego)) == 0) {
+        message("No GO ", ont, " results for: ", label)
+        next
+      }
+      readr::write_csv(as.data.frame(ego),
+                       file.path(out_dir, paste0("GO_", ont, "_", label, "_sourcedata.csv")))
+
+      p_go <- clusterProfiler::dotplot(ego, showCategory = 5, font.size = 6) +
+        scale_color_gradient(low = "dodgerblue4", high = "lightblue", name = "p.adjust") +
+        labs(title = paste0("GO ", ont, " | ", label)) +
+        theme_bw(base_size = 6) +
+        theme(panel.grid    = element_blank(),
+              axis.text.y   = element_text(size = 5),
+              aspect.ratio  = 1)
+
+      ggsave(file.path(out_dir, paste0("GO_", ont, "_", label, "_dotplot.pdf")),
+             p_go, width = 4, height = 4, device = cairo_pdf)
+    }
+  }
+
+  genes_ann_iN  <- ann_sig_df %>% dplyr::filter(direction_lm == "sig_enriched_iN")  %>% pull(Genes)
+  genes_ann_iDA <- ann_sig_df %>% dplyr::filter(direction_lm == "sig_enriched_iDA") %>% pull(Genes)
+
+  run_go_ann(genes_ann_iN,  paste0(annotation, "_sig_iN"))
+  run_go_ann(genes_ann_iDA, paste0(annotation, "_sig_iDA"))
+}
+
+# run for selected annotations
+plot_annotation_analysis("Mito",       celltypecompare_df, binary_matrix, out_dir_d50_QC)
+plot_annotation_analysis("SynapseSVs", celltypecompare_df, binary_matrix, out_dir_d50_QC)
 ```
 
 
