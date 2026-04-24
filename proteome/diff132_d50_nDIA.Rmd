@@ -3759,7 +3759,7 @@ plot_annotation_analysis <- function(annotation, celltypecompare_df, binary_matr
   pie_colors_ann <- c(sig_enriched_iN = "grey45", sig_enriched_iDA = "dodgerblue3")
 
   p_pie <- ggplot(pie_data, aes(x = "", y = n, fill = direction_lm)) +
-    geom_col(width = 1, color = "white", linewidth = 0.5) +
+    geom_col(width = 1, color = "black", linewidth = 0.25) +
     coord_polar(theta = "y") +
     geom_text(aes(label = pie_label), position = position_stack(vjust = 0.5),
               size = 2, color = "white") +
@@ -3770,12 +3770,9 @@ plot_annotation_analysis <- function(annotation, celltypecompare_df, binary_matr
     theme_void(base_size = 6) +
     theme(legend.position = "bottom", aspect.ratio = 1)
 
-  ggsave(file.path(out_dir, paste0("celltype_pie_", annotation, "_lm.pdf")),
-         p_pie, width = 4, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("celltype_pie_", annotation, "_lm.pdf")), p_pie, width = 4, height = 4, device = cairo_pdf)
 
-  readr::write_csv(
-    pie_data %>% dplyr::select(direction_lm, n, pct),
-    file.path(out_dir, paste0("celltype_pie_", annotation, "_lm_sourcedata.csv"))
+  readr::write_csv(pie_data %>% dplyr::select(direction_lm, n, pct), file.path(out_dir, paste0("celltype_pie_", annotation, "_lm_sourcedata.csv"))
   )
 
   # --- GO enrichment per direction
