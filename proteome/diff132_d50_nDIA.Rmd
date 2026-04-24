@@ -3450,6 +3450,29 @@ ttest_results_ct <- lapply(gene_list_ct, function(g) {
 ttest_ct_df <- dplyr::bind_rows(ttest_results_ct)
 ttest_ct_df$ttest_padj <- p.adjust(ttest_ct_df$ttest_p, method = "BH")
 
+
+# --- Step 3b: Linear model per gene – quan ~ CellType (iDA reference)
+# coefficient CellTypeiN = iN - iDA effect; p-value from model summary
+lm_results_ct <- lapply(gene_list_ct, function(g) {
+  df_lm <- ctrl_d50 %>%
+    dplyr::filter(Genes == g) %>%
+    dplyr::mutate(CellType = factor(neuron, levels = c("iDA", "iN")))
+
+  if (nrow(df_lm) < 4) return(NULL)
+
+  fit <- tryCatch(lm(quan ~ CellType, data = df_lm), error = function(e) NULL)
+  if (is.null(fit)) return(NULL)
+
+  s  <- summary(fit)
+  ct <- coef(fit)["CellTypeiN"]
+  p  <- coef(s)["CellTypeiN", "Pr(>|t|)"]
+
+  data.frame(Genes = g, lm_coef_iN = as.numeric(ct), lm_p = p)
+})
+lm_ct_df <- dplyr::bind_rows(lm_results_ct)
+lm_ct_df$lm_padj <- p.adjust(lm_ct_df$lm_p, method = "BH")
+
+
 # --- Step 4: Ratio iN / iDA (keep only proteins quantified in both; avoid Inf/NaN)
 ratio_ct_df <- mean_by_celltype %>%
   dplyr::filter(!is.na(mean_iN) & !is.na(mean_iDA) & mean_iN > 0 & mean_iDA > 0) %>%
@@ -3458,18 +3481,25 @@ ratio_ct_df <- mean_by_celltype %>%
     log2_ratio_iN_iDA = log2(mean_iN / mean_iDA)
   )
 
-# --- Step 5: Join stats, annotate significance and direction
-# filter out all proteins that have log2FC smaller than 1 in either direction
+# --- Step 5: Join stats, annotate significance and direction (both methods)
+# method 1: ttest + log2FC >= 1
+# method 2: linear model p < 0.05
 celltypecompare_base <- ratio_ct_df %>%
   dplyr::left_join(ttest_ct_df, by = "Genes") %>%
+  dplyr::left_join(lm_ct_df,    by = "Genes") %>%
   dplyr::mutate(
-    sig_ttest = !is.na(ttest_p) & ttest_p < 0.05,
-      sig_fc    = abs(log2_ratio_iN_iDA) >= 1,
-      direction = dplyr::case_when(
-        sig_ttest & sig_fc & ratio_iN_iDA > 1 ~ "sig_enriched_iN",
-        sig_ttest & sig_fc & ratio_iN_iDA < 1 ~ "sig_enriched_iDA",
-        TRUE                                   ~ "unchanged"
-      )
+    sig_ttest    = !is.na(ttest_p) & ttest_p < 0.05,
+    sig_fc       = abs(log2_ratio_iN_iDA) >= 1,
+    direction = dplyr::case_when(
+      sig_ttest & sig_fc & ratio_iN_iDA > 1 ~ "sig_enriched_iN",
+      sig_ttest & sig_fc & ratio_iN_iDA < 1 ~ "sig_enriched_iDA",
+      TRUE                                   ~ "unchanged"
+    ),
+    direction_lm = dplyr::case_when(
+      !is.na(lm_p) & lm_p < 0.05 & lm_coef_iN > 0 ~ "sig_enriched_iN",
+      !is.na(lm_p) & lm_p < 0.05 & lm_coef_iN < 0 ~ "sig_enriched_iDA",
+      TRUE                                           ~ "unchanged"
+    )
   )
 
 # --- Step 6: Add binary subcellular annotation columns
@@ -3477,8 +3507,7 @@ celltypecompare_df <- celltypecompare_base %>%
   dplyr::left_join(binary_matrix, by = "Genes")
 
 # --- Step 7: Save dataframe
-write.csv(celltypecompare_df,file = file.path(out_dir_d50_dataframes, "celltypecompare_iN_iDA.csv"),row.names = FALSE)
-
+write.csv(celltypecompare_df, file = file.path(out_dir_d50_dataframes, "celltypecompare_iN_iDA.csv"), row.names = FALSE)
 
 
 
@@ -3488,12 +3517,9 @@ write.csv(celltypecompare_df,file = file.path(out_dir_d50_dataframes, "celltypec
 # mean log2(iN/iDA) per subcellular annotation
 # -------------------------------------------------- #
 
-# annotation column names from binary_matrix (exclude Genes)
 annot_cols_ct <- colnames(binary_matrix)[-1]
 
-# for each annotation, compute mean and SEM of log2_ratio_iN_iDA
 barplot_ct_data <- lapply(annot_cols_ct, function(ann) {
-  # get gene members of this annotation
   genes_in_ann <- binary_matrix %>%
     dplyr::filter(.data[[ann]] == TRUE) %>%
     pull(Genes)
@@ -3512,267 +3538,189 @@ barplot_ct_data <- lapply(annot_cols_ct, function(ann) {
 })
 barplot_ct_data <- dplyr::bind_rows(barplot_ct_data)
 
-# order by mean ratio for readability
 barplot_ct_data <- barplot_ct_data %>%
   dplyr::arrange(mean_log2ratio) %>%
   dplyr::mutate(Annotation = factor(Annotation, levels = Annotation))
 
-# plot
 p_ct_barplot <- ggplot(barplot_ct_data, aes(x = Annotation, y = mean_log2ratio)) +
   geom_col(fill = "grey75", width = 0.7) +
   geom_errorbar(aes(ymin = mean_log2ratio - sem, ymax = mean_log2ratio + sem),
                 width = 0.3, linewidth = 0.3) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
-  labs(
-    x     = "Annotation",
-    y     = "Mean log2(iN / iDA)",
-    title = "Relative Enrichment of Subcellular Annotations: iN vs iDA (ctrl, day 50)"
-  ) +
+  labs(x = "Annotation", y = "Mean log2(iN / iDA)",
+       title = "Relative Enrichment of Subcellular Annotations: iN vs iDA (ctrl, day 50)") +
   theme_bw(base_size = 6) +
-  theme(
-    axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5),
-    panel.grid   = element_blank()
-  )
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), panel.grid = element_blank())
 
-ggsave(file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA.pdf"),p_ct_barplot, width = 6, height = 4, device = cairo_pdf)
-
-# source file
-readr::write_csv(barplot_ct_data,file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA_sourcedata.csv"))
+ggsave(file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA.pdf"), p_ct_barplot, width = 6, height = 4, device = cairo_pdf)
+readr::write_csv(barplot_ct_data, file.path(out_dir_d50_QC, "celltype_barplot_annotation_iN_iDA_sourcedata.csv"))
 
 
 
 
 # -------------------------------------------------- #
-# Upset plot: protein counts per direction category
-# unchanged / sig_enriched_iN / sig_enriched_iDA
+# Upset plots
+# 1. ttest + log2FC method
+# 2. linear model method
+# 3. combined – overlap between both methods (4 sets)
 # -------------------------------------------------- #
+library(UpSetR)
 
-#library(UpSetR)
-
-# gene sets by direction (mutually exclusive)
-# sig_enriched_iN  = higher in iN, Wilcoxon p < 0.05
-# sig_enriched_iDA = higher in iDA, Wilcoxon p < 0.05 (= de-enriched in iN)
-# unchanged        = not significant
-genes_ct_unchanged <- celltypecompare_df %>% dplyr::filter(direction == "unchanged")        %>% pull(Genes)
-genes_ct_sig_iN    <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iN")  %>% pull(Genes)
-genes_ct_sig_iDA   <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iDA") %>% pull(Genes)
-
-upset_ct_list <- list(
-  unchanged        = genes_ct_unchanged,
-  sig_enriched_iN  = genes_ct_sig_iN,
-  sig_enriched_iDA = genes_ct_sig_iDA
+# gene sets: ttest + log2FC method
+upset_ttest_list <- list(
+  unchanged        = celltypecompare_df %>% dplyr::filter(direction    == "unchanged")        %>% pull(Genes),
+  sig_enriched_iN  = celltypecompare_df %>% dplyr::filter(direction    == "sig_enriched_iN")  %>% pull(Genes),
+  sig_enriched_iDA = celltypecompare_df %>% dplyr::filter(direction    == "sig_enriched_iDA") %>% pull(Genes)
 )
 
-pdf(file.path(out_dir_d50_QC, "celltype_upset_iN_iDA.pdf"), width = 5, height = 4)
-UpSetR::upset(
-  UpSetR::fromList(upset_ct_list),
-  sets         = c("unchanged", "sig_enriched_iN", "sig_enriched_iDA"),
-  order.by     = "freq",
-  mainbar.y.label = "Protein Count",
-  sets.x.label    = "Set Size",
-  main.bar.color = "grey75",
-  sets.bar.color = "grey75",
-  text.scale       = 1
+# gene sets: linear model method
+upset_lm_list <- list(
+  unchanged        = celltypecompare_df %>% dplyr::filter(direction_lm == "unchanged")        %>% pull(Genes),
+  sig_enriched_iN  = celltypecompare_df %>% dplyr::filter(direction_lm == "sig_enriched_iN")  %>% pull(Genes),
+  sig_enriched_iDA = celltypecompare_df %>% dplyr::filter(direction_lm == "sig_enriched_iDA") %>% pull(Genes)
 )
+
+# gene sets: combined (4 sets for cross-method overlap)
+upset_combined_list <- list(
+  ttest_fc_iN  = celltypecompare_df %>% dplyr::filter(direction    == "sig_enriched_iN")  %>% pull(Genes),
+  ttest_fc_iDA = celltypecompare_df %>% dplyr::filter(direction    == "sig_enriched_iDA") %>% pull(Genes),
+  lm_iN        = celltypecompare_df %>% dplyr::filter(direction_lm == "sig_enriched_iN")  %>% pull(Genes),
+  lm_iDA       = celltypecompare_df %>% dplyr::filter(direction_lm == "sig_enriched_iDA") %>% pull(Genes)
+)
+
+# plot 1: ttest + log2FC
+pdf(file.path(out_dir_d50_QC, "celltype_upset_ttest_fc.pdf"), width = 5, height = 4)
+UpSetR::upset(UpSetR::fromList(upset_ttest_list),
+              sets = c("unchanged", "sig_enriched_iN", "sig_enriched_iDA"),
+              order.by = "freq", mainbar.y.label = "Protein Count", sets.x.label = "Set Size",
+              main.bar.color = "grey75", sets.bar.color = "grey75", text.scale = 1)
+grid::grid.text("iN vs iDA – t-test + log2FC filter", x = 0.65, y = 0.97,
+                gp = grid::gpar(fontsize = 7))
 dev.off()
 
-# source file: per-protein direction table
-upset_ct_sourcedata <- celltypecompare_df %>%
-  dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj, direction)
+# plot 2: linear model
+pdf(file.path(out_dir_d50_QC, "celltype_upset_lm.pdf"), width = 5, height = 4)
+UpSetR::upset(UpSetR::fromList(upset_lm_list),
+              sets = c("unchanged", "sig_enriched_iN", "sig_enriched_iDA"),
+              order.by = "freq", mainbar.y.label = "Protein Count", sets.x.label = "Set Size",
+              main.bar.color = "grey75", sets.bar.color = "grey75", text.scale = 1)
+grid::grid.text("iN vs iDA – linear model", x = 0.65, y = 0.97,
+                gp = grid::gpar(fontsize = 7))
+dev.off()
 
-readr::write_csv(upset_ct_sourcedata, file.path(out_dir_d50_QC, "celltype_upset_iN_iDA_sourcedata.csv"))
+# plot 3: combined cross-method overlap
+pdf(file.path(out_dir_d50_QC, "celltype_upset_combined.pdf"), width = 6, height = 4)
+UpSetR::upset(UpSetR::fromList(upset_combined_list),
+              sets = c("ttest_fc_iN", "ttest_fc_iDA", "lm_iN", "lm_iDA"),
+              order.by = "freq", mainbar.y.label = "Protein Count", sets.x.label = "Set Size",
+              main.bar.color = "grey75", sets.bar.color = "grey75", text.scale = 1)
+grid::grid.text("iN vs iDA – method comparison (ttest+FC vs lm)", x = 0.65, y = 0.97,
+                gp = grid::gpar(fontsize = 7))
+dev.off()
+
+# source files
+readr::write_csv(
+  celltypecompare_df %>% dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj, direction),
+  file.path(out_dir_d50_QC, "celltype_upset_ttest_fc_sourcedata.csv")
+)
+readr::write_csv(
+  celltypecompare_df %>% dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, lm_coef_iN, lm_p, lm_padj, direction_lm),
+  file.path(out_dir_d50_QC, "celltype_upset_lm_sourcedata.csv")
+)
 
 
 
 
 # -------------------------------------------------- #
-# GO enrichment analysis on sig proteins iN and iDA
-# Biological Process (BP) and Molecular Function (MF)
-# Dotplot: x = GeneRatio, size = gene count, color = blue
+# Stacked barplots: count + fraction per annotation
+# run for both methods via helper function
 # -------------------------------------------------- #
-#BiocManager::install("clusterProfiler")
-library(clusterProfiler)
-library(org.Hs.eg.db)
+direction_colors_ct <- c(sig_enriched_iN = "grey45", unchanged = "grey80", sig_enriched_iDA = "dodgerblue3")
+direction_labels_ct <- c(sig_enriched_iN = "Enriched iN", unchanged = "Unchanged", sig_enriched_iDA = "Enriched iDA")
+all_dirs_ct         <- c("sig_enriched_iDA", "unchanged", "sig_enriched_iN")
 
-# background: all unique genes measured in cleaned_df at day 50
-bg_genes_ct <- cleaned_df %>%
-  dplyr::filter(day == 50) %>%
-  pull(Genes) %>%
-  unique()
+make_stacked_ct <- function(celltypecompare_df, direction_col, method_label, out_dir) {
 
-# function: run GO enrichment for one gene set, save table + dotplot for BP and MF
-run_go_celltype <- function(gene_set, background, label, out_dir) {
-  for (ont in c("BP", "MF", "CC")) {
-    ego <- clusterProfiler::enrichGO(
-      gene          = gene_set,
-      universe      = background,
-      OrgDb         = org.Hs.eg.db,
-      keyType       = "SYMBOL",
-      ont           = ont,
-      pAdjustMethod = "BH",
-      pvalueCutoff  = 0.05,
-      qvalueCutoff  = 0.2,
-      readable      = TRUE
-    )
+  stacked_list <- lapply(annot_cols_ct, function(ann) {
+    genes_in_ann <- binary_matrix %>% dplyr::filter(.data[[ann]] == TRUE) %>% pull(Genes)
+    sub_df       <- celltypecompare_df %>% dplyr::filter(Genes %in% genes_in_ann)
+    if (nrow(sub_df) == 0) return(NULL)
+    n_total <- nrow(sub_df)
+    counts  <- table(factor(sub_df[[direction_col]], levels = all_dirs_ct))
+    data.frame(Annotation = ann, direction = names(counts),
+               n = as.integer(counts), n_total = n_total,
+               fraction = as.numeric(counts) / n_total)
+  })
+  stacked_data <- dplyr::bind_rows(stacked_list)
 
-    if (is.null(ego) || nrow(ego@result) == 0) {
-      message("No enriched GO ", ont, " terms for: ", label)
-      next
-    }
+  annot_order <- stacked_data %>%
+    dplyr::filter(direction == "sig_enriched_iN") %>%
+    dplyr::arrange(desc(fraction)) %>%
+    pull(Annotation)
 
-    # save result table as source file
-    readr::write_csv(
-      as.data.frame(ego),
-      file.path(out_dir, paste0("GO_", ont, "_", label, "_sourcedata.csv"))
-    )
+  stacked_data <- stacked_data %>%
+    dplyr::mutate(Annotation = factor(Annotation, levels = annot_order),
+                  direction  = factor(direction,  levels = all_dirs_ct))
 
-    # dotplot: x = GeneRatio, size = Count (n genes in term), color = blue gradient (p.adjust)
-    p <- clusterProfiler::dotplot(ego, showCategory = 20, font.size = 7) +
-      scale_color_gradient(low = "dodgerblue4", high = "lightblue",
-                           name = "p.adjust") +
-      labs(title = paste("GO", ont, "|", label)) +
-      theme_bw(base_size = 6) +
-      theme(
-        panel.grid   = element_blank(),
-        axis.text.y  = element_text(size = 6)
-      )
+  p_count <- ggplot(stacked_data, aes(x = Annotation, y = n, fill = direction)) +
+    geom_col(width = 0.95, color = "black", linewidth = 0.25) +
+    scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
+    labs(x = NULL, y = "Protein count",
+         title = paste0("Cell type proteins per annotation – count (", method_label, ")")) +
+    theme_bw(base_size = 6) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+          panel.grid = element_blank(), legend.position = "bottom")
 
-    ggsave(file.path(out_dir, paste0("GO_", ont, "_", label, "_dotplot.pdf")),p, width = 6, height = 5, device = cairo_pdf
-    )
-  }
+  p_frac <- ggplot(stacked_data, aes(x = Annotation, y = fraction, fill = direction)) +
+    geom_col(width = 0.95, color = "black", linewidth = 0.25) +
+    geom_text(aes(label = dplyr::if_else(n > 0, paste0(n, "\n(", round(fraction * 100, 1), "%)"), ""),
+                  group = direction),
+              position = position_stack(vjust = 0.5), size = 1.8, color = "black") +
+    scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    labs(x = NULL, y = "Fraction of proteins",
+         title = paste0("Cell type proteins per annotation – fraction (", method_label, ")")) +
+    theme_bw(base_size = 6) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+          panel.grid = element_blank(), legend.position = "bottom")
+
+  ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_count_", method_label, ".pdf")),
+         p_count, width = 7, height = 4, device = cairo_pdf)
+  ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_fraction_", method_label, ".pdf")),
+         p_frac, width = 7, height = 4, device = cairo_pdf)
+
+  readr::write_csv(stacked_data,
+                   file.path(out_dir, paste0("celltype_stacked_barplot_", method_label, "_sourcedata.csv")))
+
+  # gene-level source file
+  stacked_genes_list <- lapply(annot_cols_ct, function(ann) {
+    genes_in_ann <- binary_matrix %>% dplyr::filter(.data[[ann]] == TRUE) %>% pull(Genes)
+    celltypecompare_df %>%
+      dplyr::filter(Genes %in% genes_in_ann) %>%
+      dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj,
+                    lm_coef_iN, lm_p, lm_padj, all_of(direction_col)) %>%
+      dplyr::mutate(Annotation = ann)
+  })
+  stacked_genes_df <- dplyr::bind_rows(stacked_genes_list) %>%
+    dplyr::rename(direction = all_of(direction_col)) %>%
+    dplyr::select(Annotation, Genes, direction, mean_iN, mean_iDA, log2_ratio_iN_iDA,
+                  ttest_p, ttest_padj, lm_coef_iN, lm_p, lm_padj)
+
+  readr::write_csv(stacked_genes_df,
+                   file.path(out_dir, paste0("celltype_stacked_barplot_", method_label, "_genes_sourcedata.csv")))
 }
 
-# run for sig_enriched_iN
-run_go_celltype(genes_ct_sig_iN,  bg_genes_ct, "sig_enriched_iN",  out_dir_d50_QC)
+# run for ttest + log2FC method
+make_stacked_ct(celltypecompare_df, "direction",    "ttest_fc", out_dir_d50_QC)
 
-# run for sig_enriched_iDA
-run_go_celltype(genes_ct_sig_iDA, bg_genes_ct, "sig_enriched_iDA", out_dir_d50_QC)
+# run for linear model method
+make_stacked_ct(celltypecompare_df, "direction_lm", "lm",       out_dir_d50_QC)
 
 
-
-# -------------------------------------------------- #
-# Stacked barplot: protein count and fraction
-# per subcellular annotation
-# 3 categories: unchanged / enriched iN / enriched iDA
-# -------------------------------------------------- #
-# all 3 direction levels, fixed order for stacking
-# sig_enriched_iDA at bottom, unchanged in middle, sig_enriched_iN at top
-all_dirs_ct <- c("sig_enriched_iDA", "unchanged", "sig_enriched_iN")
-
-# annotation columns from binary_matrix (all except Genes)
-annot_cols_ct <- colnames(binary_matrix)[-1]
-
-# for each annotation: count proteins in each direction category
-stacked_ct_list <- lapply(annot_cols_ct, function(ann) {
-  genes_in_ann <- binary_matrix %>%
-    dplyr::filter(.data[[ann]] == TRUE) %>%
-    pull(Genes)
-
-  sub_df <- celltypecompare_df %>%
-    dplyr::filter(Genes %in% genes_in_ann)
-
-  if (nrow(sub_df) == 0) return(NULL)
-
-  n_total <- nrow(sub_df)
-  # use factor to guarantee all 3 categories are present even if count = 0
-  counts <- table(factor(sub_df$direction, levels = all_dirs_ct))
-
-  data.frame(
-    Annotation = ann,
-    direction  = names(counts),
-    n          = as.integer(counts),
-    n_total    = n_total,
-    fraction   = as.numeric(counts) / n_total
-  )
-})
-stacked_ct_data <- dplyr::bind_rows(stacked_ct_list)
-
-# order annotations by fraction enriched in iN (descending)
-# annotations with the strongest iN enrichment appear on the left
-annot_order_ct <- stacked_ct_data %>%
-  dplyr::filter(direction == "sig_enriched_iN") %>%
-  dplyr::arrange(desc(fraction)) %>%
-  pull(Annotation)
-
-stacked_ct_data <- stacked_ct_data %>%
-  dplyr::mutate(
-    Annotation = factor(Annotation, levels = annot_order_ct),
-    direction  = factor(direction,  levels = all_dirs_ct)
-  )
-
-# colors and labels
-direction_colors_ct <- c(
-  sig_enriched_iN  = "grey45",
-  unchanged        = "grey80",
-  sig_enriched_iDA = "dodgerblue3"
-)
-direction_labels_ct <- c(
-  sig_enriched_iN  = "Enriched iN",
-  unchanged        = "Unchanged",
-  sig_enriched_iDA = "Enriched iDA"
-)
-
-# count version
-p_stacked_count <- ggplot(stacked_ct_data, aes(x = Annotation, y = n, fill = direction)) +
-  geom_col(width = 0.95, color = "black", linewidth = 0.25) +
-  scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
-  labs(x = NULL, y = "Protein count",
-       title = "Cell type proteins per annotation – count (ctrl iN vs iDA, day 50)") +
-  theme_bw(base_size = 6) +
-  theme(
-    axis.text.x     = element_text(angle = 90, hjust = 1, vjust = 0.5),
-    panel.grid      = element_blank(),
-    legend.position = "bottom"
-  )
-
-# fraction version (same ordering as count, y-axis in %)
-p_stacked_frac <- ggplot(stacked_ct_data, aes(x = Annotation, y = fraction, fill = direction)) +
-  geom_col(width = 0.95, color = "black", linewidth = 0.25) +
-  geom_text(data = stacked_ct_data %>% dplyr::filter(n > 0),
-            aes(label = paste0(n, "\n(", round(fraction * 100, 1), "%)")),
-            position = position_stack(vjust = 0.5),
-            size = 1.8, color = "black") +
-  scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  labs(x = NULL, y = "Fraction of proteins",
-       title = "Cell type proteins per annotation – fraction (ctrl iN vs iDA, day 50)") +
-  theme_bw(base_size = 6) +
-  theme(
-    axis.text.x     = element_text(angle = 90, hjust = 1, vjust = 0.5),
-    panel.grid      = element_blank(),
-    legend.position = "bottom"
-  )
-
-# save plots as pdf
-ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_count_iN_iDA.pdf"), p_stacked_count, width = 7, height = 4, device = cairo_pdf)
-ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_fraction_iN_iDA.pdf"), p_stacked_frac, width = 7, height = 4, device = cairo_pdf)
-
-# write source-data file
-readr::write_csv(stacked_ct_data, file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_sourcedata.csv"))
-
-# gene-level source file: one row per gene × annotation with stats and direction
-stacked_ct_genes_list <- lapply(annot_cols_ct, function(ann) {
-  genes_in_ann <- binary_matrix %>%
-    dplyr::filter(.data[[ann]] == TRUE) %>%
-    pull(Genes)
-
-  celltypecompare_df %>%
-    dplyr::filter(Genes %in% genes_in_ann) %>%
-    dplyr::select(Genes, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj, direction) %>%
-    dplyr::mutate(Annotation = ann)
-})
-
-stacked_ct_genes_df <- dplyr::bind_rows(stacked_ct_genes_list) %>%
-  dplyr::select(Annotation, Genes, direction, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj)
-
-readr::write_csv(stacked_ct_genes_df, file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_genes_sourcedata.csv"))
-
-# extract sig gene vectors for downstream GO analysis
-# (previously defined in upset chunk – re-defined here since that chunk is removed)
+# gene vectors for downstream use
 genes_ct_sig_iN  <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iN")  %>% pull(Genes)
 genes_ct_sig_iDA <- celltypecompare_df %>% dplyr::filter(direction == "sig_enriched_iDA") %>% pull(Genes)
 ```
-
 
 
 # =================================================
