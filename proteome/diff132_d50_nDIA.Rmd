@@ -3591,7 +3591,7 @@ readr::write_csv(upset_ct_sourcedata, file.path(out_dir_d50_QC, "celltype_upset_
 # Biological Process (BP) and Molecular Function (MF)
 # Dotplot: x = GeneRatio, size = gene count, color = blue
 # -------------------------------------------------- #
-BiocManager::install("clusterProfiler")
+#BiocManager::install("clusterProfiler")
 library(clusterProfiler)
 library(org.Hs.eg.db)
 
@@ -3748,6 +3748,7 @@ p_stacked_frac <- ggplot(stacked_ct_data, aes(x = Annotation, y = fraction, fill
 ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_count_iN_iDA.pdf"), p_stacked_count, width = 7, height = 4, device = cairo_pdf)
 ggsave(file.path(out_dir_d50_QC, "celltype_stacked_barplot_fraction_iN_iDA.pdf"), p_stacked_frac, width = 7, height = 4, device = cairo_pdf)
 
+# write source-data file
 readr::write_csv(stacked_ct_data, file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_sourcedata.csv"))
 
 # gene-level source file: one row per gene × annotation with stats and direction
@@ -3765,8 +3766,7 @@ stacked_ct_genes_list <- lapply(annot_cols_ct, function(ann) {
 stacked_ct_genes_df <- dplyr::bind_rows(stacked_ct_genes_list) %>%
   dplyr::select(Annotation, Genes, direction, mean_iN, mean_iDA, log2_ratio_iN_iDA, ttest_p, ttest_padj)
 
-readr::write_csv(stacked_ct_genes_df,
-                 file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_genes_sourcedata.csv"))
+readr::write_csv(stacked_ct_genes_df, file.path(out_dir_d50_QC, "celltype_stacked_barplot_iN_iDA_genes_sourcedata.csv"))
 
 # extract sig gene vectors for downstream GO analysis
 # (previously defined in upset chunk – re-defined here since that chunk is removed)
