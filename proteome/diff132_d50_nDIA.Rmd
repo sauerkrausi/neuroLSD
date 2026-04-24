@@ -3810,8 +3810,7 @@ plot_annotation_analysis <- function(annotation, celltypecompare_df, binary_matr
               axis.text.y   = element_text(size = 5),
               aspect.ratio  = 1)
 
-      ggsave(file.path(out_dir, paste0("GO_", ont, "_", label, "_dotplot.pdf")),
-             p_go, width = 4, height = 4, device = cairo_pdf)
+      ggsave(file.path(out_dir, paste0("GO_", ont, "_", label, "_dotplot.pdf")), p_go, width = 4, height = 4, device = cairo_pdf)
     }
   }
 
