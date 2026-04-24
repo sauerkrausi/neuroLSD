@@ -3677,7 +3677,7 @@ make_stacked_ct <- function(celltypecompare_df, direction_col, method_label, out
     geom_col(width = 0.95, color = "black", linewidth = 0.25) +
     geom_text(aes(label = dplyr::if_else(n > 0, paste0(n, "\n(", round(fraction * 100, 1), "%)"), ""),
                   group = direction),
-              position = position_stack(vjust = 0.5), size = 1.8, color = "black") +
+              position = position_stack(vjust = 0.5), size = 1.8, color = "black", angle = 90) +
     scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
     labs(x = NULL, y = "Fraction of proteins",
