@@ -3706,15 +3706,14 @@ make_stacked_ct <- function(celltypecompare_df, direction_col, method_label, out
     dplyr::select(Annotation, Genes, direction, mean_iN, mean_iDA, log2_ratio_iN_iDA,
                   ttest_p, ttest_padj, lm_coef_iN, lm_p, lm_padj)
 
-  readr::write_csv(stacked_genes_df,
-                   file.path(out_dir, paste0("celltype_stacked_barplot_", method_label, "_genes_sourcedata.csv")))
+  readr::write_csv(stacked_genes_df, file.path(out_dir, paste0("celltype_stacked_barplot_", method_label, "_genes_sourcedata.csv")))
 }
 
 # run for ttest + log2FC method
-make_stacked_ct(celltypecompare_df, "direction",    "ttest_fc", out_dir_d50_QC)
+make_stacked_ct(celltypecompare_df, "direction","ttest_fc", out_dir_d50_QC)
 
 # run for linear model method
-make_stacked_ct(celltypecompare_df, "direction_lm", "lm",       out_dir_d50_QC)
+make_stacked_ct(celltypecompare_df, "direction_lm", "lm", out_dir_d50_QC)
 
 
 # gene vectors for downstream use
