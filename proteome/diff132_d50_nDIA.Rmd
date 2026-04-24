@@ -3662,6 +3662,7 @@ make_stacked_ct <- function(celltypecompare_df, direction_col, method_label, out
     dplyr::mutate(Annotation = factor(Annotation, levels = annot_order),
                   direction  = factor(direction,  levels = all_dirs_ct))
 
+  # absolute barplot numbers
   p_count <- ggplot(stacked_data, aes(x = Annotation, y = n, fill = direction)) +
     geom_col(width = 0.95, color = "black", linewidth = 0.25) +
     scale_fill_manual(values = direction_colors_ct, labels = direction_labels_ct, name = NULL) +
@@ -3671,6 +3672,7 @@ make_stacked_ct <- function(celltypecompare_df, direction_col, method_label, out
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
           panel.grid = element_blank(), legend.position = "bottom")
 
+  # fraction barplot
   p_frac <- ggplot(stacked_data, aes(x = Annotation, y = fraction, fill = direction)) +
     geom_col(width = 0.95, color = "black", linewidth = 0.25) +
     geom_text(aes(label = dplyr::if_else(n > 0, paste0(n, "\n(", round(fraction * 100, 1), "%)"), ""),
@@ -3687,8 +3689,8 @@ make_stacked_ct <- function(celltypecompare_df, direction_col, method_label, out
   ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_count_", method_label, ".pdf")), p_count, width = 7, height = 4, device = cairo_pdf)
   ggsave(file.path(out_dir, paste0("celltype_stacked_barplot_fraction_", method_label, ".pdf")), p_frac, width = 7, height = 4, device = cairo_pdf)
 
-  readr::write_csv(stacked_data,
-                   file.path(out_dir, paste0("celltype_stacked_barplot_", method_label, "_sourcedata.csv")))
+  # summary source file csv
+  readr::write_csv(stacked_data, file.path(out_dir, paste0("celltype_stacked_barplot_", method_label, "_sourcedata.csv")))
 
   # gene-level source file
   stacked_genes_list <- lapply(annot_cols_ct, function(ann) {
