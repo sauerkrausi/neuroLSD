@@ -5641,11 +5641,13 @@ pheatmap::pheatmap(
   cluster_rows = TRUE, cluster_cols = TRUE,
   annotation_col = ann_col_geno_tc, annotation_row = ann_col_geno_tc,
   annotation_colors = ann_colors_geno_tc,
-  color = colorRampPalette(RColorBrewer::brewer.pal(9, "RdYlBu"))(100),
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(9, "RdYlBu")))(100),
   breaks = seq(-1, 1, length.out = 101),
   display_numbers = FALSE,
   border_color = NA,
-  cellwidth = 8, cellheight = 8, fontsize = 6,
+  cellwidth = 8, 
+  cellheight = 8, 
+  fontsize = 6,
   main = "Genotype proteome correlation (Pearson r, log2FC)",
   filename = file.path(out_dir_d50_timecourse, "global_genotype_corr_heatmap.pdf")
 )
@@ -5762,26 +5764,33 @@ readr::write_csv(as.data.frame(cohort_r_mat_tc) %>% tibble::rownames_to_column("
 cohort_r_mat_plot <- cohort_r_mat_tc
 cohort_r_mat_plot[is.na(cohort_r_mat_plot)] <- 0
 
-# annotation bar: one column encoding genotype × neuron using paired light/dark colors
+# annotation bars: GenotypeNeuron (paired), Neuron, Day
 ann_col_cond_tc <- data.frame(
-  GenotypeNeuron = paste0(
-    sub("_iN.*|_iDA.*", "", cond_order_tc), "_",
-    regmatches(cond_order_tc, regexpr("iN|iDA", cond_order_tc))
-  ),
+  Genotype = sub("_iN.*|_iDA.*", "", cond_order_tc),
+  Neuron   = regmatches(cond_order_tc, regexpr("iN|iDA", cond_order_tc)),
+  Day      = regmatches(cond_order_tc, regexpr("d\\d+", cond_order_tc)),
   row.names = cond_order_tc
 )
-ann_colors_cond_tc <- list(GenotypeNeuron = geno_neuron_colors_tc)
+ann_colors_cond_tc <- list(
+  Genotype = geno_colors_tc,
+  Neuron   = c("iN" = "grey50", "iDA" = "grey80"),
+  Day      = c("d30" = "grey90", "d50" = "grey30")
+)
 
 pheatmap::pheatmap(
   cohort_r_mat_plot,
-  cluster_rows = TRUE, cluster_cols = FALSE,
+  cluster_rows = TRUE, 
+  cluster_cols = TRUE,
   annotation_col = ann_col_cond_tc,
   annotation_colors = ann_colors_cond_tc,
-  color = colorRampPalette(RColorBrewer::brewer.pal(9, "RdYlBu"))(100),
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(9, "RdBu")))(100),
   breaks = seq(-1, 1, length.out = 101),
+  #scale = "column",
   border_color = NA,
-  cellwidth = 8, cellheight = 8, fontsize = 6,
-  main = "Pearson r vs cohort mean (log2FC) per annotation × condition",
+  cellwidth = 8, 
+  cellheight = 8, 
+  fontsize = 6,
+  main = "Pearson r vs cohort mean (log2FC) per annotation - condition",
   filename = file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_heatmap.pdf")
 )
 
