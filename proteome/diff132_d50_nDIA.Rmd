@@ -5526,10 +5526,7 @@ write.csv(
 
 # Global d30 vs d50 proteome comparison
 ```{r}
-# -------------------------------------------------- #
-# Step 1: Compute per-protein mean quan (d30, d50)
-#         per genotype × neuron
-# -------------------------------------------------- #
+# --- Step 1: Compute per-protein mean quan (d30, d50) per genotype × neuron
 
 genotypes_tc <- c("ctrl", "GBA1", "ASAH1", "SMPD1", "GRN")
 
@@ -5547,16 +5544,14 @@ mean_quan_wide_tc <- mean_quan_tc %>%
   dplyr::filter(!is.na(d30), !is.na(d50)) %>%
   dplyr::mutate(genotype = factor(genotype, levels = genotypes_tc))
 
-readr::write_csv(mean_quan_wide_tc,
-  file.path(out_dir_d50_timecourse, "global_d30_d50_mean_quan_sourcedata.csv"))
+readr::write_csv(mean_quan_wide_tc, file.path(out_dir_d50_timecourse, "global_d30_d50_mean_quan_sourcedata.csv"))
 
 
-# -------------------------------------------------- #
-# Step 2: Scatter plots – per genotype, iN + iDA combined
+
+# --- Step 2: Scatter plots – per genotype, iN + iDA combined
 #         facet_grid(neuron ~ genotype)
 #         x = log2(mean quan d30), y = log2(mean quan d50)
 #         dots colored by neuron, red regression line, R² per panel
-# -------------------------------------------------- #
 
 neuron_colors_tc <- c("iN" = "grey50", "iDA" = "grey80")
 
@@ -5594,10 +5589,9 @@ ggsave(file.path(out_dir_d50_timecourse, "global_scatter_d30_d50.pdf"),
        p_scatter_tc, width = 10, height = 4, device = cairo_pdf)
 
 
-# -------------------------------------------------- #
-# Step 3: R² summary heatmap
-#         rows = neuron, cols = genotype
-# -------------------------------------------------- #
+
+# --- Step 3: R² summary heatmap
+# rows = neuron, cols = genotype
 
 r2_mat_tc <- r2_tc %>%
   dplyr::select(genotype, neuron, r2) %>%
@@ -5728,8 +5722,7 @@ cohort_r_mat_tc <- cohort_r_rows_tc %>%
   as.matrix()
 cohort_r_mat_tc <- cohort_r_mat_tc[, cond_order_tc[cond_order_tc %in% colnames(cohort_r_mat_tc)], drop = FALSE]
 
-readr::write_csv(as.data.frame(cohort_r_mat_tc) %>% tibble::rownames_to_column("Annotation"),
-  file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_sourcedata.csv"))
+readr::write_csv(as.data.frame(cohort_r_mat_tc) %>% tibble::rownames_to_column("Annotation"), file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_sourcedata.csv"))
 
 # remove rows with any NA before hclust
 cohort_r_mat_plot <- cohort_r_mat_tc[rowSums(is.na(cohort_r_mat_tc)) == 0, , drop = FALSE]
