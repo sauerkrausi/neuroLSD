@@ -5774,7 +5774,7 @@ ann_col_cond_tc <- data.frame(
 ann_colors_cond_tc <- list(
   Genotype = geno_colors_tc,
   Neuron   = c("iN" = "grey50", "iDA" = "grey80"),
-  Day      = c("d30" = "grey90", "d50" = "grey30")
+  Day      = c("d30" = "darkgreen", "d50" = "dodgerblue3")
 )
 
 pheatmap::pheatmap(
