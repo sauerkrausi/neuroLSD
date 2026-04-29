@@ -3885,11 +3885,11 @@ plot_multiple_genes <- function(genes, data = PCAclean_d50_annotated, filename =
 }
 
 # --- Step 5. Call function and plot proteins of Interest 
-Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "SYP", "SYN1", "SNCA", "NEFH", "BSN", "SNX5", "VAMP2", "CPLX1"), filename = file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_sourcedata.csv"))
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_Proteins, width = 12, height = 12, device = cairo_pdf)
+Neuro_QC_Proteins <- plot_multiple_genes(c("SYN1", "NEFH"), filename = file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_sourcedata.csv"))
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_Proteins, width = 4, height = 4, device = cairo_pdf)
 
 Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "KCNJ6"), filename = file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA_sourcedata.csv"))
-ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_QC_Proteins, width = 8, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_QC_Proteins, width = 4, height = 4, device = cairo_pdf)
 ```
 
 
