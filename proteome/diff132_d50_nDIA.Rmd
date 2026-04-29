@@ -5544,19 +5544,23 @@ mean_quan_wide_tc <- mean_quan_tc %>%
   dplyr::select(Genes, genotype, neuron, day, log2_mean_quan) %>%
   tidyr::pivot_wider(names_from = day, values_from = log2_mean_quan,
                      names_prefix = "d") %>%
-  dplyr::filter(!is.na(d30), !is.na(d50))
+  dplyr::filter(!is.na(d30), !is.na(d50)) %>%
+  dplyr::mutate(genotype = factor(genotype, levels = genotypes_tc))
 
 readr::write_csv(mean_quan_wide_tc,
   file.path(out_dir_d50_timecourse, "global_d30_d50_mean_quan_sourcedata.csv"))
 
 
 # -------------------------------------------------- #
-# Step 2: Scatter plots – per genotype, per neuron
+# Step 2: Scatter plots – per genotype, iN + iDA combined
+#         facet_grid(neuron ~ genotype)
 #         x = log2(mean quan d30), y = log2(mean quan d50)
-#         black dots, red regression line, R² in title
+#         dots colored by neuron, red regression line, R² per panel
 # -------------------------------------------------- #
 
-# compute R² per genotype × neuron
+neuron_colors_tc <- c("iN" = "grey50", "iDA" = "grey80")
+
+# R² per genotype × neuron for panel labels
 r2_tc <- mean_quan_wide_tc %>%
   dplyr::group_by(genotype, neuron) %>%
   dplyr::summarise(
@@ -5565,41 +5569,29 @@ r2_tc <- mean_quan_wide_tc %>%
   ) %>%
   dplyr::mutate(label = paste0("R² = ", round(r2, 3)))
 
-# merge label into wide df for facet annotation
-mean_quan_wide_tc_lab <- mean_quan_wide_tc %>%
-  dplyr::left_join(r2_tc, by = c("genotype", "neuron"))
+axis_range_tc <- range(c(mean_quan_wide_tc$d30, mean_quan_wide_tc$d50), na.rm = TRUE)
 
-# plot function: one PDF per neuron type, facet by genotype
-plot_scatter_d30_d50 <- function(neuron_label, df, r2_df, out_dir) {
-  dfp  <- dplyr::filter(df, neuron == neuron_label)
-  r2p  <- dplyr::filter(r2_df, neuron == neuron_label)
+p_scatter_tc <- ggplot(mean_quan_wide_tc, aes(x = d30, y = d50, color = neuron)) +
+  geom_point(size = 0.4, alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "firebrick",
+              linewidth = 0.5, formula = y ~ x) +
+  geom_text(data = r2_tc,
+            aes(label = label),
+            x = -Inf, y = Inf, hjust = -0.1, vjust = 1.3,
+            size = 1.8, color = "black", inherit.aes = FALSE) +
+  scale_color_manual(values = neuron_colors_tc) +
+  facet_grid(rows = vars(neuron), cols = vars(genotype)) +
+  coord_equal(xlim = axis_range_tc, ylim = axis_range_tc) +
+  labs(title = "Global proteome: d30 vs d50",
+       x = "log2(mean quan) day 30",
+       y = "log2(mean quan) day 50") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(),
+        strip.background = element_rect(fill = "grey90", color = NA),
+        legend.position = "none")
 
-  axis_range <- range(c(dfp$d30, dfp$d50), na.rm = TRUE)
-
-  p <- ggplot(dfp, aes(x = d30, y = d50)) +
-    geom_point(size = 0.4, alpha = 0.5, color = "black") +
-    geom_smooth(method = "lm", se = FALSE, color = "firebrick",
-                linewidth = 0.5, formula = y ~ x) +
-    geom_text(data = r2p,
-              aes(label = label),
-              x = -Inf, y = Inf, hjust = -0.1, vjust = 1.3,
-              size = 1.8, inherit.aes = FALSE) +
-    facet_wrap(~ genotype, ncol = 3) +
-    coord_equal(xlim = axis_range, ylim = axis_range) +
-    labs(title = paste0("Global proteome: d30 vs d50 (", neuron_label, ")"),
-         x = "log2(mean quan) day 30",
-         y = "log2(mean quan) day 50") +
-    theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(),
-          strip.background = element_rect(fill = "grey90", color = NA))
-
-  ggsave(file.path(out_dir,
-                   paste0("global_scatter_d30_d50_", neuron_label, ".pdf")),
-         p, width = 6, height = 4, device = cairo_pdf)
-}
-
-plot_scatter_d30_d50("iN",  mean_quan_wide_tc_lab, r2_tc, out_dir_d50_timecourse)
-plot_scatter_d30_d50("iDA", mean_quan_wide_tc_lab, r2_tc, out_dir_d50_timecourse)
+ggsave(file.path(out_dir_d50_timecourse, "global_scatter_d30_d50.pdf"),
+       p_scatter_tc, width = 10, height = 4, device = cairo_pdf)
 
 
 # -------------------------------------------------- #
@@ -5665,97 +5657,96 @@ ann_colors_tc <- setNames(
   c(ann_vec, "Other")
 )
 
-plot_ann_scatter_d30_d50 <- function(neuron_label, df, out_dir) {
-  dfp <- dplyr::filter(df, neuron == neuron_label)
+axis_range_ann_tc <- range(c(mean_quan_wide_ann$d30, mean_quan_wide_ann$d50), na.rm = TRUE)
 
-  axis_range <- range(c(dfp$d30, dfp$d50), na.rm = TRUE)
+p_ann_scatter_tc <- ggplot(mean_quan_wide_ann, aes(x = d30, y = d50, color = Annotation)) +
+  geom_point(size = 0.4, alpha = 0.6) +
+  scale_color_manual(values = ann_colors_tc, na.value = "grey80") +
+  facet_grid(rows = vars(neuron), cols = vars(genotype)) +
+  coord_equal(xlim = axis_range_ann_tc, ylim = axis_range_ann_tc) +
+  labs(title = "Global proteome by annotation: d30 vs d50",
+       x = "log2(mean quan) day 30",
+       y = "log2(mean quan) day 50") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(),
+        strip.background = element_rect(fill = "grey90", color = NA),
+        legend.key.size = unit(3, "pt"),
+        legend.text = element_text(size = 5))
 
-  p <- ggplot(dfp, aes(x = d30, y = d50, color = Annotation)) +
-    geom_point(size = 0.4, alpha = 0.6) +
-    scale_color_manual(values = ann_colors_tc, na.value = "grey80") +
-    facet_wrap(~ genotype, ncol = 3) +
-    coord_equal(xlim = axis_range, ylim = axis_range) +
-    labs(title = paste0("Global proteome by annotation: d30 vs d50 (", neuron_label, ")"),
-         x = "log2(mean quan) day 30",
-         y = "log2(mean quan) day 50") +
-    theme_bw(base_size = 6) +
-    theme(panel.grid = element_blank(),
-          strip.background = element_rect(fill = "grey90", color = NA),
-          legend.key.size = unit(3, "pt"),
-          legend.text = element_text(size = 5))
-
-  ggsave(file.path(out_dir,
-                   paste0("global_ann_scatter_d30_d50_", neuron_label, ".pdf")),
-         p, width = 8, height = 5, device = cairo_pdf)
-}
-
-plot_ann_scatter_d30_d50("iN",  mean_quan_wide_ann, out_dir_d50_timecourse)
-plot_ann_scatter_d30_d50("iDA", mean_quan_wide_ann, out_dir_d50_timecourse)
+ggsave(file.path(out_dir_d50_timecourse, "global_ann_scatter_d30_d50.pdf"),
+       p_ann_scatter_tc, width = 10, height = 5, device = cairo_pdf)
 
 
 # -------------------------------------------------- #
-# Step 5: Composite correlation heatmap
-#         rows = annotations, cols = genotype_neuron_day
-#         value = mean Pearson r (d30 vs d50) per
-#         annotation across all proteins in that annotation
+# Step 5: Annotation cohort-deviation heatmap
+#         rows = annotations, cols = genotype × neuron × day (20 cols)
+#         value = Pearson r (condition profile vs leave-one-out cohort mean)
+#         low r = annotation deviates from cohort in that condition
 # -------------------------------------------------- #
 
-# build protein-level wide df: one row per Genes × genotype × neuron
-# values = log2(mean quan) at d30 and d50
+# protein × condition matrix: rows=Genes, cols=genotype_neuron_day
+prot_cond_mat_tc <- mean_quan_tc %>%
+  dplyr::mutate(condition = paste(as.character(genotype), neuron,
+                                  paste0("d", day), sep = "_")) %>%
+  dplyr::select(Genes, condition, log2_mean_quan) %>%
+  tidyr::pivot_wider(names_from = condition, values_from = log2_mean_quan) %>%
+  tibble::column_to_rownames("Genes") %>%
+  as.matrix()
 
-# for each annotation: proteins belonging to it
+# column order: ctrl first, iN before iDA, d30 before d50
+cond_order_tc <- unlist(lapply(as.character(genotypes_tc), function(g)
+  paste(g, c("iN", "iDA"), rep(c("d30", "d50"), each = 2), sep = "_")))
+cond_order_tc <- cond_order_tc[cond_order_tc %in% colnames(prot_cond_mat_tc)]
+prot_cond_mat_tc <- prot_cond_mat_tc[, cond_order_tc, drop = FALSE]
+
+# proteins per annotation (first-match from ann_map_tc built in Step 4)
 ann_protein_list_tc <- lapply(ann_vec, function(ann) {
   ann_map_tc %>% dplyr::filter(Annotation == ann) %>% dplyr::pull(Genes)
 })
 names(ann_protein_list_tc) <- ann_vec
 
-# per-annotation mean Pearson r between d30 and d50
-# correlation computed across proteins within annotation, per genotype × neuron
-pearson_rows_tc <- lapply(genotypes_tc, function(geno) {
-  lapply(c("iN", "iDA"), function(nt) {
-    sub_df <- mean_quan_wide_tc %>%
-      dplyr::filter(genotype == geno, neuron == nt)
+# for each annotation × condition: r(condition, leave-one-out cohort mean)
+cohort_r_rows_tc <- lapply(ann_vec, function(ann) {
+  prots  <- ann_protein_list_tc[[ann]]
+  sub_m  <- prot_cond_mat_tc[rownames(prot_cond_mat_tc) %in% prots, , drop = FALSE]
+  if (nrow(sub_m) < 3) return(NULL)
 
-    ann_r_vals <- sapply(ann_vec, function(ann) {
-      prots <- ann_protein_list_tc[[ann]]
-      sub_ann <- dplyr::filter(sub_df, Genes %in% prots)
-      if (nrow(sub_ann) < 3) return(NA_real_)
-      cor(sub_ann$d30, sub_ann$d50, use = "pairwise.complete.obs", method = "pearson")
-    })
+  r_vals <- sapply(cond_order_tc, function(cond) {
+    other_cols   <- setdiff(cond_order_tc, cond)
+    cohort_mean  <- rowMeans(sub_m[, other_cols, drop = FALSE], na.rm = TRUE)
+    cor(sub_m[, cond], cohort_mean, use = "pairwise.complete.obs", method = "pearson")
+  })
 
-    tibble::tibble(
-      genotype_neuron = paste0(geno, "_", nt),
-      Annotation = ann_vec,
-      pearson_r = ann_r_vals
-    )
-  }) %>% dplyr::bind_rows()
+  tibble::tibble(Annotation = ann,
+                 condition  = names(r_vals),
+                 pearson_r  = r_vals)
 }) %>% dplyr::bind_rows()
 
-pearson_mat_tc <- pearson_rows_tc %>%
-  tidyr::pivot_wider(names_from = genotype_neuron, values_from = pearson_r) %>%
+cohort_r_mat_tc <- cohort_r_rows_tc %>%
+  tidyr::pivot_wider(names_from = condition, values_from = pearson_r) %>%
   tibble::column_to_rownames("Annotation") %>%
   as.matrix()
+cohort_r_mat_tc <- cohort_r_mat_tc[, cond_order_tc[cond_order_tc %in% colnames(cohort_r_mat_tc)], drop = FALSE]
 
-# column order: ctrl first, then disease genotypes; iN before iDA
-col_order_pearson <- unlist(lapply(genotypes_tc, function(g) paste0(g, c("_iN", "_iDA"))))
-col_order_pearson <- col_order_pearson[col_order_pearson %in% colnames(pearson_mat_tc)]
-pearson_mat_tc    <- pearson_mat_tc[, col_order_pearson, drop = FALSE]
+readr::write_csv(as.data.frame(cohort_r_mat_tc) %>% tibble::rownames_to_column("Annotation"),
+  file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_sourcedata.csv"))
 
-readr::write_csv(as.data.frame(pearson_mat_tc) %>% tibble::rownames_to_column("Annotation"),
-  file.path(out_dir_d50_timecourse, "global_pearson_r_annotation_heatmap_sourcedata.csv"))
+# remove rows with any NA before hclust
+cohort_r_mat_plot <- cohort_r_mat_tc[rowSums(is.na(cohort_r_mat_tc)) == 0, , drop = FALSE]
 
 pheatmap::pheatmap(
-  pearson_mat_tc,
+  cohort_r_mat_plot,
   cluster_rows = TRUE, cluster_cols = FALSE,
-  color = colorRampPalette(rev(RColorBrewer::brewer.pal(9, "RdYlBu")))(100),
+  color = colorRampPalette(RColorBrewer::brewer.pal(9, "RdYlBu"))(100),
   breaks = seq(-1, 1, length.out = 101),
   na_col = "grey90",
   display_numbers = TRUE, number_format = "%.2f",
   number_color = "black", fontsize_number = 5,
   cellwidth = 8, cellheight = 8, fontsize = 6,
-  main = "Mean Pearson r (d30 vs d50) per annotation × genotype/neuron",
-  filename = file.path(out_dir_d50_timecourse, "global_pearson_r_annotation_heatmap.pdf")
+  main = "Pearson r vs cohort mean per annotation × condition",
+  filename = file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_heatmap.pdf")
 )
+
 ```
 
 
