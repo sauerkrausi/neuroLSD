@@ -3854,10 +3854,12 @@ PCAclean_d50_annotated[is.na(PCAclean_d50_annotated)] <- FALSE
 
 
 # --- Step 4. Dunction for plotting proteins of Interest 
-plot_multiple_genes <- function(genes, data = PCAclean_d50_annotated) {
+plot_multiple_genes <- function(genes, data = PCAclean_d50_annotated, filename = NULL) {
   gene_df <- data %>%
     dplyr::filter(Genes %in% genes, genotype == "ctrl", neuron %in% c("iN", "iDA"), day == 50)
-
+  if (!is.null(filename)) {
+    write.csv(gene_df, file = filename, row.names = FALSE)
+  }
   ggplot(gene_df, aes(x = neuron, y = quan, fill = neuron)) +
     geom_bar(stat = "summary", fun = mean, position = position_dodge(width = 0.6), width = 0.5) +
     geom_jitter(aes(color = neuron), width = 0.15, size = 1.8, alpha = 0.6) +
@@ -3883,13 +3885,11 @@ plot_multiple_genes <- function(genes, data = PCAclean_d50_annotated) {
 }
 
 # --- Step 5. Call function and plot proteins of Interest 
-Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "SYP", "SYN1", "SNCA", "NEFH", "BSN", "SNX5", "VAMP2", "CPLX1"))
+Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "SYP", "SYN1", "SNCA", "NEFH", "BSN", "SNX5", "VAMP2", "CPLX1"), filename = file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_sourcedata.csv"))
 ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins.pdf"), Neuro_QC_Proteins, width = 12, height = 12, device = cairo_pdf)
 
-
-Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "CDNF","KCNJ6"))
+Neuro_QC_Proteins <- plot_multiple_genes(c("TH", "KCNJ6"), filename = file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA_sourcedata.csv"))
 ggsave(file.path(out_dir_d50_QC, "diff132_d50_Neuro_QC_Proteins_DA.pdf"), Neuro_QC_Proteins, width = 8, height = 4, device = cairo_pdf)
-
 ```
 
 
