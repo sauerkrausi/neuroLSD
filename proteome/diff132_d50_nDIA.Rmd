@@ -515,6 +515,7 @@ ggsave(file.path(out_dir_d50_QC, "diff132_within_replicate_variance_scatter.pdf"
 # MSwithin: variance within genotypes (across replicates)
 # If F > 1: biological signal is larger than technical noise = real differences
 # If F < 1: technical noise is larger than biological signal = can't trust the differences
+# also have log2 implementation and then it is F > 0 as cuttoff since log2(1) = 0
 
 # --- Create replicate-level fold changes per organelle annotation
 rep_fc_organelle <- cleaned_df %>%
