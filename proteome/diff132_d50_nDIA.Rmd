@@ -5586,40 +5586,44 @@ p_scatter_tc <- ggplot(mean_quan_wide_tc, aes(x = d30, y = d50, color = neuron))
         strip.background = element_rect(fill = "grey90", color = NA),
         legend.position = "none")
 
-ggsave(file.path(out_dir_d50_timecourse, "global_scatter_d30_d50.pdf"), p_scatter_tc, width = 10, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_timecourse, "global_scatter_d30_d50.pdf"),
+       p_scatter_tc, width = 10, height = 4, device = cairo_pdf)
 
 
 
-# --- Step 3: R² summary heatmap
-# rows = neuron, cols = genotype
+# --- Step 3: Genotype-genotype proteome correlation heatmap
+# feature vector per genotype = log2 mean quan per protein × neuron × day (flattened)
+# pairwise Pearson r between all genotypes
 
-r2_mat_tc <- r2_tc %>%
-  dplyr::select(genotype, neuron, r2) %>%
-  tidyr::pivot_wider(names_from = genotype, values_from = r2) %>%
-  tibble::column_to_rownames("neuron") %>%
+geno_feat_wide_tc <- mean_quan_tc %>%
+  dplyr::mutate(feature = paste(Genes, neuron, paste0("d", day), sep = "_")) %>%
+  dplyr::select(feature, genotype, log2_mean_quan) %>%
+  tidyr::pivot_wider(names_from = genotype, values_from = log2_mean_quan) %>%
+  tibble::column_to_rownames("feature") %>%
   as.matrix()
 
-# order columns
-col_order_r2 <- c("ctrl", "GBA1", "ASAH1", "SMPD1", "GRN")
-col_order_r2 <- col_order_r2[col_order_r2 %in% colnames(r2_mat_tc)]
-r2_mat_tc    <- r2_mat_tc[, col_order_r2, drop = FALSE]
+# retain only features present in all genotypes
+geno_feat_wide_tc <- geno_feat_wide_tc[complete.cases(geno_feat_wide_tc), ]
 
-readr::write_csv(as.data.frame(r2_mat_tc) %>% tibble::rownames_to_column("neuron"), file.path(out_dir_d50_timecourse, "global_r2_heatmap_sourcedata.csv"))
+geno_corr_mat_tc <- cor(geno_feat_wide_tc, use = "pairwise.complete.obs", method = "pearson")
+
+# order axes: ctrl first
+geno_col_order_tc <- as.character(genotypes_tc)[as.character(genotypes_tc) %in% colnames(geno_corr_mat_tc)]
+geno_corr_mat_tc  <- geno_corr_mat_tc[geno_col_order_tc, geno_col_order_tc]
+
+readr::write_csv(as.data.frame(geno_corr_mat_tc) %>% tibble::rownames_to_column("genotype"),
+  file.path(out_dir_d50_timecourse, "global_genotype_corr_sourcedata.csv"))
 
 pheatmap::pheatmap(
-  r2_mat_tc,
-  cluster_rows = FALSE, cluster_cols = FALSE,
+  geno_corr_mat_tc,
+  cluster_rows = TRUE, cluster_cols = TRUE,
   color = colorRampPalette(RColorBrewer::brewer.pal(9, "RdYlBu"))(100),
-  breaks = seq(0, 1, length.out = 101),
-  display_numbers = TRUE, 
-  number_format = "%.1f",
-  number_color = "black", 
-  fontsize_number = 6,
-  cellwidth = 8, 
-  cellheight = 8, 
-  fontsize = 6,
-  main = "R² (d30 vs d50) per genotype × neuron",
-  filename = file.path(out_dir_d50_timecourse, "global_r2_heatmap.pdf")
+  breaks = seq(-1, 1, length.out = 101),
+  display_numbers = TRUE, number_format = "%.3f",
+  number_color = "black", fontsize_number = 6,
+  cellwidth = 8, cellheight = 8, fontsize = 6,
+  main = "Genotype proteome correlation (Pearson r)",
+  filename = file.path(out_dir_d50_timecourse, "global_genotype_corr_heatmap.pdf")
 )
 
 
@@ -5627,6 +5631,7 @@ pheatmap::pheatmap(
 # --- Step 4: Annotation-level scatter
 #         same as Step 2 but dots colored by annotation
 #         proteins mapped to ann_vec (first match)
+
 
 # map each protein to its first annotation in ann_vec
 # complete_data_annotated_day50 carries annotation columns
@@ -5675,25 +5680,37 @@ ggsave(file.path(out_dir_d50_timecourse, "global_ann_scatter_d30_d50.pdf"),
 
 
 # --- Step 5: Annotation cohort-deviation heatmap
-#         rows = annotations, cols = genotype × neuron × day (20 cols)
-#         value = Pearson r (condition profile vs leave-one-out cohort mean)
+#         feature = log2FC (KO vs ctrl); ctrl dropped; 16 conditions (4 KO × 2 neuron × 2 day)
+#         rows = annotations, cols = genotype × neuron × day
+#         value = Pearson r (condition log2FC profile vs leave-one-out cohort mean)
 #         low r = annotation deviates from cohort in that condition
 
 
-# protein × condition matrix: rows=Genes, cols=genotype_neuron_day
-prot_cond_mat_tc <- mean_quan_tc %>%
+# log2FC per protein: KO mean log2 quan minus ctrl mean log2 quan, per neuron × day
+ctrl_log2_tc <- mean_quan_tc %>%
+  dplyr::filter(genotype == "ctrl") %>%
+  dplyr::select(Genes, neuron, day, ctrl_log2 = log2_mean_quan)
+
+log2fc_tc <- mean_quan_tc %>%
+  dplyr::filter(genotype != "ctrl") %>%
+  dplyr::left_join(ctrl_log2_tc, by = c("Genes", "neuron", "day")) %>%
+  dplyr::mutate(log2FC = log2_mean_quan - ctrl_log2)
+
+# protein × condition matrix using log2FC
+genotypes_ko_tc  <- c("GBA1", "ASAH1", "SMPD1", "GRN")
+cond_order_tc    <- unlist(lapply(genotypes_ko_tc, function(g)
+  paste(g, c("iN", "iDA"), rep(c("d30", "d50"), each = 2), sep = "_")))
+
+prot_cond_log2fc_tc <- log2fc_tc %>%
   dplyr::mutate(condition = paste(as.character(genotype), neuron,
                                   paste0("d", day), sep = "_")) %>%
-  dplyr::select(Genes, condition, log2_mean_quan) %>%
-  tidyr::pivot_wider(names_from = condition, values_from = log2_mean_quan) %>%
+  dplyr::select(Genes, condition, log2FC) %>%
+  tidyr::pivot_wider(names_from = condition, values_from = log2FC) %>%
   tibble::column_to_rownames("Genes") %>%
   as.matrix()
 
-# column order: ctrl first, iN before iDA, d30 before d50
-cond_order_tc <- unlist(lapply(as.character(genotypes_tc), function(g)
-  paste(g, c("iN", "iDA"), rep(c("d30", "d50"), each = 2), sep = "_")))
-cond_order_tc <- cond_order_tc[cond_order_tc %in% colnames(prot_cond_mat_tc)]
-prot_cond_mat_tc <- prot_cond_mat_tc[, cond_order_tc, drop = FALSE]
+cond_order_tc        <- cond_order_tc[cond_order_tc %in% colnames(prot_cond_log2fc_tc)]
+prot_cond_log2fc_tc  <- prot_cond_log2fc_tc[, cond_order_tc, drop = FALSE]
 
 # proteins per annotation (first-match from ann_map_tc built in Step 4)
 ann_protein_list_tc <- lapply(ann_vec, function(ann) {
@@ -5701,15 +5718,15 @@ ann_protein_list_tc <- lapply(ann_vec, function(ann) {
 })
 names(ann_protein_list_tc) <- ann_vec
 
-# for each annotation × condition: r(condition, leave-one-out cohort mean)
+# for each annotation × condition: r(condition log2FC, leave-one-out cohort mean log2FC)
 cohort_r_rows_tc <- lapply(ann_vec, function(ann) {
   prots  <- ann_protein_list_tc[[ann]]
-  sub_m  <- prot_cond_mat_tc[rownames(prot_cond_mat_tc) %in% prots, , drop = FALSE]
+  sub_m  <- prot_cond_log2fc_tc[rownames(prot_cond_log2fc_tc) %in% prots, , drop = FALSE]
   if (nrow(sub_m) < 3) return(NULL)
 
   r_vals <- sapply(cond_order_tc, function(cond) {
-    other_cols   <- setdiff(cond_order_tc, cond)
-    cohort_mean  <- rowMeans(sub_m[, other_cols, drop = FALSE], na.rm = TRUE)
+    other_cols  <- setdiff(cond_order_tc, cond)
+    cohort_mean <- rowMeans(sub_m[, other_cols, drop = FALSE], na.rm = TRUE)
     cor(sub_m[, cond], cohort_mean, use = "pairwise.complete.obs", method = "pearson")
   })
 
@@ -5724,21 +5741,22 @@ cohort_r_mat_tc <- cohort_r_rows_tc %>%
   as.matrix()
 cohort_r_mat_tc <- cohort_r_mat_tc[, cond_order_tc[cond_order_tc %in% colnames(cohort_r_mat_tc)], drop = FALSE]
 
-readr::write_csv(as.data.frame(cohort_r_mat_tc) %>% tibble::rownames_to_column("Annotation"), file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_sourcedata.csv"))
+readr::write_csv(as.data.frame(cohort_r_mat_tc) %>% tibble::rownames_to_column("Annotation"),
+  file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_sourcedata.csv"))
 
-# remove rows with any NA before hclust
-cohort_r_mat_plot <- cohort_r_mat_tc[rowSums(is.na(cohort_r_mat_tc)) == 0, , drop = FALSE]
+# replace NA with 0 to retain all annotations in hclust
+cohort_r_mat_plot <- cohort_r_mat_tc
+cohort_r_mat_plot[is.na(cohort_r_mat_plot)] <- 0
 
 pheatmap::pheatmap(
   cohort_r_mat_plot,
   cluster_rows = TRUE, cluster_cols = FALSE,
   color = colorRampPalette(RColorBrewer::brewer.pal(9, "RdYlBu"))(100),
   breaks = seq(-1, 1, length.out = 101),
-  na_col = "grey90",
   display_numbers = TRUE, number_format = "%.2f",
   number_color = "black", fontsize_number = 5,
   cellwidth = 8, cellheight = 8, fontsize = 6,
-  main = "Pearson r vs cohort mean per annotation × condition",
+  main = "Pearson r vs cohort mean (log2FC) per annotation × condition",
   filename = file.path(out_dir_d50_timecourse, "global_annotation_cohort_corr_heatmap.pdf")
 )
 
