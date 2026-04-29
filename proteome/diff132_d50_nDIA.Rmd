@@ -5615,40 +5615,49 @@ ggsave(file.path(out_dir_d50_timecourse, "global_scatter_d30_d50.pdf"), p_scatte
 # --- Step 3: Genotype-genotype proteome correlation heatmap
 # feature vector per genotype = log2 mean quan per protein × neuron × day (flattened)
 # pairwise Pearson r between all genotypes
-
+# retain only features present in all KO genotypes
 geno_feat_wide_tc <- log2fc_tc %>%
-  dplyr::mutate(feature = paste(Genes, neuron, paste0("d", day), sep = "_")) %>%
-  dplyr::select(feature, genotype, log2FC) %>%
-  tidyr::pivot_wider(names_from = genotype, values_from = log2FC) %>%
+  dplyr::mutate(geno_neuron = paste(as.character(genotype), neuron, sep = "_"),
+                feature     = paste(Genes, paste0("d", day), sep = "_")) %>%
+  dplyr::select(feature, geno_neuron, log2FC) %>%
+  tidyr::pivot_wider(names_from = geno_neuron, values_from = log2FC) %>%
   tibble::column_to_rownames("feature") %>%
   as.matrix()
 
-# retain only features present in all KO genotypes
 geno_feat_wide_tc <- geno_feat_wide_tc[complete.cases(geno_feat_wide_tc), ]
 
 geno_corr_mat_tc  <- cor(geno_feat_wide_tc, use = "pairwise.complete.obs", method = "pearson")
-geno_col_order_tc <- genotypes_ko_tc[genotypes_ko_tc %in% colnames(geno_corr_mat_tc)]
+
+geno_col_order_tc <- unlist(lapply(genotypes_ko_tc, function(g) paste(g, c("iN", "iDA"), sep = "_")))
+geno_col_order_tc <- geno_col_order_tc[geno_col_order_tc %in% colnames(geno_corr_mat_tc)]
 geno_corr_mat_tc  <- geno_corr_mat_tc[geno_col_order_tc, geno_col_order_tc]
 
-readr::write_csv(as.data.frame(geno_corr_mat_tc) %>% tibble::rownames_to_column("genotype"),
-  file.path(out_dir_d50_timecourse, "global_genotype_corr_sourcedata.csv"))
+readr::write_csv(as.data.frame(geno_corr_mat_tc) %>% tibble::rownames_to_column("geno_neuron"), file.path(out_dir_d50_timecourse, "global_genotype_corr_sourcedata.csv"))
 
-ann_col_geno_tc <- data.frame(Genotype = geno_col_order_tc, row.names = geno_col_order_tc)
-ann_colors_geno_tc <- list(Genotype = geno_colors_tc)
+# create annotation colors for day, genotype and neurontype
+ann_col_geno_tc <- data.frame(
+  Genotype = sub("_iN|_iDA", "", geno_col_order_tc),
+  Neuron   = sub(".*_", "", geno_col_order_tc),
+  row.names = geno_col_order_tc
+)
+ann_colors_geno_tc <- list(
+  Genotype = geno_colors_tc,
+  Neuron   = c("iN" = "grey50", "iDA" = "grey80")
+)
 
 pheatmap::pheatmap(
   geno_corr_mat_tc,
   cluster_rows = TRUE, cluster_cols = TRUE,
   annotation_col = ann_col_geno_tc, annotation_row = ann_col_geno_tc,
   annotation_colors = ann_colors_geno_tc,
-  color = colorRampPalette(rev(RColorBrewer::brewer.pal(9, "RdYlBu")))(100),
+  color = colorRampPalette(rev(RColorBrewer::brewer.pal(9, "RdBu")))(100),
   breaks = seq(-1, 1, length.out = 101),
   display_numbers = FALSE,
   border_color = NA,
   cellwidth = 8, 
   cellheight = 8, 
   fontsize = 6,
-  main = "Genotype proteome correlation (Pearson r, log2FC)",
+  main = "Genotype × neuron proteome correlation (Pearson r, log2FC)",
   filename = file.path(out_dir_d50_timecourse, "global_genotype_corr_heatmap.pdf")
 )
 
