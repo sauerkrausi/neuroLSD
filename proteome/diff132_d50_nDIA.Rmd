@@ -5524,6 +5524,7 @@ write.csv(
 ```
 
 
+
 # Global d30 vs d50 proteome comparison
 ```{r}
 # --- Step 1: Compute per-protein mean quan (d30, d50) per genotype × neuron
@@ -5551,18 +5552,18 @@ readr::write_csv(mean_quan_wide_tc, file.path(out_dir_d50_timecourse, "global_d3
 # --- Step 2: Scatter plots – per genotype, iN + iDA combined
 #         facet_grid(neuron ~ genotype)
 #         x = log2(mean quan d30), y = log2(mean quan d50)
-#         dots colored by neuron, red regression line, R² per panel
+#         dots colored by neuron, red regression line, R2 per panel
 
 neuron_colors_tc <- c("iN" = "grey50", "iDA" = "grey80")
 
-# R² per genotype × neuron for panel labels
+# R2 per genotype × neuron for panel labels
 r2_tc <- mean_quan_wide_tc %>%
   dplyr::group_by(genotype, neuron) %>%
   dplyr::summarise(
     r2 = summary(lm(d50 ~ d30))$r.squared,
     .groups = "drop"
   ) %>%
-  dplyr::mutate(label = paste0("R² = ", round(r2, 3)))
+  dplyr::mutate(label = paste0("R2 = ", round(r2, 3)))
 
 axis_range_tc <- range(c(mean_quan_wide_tc$d30, mean_quan_wide_tc$d50), na.rm = TRUE)
 
@@ -5585,8 +5586,7 @@ p_scatter_tc <- ggplot(mean_quan_wide_tc, aes(x = d30, y = d50, color = neuron))
         strip.background = element_rect(fill = "grey90", color = NA),
         legend.position = "none")
 
-ggsave(file.path(out_dir_d50_timecourse, "global_scatter_d30_d50.pdf"),
-       p_scatter_tc, width = 10, height = 4, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_timecourse, "global_scatter_d30_d50.pdf"), p_scatter_tc, width = 10, height = 4, device = cairo_pdf)
 
 
 
@@ -5604,27 +5604,29 @@ col_order_r2 <- c("ctrl", "GBA1", "ASAH1", "SMPD1", "GRN")
 col_order_r2 <- col_order_r2[col_order_r2 %in% colnames(r2_mat_tc)]
 r2_mat_tc    <- r2_mat_tc[, col_order_r2, drop = FALSE]
 
-readr::write_csv(as.data.frame(r2_mat_tc) %>% tibble::rownames_to_column("neuron"),
-  file.path(out_dir_d50_timecourse, "global_r2_heatmap_sourcedata.csv"))
+readr::write_csv(as.data.frame(r2_mat_tc) %>% tibble::rownames_to_column("neuron"), file.path(out_dir_d50_timecourse, "global_r2_heatmap_sourcedata.csv"))
 
 pheatmap::pheatmap(
   r2_mat_tc,
   cluster_rows = FALSE, cluster_cols = FALSE,
   color = colorRampPalette(RColorBrewer::brewer.pal(9, "RdYlBu"))(100),
   breaks = seq(0, 1, length.out = 101),
-  display_numbers = TRUE, number_format = "%.3f",
-  number_color = "black", fontsize_number = 6,
-  cellwidth = 8, cellheight = 8, fontsize = 6,
+  display_numbers = TRUE, 
+  number_format = "%.1f",
+  number_color = "black", 
+  fontsize_number = 6,
+  cellwidth = 8, 
+  cellheight = 8, 
+  fontsize = 6,
   main = "R² (d30 vs d50) per genotype × neuron",
   filename = file.path(out_dir_d50_timecourse, "global_r2_heatmap.pdf")
 )
 
 
-# -------------------------------------------------- #
-# Step 4: Annotation-level scatter
+
+# --- Step 4: Annotation-level scatter
 #         same as Step 2 but dots colored by annotation
 #         proteins mapped to ann_vec (first match)
-# -------------------------------------------------- #
 
 # map each protein to its first annotation in ann_vec
 # complete_data_annotated_day50 carries annotation columns
@@ -5671,12 +5673,12 @@ ggsave(file.path(out_dir_d50_timecourse, "global_ann_scatter_d30_d50.pdf"),
        p_ann_scatter_tc, width = 10, height = 5, device = cairo_pdf)
 
 
-# -------------------------------------------------- #
-# Step 5: Annotation cohort-deviation heatmap
+
+# --- Step 5: Annotation cohort-deviation heatmap
 #         rows = annotations, cols = genotype × neuron × day (20 cols)
 #         value = Pearson r (condition profile vs leave-one-out cohort mean)
 #         low r = annotation deviates from cohort in that condition
-# -------------------------------------------------- #
+
 
 # protein × condition matrix: rows=Genes, cols=genotype_neuron_day
 prot_cond_mat_tc <- mean_quan_tc %>%
