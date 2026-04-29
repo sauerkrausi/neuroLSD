@@ -543,21 +543,28 @@ f_ratio_per_gene <- rep_fc_organelle %>%
     ms_within  = mean(tapply(log2fc, genotype, var, na.rm = TRUE), na.rm = TRUE),
     ms_between = var(log2fc, na.rm = TRUE),
     f_ratio    = ms_between / ms_within,
+    log2_f_ratio = log2(ms_between / ms_within),
     .groups = "drop"
   ) %>%
-  dplyr::filter(is.finite(f_ratio))
+  dplyr::filter(is.finite(f_ratio), is.finite(log2_f_ratio))
 
 # --- Summarize F-ratio per annotation x day x neuron
 f_ratio_df <- f_ratio_per_gene %>%
   dplyr::group_by(Localization, day, neuron) %>%
   dplyr::summarise(
-    mean_f = mean(f_ratio, na.rm = TRUE),
-    sd_f   = sd(f_ratio, na.rm = TRUE),
-    se_f   = sd_f / sqrt(dplyr::n()),
+    mean_f     = mean(f_ratio,      na.rm = TRUE),
+    sd_f       = sd(f_ratio,        na.rm = TRUE),
+    se_f       = sd_f / sqrt(dplyr::n()),
+    mean_log2f = mean(log2_f_ratio, na.rm = TRUE),
+    sd_log2f   = sd(log2_f_ratio,   na.rm = TRUE),
+    se_log2f   = sd_log2f / sqrt(dplyr::n()),
     .groups = "drop"
   )
 
-# --- Plot F-ratio across annotations
+write.csv(f_ratio_per_gene, file.path(out_dir_d50_QC, "diff132_f_ratio_per_gene_sourcedata.csv"), row.names = FALSE)
+write.csv(f_ratio_df,       file.path(out_dir_d50_QC, "diff132_f_ratio_summary_sourcedata.csv"),  row.names = FALSE)
+
+# --- Plot F-ratio (linear)
 f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neuron, fill = neuron, group = neuron)) +
   geom_ribbon(aes(ymin = mean_f - se_f, ymax = mean_f + se_f), alpha = 0.2, color = NA) +
   geom_line() +
@@ -569,12 +576,26 @@ f_ratio_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_f, color = neu
   labs(x = NULL, y = "F-ratio (between / within genotype variance)", color = NULL, fill = NULL,
        caption = "F > 1: biological signal > technical noise\nF < 1: technical noise > biological signal") +
   theme_bw(base_size = 6) +
-  theme(panel.grid = element_blank(),
-        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
-        legend.position = "bottom",
-        plot.caption = element_text(hjust = 0))
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "bottom", plot.caption = element_text(hjust = 0))
 
-ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"), f_ratio_plot, width = 4, height = 2, device = cairo_pdf)
+# --- Plot F-ratio (log2)
+f_ratio_log2_plot <- ggplot(f_ratio_df, aes(x = Localization, y = mean_log2f, color = neuron, fill = neuron, group = neuron)) +
+  geom_ribbon(aes(ymin = mean_log2f - se_log2f, ymax = mean_log2f + se_log2f), alpha = 0.2, color = NA) +
+  geom_line() +
+  geom_point(size = 0) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "firebrick") +
+  scale_color_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
+  scale_fill_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
+  facet_wrap(~ day, ncol = 2) +
+  labs(x = NULL, y = "log2 F-ratio (between / within genotype variance)", color = NULL, fill = NULL,
+       caption = "F > 0: biological signal > technical noise\nF < 0: technical noise > biological signal") +
+  theme_bw(base_size = 6) +
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "bottom", plot.caption = element_text(hjust = 0))
+
+ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance.pdf"),      f_ratio_plot,      width = 4, height = 2, device = cairo_pdf)
+ggsave(file.path(out_dir_d50_QC, "diff132_f_ratio_variance_log2.pdf"), f_ratio_log2_plot, width = 4, height = 2, device = cairo_pdf)
 
 
 ```
