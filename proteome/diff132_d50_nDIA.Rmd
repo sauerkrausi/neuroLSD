@@ -4847,47 +4847,58 @@ summary_neurodev_df <- lapply(names(marker_lists_nd), function(lst) {
 readr::write_csv(summary_neurodev_df, file.path(out_dir_d50_timecourse, "neurodev_markerlist_sourcedata.csv"))
 
 
-# Step 2: mean + SD per marker_list × neuron × day
-summary_neurodev_stats <- summary_neurodev_df %>%
-  dplyr::group_by(marker_list, neuron, day) %>%
+# Step 2: normalize per protein per neuron to d30 = 1, then mean ± SEM across proteins
+summary_neurodev_norm <- summary_neurodev_df %>%
+  dplyr::group_by(Genes, neuron, day, marker_list) %>%
+  dplyr::summarise(mean_ctrl = mean(mean_ctrl, na.rm = TRUE), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = day, values_from = mean_ctrl, names_prefix = "d") %>%
+  dplyr::filter(!is.na(d30), !is.na(d50)) %>%
+  dplyr::mutate(ratio_d50 = d50 / d30) %>%
+  tidyr::pivot_longer(cols = c(d30, ratio_d50),
+                      names_to = "day_norm", values_to = "norm_val") %>%
+  dplyr::mutate(day_norm = dplyr::recode(day_norm, "d30" = "d30", "ratio_d50" = "d50"),
+                norm_val = dplyr::if_else(day_norm == "d30", 1, norm_val))
+
+summary_neurodev_stats <- summary_neurodev_norm %>%
+  dplyr::group_by(marker_list, neuron, day_norm) %>%
   dplyr::summarise(
-    mean_quan = mean(mean_ctrl, na.rm = TRUE),
-    sd_quan   = sd(mean_ctrl, na.rm = TRUE),
-    mean_log2 = mean(log2(mean_ctrl), na.rm = TRUE),
-    sd_log2   = sd(log2(mean_ctrl), na.rm = TRUE),
-    n         = dplyr::n(),
-    .groups   = "drop"
+    mean_val = mean(norm_val, na.rm = TRUE),
+    sem_val  = sd(norm_val, na.rm = TRUE) / sqrt(dplyr::n()),
+    n        = dplyr::n(),
+    .groups  = "drop"
   ) %>%
-  dplyr::mutate(group = factor(paste0(neuron, "_d", day),
+  dplyr::mutate(group = factor(paste0(neuron, "_", day_norm),
                                levels = c("iN_d30", "iN_d50", "iDA_d30", "iDA_d50")))
 
+# save source data csv
+readr::write_csv(summary_neurodev_stats, file.path(out_dir_d50_timecourse, "neurodev_markerlist_stats_sourcedata.csv"))
 
-# Step 3: barplot function (one call per marker list × version)
-plot_nd_bar <- function(lst_name, stats_df, y_col, sd_col, y_lab, suffix, out_dir) {
+
+# Step 3: barplot function
+plot_nd_bar <- function(lst_name, stats_df, out_dir) {
   dfp <- dplyr::filter(stats_df, marker_list == lst_name)
 
-  p <- ggplot(dfp, aes(x = group, y = .data[[y_col]], fill = neuron)) +
+  p <- ggplot(dfp, aes(x = group, y = mean_val, fill = neuron)) +
+    geom_hline(yintercept = 1, linetype = "dashed", linewidth = 0.3, color = "black") +
     geom_bar(stat = "identity", width = 0.7, color = "black", linewidth = 0.3) +
-    geom_errorbar(aes(ymin = .data[[y_col]] - .data[[sd_col]],
-                      ymax = .data[[y_col]] + .data[[sd_col]]),
+    geom_errorbar(aes(ymin = mean_val - sem_val, ymax = mean_val + sem_val),
                   width = 0.25, linewidth = 0.3) +
     scale_fill_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
-    labs(title = paste0(lst_name, " – ctrl d30 vs d50 (", suffix, ")"),
-         x = NULL, y = y_lab) +
+    labs(title = paste0(lst_name, " – ctrl, normalized to d30"),
+         x = NULL, y = "Relative abundance (d30 = 1)") +
     theme_bw(base_size = 6) +
-    theme(panel.grid    = element_blank(),
+    theme(panel.grid     = element_blank(),
           legend.position = "none",
-          axis.text.x   = element_text(angle = 45, hjust = 1))
+          axis.text.x    = element_text(angle = 45, hjust = 1))
 
-  ggsave(file.path(out_dir, paste0("neurodev_", lst_name, "_", suffix, ".pdf")),
+  ggsave(file.path(out_dir, paste0("neurodev_", lst_name, "_norm_d30.pdf")),
          p, width = 3, height = 3, device = cairo_pdf)
 }
 
 
-# Step 4: call for all lists × both versions
+# Step 4: call for all lists
 for (lst in names(marker_lists_nd)) {
-  plot_nd_bar(lst, summary_neurodev_stats, "mean_quan",  "sd_quan",  "mean ctrl abundance",       "quan",    out_dir_d50_timecourse)
-  plot_nd_bar(lst, summary_neurodev_stats, "mean_log2",  "sd_log2",  "mean log2(ctrl abundance)", "log2quan", out_dir_d50_timecourse)
+  plot_nd_bar(lst, summary_neurodev_stats, out_dir_d50_timecourse)
 }
 ```
 
