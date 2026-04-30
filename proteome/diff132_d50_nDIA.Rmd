@@ -4823,6 +4823,75 @@ ggsave(file.path(out_dir_d50_timecourse, "diff132_NeuoDevd30d50.pdf"), NeuoDevd3
 ```
 
 
+# Summary plots for neuronal markers Ctrl d30 / d50
+```{r}
+# --- Summary barplots: NeuroDev marker lists in ctrl (d30 vs d50)
+# dev_genes, neuron_drivers, presyn_genes, postsyn_genes
+# two versions per list: raw quan and log2(quan)
+
+# Step 1: combine all marker lists into one long df
+marker_lists_nd <- list(
+  dev_genes      = dev_genes,
+  neuron_drivers = neuron_drivers,
+  presyn_genes   = presyn_genes,
+  postsyn_genes  = postsyn_genes
+)
+
+summary_neurodev_df <- lapply(names(marker_lists_nd), function(lst) {
+  clean_d50_transformed_df %>%
+    dplyr::filter(Genes %in% marker_lists_nd[[lst]]) %>%
+    dplyr::select(Genes, neuron, day, mean_ctrl) %>%
+    dplyr::mutate(marker_list = lst)
+}) %>% dplyr::bind_rows()
+
+readr::write_csv(summary_neurodev_df, file.path(out_dir_d50_timecourse, "neurodev_markerlist_sourcedata.csv"))
+
+
+# Step 2: mean + SD per marker_list × neuron × day
+summary_neurodev_stats <- summary_neurodev_df %>%
+  dplyr::group_by(marker_list, neuron, day) %>%
+  dplyr::summarise(
+    mean_quan = mean(mean_ctrl, na.rm = TRUE),
+    sd_quan   = sd(mean_ctrl, na.rm = TRUE),
+    mean_log2 = mean(log2(mean_ctrl), na.rm = TRUE),
+    sd_log2   = sd(log2(mean_ctrl), na.rm = TRUE),
+    n         = dplyr::n(),
+    .groups   = "drop"
+  ) %>%
+  dplyr::mutate(group = factor(paste0(neuron, "_d", day),
+                               levels = c("iN_d30", "iN_d50", "iDA_d30", "iDA_d50")))
+
+
+# Step 3: barplot function (one call per marker list × version)
+plot_nd_bar <- function(lst_name, stats_df, y_col, sd_col, y_lab, suffix, out_dir) {
+  dfp <- dplyr::filter(stats_df, marker_list == lst_name)
+
+  p <- ggplot(dfp, aes(x = group, y = .data[[y_col]], fill = neuron)) +
+    geom_bar(stat = "identity", width = 0.7, color = "black", linewidth = 0.3) +
+    geom_errorbar(aes(ymin = .data[[y_col]] - .data[[sd_col]],
+                      ymax = .data[[y_col]] + .data[[sd_col]]),
+                  width = 0.25, linewidth = 0.3) +
+    scale_fill_manual(values = c("iN" = "grey50", "iDA" = "grey80")) +
+    labs(title = paste0(lst_name, " – ctrl d30 vs d50 (", suffix, ")"),
+         x = NULL, y = y_lab) +
+    theme_bw(base_size = 6) +
+    theme(panel.grid    = element_blank(),
+          legend.position = "none",
+          axis.text.x   = element_text(angle = 45, hjust = 1))
+
+  ggsave(file.path(out_dir, paste0("neurodev_", lst_name, "_", suffix, ".pdf")),
+         p, width = 3, height = 3, device = cairo_pdf)
+}
+
+
+# Step 4: call for all lists × both versions
+for (lst in names(marker_lists_nd)) {
+  plot_nd_bar(lst, summary_neurodev_stats, "mean_quan",  "sd_quan",  "mean ctrl abundance",       "quan",    out_dir_d50_timecourse)
+  plot_nd_bar(lst, summary_neurodev_stats, "mean_log2",  "sd_log2",  "mean log2(ctrl abundance)", "log2quan", out_dir_d50_timecourse)
+}
+```
+
+
 # GBA1 - ASAH1 time course comparison
 ```{r}
 # --------------------------------------------------- #
