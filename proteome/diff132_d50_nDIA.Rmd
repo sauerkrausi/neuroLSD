@@ -4643,7 +4643,7 @@ presyn_genes <- c("BSN", "CPLX1", "CPLX2", "ELKS1", "MUNC13A", "MUNC13B", "MUNC1
 postsyn_genes <- c(
 "DLG4", "DLG3", "DLG2", "SHANK1", "SHANK2", "SHANK3", "HOMER1", "HOMER2", "HOMER3", "NLGN1", 
 "NLGN2", "NLGN3", "NLGN4X", "GPHN", "SYNGAP1", "GRIN1", "GRIN2A", "GRIN2B", "GRIA1", "GRIA2", 
-"GRIA3", "GRIA4", "GABRA1", "GABRA2", "GABRA3", "GABRA5", "GABRB1", "GABRB2", "GABRB3", "GABRG2", 
+"GRIA3", "GRIA4", "GABRA1", "GABRA2", "GABRA3", "GABRA5", "GABRB1",  "GABRB3", "GABRG2", 
 "CAMK2A", "CAMK2B", "PPP1R9B", "NRGN", "NPTX2"
 )
 
@@ -4903,9 +4903,9 @@ for (lst in names(marker_lists_nd)) {
 
 
 # --- Step 5: Neuronal marker heatmap – ctrl d30 vs d50
-# rows = iN_d30 / iN_d50 / iDA_d30 / iDA_d50
+# rows = d30 / d50 per neuron (separate heatmap per neuron)
 # cols = genes from neuron_drivers, presyn_genes, postsyn_genes
-# values = log2(mean_ctrl), z-scored per column
+# values = log2(mean_ctrl), no scaling
 
 # gene sets (dev_genes excluded)
 heatmap_marker_lists_nd <- list(
@@ -4942,7 +4942,7 @@ gene_set_map_nd <- lapply(names(heatmap_marker_lists_nd), function(gs) {
 col_order_nd <- unlist(lapply(names(heatmap_marker_lists_nd), function(gs) {
   genes_gs <- gene_set_map_nd %>% dplyr::filter(GeneSet == gs) %>% dplyr::pull(Genes)
   if (length(genes_gs) < 2) return(genes_gs)
-  sub_m         <- heatmap_mat_nd[, genes_gs, drop = FALSE]
+  sub_m             <- heatmap_mat_nd[, genes_gs, drop = FALSE]
   sub_m[is.na(sub_m)] <- 0
   genes_gs[hclust(dist(t(sub_m)), method = "complete")$order]
 }))
@@ -4971,26 +4971,30 @@ ann_colors_nd <- list(
   Day     = c("d30" = "darkgreen", "d50" = "dodgerblue3")
 )
 
+# source data export
 readr::write_csv(as.data.frame(heatmap_mat_nd) %>% tibble::rownames_to_column("condition"), file.path(out_dir_d50_timecourse, "neurodev_marker_heatmap_sourcedata.csv"))
 
-pheatmap::pheatmap(
-  heatmap_mat_nd,
-  cluster_rows = FALSE, 
-  cluster_cols = FALSE,
-  gaps_col = gaps_col_nd,
-  annotation_col = ann_col_nd, 
-  annotation_row = ann_row_nd,
-  annotation_colors = ann_colors_nd,
-  scale = "column",
-  color = colorRampPalette(c(RColorBrewer::brewer.pal(9, "RdBu")[9], "white", RColorBrewer::brewer.pal(9, "RdBu")[1]))(100),
-  breaks = seq(-2, 2, length.out = 101),
-  border_color = NA,
-  cellwidth = 8, 
-  cellheight = 8, 
-  fontsize = 6,
-  main = "Neuronal markers ctrl d30 vs d50 (z-score per gene)",
-  filename = file.path(out_dir_d50_timecourse, "neurodev_marker_heatmap.pdf")
-)
+# separate heatmaps per neuron type
+plot_nd_heatmap <- function(neuron_label, mat, ann_col, ann_row, ann_colors, gaps, out_dir) {
+  mat_sub     <- mat[grep(neuron_label, rownames(mat)), , drop = FALSE]
+  ann_row_sub <- ann_row[rownames(mat_sub), , drop = FALSE]
+
+  pheatmap::pheatmap(
+    mat_sub,
+    cluster_rows = FALSE, cluster_cols = FALSE,
+    gaps_col = gaps,
+    annotation_col = ann_col, annotation_row = ann_row_sub,
+    annotation_colors = ann_colors,
+    color = colorRampPalette(c(RColorBrewer::brewer.pal(9, "RdBu")[9], "white", RColorBrewer::brewer.pal(9, "RdBu")[1]))(100),
+    border_color = NA,
+    cellwidth = 8, cellheight = 8, fontsize = 6,
+    main = paste0("Neuronal markers ctrl d30 vs d50 (", neuron_label, ", log2)"),
+    filename = file.path(out_dir, paste0("neurodev_marker_heatmap_", neuron_label, ".pdf"))
+  )
+}
+
+plot_nd_heatmap("iN",  heatmap_mat_nd, ann_col_nd, ann_row_nd, ann_colors_nd, gaps_col_nd, out_dir_d50_timecourse)
+plot_nd_heatmap("iDA", heatmap_mat_nd, ann_col_nd, ann_row_nd, ann_colors_nd, gaps_col_nd, out_dir_d50_timecourse)
 
 ```
 
