@@ -4975,15 +4975,19 @@ readr::write_csv(as.data.frame(heatmap_mat_nd) %>% tibble::rownames_to_column("c
 
 pheatmap::pheatmap(
   heatmap_mat_nd,
-  cluster_rows = FALSE, cluster_cols = FALSE,
+  cluster_rows = FALSE, 
+  cluster_cols = FALSE,
   gaps_col = gaps_col_nd,
-  annotation_col = ann_col_nd, annotation_row = ann_row_nd,
+  annotation_col = ann_col_nd, 
+  annotation_row = ann_row_nd,
   annotation_colors = ann_colors_nd,
   scale = "column",
   color = colorRampPalette(c(RColorBrewer::brewer.pal(9, "RdBu")[9], "white", RColorBrewer::brewer.pal(9, "RdBu")[1]))(100),
   breaks = seq(-2, 2, length.out = 101),
   border_color = NA,
-  cellwidth = 8, cellheight = 8, fontsize = 6,
+  cellwidth = 8, 
+  cellheight = 8, 
+  fontsize = 6,
   main = "Neuronal markers ctrl d30 vs d50 (z-score per gene)",
   filename = file.path(out_dir_d50_timecourse, "neurodev_marker_heatmap.pdf")
 )
