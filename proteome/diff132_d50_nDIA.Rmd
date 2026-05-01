@@ -4981,7 +4981,9 @@ plot_nd_heatmap <- function(neuron_label, mat, ann_col, ann_row, ann_colors, gap
 
   pheatmap::pheatmap(
     mat_sub,
-    cluster_rows = FALSE, cluster_cols = FALSE,
+    cluster_rows = FALSE, 
+    cluster_cols = FALSE,
+    scale = "none",
     gaps_col = gaps,
     annotation_col = ann_col, annotation_row = ann_row_sub,
     annotation_colors = ann_colors,
