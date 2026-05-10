@@ -43,6 +43,15 @@ Contains Rmd scripts for evaluation of stem-cell derived cortical-like iNeurons 
 A detailed README for the scripts can be found in [`readmePROTEOME.md`](proteome/readmePROTEOME.md).
 
 
+## 🛠️ Utils
+Contains helper scripts for README generation from a central metadata table.
+
+- `raw_readme.csv`: Master table mapping figure panels to methods, code files, datasets, and instrument info.
+- `update_readme_csv.py`: Populates blank fields in `raw_readme.csv` with predefined descriptions for code files, instruments, and datasets.
+- `generate_readmes.py`: Reads the populated `raw_readme.csv` and renders per-methodology `_README_*.md` files and a master `_README_index.md`.
+
+Run `update_readme_csv.py` first if fields are not yet filled, then `generate_readmes.py` to produce the README files.
+
 
 ## Requirements
 - **R 4.5.2** (RStudio Version 2026.01.1+403) with: `bigstatsr`, `broom`, `Cairo`, `CalNetExploreR`, `car`, `circlize`, `ComplexHeatmap`, `ComplexUpset`, `corrplot`, `cowplot`, `data.table`, `devtools`, `dplyr`, `factoextra`, `fmsb`, `forcats`, `furrr`, `ggbiplot`, `ggdendro`, `ggdist`, `gghalves`, `gghighlight`, `ggplot2`, `ggpp`, `ggpmisc`, `ggpubr`, `ggraph`, `ggrepel`, `ggsci`, `ggsignif`, `ggVennDiagram`, `grid`, `gridExtra`, `igraph`, `irlba`, `janitor`, `limma`, `lintr`, `lubridate`, `magick`, `msstats`, `NatParksPalettes`, `org.Hs.eg.db`, `patchwork`, `pheatmap`, `plotly`, `plyr`, `png`, `purrr`, `qs`, `RColorBrewer`, `readr`, `reshape2`, `rlang`, `rstatix`, `scales`, `signal`, `stringr`, `superheat`, `Ternary`, `tibble`, `tidyplots`, `tidyr`, `tidyverse`, `timecourse`, `topGO`, `umap`, `UpSetR`, `uwot`, `viridis`, `zoo`
