@@ -3,7 +3,7 @@
 
 ![Language](https://img.shields.io/badge/Language-R_|_Python-yellow)
 [![bioRxiv](https://img.shields.io/badge/bioRxiv-2025.10.08.681047-red)](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v3)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17296003-blue)](10.5281/zenodo.19193703)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17296003-blue)](https://zenodo.org/records/19193703)
 ![License](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey)
 
 
