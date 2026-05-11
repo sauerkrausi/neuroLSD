@@ -70,7 +70,7 @@ For more detailed package requirements, please check the manuscript.
 📖 Preprint version 2: [BioRxiv]( https://doi.org/10.1101/2025.10.08.681047v2)   
 📖 Preprint version 1: [BioRxiv](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v1)
 
-💾 Zenodo files under: [Zenodo] ( 10.5281/zenodo.19193703)
+💾 Zenodo files under: [Zenodo]( 10.5281/zenodo.19193703)
 
 Also contains the following datasets (removed from newer versions for clarity):
 `diff118_iNiDA_d23.Rmd:` TMTpro-based proteomic analysis of day 23 iN and iDA cells across Control and ASAH1-/- conditions.
