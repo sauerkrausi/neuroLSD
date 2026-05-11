@@ -1,6 +1,12 @@
 ![ProjectLogo](/logoNeuroLSD.jpg)
 # A human lysosomal storage disorder toolkit for decoding proteome landscapes in cortical and dopaminergic-like induced neurons
 
+![Language](https://img.shields.io/badge/Language-R_|_Python-yellow)
+[![bioRxiv](https://img.shields.io/badge/bioRxiv-2025.10.08.681047-red)](https://www.biorxiv.org/content/10.1101/2025.10.08.681047v3)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17296003-blue)](10.5281/zenodo.19193703)
+![License](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey)
+
+
 This repository contains scripts and evaluation pipelines related to the **neuroLSD** project.
 
 The **neuroLSD** project investigates how lysosomal storage disorder–associated pathways contribute to neurodegeneration using **stem-cell–derived neuronal models**. We integrate **quantitative proteomics**, **lipidomics**, and **calcium imaging** to profile functional and molecular changes in cortical-like iNeurons (iN) and dopaminergic-like iDA neurons.
