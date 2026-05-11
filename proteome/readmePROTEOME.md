@@ -15,20 +15,19 @@ Contains Rmd scripts for proteomics evaluation of stem-cell derived cortical-lik
 - Generates cluster heatmaps, GO term enrichments, and cross-cell-type correlation plots (HeLa vs neuron).
 
 Modules
-  - Module 0: Module 0: Setup & Configuration & Experimental Background
-  - Module 1: Data Import, QC (Replicate-level)
-  - Module 2: Summarized Data & Subcellular Analysis
-  - Module 3: Neuro QC & Synaptic Markers
-  - Module 4: Time Course Analysis (d30 vs d50)
-  - Module 5: Long Diff Analysis ASAH1 (d30-50-70)
-  - Module 6: Violin & Volcano Plots (annotation / genotypes)
-  - Module 7: Organelle Correlations Analysis
-  - Module 8: Disease Class Analysis - Neuron
-  - Module 9: Linear Regression & Modeling
-  - Module 10: nDIA-nMOST Comparative Analysis
-  - Module 11: Master PPI Evidence & Analysis 
-  - Module 12: PPI Vulnerability Analysis - HeLa nMOST
-
+- Module 0: Setup & Configuration & Experimental Background — package loading, output directories, experimental background for nDIA iN/iDA d30+d50, Circos plot for neuroLSD
+- Module 1: Data Import & QC — disease-class annotation, data cleaning, replicate correlation, F-ratio variance analysis, PCA, protein ID and RSD QC plots
+- Module 2: Summarized Data & Subcellular Analysis — fold-change import (d30/d50), subcellular annotation, heatmaps, Euler plots, LSD protein abundance, p-value heatmaps, Stouffer correction, ternary plots, half-Circos plots, barplots of significant IDs, lineplots, SV/exocytosis driver analysis, PCA on annotation subsets, iN vs iDA cell-type comparison
+- Module 3: Neuro QC & Synaptic Markers — pre/post-synaptic marker plots, neuro annotation by neuron × genotype, differentiation markers, vATPase, SV/SNARE, and SV docking plots
+- Module 4: Time Course Analysis (d30 vs d50) — neuromarker abundance, synaptic marker trajectories, NeuroDev protein-list summary, GBA1/ASAH1 time course comparison, statistical tests, barplot function, correlation heatmaps, global d30 vs d50 proteome comparison
+- Module 5: Long Diff Analysis ASAH1 (d30–50–70) — timecourse df construction, heatmaps, PCA, violin plots across annotations, pairwise annotation correlations, ChimeraX helper for structure mapping
+- Module 6: Violin & Volcano Plots** — violin plot function for LSD organelle proteomics, autophagy machinery heatmap across genotypes × neuron types, volcano plots with annotation highlights
+- Module 7: Organelle Correlations Analysis — cross-organelle correlation overview, organelle impact scoring, disease class impact scoring, avg. correlations per annotation/genotype/disease class/nMOST GO cluster, bubble plots iN vs iDA, peroxisomal abundance evaluation
+- Module 8: Disease Class Analysis — Sph mutant investigation, organelle correlation analysis, diff118 (d23) vs diff132 (d50) ASAH1 comparison, Euler plots, linear model for GBA1/ASAH1 drivers, GRN d30/d50 DA neuron analysis, disease-class comparison d50 with annotation-based Circos plots
+- Module 9: Linear Regression & Modeling — UMAP of neuroLSD dataset, linear regression on gene level across neuron types, stratified modeling of genotype effects, limma modeling, UMAP of linear model results and combined features
+- Module 10: nDIA–nMOST Comparative Analysis — nMOST LSD GO signatures, neuron–HeLa proteome correlations, nMOST–nDIA correlation per genotype, HeLa–nMOST vs neuron–nDIA organelle correlation
+- Module 11: Master PPI Evidence & Analysis — PPI vulnerability pipeline for iN/iDA LSD mutants; PPI database construction, baseline network, trimer/tetramer detection and validation, complex growing, top-down vs bottom-up comparison, network visualization, stoichiometry analysis, KO vulnerability analysis (significance-filtered), pathway disruption (sphingosine, ceramide, OXPHOS), multi-genotype timecourse summary
+- Module 12: PPI Vulnerability Analysis – HeLa nMOST — HeLa data loading/QC, baseline PPI network, trimer/tetramer detection and validation, complex growing, network visualization, KO vulnerability analysis with extended visualizations
 
 
 ## retired projects 
