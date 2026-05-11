@@ -35,12 +35,12 @@ See [`imagingREADME.md`](imaging/imagingREADME.md) for details on workflow steps
 
 
 
-## 🧬 Lipidomics
+## 🧪 Lipidomics
 Lipidomic profiling of HeLa and day‑21 iNeurons (Ctrl vs ASAH1‑/‑) across whole‑cell and organelle‑IP fractions, with outputs including class‑level barplots, volcano plots, and per‑lipid log2FC tables.
 
 
 
-## 🧪 Proteomics
+## 📊 Proteomics
 Contains Rmd scripts for evaluation of stem-cell derived cortical-like iNeurons and stem-cell derived dopaminergic-like iDA neurons at day 50 of in-vitro differentiation.
 
 - `diff132_d50_nDIA.Rmd:` nDIA proteomics of whole-cell iNeurons and iDA neurons at day 50, including organelle-level annotation and HeLa cross-comparison.
