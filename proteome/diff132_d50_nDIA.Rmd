@@ -17456,7 +17456,7 @@ message("QC plots saved to: ", file.path(out_dir_stoich, "qc"))
 
 
 
-# OLD Module 9: KO Vulnerability Analysis v6 (Significance-Filtered)
+# Module 9: KO Vulnerability Analysis v6 (Significance-Filtered)
 
 ## Overview
 Adapted vulnerability analysis with:
