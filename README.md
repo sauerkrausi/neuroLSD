@@ -20,6 +20,7 @@ Structural analysis of ASAH1-deficient endolysosomes by cryo-electron tomography
 This LSD mutant toolkit and associated proteomic landscape provide a resource for decoding how lysosomal dysfunction impacts neuronal health and for exploring mechanistic links between lysosomal storage disorders and Parkinson’s Disease.
 
 💻 Online viewer to explore the data: [Online Dataviewer](https://wren.hms.harvard.edu/ProteomeLSDNeuron/)  
+📄 Link to Paper: [PNAS] (https://www.pnas.org/doi/10.1073/pnas.2609132123)  
 📖 Current version of Preprint: [BioRxiv]( https://www.biorxiv.org/content/10.1101/2025.10.08.681047v3)
 
 
